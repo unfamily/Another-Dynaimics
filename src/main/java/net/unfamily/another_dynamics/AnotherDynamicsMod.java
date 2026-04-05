@@ -4,18 +4,18 @@ import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
 
-import net.minecraft.world.item.CreativeModeTabs;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
-import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.unfamily.another_dynamics.duct.DuctDefinitionLoader;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModBlocks;
+import net.unfamily.another_dynamics.registry.ModCreativeTabs;
 import net.unfamily.another_dynamics.registry.ModItems;
+import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
 @Mod(AnotherDynamicsMod.MOD_ID)
 public final class AnotherDynamicsMod {
@@ -36,8 +36,8 @@ public final class AnotherDynamicsMod {
         ModBlocks.BLOCKS.register(modEventBus);
         ModItems.ITEMS.register(modEventBus);
         ModBlockEntities.TYPES.register(modEventBus);
-
-        modEventBus.addListener(BuildCreativeModeTabContentsEvent.class, AnotherDynamicsMod::onBuildCreativeTab);
+        ModMenuTypes.MENUS.register(modEventBus);
+        ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
     }
@@ -46,9 +46,4 @@ public final class AnotherDynamicsMod {
         event.addListener(DUCT_LOADER);
     }
 
-    private static void onBuildCreativeTab(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.REDSTONE_BLOCKS) {
-            event.accept(ModItems.ITEM_DUCT.get());
-        }
-    }
 }

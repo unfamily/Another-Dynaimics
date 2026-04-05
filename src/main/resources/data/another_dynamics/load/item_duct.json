@@ -1,6 +1,8 @@
 {
   "type": "another_dynamics:declare_duct",
-  "id": "item_duct",
+  "id": "another_dynamics:item_duct",
+  "put_in_creative_menu": true,
+  "sound": "metallic",
   "can_transport": [
     {
       "dec": "item",
@@ -15,6 +17,10 @@
       "speed": {
         "default": 20,
         "min": 0
+      },
+      "filter":{
+        "deny":3,
+        "allow":3
       }
     }
   ],
@@ -25,5 +31,5 @@
     "model_default": "another_dynamics:block/simple_duct_default",
     "model_line": "another_dynamics:block/simple_duct_line"
   },
-  "disabled_feathures": ["filtering"]
+  "disabled_feathures": []
 }

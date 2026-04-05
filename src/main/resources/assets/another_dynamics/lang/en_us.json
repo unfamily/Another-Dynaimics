@@ -1,4 +1,6 @@
 {
+  "container.another_dynamics.duct_node": "Item Duct Node",
   "block.another_dynamics.item_duct": "Item Duct",
-  "item.another_dynamics.item_duct": "Item Duct"
+  "item.another_dynamics.item_duct": "Item Duct",
+  "itemGroup.another_dynamics.ducts": "Another Dynamics Ducts"
 }

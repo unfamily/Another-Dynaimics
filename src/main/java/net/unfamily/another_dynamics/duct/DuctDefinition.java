@@ -13,6 +13,9 @@ import net.minecraft.resources.ResourceLocation;
  * models under {@code assets/&lt;ns&gt;/models/...} (same convention as {@code namespace:block/path}). Piece names
  * must match the engine ({@code center}, {@code con_*}, {@code node_*}, and a {@code center} element in the line
  * model).</p>
+ *
+ * <p>Optional {@link #sound} is a block step/place/break group name (e.g. {@code metal}, {@code metallic}, {@code copper});
+ * see {@link DuctSoundTypes#resolve}.</p>
  */
 public record DuctDefinition(
         ResourceLocation dataId,
@@ -20,5 +23,7 @@ public record DuctDefinition(
         List<String> transportKinds,
         ResourceLocation defaultTexture,
         Optional<ResourceLocation> compositeModelDefault,
-        Optional<ResourceLocation> compositeModelLine
+        Optional<ResourceLocation> compositeModelLine,
+        boolean putInCreativeMenu,
+        Optional<String> sound
 ) {}

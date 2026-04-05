@@ -39,7 +39,7 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                 AnotherDynamicsMod.LOGGER.warn("Skipping duct load entry {}: missing id", e.getKey());
                 continue;
             }
-            String logicalId = o.get("id").getAsString();
+            String logicalId = DuctIds.normalizeLogicalId(o.get("id").getAsString());
             List<String> kinds = new ArrayList<>();
             if (o.has("can_transport") && o.get("can_transport").isJsonArray()) {
                 for (JsonElement t : o.getAsJsonArray("can_transport")) {
@@ -51,6 +51,14 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
             ResourceLocation defaultTexture = ResourceLocation.fromNamespaceAndPath(
                     AnotherDynamicsMod.MOD_ID,
                     "block/duct/item/item_duct_0_light");
+            boolean putInCreativeMenu = o.has("put_in_creative_menu") && o.get("put_in_creative_menu").getAsBoolean();
+            Optional<String> sound = Optional.empty();
+            if (o.has("sound")) {
+                String s = o.get("sound").getAsString();
+                if (!s.isBlank()) {
+                    sound = Optional.of(s.trim());
+                }
+            }
             Optional<ResourceLocation> modelDefault = Optional.empty();
             Optional<ResourceLocation> modelLine = Optional.empty();
             if (o.has("rendering") && o.get("rendering").isJsonObject()) {
@@ -67,7 +75,15 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
             }
             out.put(
                     e.getKey(),
-                    new DuctDefinition(e.getKey(), logicalId, List.copyOf(kinds), defaultTexture, modelDefault, modelLine));
+                    new DuctDefinition(
+                            e.getKey(),
+                            logicalId,
+                            List.copyOf(kinds),
+                            defaultTexture,
+                            modelDefault,
+                            modelLine,
+                            putInCreativeMenu,
+                            sound));
         }
         DuctDefinitionRegistry.replaceAll(out);
         AnotherDynamicsMod.LOGGER.info("Loaded {} duct definition(s) from data/*/load", out.size());

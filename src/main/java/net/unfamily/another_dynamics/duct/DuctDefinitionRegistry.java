@@ -39,7 +39,7 @@ public final class DuctDefinitionRegistry {
         return Optional.ofNullable(definitions.get(dataId));
     }
 
-    /** Key matches JSON {@code "id"} field (e.g. {@link DuctIds#ITEM_DUCT}). */
+    /** Key matches normalized JSON {@code id} (see {@link DuctIds#normalizeLogicalId}), e.g. {@link DuctIds#ITEM_DUCT}. */
     public static Optional<DuctDefinition> getByLogicalId(String logicalId) {
         return Optional.ofNullable(definitionsByLogicalId.get(logicalId));
     }
