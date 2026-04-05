@@ -1,5 +1,18 @@
 {
   "container.another_dynamics.duct_node": "Item Duct Node",
+  "gui.another_dynamics.duct_node.deny_list": "Deny List",
+  "gui.another_dynamics.duct_node.list_logic": "List Logic",
+  "gui.another_dynamics.duct_node.allow_list": "Allow List",
+  "gui.another_dynamics.duct_node.routing_mode": "Routing Mode",
+  "gui.another_dynamics.duct_node.dump": "Dump",
+  "gui.another_dynamics.duct_node.node_mode": "Node Mode",
+  "gui.another_dynamics.duct_node.self_feed": "Self Feed",
+  "gui.another_dynamics.duct_node.rendering": "Rendering",
+  "gui.another_dynamics.duct_node.redstone_mode.0": "Redstone: Ignored",
+  "gui.another_dynamics.duct_node.redstone_mode.1": "Redstone: Low",
+  "gui.another_dynamics.duct_node.redstone_mode.2": "Redstone: High",
+  "gui.another_dynamics.duct_node.redstone_mode.3": "Redstone: Pulse",
+  "gui.another_dynamics.duct_node.redstone_mode.4": "Redstone: Disabled",
   "block.another_dynamics.item_duct": "Item Duct",
   "item.another_dynamics.item_duct": "Item Duct",
   "itemGroup.another_dynamics.ducts": "Another Dynamics Ducts"

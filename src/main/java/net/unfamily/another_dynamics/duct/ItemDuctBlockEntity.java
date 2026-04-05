@@ -5,6 +5,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.neoforged.neoforge.items.ItemStackHandler;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
@@ -25,8 +26,20 @@ public final class ItemDuctBlockEntity extends BlockEntity implements MenuProvid
     private int pipeMask;
     private int storageMask;
 
+    /** GUI-only storage (upgrades + copy settings); no duct routing logic yet. */
+    private final ItemStackHandler nodeGuiSlots = new ItemStackHandler(DuctNodeMenu.MACHINE_SLOTS) {
+        @Override
+        protected void onContentsChanged(int slot) {
+            ItemDuctBlockEntity.this.setChanged();
+        }
+    };
+
     public ItemDuctBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.ITEM_DUCT.get(), pos, state);
+    }
+
+    public ItemStackHandler getNodeGuiSlots() {
+        return nodeGuiSlots;
     }
 
     /** Client-only: keeps visuals in sync when neighbors appear before {@code neighborChanged} runs (e.g. new duct next to existing). */
@@ -74,6 +87,7 @@ public final class ItemDuctBlockEntity extends BlockEntity implements MenuProvid
         super.saveAdditional(tag, registries);
         tag.putByte("PipeMask", (byte) pipeMask);
         tag.putByte("StorageMask", (byte) storageMask);
+        tag.put("NodeGui", nodeGuiSlots.serializeNBT(registries));
     }
 
     @Override
@@ -81,6 +95,9 @@ public final class ItemDuctBlockEntity extends BlockEntity implements MenuProvid
         super.loadAdditional(tag, registries);
         pipeMask = tag.getByte("PipeMask") & 0xFF;
         storageMask = tag.getByte("StorageMask") & 0xFF;
+        if (tag.contains("NodeGui")) {
+            nodeGuiSlots.deserializeNBT(registries, tag.getCompound("NodeGui"));
+        }
         requestModelDataUpdate();
     }
 

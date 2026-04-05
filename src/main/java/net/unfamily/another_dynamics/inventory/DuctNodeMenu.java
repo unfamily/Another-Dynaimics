@@ -6,34 +6,68 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.items.ItemStackHandler;
+import net.neoforged.neoforge.items.SlotItemHandler;
 import net.unfamily.another_dynamics.duct.ItemDuctBlockEntity;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
 /**
- * Duct node configuration: player inventory only for now (node slots later).
- * Origin (80, 158) matches {@code textures/gui/background/node.png}.
+ * Duct node GUI: machine slots (upgrades + copy settings) then player inventory.
+ * Layout matches {@code textures/gui/background/node.png}; player grid origin (80, 158).
  */
 public final class DuctNodeMenu extends AbstractContainerMenu {
+    public static final int MACHINE_SLOTS = 6;
+    /** First five: upgrades (stacked left); index 5: copy settings (right column). */
+    public static final int UPGRADE_SLOT_COUNT = 5;
+    public static final int COPY_SETTINGS_SLOT = 5;
+
     public static final int PLAYER_SLOTS_X = 80;
     public static final int PLAYER_SLOTS_Y = 158;
     private static final int HOTBAR_GAP = 4;
 
+    public static final int SLOT_UPGRADE_X = 14;
+    public static final int SLOT_UPGRADE_Y0 = 32;
+
+    /** Right column: keep clear of close button (x=303). */
+    public static final int SLOT_COPY_X = 278;
+    /** Below redstone button (32 + 16 + 4). */
+    public static final int SLOT_COPY_Y = 52;
+
+    private static final int REDSTONE_BUTTON_SIZE = 16;
+    /** Top of right column (redstone button). */
+    public static final int REDSTONE_GUI_X = SLOT_COPY_X + (18 - REDSTONE_BUTTON_SIZE) / 2;
+    public static final int REDSTONE_GUI_Y = 32;
+
     private final ContainerLevelAccess access;
 
     public DuctNodeMenu(int containerId, Inventory playerInventory, ItemDuctBlockEntity be) {
-        super(ModMenuTypes.DUCT_NODE.get(), containerId);
-        this.access = ContainerLevelAccess.create(be.getLevel(), be.getBlockPos());
-        addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
+        this(
+                containerId,
+                playerInventory,
+                be.getNodeGuiSlots(),
+                ContainerLevelAccess.create(be.getLevel(), be.getBlockPos()));
     }
 
     public static DuctNodeMenu clientMenu(int containerId, Inventory playerInventory) {
-        return new DuctNodeMenu(containerId, playerInventory);
+        return new DuctNodeMenu(
+                containerId, playerInventory, new ItemStackHandler(MACHINE_SLOTS), ContainerLevelAccess.NULL);
     }
 
-    private DuctNodeMenu(int containerId, Inventory playerInventory) {
+    private DuctNodeMenu(
+            int containerId,
+            Inventory playerInventory,
+            ItemStackHandler nodeSlots,
+            ContainerLevelAccess access) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
-        this.access = ContainerLevelAccess.NULL;
+        this.access = access;
+
+        for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
+            int y = SLOT_UPGRADE_Y0 + i * 18;
+            addSlot(new SlotItemHandler(nodeSlots, i, SLOT_UPGRADE_X, y));
+        }
+        addSlot(new SlotItemHandler(nodeSlots, COPY_SETTINGS_SLOT, SLOT_COPY_X, SLOT_COPY_Y));
+
         addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
     }
 
@@ -50,6 +84,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         }
     }
 
+    public static int playerSlotStart() {
+        return MACHINE_SLOTS;
+    }
+
     @Override
     public boolean stillValid(Player player) {
         return stillValid(access, player, ModBlocks.ITEM_DUCT.get());
@@ -57,16 +95,19 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
+        int playerFirst = playerSlotStart();
+        int playerLast = this.slots.size();
+
         ItemStack result = ItemStack.EMPTY;
         Slot slot = this.slots.get(index);
         if (slot != null && slot.hasItem()) {
             ItemStack stack = slot.getItem();
             result = stack.copy();
-            if (index < 27) {
-                if (!this.moveItemStackTo(stack, 27, 36, false)) {
+            if (index < MACHINE_SLOTS) {
+                if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
                     return ItemStack.EMPTY;
                 }
-            } else if (!this.moveItemStackTo(stack, 0, 27, false)) {
+            } else if (!moveItemStackTo(stack, 0, MACHINE_SLOTS, false)) {
                 return ItemStack.EMPTY;
             }
             if (stack.isEmpty()) {
