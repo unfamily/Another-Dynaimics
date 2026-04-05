@@ -1,6 +1,7 @@
 {
   "parent": "minecraft:block/block",
   "loader": "another_dynamics:duct",
+  "duct_id": "item_duct",
   "textures": {
     "particle": "another_dynamics:block/duct/item/item_duct_0_light"
   },

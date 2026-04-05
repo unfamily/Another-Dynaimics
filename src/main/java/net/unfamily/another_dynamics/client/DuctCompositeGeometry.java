@@ -29,37 +29,41 @@ import net.neoforged.neoforge.client.model.SimpleModelState;
 import net.neoforged.neoforge.client.model.geometry.UnbakedGeometryHelper;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctConnectionShape;
-import net.unfamily.another_dynamics.duct.DuctIds;
-import net.unfamily.another_dynamics.duct.DuctTextures;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 
 /**
- * Composite duct rendering: bakes named elements from {@code simple_duct_default.json} (center, con_*, node_*)
- * and the {@code center} element from {@code simple_duct_line.json} for straight runs, assembled per
- * {@link DuctConnectionShape}.
- * Template JSON files are never drawn as a whole in-world; only this cache + {@link DuctBakedModel} drive placement.
+ * Immutable baked quads for one composite duct template pair ({@code model_default} + {@code model_line}).
+ * Element names must match the engine ({@code center}, {@code con_*}, {@code node_*}, line {@code center}).
  */
-public final class DuctGeometryCache {
-    public static final DuctGeometryCache INSTANCE = new DuctGeometryCache();
+public final class DuctCompositeGeometry {
+    public static final ResourceLocation DEFAULT_MODEL_DEFAULT =
+            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_default");
+    public static final ResourceLocation DEFAULT_MODEL_LINE =
+            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_line");
 
-    private final Map<String, List<BakedQuad>> defaultByName = new HashMap<>();
-    private List<BakedQuad> lineCenterQuadsIdentity = List.of();
-    private boolean built;
+    private final Map<String, List<BakedQuad>> defaultByName;
+    private final List<BakedQuad> lineCenterQuadsIdentity;
+    private final boolean built;
 
-    private DuctGeometryCache() {}
+    private DuctCompositeGeometry(Map<String, List<BakedQuad>> defaultByName, List<BakedQuad> lineCenterQuads, boolean built) {
+        this.defaultByName = defaultByName;
+        this.lineCenterQuadsIdentity = lineCenterQuads;
+        this.built = built;
+    }
 
-    public void rebuild(Function<Material, TextureAtlasSprite> spriteGetter) {
-        built = false;
-        defaultByName.clear();
-        lineCenterQuadsIdentity = List.of();
+    public static DuctCompositeGeometry bake(
+            ResourceLocation modelDefaultId,
+            ResourceLocation modelLineId,
+            String textureRlString,
+            Function<Material, TextureAtlasSprite> spriteGetter) {
+        Map<String, List<BakedQuad>> byName = new HashMap<>();
+        List<BakedQuad> lineCenter = List.of();
         try {
-            ResourceLocation tex = DuctTextures.compositeBlockTexture(DuctIds.ITEM_DUCT);
-            String texStr = tex.toString();
-            ParsedModel defParsed = readModel("/assets/another_dynamics/models/block/simple_duct_default.json", texStr);
-            ParsedModel lineParsed = readModel("/assets/another_dynamics/models/block/simple_duct_line.json", texStr);
+            ParsedModel defParsed = readModel(modelDefaultId, textureRlString);
+            ParsedModel lineParsed = readModel(modelLineId, textureRlString);
             var identity = new SimpleModelState(Transformation.identity());
             List<BlockElement> defElements = defParsed.model().getElements();
             List<String> defNames = defParsed.elementNames();
@@ -70,7 +74,7 @@ public final class DuctGeometryCache {
                 }
                 BlockElement el = defElements.get(i);
                 List<BakedQuad> quads = UnbakedGeometryHelper.bakeElements(List.of(el), spriteGetter, identity);
-                defaultByName.put(name, quads);
+                byName.put(name, quads);
             }
             List<BlockElement> lineEls = lineParsed.model().getElements();
             List<String> lineNames = lineParsed.elementNames();
@@ -80,11 +84,20 @@ public final class DuctGeometryCache {
                     lineCenterElements.add(lineEls.get(i));
                 }
             }
-            lineCenterQuadsIdentity = UnbakedGeometryHelper.bakeElements(lineCenterElements, spriteGetter, identity);
-            built = true;
+            lineCenter = UnbakedGeometryHelper.bakeElements(lineCenterElements, spriteGetter, identity);
+            return new DuctCompositeGeometry(Map.copyOf(byName), lineCenter, true);
         } catch (Exception ex) {
-            AnotherDynamicsMod.LOGGER.error("Failed to build duct geometry cache", ex);
+            AnotherDynamicsMod.LOGGER.error(
+                    "Failed to bake duct composite geometry (default={}, line={})",
+                    modelDefaultId,
+                    modelLineId,
+                    ex);
+            return new DuctCompositeGeometry(Map.of(), List.of(), false);
         }
+    }
+
+    private static String classpathModelPath(ResourceLocation modelId) {
+        return "/assets/" + modelId.getNamespace() + "/models/" + modelId.getPath() + ".json";
     }
 
     private static void resolveFaceTextures(JsonObject root, String textureRlString) {
@@ -109,9 +122,6 @@ public final class DuctGeometryCache {
         }
     }
 
-    /**
-     * 1.21+ {@link BlockElement} no longer stores JSON {@code "name"}; names must be read from the raw element list.
-     */
     private record ParsedModel(BlockModel model, List<String> elementNames) {}
 
     private static List<String> extractElementNames(JsonObject root) {
@@ -130,10 +140,11 @@ public final class DuctGeometryCache {
         return names;
     }
 
-    private static ParsedModel readModel(String classpathPath, String textureRlString) throws Exception {
-        var stream = ModBlocks.class.getResourceAsStream(classpathPath);
+    private static ParsedModel readModel(ResourceLocation modelId, String textureRlString) throws Exception {
+        String cp = classpathModelPath(modelId);
+        var stream = ModBlocks.class.getResourceAsStream(cp);
         if (stream == null) {
-            throw new IllegalStateException("Missing resource: " + classpathPath);
+            throw new IllegalStateException("Missing model resource: " + modelId + " (" + cp + ")");
         }
         try (var reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
             JsonObject obj = JsonParser.parseReader(reader).getAsJsonObject();

@@ -22,10 +22,10 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
     private static final ChunkRenderTypeSet BLOCK_RENDER_TYPES = ChunkRenderTypeSet.of(RenderType.cutoutMipped());
     private static final List<RenderType> ITEM_RENDER_TYPES = List.of(RenderType.cutout());
 
-    private final DuctGeometryCache geometry;
+    private final DuctCompositeGeometry geometry;
     private final TextureAtlasSprite particleSprite;
 
-    public DuctBakedModel(BakedModel original, DuctGeometryCache geometry, TextureAtlasSprite particleSprite) {
+    public DuctBakedModel(BakedModel original, DuctCompositeGeometry geometry, TextureAtlasSprite particleSprite) {
         super(original);
         this.geometry = geometry;
         this.particleSprite = particleSprite;

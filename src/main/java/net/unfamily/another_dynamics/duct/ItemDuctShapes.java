@@ -9,7 +9,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * Hitboxes aligned with {@code simple_duct_default.json} / line {@code center} element (16×16×16 units).
- * Logic mirrors {@link net.unfamily.another_dynamics.client.DuctGeometryCache#appendForWorld}.
+ * Logic mirrors {@link net.unfamily.another_dynamics.client.DuctCompositeGeometry#appendForWorld}.
  */
 public final class ItemDuctShapes {
     private static final VoxelShape CENTER = box(5, 5, 5, 11, 11, 11);

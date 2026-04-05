@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
@@ -50,13 +51,23 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
             ResourceLocation defaultTexture = ResourceLocation.fromNamespaceAndPath(
                     AnotherDynamicsMod.MOD_ID,
                     "block/duct/item/item_duct_0_light");
+            Optional<ResourceLocation> modelDefault = Optional.empty();
+            Optional<ResourceLocation> modelLine = Optional.empty();
             if (o.has("rendering") && o.get("rendering").isJsonObject()) {
                 JsonObject r = o.getAsJsonObject("rendering");
                 if (r.has("default_texture")) {
                     defaultTexture = ResourceLocation.parse(r.get("default_texture").getAsString());
                 }
+                if (r.has("model_default")) {
+                    modelDefault = Optional.of(ResourceLocation.parse(r.get("model_default").getAsString()));
+                }
+                if (r.has("model_line")) {
+                    modelLine = Optional.of(ResourceLocation.parse(r.get("model_line").getAsString()));
+                }
             }
-            out.put(e.getKey(), new DuctDefinition(e.getKey(), logicalId, List.copyOf(kinds), defaultTexture));
+            out.put(
+                    e.getKey(),
+                    new DuctDefinition(e.getKey(), logicalId, List.copyOf(kinds), defaultTexture, modelDefault, modelLine));
         }
         DuctDefinitionRegistry.replaceAll(out);
         AnotherDynamicsMod.LOGGER.info("Loaded {} duct definition(s) from data/*/load", out.size());

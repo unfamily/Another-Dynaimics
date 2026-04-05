@@ -21,7 +21,9 @@
   "rendering": {
     "always_opaque": false,
     "connect_with_compatbile": true,
-    "default_texture": "another_dynamics:block/duct/item/item_duct_0_light"
+    "default_texture": "another_dynamics:block/duct/item/item_duct_0_light",
+    "model_default": "another_dynamics:block/simple_duct_default",
+    "model_line": "another_dynamics:block/simple_duct_line"
   },
   "disabled_feathures": ["filtering"]
 }
