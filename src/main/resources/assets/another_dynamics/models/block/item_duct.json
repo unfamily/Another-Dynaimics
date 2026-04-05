@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/block",
+  "loader": "another_dynamics:duct",
+  "textures": {
+    "particle": "another_dynamics:block/duct/item/item_duct_0_light"
+  },
+  "render_type": "cutout_mipped"
+}
