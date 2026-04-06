@@ -435,6 +435,14 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         rebuildFilterEntryWidgets();
     }
 
+    /** When node mode is {@link NodeMode#NONE}, filter subviews must not stay open (controls are inactive). */
+    private void forceExitFilterUiToMain() {
+        exitEditMode(false);
+        subView = SubView.MAIN;
+        rebuildFilterEntryWidgets();
+        applySubViewVisibility();
+    }
+
     private void handleCloseOrBack() {
         if (subView == SubView.MAIN) {
             onClose();
@@ -1160,7 +1168,15 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         nodeModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.mode." + nm.name().toLowerCase()));
         nodeModeButton.setTooltip(
                 Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.mode.tooltip." + nm.name().toLowerCase())));
-        boolean routing = (menu.getSyncData().get(DuctMenuSync.FLAGS) & DuctMenuSync.FLAG_ROUTING_ACTIVE) != 0;
+        int menuFlags = menu.getSyncData().get(DuctMenuSync.FLAGS);
+        boolean routing = (menuFlags & DuctMenuSync.FLAG_ROUTING_ACTIVE) != 0;
+        boolean filtersActive = (menuFlags & DuctMenuSync.FLAG_FILTERS_ACTIVE) != 0;
+        if (!filtersActive && subView != SubView.MAIN) {
+            forceExitFilterUiToMain();
+        }
+        denyNavButton.active = filtersActive;
+        listLogicButton.active = filtersActive;
+        allowNavButton.active = filtersActive;
         routingModeButton.active = routing;
         if (routing) {
             RoutingMode rm = RoutingMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ROUTING_MODE));
@@ -1176,12 +1192,23 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         boolean denyOver = menu.getSyncData().get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
         listLogicButton.setMessage(Component.literal(denyOver ? ">>>>>" : "<<<<<"));
-        listLogicButton.setTooltip(
-                Tooltip.create(
-                        Component.translatable(
-                                denyOver
-                                        ? "gui.another_dynamics.duct_node.list_logic.tooltip.deny_wins"
-                                        : "gui.another_dynamics.duct_node.list_logic.tooltip.allow_bypass")));
+        if (filtersActive) {
+            denyNavButton.setTooltip(
+                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.deny_list.tooltip")));
+            allowNavButton.setTooltip(
+                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_list.tooltip")));
+            listLogicButton.setTooltip(
+                    Tooltip.create(
+                            Component.translatable(
+                                    denyOver
+                                            ? "gui.another_dynamics.duct_node.list_logic.tooltip.deny_wins"
+                                            : "gui.another_dynamics.duct_node.list_logic.tooltip.allow_bypass")));
+        } else {
+            var inactive = Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.tooltip.inactive"));
+            denyNavButton.setTooltip(inactive);
+            allowNavButton.setTooltip(inactive);
+            listLogicButton.setTooltip(inactive);
+        }
 
         routingPriorityBox.setTooltip(
                 Tooltip.create(

@@ -31,6 +31,8 @@ public final class DuctMenuSync {
 
     /** FLAGS bit: routing row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesRouting()}). */
     public static final int FLAG_ROUTING_ACTIVE = 1;
+    /** FLAGS bit: deny/allow list row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesItemFilterConfig()}). */
+    public static final int FLAG_FILTERS_ACTIVE = 2;
 
     private DuctMenuSync() {}
 }

@@ -33,4 +33,11 @@ public enum NodeMode {
     public boolean usesRouting() {
         return this == EXTRACTION || this == RETRIEVING;
     }
+
+    /**
+     * When {@code false} ({@link #NONE}), deny/allow lists do not restrict items on this face and filter UI is disabled.
+     */
+    public boolean usesItemFilterConfig() {
+        return this != NONE;
+    }
 }

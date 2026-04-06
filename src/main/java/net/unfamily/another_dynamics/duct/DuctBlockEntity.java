@@ -593,34 +593,49 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         List<BlockPos> path = route.path();
         BlockPos donor = route.donorPos();
         Direction donorFace = route.donorStorageFace();
-        if (!(level.getBlockEntity(donor) instanceof DuctBlockEntity)) {
+        if (!(level.getBlockEntity(donor) instanceof DuctBlockEntity donorBe)) {
             return;
         }
-        Optional<ItemStack> donorProbe = DuctCapHelper.simulateExtractOneOnFace(level, donor, donorFace);
-        if (donorProbe.isEmpty()) {
+        IItemHandler donorHandler = DuctCapHelper.getHandlerOnFace(level, donor, donorFace);
+        if (donorHandler == null) {
             return;
         }
-        if (!passesItemFilters(retrieverFace, donorProbe.get(), level)) {
+        /*
+         * Retriever face filters AND donor (source inventory) duct face filters both apply: a deny on the chest side
+         * blocks retrieval even when the retriever allow list would permit the item. Scan slots so we do not stick on
+         * the first stack when another slot is legal.
+         */
+        for (int slot = 0; slot < donorHandler.getSlots(); slot++) {
+            ItemStack probe = donorHandler.extractItem(slot, 1, true);
+            if (probe.isEmpty()) {
+                continue;
+            }
+            if (!passesItemFilters(retrieverFace, probe, level)) {
+                continue;
+            }
+            if (!donorBe.passesItemFilters(donorFace, probe, level)) {
+                continue;
+            }
+            int batch = effectiveExtractBatch(spec, node, retrieverFace);
+            int avail = DuctCapHelper.countExtractableMatchingOnFace(level, donor, donorFace, probe, batch);
+            int plannedCount = Math.min(batch, Math.min(probe.getMaxStackSize(), avail));
+            if (plannedCount <= 0) {
+                continue;
+            }
+            ItemStack planned = probe.copy();
+            planned.setCount(plannedCount);
+            if (!canScheduleTowardFace(level, worldPosition, this, retrieverFace, planned)) {
+                continue;
+            }
+            long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
+            int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
+            OutboundShipment sh =
+                    new OutboundShipment(planned, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
+            outboundShipments.add(sh);
+            DuctIncomingIndex.register(level, worldPosition, sh.registeredIncoming.copy());
+            setChanged();
             return;
         }
-        int batch = effectiveExtractBatch(spec, node, retrieverFace);
-        int avail = DuctCapHelper.countExtractableMatchingOnFace(level, donor, donorFace, donorProbe.get(), batch);
-        int plannedCount = Math.min(batch, Math.min(donorProbe.get().getMaxStackSize(), avail));
-        if (plannedCount <= 0) {
-            return;
-        }
-        ItemStack planned = donorProbe.get().copy();
-        planned.setCount(plannedCount);
-        if (!canScheduleTowardFace(level, worldPosition, this, retrieverFace, planned)) {
-            return;
-        }
-        long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
-        int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
-        OutboundShipment sh =
-                new OutboundShipment(planned, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
-        outboundShipments.add(sh);
-        DuctIncomingIndex.register(level, worldPosition, sh.registeredIncoming.copy());
-        setChanged();
     }
 
     private boolean canScheduleTowardFace(
@@ -701,7 +716,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         menuData.set(DuctMenuSync.EXTRACT_BATCH_CAP, computeExtractBatchSettingCap(accessFace));
         menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
         menuData.set(DuctMenuSync.REDSTONE_MODE, n.redstoneMode);
-        int flags = n.nodeMode.usesRouting() ? DuctMenuSync.FLAG_ROUTING_ACTIVE : 0;
+        int flags = 0;
+        if (n.nodeMode.usesRouting()) {
+            flags |= DuctMenuSync.FLAG_ROUTING_ACTIVE;
+        }
+        if (n.nodeMode.usesItemFilterConfig()) {
+            flags |= DuctMenuSync.FLAG_FILTERS_ACTIVE;
+        }
         menuData.set(DuctMenuSync.FLAGS, flags);
         menuData.set(DuctMenuSync.POS_X, worldPosition.getX());
         menuData.set(DuctMenuSync.POS_Y, worldPosition.getY());
@@ -713,7 +734,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public boolean passesItemFilters(Direction face, ItemStack stack, Level level) {
-        return DuctFilterLogic.passesItemFilters(getFaceNode(face), stack, level);
+        if (stack.isEmpty()) {
+            return false;
+        }
+        DuctFaceNode node = getFaceNode(face);
+        if (node.nodeMode == NodeMode.NONE) {
+            return true;
+        }
+        return DuctFilterLogic.passesItemFilters(node, stack, level);
     }
 
     public void clampFaceFiltersToSpec() {
@@ -737,6 +765,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
         DuctFaceNode node = getFaceNode(face);
+        if (!node.nodeMode.usesItemFilterConfig()) {
+            return;
+        }
         node.allowFilters.clear();
         node.denyFilters.clear();
         int maxA = Math.max(0, spec.filterAllowSlots());
@@ -765,6 +796,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         DuctFaceNode node = getFaceNode(face);
+        if (!node.nodeMode.usesItemFilterConfig()) {
+            return;
+        }
         node.denyOverridesAllow = !node.denyOverridesAllow;
         setChanged();
         refreshMenuData(face);
