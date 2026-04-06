@@ -8,10 +8,11 @@ import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
- * Hitboxes aligned with {@code simple_duct_default.json} / line {@code center} element (16×16×16 units).
+ * Voxel hitboxes for duct connection geometry (shared by any transport kind: item, fluid, etc.).
+ * Aligned with {@code simple_duct_default.json} / line {@code center} element (16×16×16 units).
  * Logic mirrors {@link net.unfamily.another_dynamics.client.DuctCompositeGeometry#appendForWorld}.
  */
-public final class ItemDuctShapes {
+public final class DuctShapes {
     private static final VoxelShape CENTER = box(5, 5, 5, 11, 11, 11);
     private static final VoxelShape LINE_BAR_Z = box(5, 5, 0, 11, 11, 16);
     private static final VoxelShape LINE_BAR_X = box(0, 5, 5, 16, 11, 11);
@@ -36,7 +37,7 @@ public final class ItemDuctShapes {
         NODE.put(Direction.WEST, box(0, 4, 4, 4, 12, 12));
     }
 
-    private ItemDuctShapes() {}
+    private DuctShapes() {}
 
     private static VoxelShape box(int x0, int y0, int z0, int x1, int y1, int z1) {
         return Shapes.box(x0 / 16.0, y0 / 16.0, z0 / 16.0, x1 / 16.0, y1 / 16.0, z1 / 16.0);

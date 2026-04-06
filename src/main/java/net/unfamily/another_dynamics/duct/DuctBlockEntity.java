@@ -34,27 +34,28 @@ import java.util.Optional;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Item duct block: up to six independent nodes (one per {@link Direction}) when that face touches item storage.
+ * Block entity for {@link DuctBlock}. Up to six independent <strong>item</strong> nodes (one per {@link Direction})
+ * when that face touches item storage; additional transport kinds can be composed here for hybrid ducts.
  */
-public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
+public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private static final int MAX_BLOCKED_ITEM_KINDS = 5;
     private static final int FACE_COUNT = 6;
 
-    private final ItemDuctFaceNode[] faceNodes = new ItemDuctFaceNode[FACE_COUNT];
+    private final DuctFaceNode[] faceNodes = new DuctFaceNode[FACE_COUNT];
 
     private final List<OutboundShipment> outboundShipments = new ArrayList<>();
     private final List<ItemStack> migratedStorageBacklog = new ArrayList<>();
 
     private final SimpleContainerData menuData = new SimpleContainerData(DuctMenuSync.COUNT);
 
-    public ItemDuctBlockEntity(BlockPos pos, BlockState state) {
+    public DuctBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.ITEM_DUCT.get(), pos, state);
         for (int i = 0; i < FACE_COUNT; i++) {
-            faceNodes[i] = new ItemDuctFaceNode(this::setChanged);
+            faceNodes[i] = new DuctFaceNode(this::setChanged);
         }
     }
 
-    public ItemDuctFaceNode getFaceNode(Direction dir) {
+    public DuctFaceNode getFaceNode(Direction dir) {
         return faceNodes[dir.ordinal()];
     }
 
@@ -122,7 +123,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
-    public static void clientTick(Level level, BlockPos pos, BlockState state, ItemDuctBlockEntity be) {
+    public static void clientTick(Level level, BlockPos pos, BlockState state, DuctBlockEntity be) {
         be.refreshFromWorld();
     }
 
@@ -144,7 +145,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
             if ((sm & (1 << dir.ordinal())) == 0) {
                 continue;
             }
-            ItemDuctFaceNode node = getFaceNode(dir);
+            DuctFaceNode node = getFaceNode(dir);
             if (node.ticksUntilAction > 0) {
                 node.ticksUntilAction--;
                 setChanged();
@@ -171,7 +172,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
                 setChanged();
                 continue;
             }
-            if (level.getBlockEntity(s.refundDuct) instanceof ItemDuctBlockEntity refundBe) {
+            if (level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity refundBe) {
                 ItemStack left =
                         s.legacyOmniFaces
                                 ? DuctCapHelper.insertIntoStorageFaces(level, s.refundDuct, refundBe, s.stack.copy())
@@ -218,13 +219,13 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private boolean resizePendingShipment(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
-        if (!(level.getBlockEntity(s.destDuct) instanceof ItemDuctBlockEntity destBe)) {
+        if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
             it.remove();
             setChanged();
             return false;
         }
-        if (!(level.getBlockEntity(s.refundDuct) instanceof ItemDuctBlockEntity srcBe)) {
+        if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe)) {
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
             it.remove();
             setChanged();
@@ -290,7 +291,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void refundStackToSource(ServerLevel level, OutboundShipment s, ItemStack excess) {
-        if (!(level.getBlockEntity(s.refundDuct) instanceof ItemDuctBlockEntity srcBe)) {
+        if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe)) {
             dropAt(level, s.refundDuct, excess);
             return;
         }
@@ -304,7 +305,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void finishExtractionDelivery(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
-        if (!(level.getBlockEntity(s.destDuct) instanceof ItemDuctBlockEntity destBe)) {
+        if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
             it.remove();
             setChanged();
@@ -325,7 +326,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
 
-        if (!(level.getBlockEntity(s.refundDuct) instanceof ItemDuctBlockEntity srcBe)) {
+        if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe)) {
             it.remove();
             setChanged();
             return;
@@ -359,7 +360,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
 
     private void finishRetrieverArrival(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
         DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
-        if (!(level.getBlockEntity(s.refundDuct) instanceof ItemDuctBlockEntity donorBe)) {
+        if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity donorBe)) {
             it.remove();
             setChanged();
             return;
@@ -432,7 +433,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
-    private void tickExtractionPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction face, ItemDuctFaceNode node) {
+    private void tickExtractionPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction face, DuctFaceNode node) {
         if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
             return;
         }
@@ -450,7 +451,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
         DuctTargetSelector.ExtractionRouting route = routeOpt.get();
         List<BlockPos> path = route.path();
         BlockPos dest = path.get(path.size() - 1);
-        if (!(level.getBlockEntity(dest) instanceof ItemDuctBlockEntity destBe)) {
+        if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
             return;
         }
         int batch = effectiveExtractBatch(spec, node);
@@ -473,7 +474,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
         setChanged();
     }
 
-    private void tickRetrieverPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction retrieverFace, ItemDuctFaceNode node) {
+    private void tickRetrieverPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction retrieverFace, DuctFaceNode node) {
         if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
             return;
         }
@@ -489,7 +490,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
         List<BlockPos> path = route.path();
         BlockPos donor = route.donorPos();
         Direction donorFace = route.donorStorageFace();
-        if (!(level.getBlockEntity(donor) instanceof ItemDuctBlockEntity donorBe)) {
+        if (!(level.getBlockEntity(donor) instanceof DuctBlockEntity donorBe)) {
             return;
         }
         Optional<ItemStack> donorProbe = DuctCapHelper.simulateExtractOneOnFace(level, donor, donorFace);
@@ -517,7 +518,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private boolean canScheduleTowardFace(
-            ServerLevel level, BlockPos destDuct, ItemDuctBlockEntity destBe, Direction destFace, ItemStack addition) {
+            ServerLevel level, BlockPos destDuct, DuctBlockEntity destBe, Direction destFace, ItemStack addition) {
         if (addition.isEmpty()) {
             return false;
         }
@@ -558,13 +559,13 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
                 new ItemEntity(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, stack));
     }
 
-    private int effectiveExtractBatch(DuctItemTransportSpec spec, ItemDuctFaceNode node) {
+    private int effectiveExtractBatch(DuctItemTransportSpec spec, DuctFaceNode node) {
         int req = node.amountField <= 0 ? spec.batchDefault() : node.amountField;
         return spec.clampedBatch(req);
     }
 
     public void refreshMenuData(Direction accessFace) {
-        ItemDuctFaceNode n = getFaceNode(accessFace);
+        DuctFaceNode n = getFaceNode(accessFace);
         menuData.set(DuctMenuSync.NODE_MODE, n.nodeMode.ordinal());
         menuData.set(DuctMenuSync.ROUTING_MODE, n.routingMode.ordinal());
         menuData.set(DuctMenuSync.PRIORITY, n.amountField);
@@ -586,7 +587,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
         if ((getStorageMask() & (1 << accessFace.ordinal())) == 0) {
             return false;
         }
-        ItemDuctFaceNode node = getFaceNode(accessFace);
+        DuctFaceNode node = getFaceNode(accessFace);
         boolean changed =
                 switch (buttonId) {
                     case 0 -> {
@@ -621,18 +622,18 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
         return changed;
     }
 
-    private void cycleNodeMode(ItemDuctFaceNode node) {
+    private void cycleNodeMode(DuctFaceNode node) {
         NodeMode[] v = NodeMode.values();
         node.nodeMode = v[(node.nodeMode.ordinal() + 1) % v.length];
         onModeChanged(node);
     }
 
-    private void cycleRoutingMode(ItemDuctFaceNode node) {
+    private void cycleRoutingMode(DuctFaceNode node) {
         RoutingMode[] v = RoutingMode.values();
         node.routingMode = v[(node.routingMode.ordinal() + 1) % v.length];
     }
 
-    private void onModeChanged(ItemDuctFaceNode node) {
+    private void onModeChanged(DuctFaceNode node) {
         if (node.nodeMode.usesExtractBatchField()) {
             DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
             if (node.amountField <= 0) {
@@ -649,7 +650,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
         if ((getStorageMask() & (1 << accessFace.ordinal())) == 0) {
             return;
         }
-        ItemDuctFaceNode node = getFaceNode(accessFace);
+        DuctFaceNode node = getFaceNode(accessFace);
         if (node.nodeMode.usesInsertionPriorityField()) {
             node.amountField = value;
         } else if (node.nodeMode.usesExtractBatchField()) {
@@ -660,7 +661,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
         refreshMenuData(accessFace);
     }
 
-    private void clampExtractAmount(ItemDuctFaceNode node) {
+    private void clampExtractAmount(DuctFaceNode node) {
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
         int maxAllowed = spec.batchMax() < 0 ? Integer.MAX_VALUE : Math.max(1, spec.batchMax());
         node.amountField = Math.min(node.amountField, maxAllowed);
@@ -673,7 +674,7 @@ public final class ItemDuctBlockEntity extends AbstractDuctBlockEntity {
             if ((sm & (1 << dir.ordinal())) != 0) {
                 continue;
             }
-            ItemDuctFaceNode n = getFaceNode(dir);
+            DuctFaceNode n = getFaceNode(dir);
             if (n.nodeMode == NodeMode.NONE && n.amountField == 0 && n.roundRobinCursor == 0) {
                 continue;
             }

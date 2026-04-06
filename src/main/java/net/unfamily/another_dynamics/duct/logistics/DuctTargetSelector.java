@@ -14,8 +14,8 @@ import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
-import net.unfamily.another_dynamics.duct.ItemDuctBlockEntity;
-import net.unfamily.another_dynamics.duct.ItemDuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 
@@ -42,7 +42,7 @@ public final class DuctTargetSelector {
             if (p.equals(extractorPos)) {
                 continue;
             }
-            if (!(level.getBlockEntity(p) instanceof ItemDuctBlockEntity be)) {
+            if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 continue;
             }
             int sm = be.getStorageMask();
@@ -50,7 +50,7 @@ public final class DuctTargetSelector {
                 if ((sm & (1 << d.ordinal())) == 0) {
                     continue;
                 }
-                ItemDuctFaceNode node = be.getFaceNode(d);
+                DuctFaceNode node = be.getFaceNode(d);
                 NodeMode m = node.nodeMode;
                 if (m != NodeMode.NONE && m != NodeMode.FILTERING_INSERTION) {
                     continue;
@@ -91,7 +91,7 @@ public final class DuctTargetSelector {
             Direction retrieverInventoryFace,
             RoutingMode routing,
             int[] roundRobinState) {
-        if (!(level.getBlockEntity(retrieverPos) instanceof ItemDuctBlockEntity retriever)) {
+        if (!(level.getBlockEntity(retrieverPos) instanceof DuctBlockEntity retriever)) {
             return Optional.empty();
         }
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
@@ -101,7 +101,7 @@ public final class DuctTargetSelector {
             if (p.equals(retrieverPos)) {
                 continue;
             }
-            if (!(level.getBlockEntity(p) instanceof ItemDuctBlockEntity be)) {
+            if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 continue;
             }
             int sm = be.getStorageMask();
@@ -120,7 +120,7 @@ public final class DuctTargetSelector {
                 if (dist.isEmpty()) {
                     continue;
                 }
-                ItemDuctFaceNode node = be.getFaceNode(d);
+                DuctFaceNode node = be.getFaceNode(d);
                 cands.add(new DonorCandidate(p, d, node.amountField, dist.getAsLong()));
             }
         }

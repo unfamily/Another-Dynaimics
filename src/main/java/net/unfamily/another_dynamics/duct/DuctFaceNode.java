@@ -7,9 +7,10 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 
 /**
- * Independent configuration and tick state for one duct face attached to external item storage.
+ * Per-face attachment state on a {@link DuctBlockEntity}. A hybrid duct may eventually host several transport lanes
+ * per direction (e.g. item + fluid); today this holds the <strong>item</strong> node only (modes, GUI slots, tick cadence).
  */
-public final class ItemDuctFaceNode {
+public final class DuctFaceNode {
     public NodeMode nodeMode = NodeMode.NONE;
     public RoutingMode routingMode = RoutingMode.NEAREST_FIRST;
     /**
@@ -23,7 +24,7 @@ public final class ItemDuctFaceNode {
 
     public final ItemStackHandler guiSlots;
 
-    public ItemDuctFaceNode(Runnable onChanged) {
+    public DuctFaceNode(Runnable onChanged) {
         this.guiSlots =
                 new ItemStackHandler(DuctNodeMenu.MACHINE_SLOTS) {
                     @Override

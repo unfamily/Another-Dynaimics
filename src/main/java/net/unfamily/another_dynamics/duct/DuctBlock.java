@@ -1,5 +1,7 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.util.EnumSet;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -27,15 +29,20 @@ import net.unfamily.another_dynamics.registry.ModBlockEntities;
 
 import org.jetbrains.annotations.Nullable;
 
-public final class ItemDuctBlock extends AbstractDuctBlock {
+/**
+ * Physical duct block. Hybrid ducts can join <strong>multiple</strong> {@link DuctNetworkType} graphs at the same time;
+ * this build registers {@link DuctNetworkType#ITEM} only—add further types to {@link #ductNetworkTypes()} when implemented.
+ * Block id in saves remains {@code item_duct} ({@link net.unfamily.another_dynamics.registry.ModBlocks#ITEM_DUCT}).
+ */
+public final class DuctBlock extends AbstractDuctBlock {
 
-    public ItemDuctBlock(Properties properties) {
+    public DuctBlock(Properties properties) {
         super(properties);
     }
 
     @Override
-    public DuctNetworkType ductNetworkType() {
-        return DuctNetworkType.ITEM;
+    public EnumSet<DuctNetworkType> ductNetworkTypes() {
+        return EnumSet.of(DuctNetworkType.ITEM);
     }
 
     @Override
@@ -45,13 +52,13 @@ public final class ItemDuctBlock extends AbstractDuctBlock {
 
     @Override
     protected VoxelShape shapeForMasks(int pipeMask, int storageMask) {
-        return ItemDuctShapes.forMasks(pipeMask, storageMask);
+        return DuctShapes.forMasks(pipeMask, storageMask);
     }
 
     @Nullable
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return new ItemDuctBlockEntity(pos, state);
+        return new DuctBlockEntity(pos, state);
     }
 
     @Nullable
@@ -64,9 +71,9 @@ public final class ItemDuctBlock extends AbstractDuctBlock {
     private static <T extends BlockEntity> BlockEntityTicker<T> createTicker(BlockEntityType<T> type) {
         return type == ModBlockEntities.ITEM_DUCT.get()
                 ? (level, pos, blockState, be) -> {
-                    ItemDuctBlockEntity duct = (ItemDuctBlockEntity) be;
+                    DuctBlockEntity duct = (DuctBlockEntity) be;
                     if (level.isClientSide()) {
-                        ItemDuctBlockEntity.clientTick(level, pos, blockState, duct);
+                        DuctBlockEntity.clientTick(level, pos, blockState, duct);
                     } else if (level instanceof ServerLevel sl) {
                         duct.serverTickPipe(sl);
                     }
@@ -78,7 +85,7 @@ public final class ItemDuctBlock extends AbstractDuctBlock {
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
         if (!level.isClientSide() && player instanceof ServerPlayer serverPlayer) {
             BlockEntity entity = level.getBlockEntity(pos);
-            if (entity instanceof ItemDuctBlockEntity duct) {
+            if (entity instanceof DuctBlockEntity duct) {
                 Direction face = hit.getDirection();
                 if ((duct.getStorageMask() & (1 << face.ordinal())) == 0) {
                     return InteractionResult.sidedSuccess(level.isClientSide());
@@ -101,7 +108,7 @@ public final class ItemDuctBlock extends AbstractDuctBlock {
             BlockHitResult hitResult) {
         if (!level.isClientSide() && player instanceof ServerPlayer serverPlayer) {
             BlockEntity entity = level.getBlockEntity(pos);
-            if (entity instanceof ItemDuctBlockEntity duct) {
+            if (entity instanceof DuctBlockEntity duct) {
                 Direction face = hitResult.getDirection();
                 if ((duct.getStorageMask() & (1 << face.ordinal())) == 0) {
                     return ItemInteractionResult.sidedSuccess(level.isClientSide());
@@ -113,7 +120,7 @@ public final class ItemDuctBlock extends AbstractDuctBlock {
         return ItemInteractionResult.sidedSuccess(level.isClientSide());
     }
 
-    private static void openDuctMenu(ServerPlayer player, ItemDuctBlockEntity duct, Direction clickedFace) {
+    private static void openDuctMenu(ServerPlayer player, DuctBlockEntity duct, Direction clickedFace) {
         player.openMenu(
                 new MenuProvider() {
                     @Override

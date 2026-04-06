@@ -7,12 +7,12 @@ import net.minecraft.world.level.material.MapColor;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
-import net.unfamily.another_dynamics.duct.ItemDuctBlock;
+import net.unfamily.another_dynamics.duct.DuctBlock;
 
 public final class ModBlocks {
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(AnotherDynamicsMod.MOD_ID);
 
-    public static final DeferredBlock<Block> ITEM_DUCT = BLOCKS.register("item_duct", () -> new ItemDuctBlock(
+    public static final DeferredBlock<Block> ITEM_DUCT = BLOCKS.register("item_duct", () -> new DuctBlock(
             BlockBehaviour.Properties.of()
                     .mapColor(MapColor.COLOR_LIGHT_GRAY)
                     .strength(0.4f, 1.2f)

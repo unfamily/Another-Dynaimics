@@ -12,12 +12,12 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.neoforged.neoforge.items.ItemStackHandler;
-import net.unfamily.another_dynamics.duct.ItemDuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 
 import org.jetbrains.annotations.Nullable;
 
 /**
- * ItemHandler access for ducts facing external storage (all faces or one face).
+ * Item-handler helpers for {@link DuctBlockEntity} (item transport lane). Other transport kinds get parallel helpers later.
  */
 public final class DuctCapHelper {
     private DuctCapHelper() {}
@@ -181,7 +181,7 @@ public final class DuctCapHelper {
         return lo;
     }
 
-    public static ItemStack insertIntoStorageFaces(Level level, BlockPos ductPos, ItemDuctBlockEntity duct, ItemStack stack) {
+    public static ItemStack insertIntoStorageFaces(Level level, BlockPos ductPos, DuctBlockEntity duct, ItemStack stack) {
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;
         }
@@ -207,7 +207,7 @@ public final class DuctCapHelper {
     /**
      * Extract up to {@code max} items from the first non-empty storage face (in direction order).
      */
-    public static ItemStack extractFromStorageFaces(Level level, BlockPos ductPos, ItemDuctBlockEntity duct, int max) {
+    public static ItemStack extractFromStorageFaces(Level level, BlockPos ductPos, DuctBlockEntity duct, int max) {
         if (max <= 0) {
             return ItemStack.EMPTY;
         }
@@ -236,7 +236,7 @@ public final class DuctCapHelper {
     }
 
     /** Simulate-only: first extractable item (1 unit) from attached storage. */
-    public static Optional<ItemStack> simulateExtractOne(Level level, BlockPos ductPos, ItemDuctBlockEntity duct) {
+    public static Optional<ItemStack> simulateExtractOne(Level level, BlockPos ductPos, DuctBlockEntity duct) {
         int mask = duct.getStorageMask();
         for (Direction dir : Direction.values()) {
             if ((mask & (1 << dir.ordinal())) == 0) {
@@ -257,7 +257,7 @@ public final class DuctCapHelper {
         return Optional.empty();
     }
 
-    public static boolean canInsertIntoStorageFaces(Level level, BlockPos ductPos, ItemDuctBlockEntity duct, ItemStack probe) {
+    public static boolean canInsertIntoStorageFaces(Level level, BlockPos ductPos, DuctBlockEntity duct, ItemStack probe) {
         if (probe.isEmpty()) {
             return true;
         }
@@ -284,7 +284,7 @@ public final class DuctCapHelper {
      * How many items matching {@code template} (same item + components) could be extracted from attached storage, up to {@code max}.
      */
     public static int countExtractableMatching(
-            Level level, BlockPos ductPos, ItemDuctBlockEntity duct, ItemStack template, int max) {
+            Level level, BlockPos ductPos, DuctBlockEntity duct, ItemStack template, int max) {
         if (max <= 0 || template.isEmpty()) {
             return 0;
         }
@@ -324,7 +324,7 @@ public final class DuctCapHelper {
      * Extract up to {@code maxCount} items matching {@code template} from attached storage (same item + components).
      */
     public static ItemStack extractMatchingUpTo(
-            Level level, BlockPos ductPos, ItemDuctBlockEntity duct, ItemStack template, int maxCount) {
+            Level level, BlockPos ductPos, DuctBlockEntity duct, ItemStack template, int maxCount) {
         if (maxCount <= 0 || template.isEmpty()) {
             return ItemStack.EMPTY;
         }
@@ -373,7 +373,7 @@ public final class DuctCapHelper {
     public static int maxInsertableAfterPending(
             Level level,
             BlockPos ductPos,
-            ItemDuctBlockEntity duct,
+            DuctBlockEntity duct,
             ItemStack template,
             int limit,
             List<ItemStack> priorPending) {
@@ -402,7 +402,7 @@ public final class DuctCapHelper {
     }
 
     public static boolean canInsertStacksSequentially(
-            Level level, BlockPos ductPos, ItemDuctBlockEntity duct, List<ItemStack> stacks) {
+            Level level, BlockPos ductPos, DuctBlockEntity duct, List<ItemStack> stacks) {
         if (stacks.isEmpty()) {
             return true;
         }

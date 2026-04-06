@@ -1,5 +1,8 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.util.Collections;
+import java.util.EnumSet;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
@@ -15,14 +18,17 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
- * Geometry and neighbor refresh shared by duct blocks. Subclasses supply sound, voxel shape from masks, and BE/ticker.
- * Interactions (GUI, etc.) stay in concrete blocks when they differ by network type.
+ * Geometry and neighbor refresh shared by duct blocks. Subclasses supply sound, voxel shape from masks, BE/ticker, and
+ * which {@link DuctNetworkType}s this block joins (single-type or hybrid).
  */
 public abstract class AbstractDuctBlock extends Block implements EntityBlock, DuctConnectable {
 
     protected AbstractDuctBlock(Properties properties) {
         super(properties);
     }
+
+    @Override
+    public abstract EnumSet<DuctNetworkType> ductNetworkTypes();
 
     protected abstract SoundType soundTypeForDuct();
 
@@ -44,7 +50,7 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
         if (be instanceof AbstractDuctBlockEntity duct) {
             return shapeForMasks(duct.getPipeMask(), duct.getStorageMask());
         }
-        return ItemDuctShapes.coreOnly();
+        return DuctShapes.coreOnly();
     }
 
     @Override
@@ -65,11 +71,15 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     }
 
     protected void notifySameNetworkNeighbors(LevelAccessor level, BlockPos pos) {
-        DuctNetworkType kind = ductNetworkType();
+        EnumSet<DuctNetworkType> mine = ductNetworkTypes();
         for (Direction d : Direction.values()) {
             BlockPos n = pos.relative(d);
             BlockState ns = level.getBlockState(n);
-            if (!DuctConnectable.isSameNetwork(ns.getBlock(), kind)) {
+            Block neighborBlock = ns.getBlock();
+            if (!(neighborBlock instanceof DuctConnectable nb)) {
+                continue;
+            }
+            if (Collections.disjoint(mine, nb.ductNetworkTypes())) {
                 continue;
             }
             BlockEntity be = level.getBlockEntity(n);

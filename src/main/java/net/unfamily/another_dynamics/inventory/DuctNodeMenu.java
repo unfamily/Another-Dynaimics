@@ -12,7 +12,7 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
-import net.unfamily.another_dynamics.duct.ItemDuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
@@ -42,10 +42,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     private final ContainerLevelAccess access;
     private final ContainerData syncData;
-    private final @Nullable ItemDuctBlockEntity linkedBlockEntity;
+    private final @Nullable DuctBlockEntity linkedBlockEntity;
     private final Direction accessFace;
 
-    public DuctNodeMenu(int containerId, Inventory playerInventory, ItemDuctBlockEntity be, Direction accessFace) {
+    public DuctNodeMenu(int containerId, Inventory playerInventory, DuctBlockEntity be, Direction accessFace) {
         this(
                 containerId,
                 playerInventory,
@@ -74,7 +74,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             ItemStackHandler nodeSlots,
             ContainerLevelAccess access,
             ContainerData syncData,
-            @Nullable ItemDuctBlockEntity linkedBlockEntity,
+            @Nullable DuctBlockEntity linkedBlockEntity,
             Direction accessFace) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
         this.access = access;

@@ -15,7 +15,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
-import net.unfamily.another_dynamics.duct.ItemDuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 
 @EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class ModNetwork {
@@ -40,7 +40,7 @@ public final class ModNetwork {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
                 BlockEntity be = player.level().getBlockEntity(payload.pos());
-                if (!(be instanceof ItemDuctBlockEntity duct) || duct.isRemoved()) {
+                if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
                     return;
                 }
                 int fo = payload.faceOrdinal();
