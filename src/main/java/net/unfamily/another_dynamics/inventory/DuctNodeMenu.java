@@ -5,7 +5,9 @@ import java.util.List;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -52,6 +54,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private final ContainerData syncData;
     private final @Nullable DuctBlockEntity linkedBlockEntity;
     private final Direction accessFace;
+    /** World position of this duct (authoritative on client from open-menu extra data; avoids relying on sync-before-packet). */
+    private final BlockPos ductBlockPos;
 
     /** Detects upgrade-slot changes so {@link DuctMenuSync#EXTRACT_BATCH_CAP} can be refreshed without full menu spam. */
     private int lastUpgradeSlotsFingerprint;
@@ -69,7 +73,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 ContainerLevelAccess.create(be.getLevel(), be.getBlockPos()),
                 be.getMenuData(),
                 be,
-                accessFace);
+                accessFace,
+                be.getBlockPos());
         be.clampFaceFiltersToSpec();
         be.refreshMenuData(accessFace);
         if (!be.getLevel().isClientSide() && playerInventory.player instanceof ServerPlayer sp) {
@@ -77,7 +82,14 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         }
     }
 
-    public static DuctNodeMenu clientMenu(int containerId, Inventory playerInventory) {
+    /**
+     * Client-side factory: extra payload is {@code BlockPos} then face ordinal (matches {@link
+     * net.unfamily.another_dynamics.duct.DuctBlock#openDuctMenu}).
+     */
+    public static DuctNodeMenu createClient(int containerId, Inventory playerInventory, FriendlyByteBuf extraData) {
+        BlockPos pos = extraData.readBlockPos();
+        int fo = extraData.readByte() & 0xFF;
+        Direction face = Direction.values()[Mth.clamp(fo, 0, Direction.values().length - 1)];
         return new DuctNodeMenu(
                 containerId,
                 playerInventory,
@@ -85,7 +97,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 ContainerLevelAccess.NULL,
                 new SimpleContainerData(DuctMenuSync.COUNT),
                 null,
-                Direction.DOWN);
+                face,
+                pos);
     }
 
     private DuctNodeMenu(
@@ -95,12 +108,14 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             ContainerLevelAccess access,
             ContainerData syncData,
             @Nullable DuctBlockEntity linkedBlockEntity,
-            Direction accessFace) {
+            Direction accessFace,
+            BlockPos ductBlockPos) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
         this.access = access;
         this.syncData = syncData;
         this.linkedBlockEntity = linkedBlockEntity;
         this.accessFace = accessFace;
+        this.ductBlockPos = ductBlockPos;
 
         for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
             int y = SLOT_UPGRADE_Y0 + i * 18;
@@ -120,6 +135,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     public Direction getAccessFace() {
         return accessFace;
+    }
+
+    public BlockPos getDuctBlockPos() {
+        return ductBlockPos;
     }
 
     public ContainerData getSyncData() {
@@ -148,10 +167,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     public void receiveFilterSync(
             BlockPos pos, Direction face, List<String> allow, List<String> deny, boolean denyOverridesAllow) {
-        int x = syncData.get(DuctMenuSync.POS_X);
-        int y = syncData.get(DuctMenuSync.POS_Y);
-        int z = syncData.get(DuctMenuSync.POS_Z);
-        if (!new BlockPos(x, y, z).equals(pos) || accessFace != face) {
+        if (!ductBlockPos.equals(pos) || accessFace != face) {
             return;
         }
         clientAllowFilters.clear();
@@ -186,10 +202,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     public void pushFilterConfigToServer(List<String> allow, List<String> deny, boolean denyOverridesAllow) {
-        int x = syncData.get(DuctMenuSync.POS_X);
-        int y = syncData.get(DuctMenuSync.POS_Y);
-        int z = syncData.get(DuctMenuSync.POS_Z);
-        ModNetwork.sendFilterUpdate(new BlockPos(x, y, z), accessFace, allow, deny, denyOverridesAllow);
+        ModNetwork.sendFilterUpdate(ductBlockPos, accessFace, allow, deny, denyOverridesAllow);
     }
 
     private void addPlayerInventory(Inventory inv, int startX, int startY) {

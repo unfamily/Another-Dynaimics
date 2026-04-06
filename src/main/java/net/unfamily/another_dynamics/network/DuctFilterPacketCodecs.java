@@ -7,7 +7,8 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 
 final class DuctFilterPacketCodecs {
-    static final int MAX_FILTER_STRING_UTF = 1024;
+    /** Per-entry UTF-8 cap (NBT {@code ?} filters from ghost slot can be long). */
+    static final int MAX_FILTER_STRING_UTF = 16_384;
     static final int MAX_LIST_ENTRIES = 64;
 
     static final StreamCodec<RegistryFriendlyByteBuf, List<String>> STRING_LIST =

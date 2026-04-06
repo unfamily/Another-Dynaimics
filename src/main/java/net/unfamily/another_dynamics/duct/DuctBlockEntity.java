@@ -519,45 +519,62 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
             return;
         }
-        Optional<ItemStack> probe = DuctCapHelper.simulateExtractOneOnFace(level, worldPosition, face);
-        if (probe.isEmpty()) {
+        IItemHandler sourceHandler = DuctCapHelper.getHandlerOnFace(level, worldPosition, face);
+        if (sourceHandler == null) {
             return;
         }
-        if (!passesItemFilters(face, probe.get(), level)) {
+        /*
+         * Try each source slot so a deny/allow on the *destination* FILTERING_INSERTION face does not wedge the
+         * extractor on the first stack (see finishExtractionDelivery: invalid items were extracted then refunded).
+         * Routing RR state is only committed when we actually schedule a shipment.
+         */
+        for (int slot = 0; slot < sourceHandler.getSlots(); slot++) {
+            ItemStack probe = sourceHandler.extractItem(slot, 1, true);
+            if (probe.isEmpty()) {
+                continue;
+            }
+            if (!passesItemFilters(face, probe, level)) {
+                continue;
+            }
+            int[] rrProbe = new int[] {node.roundRobinCursor};
+            Optional<DuctTargetSelector.ExtractionRouting> routeOpt =
+                    DuctTargetSelector.selectExtractionDelivery(
+                            level, worldPosition, probe, node.routingMode, rrProbe, node.channelLetter);
+            if (routeOpt.isEmpty()) {
+                continue;
+            }
+            DuctTargetSelector.ExtractionRouting route = routeOpt.get();
+            List<BlockPos> path = route.path();
+            BlockPos dest = path.get(path.size() - 1);
+            if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
+                continue;
+            }
+            Direction destFace = route.destStorageFace();
+            if (destBe.getFaceNode(destFace).nodeMode == NodeMode.FILTERING_INSERTION
+                    && !destBe.passesItemFilters(destFace, probe, level)) {
+                continue;
+            }
+            int batch = effectiveExtractBatch(spec, node, face);
+            int avail = DuctCapHelper.countExtractableMatchingOnFace(level, worldPosition, face, probe, batch);
+            int plannedCount = Math.min(batch, Math.min(probe.getMaxStackSize(), avail));
+            if (plannedCount <= 0) {
+                continue;
+            }
+            ItemStack planned = probe.copy();
+            planned.setCount(plannedCount);
+            if (!canScheduleTowardFace(level, dest, destBe, destFace, planned)) {
+                continue;
+            }
+            node.roundRobinCursor = rrProbe[0];
+            long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
+            int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
+            OutboundShipment sh =
+                    new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
+            outboundShipments.add(sh);
+            DuctIncomingIndex.register(level, dest, sh.registeredIncoming.copy());
+            setChanged();
             return;
         }
-        int[] rr = new int[] {node.roundRobinCursor};
-        Optional<DuctTargetSelector.ExtractionRouting> routeOpt =
-                DuctTargetSelector.selectExtractionDelivery(
-                        level, worldPosition, probe.get(), node.routingMode, rr, node.channelLetter);
-        node.roundRobinCursor = rr[0];
-        if (routeOpt.isEmpty()) {
-            return;
-        }
-        DuctTargetSelector.ExtractionRouting route = routeOpt.get();
-        List<BlockPos> path = route.path();
-        BlockPos dest = path.get(path.size() - 1);
-        if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
-            return;
-        }
-        int batch = effectiveExtractBatch(spec, node, face);
-        int avail = DuctCapHelper.countExtractableMatchingOnFace(level, worldPosition, face, probe.get(), batch);
-        int plannedCount = Math.min(batch, Math.min(probe.get().getMaxStackSize(), avail));
-        if (plannedCount <= 0) {
-            return;
-        }
-        ItemStack planned = probe.get().copy();
-        planned.setCount(plannedCount);
-        if (!canScheduleTowardFace(level, dest, destBe, route.destStorageFace(), planned)) {
-            return;
-        }
-        long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
-        int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
-        OutboundShipment sh =
-                new OutboundShipment(planned, dest, route.destStorageFace(), travelTicks, worldPosition, face, node.channelLetter);
-        outboundShipments.add(sh);
-        DuctIncomingIndex.register(level, dest, sh.registeredIncoming.copy());
-        setChanged();
     }
 
     private void tickRetrieverPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction retrieverFace, DuctFaceNode node) {

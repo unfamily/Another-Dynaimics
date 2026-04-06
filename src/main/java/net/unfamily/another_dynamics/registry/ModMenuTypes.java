@@ -1,8 +1,8 @@
 package net.unfamily.another_dynamics.registry;
 
 import net.minecraft.core.registries.Registries;
-import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.inventory.MenuType;
+import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
@@ -13,7 +13,7 @@ public final class ModMenuTypes {
             DeferredRegister.create(Registries.MENU, AnotherDynamicsMod.MOD_ID);
 
     public static final DeferredHolder<MenuType<?>, MenuType<DuctNodeMenu>> DUCT_NODE =
-            MENUS.register("duct_node", () -> new MenuType<>(DuctNodeMenu::clientMenu, FeatureFlags.DEFAULT_FLAGS));
+            MENUS.register("duct_node", () -> IMenuTypeExtension.create(DuctNodeMenu::createClient));
 
     private ModMenuTypes() {}
 }

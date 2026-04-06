@@ -1,6 +1,5 @@
 package net.unfamily.another_dynamics.network;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
@@ -102,24 +101,15 @@ public final class ModNetwork {
         reg.playToClient(DuctFilterSyncPayload.TYPE, DuctFilterSyncPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(
                     () -> {
-                        if (Minecraft.getInstance().screen instanceof DuctNodeScreen screen) {
-                            screen.receiveFilterSync(
-                                    payload.pos(),
-                                    Direction.values()[Mth.clamp(
-                                            payload.faceOrdinal(), 0, Direction.values().length - 1)],
-                                    payload.allow(),
-                                    payload.deny(),
-                                    payload.denyOverridesAllow());
-                        } else if (Minecraft.getInstance().player != null
-                                && Minecraft.getInstance().player.containerMenu instanceof DuctNodeMenu menu) {
-                            menu.receiveFilterSync(
-                                    payload.pos(),
-                                    Direction.values()[Mth.clamp(
-                                            payload.faceOrdinal(), 0, Direction.values().length - 1)],
-                                    payload.allow(),
-                                    payload.deny(),
-                                    payload.denyOverridesAllow());
-                        }
+                        Direction face =
+                                Direction.values()[Mth.clamp(
+                                        payload.faceOrdinal(), 0, Direction.values().length - 1)];
+                        DuctNodeScreen.applyClientFilterSync(
+                                payload.pos(),
+                                face,
+                                payload.allow(),
+                                payload.deny(),
+                                payload.denyOverridesAllow());
                     });
         });
     }
@@ -146,7 +136,29 @@ public final class ModNetwork {
         PacketDistributor.sendToServer(new DuctListLogicPayload(pos, face.ordinal()));
     }
 
+    /**
+     * Sends allow/deny strings to the client. Scheduled for the next server tick so the client's {@link DuctNodeMenu}
+     * and screen exist before the packet is handled (avoids dropped or invisible updates).
+     */
     public static void sendFilterSyncToPlayer(ServerPlayer player, DuctBlockEntity duct, Direction face) {
+        var server = player.getServer();
+        if (server == null) {
+            sendFilterSyncToPlayerNow(player, duct, face);
+            return;
+        }
+        server.execute(
+                () -> {
+                    if (player.hasDisconnected()) {
+                        return;
+                    }
+                    if (player.level().getBlockEntity(duct.getBlockPos()) != duct) {
+                        return;
+                    }
+                    sendFilterSyncToPlayerNow(player, duct, face);
+                });
+    }
+
+    private static void sendFilterSyncToPlayerNow(ServerPlayer player, DuctBlockEntity duct, Direction face) {
         var node = duct.getFaceNode(face);
         PacketDistributor.sendToPlayer(
                 player,

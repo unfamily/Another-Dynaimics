@@ -17,6 +17,7 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -153,7 +154,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private Button amountApplyButton;
     private Button amountMaxButton;
     private Button amountDiscardButton;
-    private int amountDiscardButtonWidth;
     private ChannelLetterButton channelButton;
     private EditBox routingPriorityBox;
 
@@ -219,15 +219,28 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         this.inventoryLabelY = 10_000;
     }
 
-    public void receiveFilterSync(
+    /**
+     * Client: apply duct filter lists from {@link net.unfamily.another_dynamics.network.DuctFilterSyncPayload}. Updates
+     * {@link DuctNodeMenu} cache and rebuilds filter entry buttons when this duct GUI is the active screen.
+     */
+    public static void applyClientFilterSync(
             BlockPos pos,
             Direction face,
             List<String> allow,
             List<String> deny,
             boolean denyOverridesAllow) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) {
+            return;
+        }
+        if (!(mc.player.containerMenu instanceof DuctNodeMenu menu)) {
+            return;
+        }
         menu.receiveFilterSync(pos, face, allow, deny, denyOverridesAllow);
-        menu.ensureClientFilterBufferSizes();
-        rebuildFilterEntryWidgets();
+        if (mc.screen instanceof DuctNodeScreen screen && screen.getMenu() == menu) {
+            screen.menu.ensureClientFilterBufferSizes();
+            screen.rebuildFilterEntryWidgets();
+        }
     }
 
     @Override
@@ -311,12 +324,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         .build();
         addRenderableWidget(routingPlusButton);
 
-        amountDiscardButtonWidth =
-                8
-                        + this.font.width(
-                                Component.translatable(
-                                        "gui.another_dynamics.duct_node.filters.close_without_saving"));
-
         amountClearButton =
                 Button.builder(Component.literal("0"), b -> amountClearField())
                         .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
@@ -336,11 +343,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         .build();
         addRenderableWidget(amountMaxButton);
         amountDiscardButton =
-                Button.builder(
-                                Component.translatable("gui.another_dynamics.duct_node.filters.close_without_saving"),
-                                b -> amountDiscardDraft())
-                        .bounds(0, 0, amountDiscardButtonWidth, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.discard.tooltip")))
+                Button.builder(Component.literal("\u2715"), b -> amountDiscardDraft())
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.close_without_saving")))
                         .build();
         addRenderableWidget(amountDiscardButton);
 
@@ -478,7 +483,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (showMax) {
             actionRowW += AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
         }
-        actionRowW += AMOUNT_BTN_GAP + amountDiscardButtonWidth;
+        actionRowW += AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
 
         int blockW = Math.max(numericRowW, actionRowW);
         int blockGuiX = (TEXTURE_WIDTH - blockW) / 2;
@@ -835,7 +840,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int textBoxX = this.leftPos + ENTRY_X + EDIT_MODE_TEXT_INSET_X;
 
         editModeTextBox = new EditBox(this.font, textBoxX, textBoxY, textBoxWidth, textBoxHeight, Component.literal("Edit Filter"));
-        editModeTextBox.setMaxLength(512);
+        editModeTextBox.setMaxLength(16_384);
         editModeTextBox.setValue(originalFilterValue);
         editModeTextBox.setResponder(v -> {});
         addRenderableWidget(editModeTextBox);
@@ -983,8 +988,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
     }
 
-    /** Same order as DeepDrawerExtractorScreen.generateAllFilterVariants. */
-    private static List<String> generateAllFilterVariants(ItemStack stack) {
+    /**
+     * Filter presets from a sample item (ghost slot): ID, mod, macros, tags, then {@code ?} + full stack SNBT (last), for
+     * {@link net.unfamily.another_dynamics.duct.DuctFilterMatcher} {@code ?} substring matching without commands.
+     */
+    private List<String> generateAllFilterVariants(ItemStack stack) {
         List<String> variants = new ArrayList<>();
         if (stack.isEmpty()) {
             return variants;
@@ -1018,6 +1026,18 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         .toList();
         for (String tagId : itemTags) {
             variants.add("#" + tagId);
+        }
+        if (minecraft != null && minecraft.level != null) {
+            try {
+                Tag saved = stack.save(minecraft.level.registryAccess());
+                if (saved instanceof CompoundTag compound) {
+                    String snbt = compound.toString();
+                    if (!snbt.isEmpty()) {
+                        variants.add("?" + snbt);
+                    }
+                }
+            } catch (Exception ignored) {
+            }
         }
         return variants;
     }
@@ -1193,13 +1213,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private BlockPos menuSyncedPos() {
-        var d = menu.getSyncData();
-        return new BlockPos(d.get(DuctMenuSync.POS_X), d.get(DuctMenuSync.POS_Y), d.get(DuctMenuSync.POS_Z));
+        return menu.getDuctBlockPos();
     }
 
     private Direction menuSyncedFace() {
-        int o = menu.getSyncData().get(DuctMenuSync.ACCESS_FACE);
-        return Direction.values()[Mth.clamp(o, 0, Direction.values().length - 1)];
+        return menu.getAccessFace();
     }
 
     private int syncedInsertionPriority() {
@@ -1327,7 +1345,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
     }
 
-    /** Revert unsent amount/priority edits and defocus (same as old ✕; tooltip {@code amount.discard.tooltip} = Cancel). */
+    /** Revert unsent amount/priority edits and defocus; button label ✕, tooltip {@code filters.close_without_saving}. */
     private void amountDiscardDraft() {
         playClickSound();
         revertAmountDraft(true);

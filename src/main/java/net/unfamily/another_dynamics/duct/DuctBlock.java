@@ -149,6 +149,10 @@ public final class DuctBlock extends AbstractDuctBlock {
                     public AbstractContainerMenu createMenu(int containerId, Inventory inv, Player p) {
                         return new DuctNodeMenu(containerId, inv, duct, clickedFace);
                     }
+                },
+                buf -> {
+                    buf.writeBlockPos(duct.getBlockPos());
+                    buf.writeByte(clickedFace.ordinal());
                 });
     }
 }
