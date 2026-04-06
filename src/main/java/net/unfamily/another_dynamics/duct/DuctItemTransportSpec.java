@@ -19,7 +19,7 @@ public record DuctItemTransportSpec(
         return new DuctItemTransportSpec(8, UNLIMITED_BATCH, 10, 1, 20, 1, 3, 3);
     }
 
-    /** Ticks per duct hop for path travel / routing cost (clamped; avoids zero). */
+    /** Datapack {@code speed}: ticks per duct block on a path for billed travel (clamped; avoids zero). */
     public int effectiveSpeed(int configured) {
         int s = configured <= 0 ? speedDefault : configured;
         int min = Math.max(1, speedMin);

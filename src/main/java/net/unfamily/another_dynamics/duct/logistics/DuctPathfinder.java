@@ -18,13 +18,14 @@ import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 
 /**
- * Shortest paths on the duct-only subgraph. Edge cost = {@link DuctItemTransportSpec} {@code speed}: ticks to
- * traverse one duct hop (higher configured value = slower segment; same units as datapack {@code speed.default}).
+ * Shortest paths on the duct-only subgraph. Pathfinding uses one edge cost per adjacent duct pair; billed travel time
+ * uses {@link #pathTravelTicks}: {@code speed} ticks per duct <strong>block</strong> on the path (endpoints included),
+ * so {@code N} collinear ducts yield {@code N} segments in that cost model.
  */
 public final class DuctPathfinder {
     private DuctPathfinder() {}
 
-    /** Ticks per adjacent duct block along the path (from datapack speed, minimum 1). */
+    /** Datapack {@code speed}: ticks multiplied by path duct count in {@link #pathTravelTicks} (minimum 1). */
     public static long edgeTravelTicks(DuctItemTransportSpec spec) {
         int ticks = spec.effectiveSpeed(spec.speedDefault());
         return Math.max(1L, ticks);
@@ -123,16 +124,19 @@ public final class DuctPathfinder {
         return Optional.of(path);
     }
 
-    /** Total travel ticks along an already-resolved path (one edge cost per hop). */
+    /**
+     * Total travel ticks along an already-resolved path: {@code speed} × number of duct blocks on the path (each
+     * endpoint duct counts; {@code N} ducts in the chain → {@code N}×{@code speed}, not {@code N−1}).
+     */
     public static long pathTravelTicks(List<BlockPos> path, DuctItemTransportSpec spec) {
-        if (path == null || path.size() < 2) {
+        if (path == null || path.isEmpty()) {
             return 0L;
         }
         long w = edgeTravelTicks(spec);
-        return w * (path.size() - 1);
+        return w * path.size();
     }
 
-    /** Effective distance from {@code from} to {@code to} (sum of edge costs), or empty if unreachable. */
+    /** Same ticks as {@link #pathTravelTicks} on the shortest path, or empty if unreachable. */
     public static OptionalLong distance(Level level, BlockPos from, BlockPos to, DuctItemTransportSpec spec, DuctNetworkType network) {
         Optional<List<BlockPos>> path = shortestPath(level, from, to, spec, network);
         if (path.isEmpty()) {

@@ -48,7 +48,7 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext ctx) {
         BlockEntity be = level.getBlockEntity(pos);
         if (be instanceof AbstractDuctBlockEntity duct) {
-            return shapeForMasks(duct.getPipeMask(), duct.getStorageMask());
+            return shapeForMasks(duct.getPipeMask(), duct.getVisualStorageMask());
         }
         return DuctShapes.coreOnly();
     }

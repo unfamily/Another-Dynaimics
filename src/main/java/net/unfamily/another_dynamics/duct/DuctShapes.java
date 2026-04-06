@@ -1,9 +1,14 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Consumer;
 
 import net.minecraft.core.Direction;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -13,6 +18,9 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  * Logic mirrors {@link net.unfamily.another_dynamics.client.DuctCompositeGeometry#appendForWorld}.
  */
 public final class DuctShapes {
+
+    /** Hit tests tolerate boundary floats from raycasts (shared faces with pipe arms). */
+    private static final double HIT_EPS = 1.0e-4;
     private static final VoxelShape CENTER = box(5, 5, 5, 11, 11, 11);
     private static final VoxelShape LINE_BAR_Z = box(5, 5, 0, 11, 11, 16);
     private static final VoxelShape LINE_BAR_X = box(0, 5, 5, 16, 11, 11);
@@ -88,5 +96,84 @@ public final class DuctShapes {
 
     public static VoxelShape coreOnly() {
         return CENTER;
+    }
+
+    /**
+     * Which storage-side {@link Direction} node voxel (same boxes as {@link #NODE}) contains the hit, in block-local
+     * coordinates {@code [0,1)} per axis as used by {@link #forMasks}. Only faces present for the given masks are
+     * considered (matches line vs multi topology). Empty when the ray hits pipe/core only.
+     */
+    public static Optional<Direction> resolveStorageNodeFace(int pipeMask, int storageMask, double lx, double ly, double lz) {
+        List<Direction> hits = new ArrayList<>(6);
+        forEachActiveStorageNode(pipeMask, storageMask, d -> {
+            if (nodeShapeContainsLocal(NODE.get(d), lx, ly, lz)) {
+                hits.add(d);
+            }
+        });
+        if (hits.isEmpty()) {
+            return Optional.empty();
+        }
+        if (hits.size() == 1) {
+            return Optional.of(hits.getFirst());
+        }
+        double best = Double.POSITIVE_INFINITY;
+        Direction pick = hits.getFirst();
+        for (Direction d : hits) {
+            AABB b = NODE.get(d).bounds();
+            double cx = (b.minX + b.maxX) * 0.5;
+            double cy = (b.minY + b.maxY) * 0.5;
+            double cz = (b.minZ + b.maxZ) * 0.5;
+            double dx = lx - cx;
+            double dy = ly - cy;
+            double dz = lz - cz;
+            double dist = dx * dx + dy * dy + dz * dz;
+            if (dist < best) {
+                best = dist;
+                pick = d;
+            }
+        }
+        return Optional.of(pick);
+    }
+
+    /**
+     * Invokes {@code consumer} for each {@link Direction} that has a storage node shape for {@code pipeMask} /
+     * {@code storageMask}, in the same cases as {@link #forMasks} adds {@link #NODE} voxels.
+     */
+    public static void forEachActiveStorageNode(int pipeMask, int storageMask, Consumer<Direction> consumer) {
+        DuctConnectionShape shape = DuctConnectionShape.classify(pipeMask, storageMask);
+        switch (shape) {
+            case SINGLE -> {}
+            case PARTIAL, MULTI -> {
+                for (Direction d : Direction.values()) {
+                    int bit = 1 << d.ordinal();
+                    if ((storageMask & bit) != 0) {
+                        consumer.accept(d);
+                    }
+                }
+            }
+            case LINE_X, LINE_Y, LINE_Z -> {
+                Direction na = shape.lineEndNegative();
+                Direction pb = shape.lineEndPositive();
+                if ((storageMask & (1 << na.ordinal())) != 0) {
+                    consumer.accept(na);
+                }
+                if ((storageMask & (1 << pb.ordinal())) != 0) {
+                    consumer.accept(pb);
+                }
+            }
+        }
+    }
+
+    private static boolean nodeShapeContainsLocal(VoxelShape shape, double x, double y, double z) {
+        if (shape.isEmpty()) {
+            return false;
+        }
+        AABB a = shape.bounds();
+        return x >= a.minX - HIT_EPS
+                && x <= a.maxX + HIT_EPS
+                && y >= a.minY - HIT_EPS
+                && y <= a.maxY + HIT_EPS
+                && z >= a.minZ - HIT_EPS
+                && z <= a.maxZ + HIT_EPS;
     }
 }

@@ -32,6 +32,12 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
      */
     protected void onAfterConnectionRefresh(boolean masksChanged) {}
 
+    /**
+     * After world storage mask is recomputed, subclasses may OR bits into a persistent latch (e.g. faces that ever had
+     * storage) for visuals while disconnected.
+     */
+    protected void mergePersistentStorageFaceLatch(int previousWorldStorageMask, int newWorldStorageMask) {}
+
     public final void refreshFromWorld() {
         Level level = this.level;
         if (level == null) {
@@ -50,9 +56,11 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
             }
         }
         int storage = storageBits & ~pipe;
+        int previousWorldStorageMask = storageMask;
         boolean masksChanged = pipeMask != pipe || storageMask != storage;
         pipeMask = pipe;
         storageMask = storage;
+        mergePersistentStorageFaceLatch(previousWorldStorageMask, storage);
         if (masksChanged) {
             requestModelDataUpdate();
             if (!level.isClientSide()) {
@@ -68,6 +76,15 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
     }
 
     public int getStorageMask() {
+        return storageMask;
+    }
+
+    /**
+     * Storage bits for collision, outline, baked model, and node hit-pick: live world attachments only (same as
+     * {@link #getStorageMask()}). Persisted node settings without a neighbor stay in subclasses (e.g. latch) but do not
+     * add voxels.
+     */
+    public int getVisualStorageMask() {
         return storageMask;
     }
 

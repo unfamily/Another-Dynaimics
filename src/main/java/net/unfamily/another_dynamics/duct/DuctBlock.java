@@ -22,12 +22,15 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Optional;
 
 /**
  * Physical duct block. Hybrid ducts can join <strong>multiple</strong> {@link DuctNetworkType} graphs at the same time;
@@ -81,18 +84,29 @@ public final class DuctBlock extends AbstractDuctBlock {
                 : null;
     }
 
+    private static Optional<Direction> nodeFaceFromHitLocation(BlockPos pos, BlockHitResult hit, DuctBlockEntity duct) {
+        Vec3 l = hit.getLocation();
+        double lx = l.x - pos.getX();
+        double ly = l.y - pos.getY();
+        double lz = l.z - pos.getZ();
+        return DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
+    }
+
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
-        if (!level.isClientSide() && player instanceof ServerPlayer serverPlayer) {
-            BlockEntity entity = level.getBlockEntity(pos);
-            if (entity instanceof DuctBlockEntity duct) {
-                Direction face = hit.getDirection();
-                if ((duct.getStorageMask() & (1 << face.ordinal())) == 0) {
-                    return InteractionResult.sidedSuccess(level.isClientSide());
-                }
-                openDuctMenu(serverPlayer, duct, face);
-                return InteractionResult.CONSUME;
+        BlockEntity entity = level.getBlockEntity(pos);
+        if (entity instanceof DuctBlockEntity duct) {
+            Optional<Direction> face = nodeFaceFromHitLocation(pos, hit, duct);
+            if (face.isEmpty()) {
+                return InteractionResult.PASS;
             }
+            if (level.isClientSide()) {
+                return InteractionResult.SUCCESS;
+            }
+            if (player instanceof ServerPlayer serverPlayer) {
+                openDuctMenu(serverPlayer, duct, face.get());
+            }
+            return InteractionResult.CONSUME;
         }
         return InteractionResult.sidedSuccess(level.isClientSide());
     }
@@ -106,16 +120,19 @@ public final class DuctBlock extends AbstractDuctBlock {
             Player player,
             InteractionHand hand,
             BlockHitResult hitResult) {
-        if (!level.isClientSide() && player instanceof ServerPlayer serverPlayer) {
-            BlockEntity entity = level.getBlockEntity(pos);
-            if (entity instanceof DuctBlockEntity duct) {
-                Direction face = hitResult.getDirection();
-                if ((duct.getStorageMask() & (1 << face.ordinal())) == 0) {
-                    return ItemInteractionResult.sidedSuccess(level.isClientSide());
-                }
-                openDuctMenu(serverPlayer, duct, face);
-                return ItemInteractionResult.CONSUME;
+        BlockEntity entity = level.getBlockEntity(pos);
+        if (entity instanceof DuctBlockEntity duct) {
+            Optional<Direction> face = nodeFaceFromHitLocation(pos, hitResult, duct);
+            if (face.isEmpty()) {
+                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
             }
+            if (level.isClientSide()) {
+                return ItemInteractionResult.SUCCESS;
+            }
+            if (player instanceof ServerPlayer serverPlayer) {
+                openDuctMenu(serverPlayer, duct, face.get());
+            }
+            return ItemInteractionResult.CONSUME;
         }
         return ItemInteractionResult.sidedSuccess(level.isClientSide());
     }

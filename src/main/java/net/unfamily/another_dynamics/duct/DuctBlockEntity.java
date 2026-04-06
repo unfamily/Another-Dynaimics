@@ -23,7 +23,6 @@ import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
 import net.unfamily.another_dynamics.duct.logistics.DuctTargetSelector;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
-import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 
 import java.util.ArrayList;
@@ -48,6 +47,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private final SimpleContainerData menuData = new SimpleContainerData(DuctMenuSync.COUNT);
 
+    /**
+     * Faces that have ever had a live item-storage neighbor while loaded; preserves per-face settings in NBT when the
+     * inventory is removed. Does not add node voxels (those follow {@link #getStorageMask()} only).
+     */
+    private int latchedStorageFaceMask;
+
     public DuctBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.ITEM_DUCT.get(), pos, state);
         for (int i = 0; i < FACE_COUNT; i++) {
@@ -70,6 +75,25 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     @Override
     protected DuctNetworkType networkType() {
         return DuctNetworkType.ITEM;
+    }
+
+    /**
+     * Faces that still accept GUI / synced field updates: live storage or latched settings (no extra collision voxels).
+     */
+    public int getSettingsFaceMask() {
+        return getStorageMask() | latchedStorageFaceMask;
+    }
+
+    @Override
+    protected void mergePersistentStorageFaceLatch(int previousWorldStorageMask, int newWorldStorageMask) {
+        int merged = latchedStorageFaceMask | previousWorldStorageMask | newWorldStorageMask;
+        if (merged == latchedStorageFaceMask) {
+            return;
+        }
+        latchedStorageFaceMask = merged;
+        if (level != null && !level.isClientSide()) {
+            setChanged();
+        }
     }
 
     @Override
@@ -132,11 +156,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         refreshFromWorld();
+        tickOutboundShipments(serverLevel);
+        tickMigratedBacklogFlush(serverLevel);
         if (!isStorageAttachmentNode()) {
             return;
         }
-        tickOutboundShipments(serverLevel);
-        tickMigratedBacklogFlush(serverLevel);
 
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
         int rate = spec.clampedRateTicks(spec.rateDefaultTicks());
@@ -584,7 +608,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return false;
         }
-        if ((getStorageMask() & (1 << accessFace.ordinal())) == 0) {
+        if ((getSettingsFaceMask() & (1 << accessFace.ordinal())) == 0) {
             return false;
         }
         DuctFaceNode node = getFaceNode(accessFace);
@@ -618,6 +642,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (changed) {
             setChanged();
             refreshMenuData(accessFace);
+            syncVisualGeometryToClients();
         }
         return changed;
     }
@@ -647,7 +672,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
-        if ((getStorageMask() & (1 << accessFace.ordinal())) == 0) {
+        if ((getSettingsFaceMask() & (1 << accessFace.ordinal())) == 0) {
             return;
         }
         DuctFaceNode node = getFaceNode(accessFace);
@@ -671,7 +696,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int sm = getStorageMask();
         boolean any = false;
         for (Direction dir : Direction.values()) {
-            if ((sm & (1 << dir.ordinal())) != 0) {
+            int bit = 1 << dir.ordinal();
+            if ((sm & bit) != 0) {
+                continue;
+            }
+            if ((latchedStorageFaceMask & bit) != 0) {
                 continue;
             }
             DuctFaceNode n = getFaceNode(dir);
@@ -683,7 +712,50 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         if (any) {
             setChanged();
+            syncVisualGeometryToClients();
         }
+    }
+
+    private void syncVisualGeometryToClients() {
+        requestModelDataUpdate();
+        if (level != null && !level.isClientSide()) {
+            level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+        }
+    }
+
+    /** Old saves without {@code LatchedFaces}: infer latched bits from non-default per-face data. */
+    private int inferLatchBitsFromLoadedFaceNodes() {
+        int m = 0;
+        for (Direction d : Direction.values()) {
+            if (faceSuggestsPersistedStorageNode(getFaceNode(d))) {
+                m |= 1 << d.ordinal();
+            }
+        }
+        return m;
+    }
+
+    private static boolean faceSuggestsPersistedStorageNode(DuctFaceNode n) {
+        if (n.nodeMode != NodeMode.NONE) {
+            return true;
+        }
+        if (n.amountField != 0 || n.roundRobinCursor != 0 || n.ticksUntilAction != 0) {
+            return true;
+        }
+        if (n.redstoneMode != 0) {
+            return true;
+        }
+        if (n.channelLetter != 1) {
+            return true;
+        }
+        if (n.routingMode != RoutingMode.NEAREST_FIRST) {
+            return true;
+        }
+        for (int i = 0; i < n.guiSlots.getSlots(); i++) {
+            if (!n.guiSlots.getStackInSlot(i).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -691,6 +763,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         super.saveAdditional(tag, registries);
         tag.putByte("PipeMask", (byte) getPipeMask());
         tag.putByte("StorageMask", (byte) getStorageMask());
+        tag.putByte("LatchedFaces", (byte) latchedStorageFaceMask);
         ListTag faces = new ListTag();
         for (Direction d : Direction.values()) {
             CompoundTag ft = new CompoundTag();
@@ -726,6 +799,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 getFaceNode(d).loadFromLegacyRootTag(registries, tag);
             }
         }
+        if (tag.contains("LatchedFaces", Tag.TAG_BYTE)) {
+            latchedStorageFaceMask = tag.getByte("LatchedFaces") & 0xFF;
+        } else {
+            latchedStorageFaceMask = (tag.getByte("StorageMask") & 0xFF) | inferLatchBitsFromLoadedFaceNodes();
+        }
         outboundShipments.clear();
         if (tag.contains("DuctOutbound", Tag.TAG_LIST)) {
             ListTag list = tag.getList("DuctOutbound", Tag.TAG_COMPOUND);
@@ -748,7 +826,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         CompoundTag t = super.getUpdateTag(registries);
         t.putByte("PipeMask", (byte) getPipeMask());
         t.putByte("StorageMask", (byte) getStorageMask());
+        t.putByte("LatchedFaces", (byte) latchedStorageFaceMask);
         return t;
+    }
+
+    @Override
+    public void handleUpdateTag(CompoundTag tag, HolderLookup.Provider registries) {
+        super.handleUpdateTag(tag, registries);
+        if (tag.contains("LatchedFaces", Tag.TAG_BYTE)) {
+            latchedStorageFaceMask = tag.getByte("LatchedFaces") & 0xFF;
+        }
     }
 
     @Nullable
