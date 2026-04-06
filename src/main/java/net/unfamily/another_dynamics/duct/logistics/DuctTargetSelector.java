@@ -68,7 +68,7 @@ public final class DuctTargetSelector {
                 if (dist.isEmpty()) {
                     continue;
                 }
-                cands.add(new Candidate(p, d, node.amountField, dist.getAsLong()));
+                cands.add(new Candidate(p, d, node.insertionPriority, dist.getAsLong()));
             }
         }
         if (cands.isEmpty()) {
@@ -135,7 +135,7 @@ public final class DuctTargetSelector {
                 if (dist.isEmpty()) {
                     continue;
                 }
-                cands.add(new DonorCandidate(p, d, node.amountField, dist.getAsLong()));
+                cands.add(new DonorCandidate(p, d, node.insertionPriority, dist.getAsLong()));
             }
         }
         if (cands.isEmpty()) {

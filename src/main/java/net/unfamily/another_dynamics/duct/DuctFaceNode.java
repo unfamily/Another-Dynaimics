@@ -18,10 +18,10 @@ import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 public final class DuctFaceNode {
     public NodeMode nodeMode = NodeMode.NONE;
     public RoutingMode routingMode = RoutingMode.NEAREST_FIRST;
-    /**
-     * Extract modes: batch size. Insert modes (NONE, FILTERING_INSERTION): insertion priority.
-     */
-    public int amountField;
+    /** Insert-capable modes ({@link NodeMode#NONE}, {@link NodeMode#FILTERING_INSERTION}): insertion priority for this face. */
+    public int insertionPriority;
+    /** Extract / retrieve modes: items moved per operation (0 = use duct default). */
+    public int extractBatch;
     public int channelLetter = 1;
     public int redstoneMode;
     public int roundRobinCursor;
@@ -50,14 +50,16 @@ public final class DuctFaceNode {
 
     public void resetPipeSegmentDefaults() {
         nodeMode = NodeMode.NONE;
-        amountField = 0;
+        insertionPriority = 0;
+        extractBatch = 0;
         roundRobinCursor = 0;
     }
 
     public void save(HolderLookup.Provider registries, CompoundTag tag) {
         tag.putByte("NodeMode", (byte) nodeMode.ordinal());
         tag.putByte("RoutingMode", (byte) routingMode.ordinal());
-        tag.putInt("AmountField", amountField);
+        tag.putInt("InsertionPriority", insertionPriority);
+        tag.putInt("ExtractBatch", extractBatch);
         tag.putByte("Channel", (byte) channelLetter);
         tag.putByte("RedstoneMode", (byte) redstoneMode);
         tag.putInt("RrCursor", roundRobinCursor);
@@ -69,10 +71,28 @@ public final class DuctFaceNode {
     public void load(HolderLookup.Provider registries, CompoundTag tag) {
         nodeMode = NodeMode.fromOrdinal(tag.getByte("NodeMode"));
         routingMode = RoutingMode.fromOrdinal(tag.getByte("RoutingMode"));
-        if (tag.contains("AmountField")) {
-            amountField = tag.getInt("AmountField");
+        insertionPriority = 0;
+        extractBatch = 0;
+        if (tag.contains("InsertionPriority")) {
+            insertionPriority = tag.getInt("InsertionPriority");
         } else if (tag.contains("InsPriority")) {
-            amountField = tag.getInt("InsPriority");
+            insertionPriority = tag.getInt("InsPriority");
+        }
+        if (tag.contains("ExtractBatch")) {
+            extractBatch = tag.getInt("ExtractBatch");
+        }
+        if (!tag.contains("InsertionPriority")
+                && !tag.contains("InsPriority")
+                && !tag.contains("ExtractBatch")
+                && tag.contains("AmountField")) {
+            int legacy = tag.getInt("AmountField");
+            if (nodeMode.usesInsertionPriorityField()) {
+                insertionPriority = legacy;
+            } else if (nodeMode.usesExtractBatchField()) {
+                extractBatch = legacy;
+            } else {
+                insertionPriority = legacy;
+            }
         }
         channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
         redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
@@ -91,10 +111,28 @@ public final class DuctFaceNode {
         }
         nodeMode = NodeMode.fromOrdinal(root.getByte("NodeMode"));
         routingMode = RoutingMode.fromOrdinal(root.getByte("RoutingMode"));
-        if (root.contains("AmountField")) {
-            amountField = root.getInt("AmountField");
+        insertionPriority = 0;
+        extractBatch = 0;
+        if (root.contains("InsertionPriority")) {
+            insertionPriority = root.getInt("InsertionPriority");
         } else if (root.contains("InsPriority")) {
-            amountField = root.getInt("InsPriority");
+            insertionPriority = root.getInt("InsPriority");
+        }
+        if (root.contains("ExtractBatch")) {
+            extractBatch = root.getInt("ExtractBatch");
+        }
+        if (!root.contains("InsertionPriority")
+                && !root.contains("InsPriority")
+                && !root.contains("ExtractBatch")
+                && root.contains("AmountField")) {
+            int legacy = root.getInt("AmountField");
+            if (nodeMode.usesInsertionPriorityField()) {
+                insertionPriority = legacy;
+            } else if (nodeMode.usesExtractBatchField()) {
+                extractBatch = legacy;
+            } else {
+                insertionPriority = legacy;
+            }
         }
         channelLetter = root.contains("Channel") ? root.getByte("Channel") & 0xFF : 1;
         redstoneMode = root.getByte("RedstoneMode") & 0xFF;

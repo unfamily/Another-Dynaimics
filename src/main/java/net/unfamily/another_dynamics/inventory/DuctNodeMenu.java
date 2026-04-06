@@ -53,6 +53,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private final @Nullable DuctBlockEntity linkedBlockEntity;
     private final Direction accessFace;
 
+    /** Detects upgrade-slot changes so {@link DuctMenuSync#EXTRACT_BATCH_CAP} can be refreshed without full menu spam. */
+    private int lastUpgradeSlotsFingerprint;
+
     /** Client-side filter cache (filled by {@link #receiveFilterSync}). */
     private final List<String> clientAllowFilters = new ArrayList<>();
     private final List<String> clientDenyFilters = new ArrayList<>();
@@ -107,6 +110,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
         addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
         addDataSlots(syncData);
+
+        if (linkedBlockEntity != null && linkedBlockEntity.getLevel() != null && !linkedBlockEntity.getLevel().isClientSide()) {
+            lastUpgradeSlotsFingerprint = upgradeSlotsFingerprint();
+        } else {
+            lastUpgradeSlotsFingerprint = 0;
+        }
     }
 
     public Direction getAccessFace() {
@@ -198,6 +207,32 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     public static int playerSlotStart() {
         return MACHINE_SLOTS;
+    }
+
+    private int upgradeSlotsFingerprint() {
+        if (linkedBlockEntity == null) {
+            return 0;
+        }
+        int fp = 1;
+        var stacks = linkedBlockEntity.getFaceNode(accessFace).guiSlots;
+        for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
+            fp = 31 * fp + stacks.getStackInSlot(i).hashCode();
+        }
+        return fp;
+    }
+
+    @Override
+    public void broadcastChanges() {
+        super.broadcastChanges();
+        if (linkedBlockEntity != null && linkedBlockEntity.getLevel() != null && !linkedBlockEntity.getLevel().isClientSide()) {
+            int fp = upgradeSlotsFingerprint();
+            if (fp != lastUpgradeSlotsFingerprint) {
+                lastUpgradeSlotsFingerprint = fp;
+                linkedBlockEntity
+                        .getMenuData()
+                        .set(DuctMenuSync.EXTRACT_BATCH_CAP, linkedBlockEntity.computeExtractBatchSettingCap(accessFace));
+            }
+        }
     }
 
     @Override

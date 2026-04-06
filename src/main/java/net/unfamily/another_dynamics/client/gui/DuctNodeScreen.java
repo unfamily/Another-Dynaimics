@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.mojang.blaze3d.platform.InputConstants;
+
+import org.lwjgl.glfw.GLFW;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -30,6 +32,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
@@ -83,6 +86,23 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private static final int ROW_BTN_W = 76;
     private static final int ROW_GAP = 4;
 
+    /**
+     * Priority / quantity block: centered, two rows (numeric then 0/A/[M]/Close-without-saving). Slightly above player inventory.
+     */
+    /** Ctrl/Alt + +/- step for priority and extract batch (batch stays within {@link DuctMenuSync#EXTRACT_BATCH_CAP}). */
+    private static final int AMOUNT_COARSE_STEP = 100;
+    private static final int AMOUNT_STEPPER_W = 14;
+    private static final int AMOUNT_INNER_GAP = 2;
+    private static final int AMOUNT_EDIT_W = 56;
+    private static final int AMOUNT_ACTION_BTN = 12;
+    private static final int AMOUNT_BTN_GAP = 2;
+    private static final int AMOUNT_ROWS_GAP = 4;
+    private static final int AMOUNT_ROW_Y = 118;
+    private static final int AMOUNT_LABEL_ABOVE_GAP = 3;
+
+    /** Gui-local X of {@link #routingPriorityBox} left edge (for label centering). Set in {@link #init}. */
+    private int amountEditBoxGuiLeft;
+
     private static final int CHANNEL_WIDGET_W = 16;
     private static final int CHANNEL_WIDGET_H = 10;
     private static final int CHANNEL_WIDGET_Y = ROW3_Y + BTN_H - CHANNEL_WIDGET_H;
@@ -129,6 +149,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private Button routingModeButton;
     private Button routingMinusButton;
     private Button routingPlusButton;
+    private Button amountClearButton;
+    private Button amountApplyButton;
+    private Button amountMaxButton;
+    private Button amountDiscardButton;
+    private int amountDiscardButtonWidth;
     private ChannelLetterButton channelButton;
     private EditBox routingPriorityBox;
 
@@ -146,6 +171,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private boolean isDraggingHandle;
     private int dragStartY;
     private int dragStartScrollOffset;
+
+    /** Main GUI priority/batch: unsent local edits until Apply (or Enter); discard reverts draft (tooltip Cancel). */
+    private boolean amountFieldsDirty;
+    private boolean syncingAmountBoxFromServer;
+    private int amountGuiNodeModeCached = -1;
 
     private static final class ExampleData {
         final String example;
@@ -220,6 +250,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     openFilterSubview(SubView.DENY_FILTERS);
                 })
                 .bounds(this.leftPos + CENTER_X, this.topPos + ROW1_Y, ROW_BTN_W, BTN_H)
+                .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.deny_list.tooltip")))
                 .build();
         addRenderableWidget(denyNavButton);
 
@@ -232,7 +263,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         this.topPos + ROW1_Y,
                         ROW_BTN_W,
                         BTN_H)
-                .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.list_logic.tooltip")))
                 .build();
         addRenderableWidget(listLogicButton);
 
@@ -245,6 +275,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         this.topPos + ROW1_Y,
                         ROW_BTN_W,
                         BTN_H)
+                .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_list.tooltip")))
                 .build();
         addRenderableWidget(allowNavButton);
 
@@ -253,27 +284,67 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
                 .build();
         addRenderableWidget(routingModeButton);
-        r2x += ROW_BTN_W + ROW_GAP;
-        int midX = r2x;
-        int stepperW = 11;
-        int innerGap = 2;
-        int editW = ROW_BTN_W - 2 * stepperW - 2 * innerGap;
-        routingMinusButton = Button.builder(Component.literal("-"), b -> adjustRoutingPriority(-1))
-                .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, stepperW, BTN_H)
-                .build();
+
+        routingMinusButton =
+                Button.builder(Component.literal("-"), b -> adjustAmountField(-1))
+                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+                        .tooltip(
+                                Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.minus.tooltip")))
+                        .build();
         addRenderableWidget(routingMinusButton);
-        r2x += stepperW + innerGap;
-        routingPriorityBox = new EditBox(this.font, this.leftPos + r2x, this.topPos + ROW2_Y, editW, BTN_H, Component.empty());
+        routingPriorityBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.empty());
         routingPriorityBox.setMaxLength(6);
+        routingPriorityBox.setResponder(s -> {
+            if (!syncingAmountBoxFromServer) {
+                amountFieldsDirty = true;
+            }
+        });
+        syncingAmountBoxFromServer = true;
         routingPriorityBox.setValue("0");
+        syncingAmountBoxFromServer = false;
         addRenderableWidget(routingPriorityBox);
-        r2x += editW + innerGap;
-        routingPlusButton = Button.builder(Component.literal("+"), b -> adjustRoutingPriority(1))
-                .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, stepperW, BTN_H)
-                .build();
+        routingPlusButton =
+                Button.builder(Component.literal("+"), b -> adjustAmountField(1))
+                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+                        .tooltip(
+                                Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.plus.tooltip")))
+                        .build();
         addRenderableWidget(routingPlusButton);
-        r2x = midX + ROW_BTN_W;
-        r2x += ROW_GAP;
+
+        amountDiscardButtonWidth =
+                8
+                        + this.font.width(
+                                Component.translatable(
+                                        "gui.another_dynamics.duct_node.filters.close_without_saving"));
+
+        amountClearButton =
+                Button.builder(Component.literal("0"), b -> amountClearField())
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.set_to_zero.tooltip")))
+                        .build();
+        addRenderableWidget(amountClearButton);
+        amountApplyButton =
+                Button.builder(Component.literal("A"), b -> amountApplyField())
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.apply")))
+                        .build();
+        addRenderableWidget(amountApplyButton);
+        amountMaxButton =
+                Button.builder(Component.literal("M"), b -> amountMaxField())
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.set_to_max.tooltip")))
+                        .build();
+        addRenderableWidget(amountMaxButton);
+        amountDiscardButton =
+                Button.builder(
+                                Component.translatable("gui.another_dynamics.duct_node.filters.close_without_saving"),
+                                b -> amountDiscardDraft())
+                        .bounds(0, 0, amountDiscardButtonWidth, BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.discard.tooltip")))
+                        .build();
+        addRenderableWidget(amountDiscardButton);
+
+        layoutAmountBlock();
 
         nodeModeButton = Button.builder(Component.empty(), b -> handleMenuButton(0))
                 .bounds(this.leftPos + CENTER_X, this.topPos + ROW3_Y, ROW_BTN_W, BTN_H)
@@ -397,6 +468,47 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return editModeFilterIndex >= 0;
     }
 
+    /** Repositions priority/quantity widgets when {@link NodeMode} toggles batch vs priority (M button slot). */
+    private void layoutAmountBlock() {
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        boolean showMax = nm.usesExtractBatchField();
+
+        int numericRowW = AMOUNT_STEPPER_W + AMOUNT_INNER_GAP + AMOUNT_EDIT_W + AMOUNT_INNER_GAP + AMOUNT_STEPPER_W;
+        int actionRowW = AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+        if (showMax) {
+            actionRowW += AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+        }
+        actionRowW += AMOUNT_BTN_GAP + amountDiscardButtonWidth;
+
+        int blockW = Math.max(numericRowW, actionRowW);
+        int blockGuiX = (TEXTURE_WIDTH - blockW) / 2;
+        int numericGuiX = blockGuiX + (blockW - numericRowW) / 2;
+        int actionGuiX = blockGuiX + (blockW - actionRowW) / 2;
+
+        int amX = this.leftPos + numericGuiX;
+        int amY = this.topPos + AMOUNT_ROW_Y;
+        routingMinusButton.setPosition(amX, amY);
+
+        int boxX = amX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        amountEditBoxGuiLeft = numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        routingPriorityBox.setPosition(boxX, amY);
+
+        int plusX = boxX + AMOUNT_EDIT_W + AMOUNT_INNER_GAP;
+        routingPlusButton.setPosition(plusX, amY);
+
+        int actY = amY + BTN_H + AMOUNT_ROWS_GAP;
+        int ax = this.leftPos + actionGuiX;
+        amountClearButton.setPosition(ax, actY);
+        ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+        amountApplyButton.setPosition(ax, actY);
+        ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+        if (showMax) {
+            amountMaxButton.setPosition(ax, actY);
+            ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+        }
+        amountDiscardButton.setPosition(ax, actY);
+    }
+
     private void applySubViewVisibility() {
         boolean main = subView == SubView.MAIN;
         boolean filterList = subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS;
@@ -410,6 +522,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         routingMinusButton.visible = main && !howto;
         routingPlusButton.visible = main && !howto;
         routingPriorityBox.visible = main && !howto;
+        amountClearButton.visible = main && !howto;
+        amountApplyButton.visible = main && !howto;
+        NodeMode amountNodeMode = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        amountMaxButton.visible = main && !howto && amountNodeMode.usesExtractBatchField();
+        amountDiscardButton.visible = main && !howto;
         nodeModeButton.visible = main && !howto;
         selfFeedStub.visible = main && !howto;
         renderingStub.visible = main && !howto;
@@ -1021,22 +1138,55 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         menu.ensureClientFilterBufferSizes();
         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
         nodeModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.mode." + nm.name().toLowerCase()));
+        nodeModeButton.setTooltip(
+                Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.mode.tooltip." + nm.name().toLowerCase())));
         boolean routing = (menu.getSyncData().get(DuctMenuSync.FLAGS) & DuctMenuSync.FLAG_ROUTING_ACTIVE) != 0;
         routingModeButton.active = routing;
         if (routing) {
             RoutingMode rm = RoutingMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ROUTING_MODE));
             routingModeButton.setMessage(
                     Component.translatable("gui.another_dynamics.duct_node.routing." + rm.name().toLowerCase()));
+            routingModeButton.setTooltip(
+                    Tooltip.create(
+                            Component.translatable("gui.another_dynamics.duct_node.routing.tooltip." + rm.name().toLowerCase())));
         } else {
             routingModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.routing_unroutable"));
+            routingModeButton.setTooltip(
+                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.routing.tooltip.unroutable")));
         }
         boolean denyOver = menu.getSyncData().get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
         listLogicButton.setMessage(Component.literal(denyOver ? ">>>>>" : "<<<<<"));
+        listLogicButton.setTooltip(
+                Tooltip.create(
+                        Component.translatable(
+                                denyOver
+                                        ? "gui.another_dynamics.duct_node.list_logic.tooltip.deny_wins"
+                                        : "gui.another_dynamics.duct_node.list_logic.tooltip.allow_bypass")));
+
+        routingPriorityBox.setTooltip(
+                Tooltip.create(
+                        Component.translatable(
+                                nm.usesInsertionPriorityField()
+                                        ? "gui.another_dynamics.duct_node.amount.field.tooltip.priority"
+                                        : "gui.another_dynamics.duct_node.amount.field.tooltip.batch")));
 
         redstoneModeStub = menu.getSyncData().get(DuctMenuSync.REDSTONE_MODE);
         channelButton.setLetterValue(menu.getSyncData().get(DuctMenuSync.CHANNEL));
-        if (!routingPriorityBox.isFocused()) {
-            routingPriorityBox.setValue(Integer.toString(menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD)));
+
+        if (amountGuiNodeModeCached != nm.ordinal()) {
+            amountGuiNodeModeCached = nm.ordinal();
+            amountFieldsDirty = false;
+            layoutAmountBlock();
+            applySubViewVisibility();
+        }
+        if (!routingPriorityBox.isFocused() && !amountFieldsDirty) {
+            int v =
+                    nm.usesInsertionPriorityField()
+                            ? menu.getSyncData().get(DuctMenuSync.PRIORITY)
+                            : menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD);
+            syncingAmountBoxFromServer = true;
+            routingPriorityBox.setValue(Integer.toString(v));
+            syncingAmountBoxFromServer = false;
         }
 
         filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
@@ -1052,33 +1202,146 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return Direction.values()[Mth.clamp(o, 0, Direction.values().length - 1)];
     }
 
-    private void adjustRoutingPriority(int delta) {
-        playClickSound();
-        int v = parsePriority(routingPriorityBox.getValue());
-        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-        if (nm.usesInsertionPriorityField()) {
-            v += delta;
-        } else {
-            v = Math.max(0, Math.min(999_999, v + delta));
-        }
-        routingPriorityBox.setValue(Integer.toString(v));
-        ModNetwork.sendFieldUpdate(menuSyncedPos(), menuSyncedFace(), v);
+    private int syncedInsertionPriority() {
+        return menu.getSyncData().get(DuctMenuSync.PRIORITY);
     }
 
-    private void commitFieldFromEditBox() {
-        int v = parsePriority(routingPriorityBox.getValue());
-        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-        if (nm.usesExtractBatchField()) {
-            v = Math.max(0, v);
+    private int syncedExtractBatch() {
+        return menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD);
+    }
+
+    /**
+     * Server-authoritative max configurable extract batch; before {@link DuctMenuSync#EXTRACT_BATCH_CAP} syncs, derives
+     * the same cap from registry + local upgrade slots (bonus currently zero until upgrade items exist).
+     */
+    private int syncedExtractBatchCap() {
+        int c = menu.getSyncData().get(DuctMenuSync.EXTRACT_BATCH_CAP);
+        if (c > 0) {
+            return c;
         }
-        ModNetwork.sendFieldUpdate(menuSyncedPos(), menuSyncedFace(), v);
+        int bonus = 0;
+        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
+            Slot s = menu.getSlot(i);
+            if (s != null && s.hasItem()) {
+                // Future: parse upgrade item stats (keep in sync with DuctBlockEntity#getExtractBatchUpgradeBonus).
+            }
+        }
+        return DuctDefinitionRegistry.itemDuctTransportSpec().extractBatchSettingCap(bonus);
+    }
+
+    private void pushAmountFields(int insertionPriority, int extractBatch) {
+        ModNetwork.sendFieldUpdate(menuSyncedPos(), menuSyncedFace(), insertionPriority, extractBatch);
+    }
+
+    private void adjustAmountField(int sign) {
+        playClickSound();
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        int priSynced = syncedInsertionPriority();
+        int batchSynced = syncedExtractBatch();
+        boolean coarse = hasControlDown() || hasAltDown();
+        if (nm.usesInsertionPriorityField()) {
+            int base = parsePriorityOr(routingPriorityBox.getValue(), priSynced);
+            int pri;
+            if (hasShiftDown()) {
+                pri = sign > 0 ? Integer.MAX_VALUE : Integer.MIN_VALUE;
+            } else {
+                pri =
+                        (int)
+                                Mth.clamp(
+                                        (long) base + (long) sign * (coarse ? AMOUNT_COARSE_STEP : 1L),
+                                        Integer.MIN_VALUE,
+                                        Integer.MAX_VALUE);
+            }
+            syncingAmountBoxFromServer = true;
+            routingPriorityBox.setValue(Integer.toString(pri));
+            syncingAmountBoxFromServer = false;
+        } else {
+            int base = parsePriorityOr(routingPriorityBox.getValue(), batchSynced);
+            int cap = syncedExtractBatchCap();
+            int batch;
+            if (hasShiftDown()) {
+                batch = sign > 0 ? cap : 0;
+            } else {
+                int step = coarse ? AMOUNT_COARSE_STEP : 1;
+                batch = Mth.clamp(base + sign * step, 0, cap);
+            }
+            syncingAmountBoxFromServer = true;
+            routingPriorityBox.setValue(Integer.toString(batch));
+            syncingAmountBoxFromServer = false;
+        }
+        amountFieldsDirty = true;
+    }
+
+    /** Pushes priority + batch from the amount EditBox and server-paired field; clears dirty. */
+    private void commitFieldFromEditBox() {
+        int typed = parsePriority(routingPriorityBox.getValue());
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        int pri = syncedInsertionPriority();
+        int batch = syncedExtractBatch();
+        if (nm.usesInsertionPriorityField()) {
+            pri = typed;
+        } else {
+            batch = Mth.clamp(typed, 0, syncedExtractBatchCap());
+        }
+        pushAmountFields(pri, batch);
+        amountFieldsDirty = false;
+    }
+
+    private void amountClearField() {
+        playClickSound();
+        syncingAmountBoxFromServer = true;
+        routingPriorityBox.setValue("0");
+        syncingAmountBoxFromServer = false;
+        amountFieldsDirty = true;
+    }
+
+    private void amountMaxField() {
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        if (!nm.usesExtractBatchField()) {
+            return;
+        }
+        playClickSound();
+        syncingAmountBoxFromServer = true;
+        routingPriorityBox.setValue(Integer.toString(syncedExtractBatchCap()));
+        syncingAmountBoxFromServer = false;
+        amountFieldsDirty = true;
+    }
+
+    private void amountApplyField() {
+        playClickSound();
+        commitFieldFromEditBox();
+    }
+
+    private void revertAmountDraft(boolean defocus) {
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        int v =
+                nm.usesInsertionPriorityField()
+                        ? syncedInsertionPriority()
+                        : syncedExtractBatch();
+        syncingAmountBoxFromServer = true;
+        routingPriorityBox.setValue(Integer.toString(v));
+        syncingAmountBoxFromServer = false;
+        amountFieldsDirty = false;
+        if (defocus) {
+            routingPriorityBox.setFocused(false);
+        }
+    }
+
+    /** Revert unsent amount/priority edits and defocus (same as old ✕; tooltip {@code amount.discard.tooltip} = Cancel). */
+    private void amountDiscardDraft() {
+        playClickSound();
+        revertAmountDraft(true);
     }
 
     private static int parsePriority(String s) {
+        return parsePriorityOr(s, 0);
+    }
+
+    private static int parsePriorityOr(String s, int fallback) {
         try {
             return Integer.parseInt(s.trim());
         } catch (NumberFormatException e) {
-            return 0;
+            return fallback;
         }
     }
 
@@ -1398,6 +1661,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return true;
         }
 
+        if (subView == SubView.MAIN
+                && !inEditMode()
+                && keyCode == GLFW.GLFW_KEY_M) {
+            NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+            if (nm.usesExtractBatchField()) {
+                amountMaxField();
+                return true;
+            }
+        }
+
         boolean editFilterFocused = editModeTextBox != null && editModeTextBox.isFocused();
         boolean esc = keyCode == InputConstants.KEY_ESCAPE;
         boolean inv =
@@ -1570,6 +1843,19 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int titleX = (this.imageWidth - titleWidth) / 2;
         /* Foreground: coordinates are relative—AbstractContainerScreen applies leftPos/topPos on the pose stack. */
         graphics.drawString(this.font, titleComponent, titleX, 7, 0x404040, false);
+
+        if (subView == SubView.MAIN) {
+            NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+            Component amountLabel =
+                    Component.translatable(
+                            nm.usesInsertionPriorityField()
+                                    ? "gui.another_dynamics.duct_node.amount.label.priority"
+                                    : "gui.another_dynamics.duct_node.amount.label.batch");
+            int lw = this.font.width(amountLabel);
+            int labelX = amountEditBoxGuiLeft + (AMOUNT_EDIT_W - lw) / 2;
+            int labelY = AMOUNT_ROW_Y - this.font.lineHeight - AMOUNT_LABEL_ABOVE_GAP;
+            graphics.drawString(this.font, amountLabel, labelX, labelY, 0x404040, false);
+        }
 
         if (subView == SubView.HOW_TO_USE) {
             exampleDataList.clear();

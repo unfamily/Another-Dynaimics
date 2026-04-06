@@ -31,6 +31,18 @@ public record DuctItemTransportSpec(
         return Math.min(Math.max(0, requested), max);
     }
 
+    /**
+     * Max extract/retrieve batch the player may configure: {@code batchDefault + upgradeBonus}, then limited by datapack
+     * {@code batch.max} when that value is non-negative; when {@code batch.max} is negative, only default + bonus applies.
+     */
+    public int extractBatchSettingCap(int upgradeBonus) {
+        int base = batchDefault + upgradeBonus;
+        if (batchMax < 0) {
+            return Math.max(1, base);
+        }
+        return Math.max(1, Math.min(batchMax, base));
+    }
+
     public int clampedRateTicks(int requested) {
         int r = requested <= 0 ? rateDefaultTicks : requested;
         return Math.max(rateMinTicks, r);

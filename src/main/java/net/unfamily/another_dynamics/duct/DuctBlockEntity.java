@@ -24,6 +24,7 @@ import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
 import net.unfamily.another_dynamics.duct.logistics.DuctTargetSelector;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
+import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 
@@ -539,7 +540,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
             return;
         }
-        int batch = effectiveExtractBatch(spec, node);
+        int batch = effectiveExtractBatch(spec, node, face);
         int avail = DuctCapHelper.countExtractableMatchingOnFace(level, worldPosition, face, probe.get(), batch);
         int plannedCount = Math.min(batch, Math.min(probe.get().getMaxStackSize(), avail));
         if (plannedCount <= 0) {
@@ -585,7 +586,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!passesItemFilters(retrieverFace, donorProbe.get(), level)) {
             return;
         }
-        int batch = effectiveExtractBatch(spec, node);
+        int batch = effectiveExtractBatch(spec, node, retrieverFace);
         int avail = DuctCapHelper.countExtractableMatchingOnFace(level, donor, donorFace, donorProbe.get(), batch);
         int plannedCount = Math.min(batch, Math.min(donorProbe.get().getMaxStackSize(), avail));
         if (plannedCount <= 0) {
@@ -647,17 +648,40 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 new ItemEntity(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, stack));
     }
 
-    private int effectiveExtractBatch(DuctItemTransportSpec spec, DuctFaceNode node) {
-        int req = node.amountField <= 0 ? spec.batchDefault() : node.amountField;
-        return spec.clampedBatch(req);
+    private int effectiveExtractBatch(DuctItemTransportSpec spec, DuctFaceNode node, Direction face) {
+        int req = node.extractBatch <= 0 ? spec.batchDefault() : node.extractBatch;
+        int cap = computeExtractBatchSettingCap(face);
+        return Math.min(Math.max(0, req), cap);
+    }
+
+    /**
+     * Maximum extract/retrieve batch the player may store on this face: {@code batch.default} plus upgrade bonuses,
+     * then limited by datapack {@code batch.max} when that value is {@code >= 0}. When {@code max} is negative,
+     * only default + upgrades applies (not unlimited).
+     */
+    public int computeExtractBatchSettingCap(Direction face) {
+        return DuctDefinitionRegistry.itemDuctTransportSpec().extractBatchSettingCap(getExtractBatchUpgradeBonus(face));
+    }
+
+    /** Per-face upgrade slots that raise extract batch; extend when upgrade items exist. */
+    private int getExtractBatchUpgradeBonus(Direction face) {
+        DuctFaceNode node = getFaceNode(face);
+        int bonus = 0;
+        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
+            if (!node.guiSlots.getStackInSlot(i).isEmpty()) {
+                // Future: parse upgrade item stats (e.g. +8 per tier).
+            }
+        }
+        return bonus;
     }
 
     public void refreshMenuData(Direction accessFace) {
         DuctFaceNode n = getFaceNode(accessFace);
         menuData.set(DuctMenuSync.NODE_MODE, n.nodeMode.ordinal());
         menuData.set(DuctMenuSync.ROUTING_MODE, n.routingMode.ordinal());
-        menuData.set(DuctMenuSync.PRIORITY, n.amountField);
-        menuData.set(DuctMenuSync.AMOUNT_FIELD, n.amountField);
+        menuData.set(DuctMenuSync.PRIORITY, n.insertionPriority);
+        menuData.set(DuctMenuSync.AMOUNT_FIELD, n.extractBatch);
+        menuData.set(DuctMenuSync.EXTRACT_BATCH_CAP, computeExtractBatchSettingCap(accessFace));
         menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
         menuData.set(DuctMenuSync.REDSTONE_MODE, n.redstoneMode);
         int flags = n.nodeMode.usesRouting() ? DuctMenuSync.FLAG_ROUTING_ACTIVE : 0;
@@ -741,7 +765,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         boolean changed =
                 switch (buttonId) {
                     case 0 -> {
-                        cycleNodeMode(node);
+                        cycleNodeMode(node, accessFace);
                         yield true;
                     }
                     case 1 -> {
@@ -773,10 +797,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return changed;
     }
 
-    private void cycleNodeMode(DuctFaceNode node) {
+    private void cycleNodeMode(DuctFaceNode node, Direction accessFace) {
         NodeMode[] v = NodeMode.values();
         node.nodeMode = v[(node.nodeMode.ordinal() + 1) % v.length];
-        onModeChanged(node);
+        onModeChanged(node, accessFace);
     }
 
     private void cycleRoutingMode(DuctFaceNode node) {
@@ -784,17 +808,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         node.routingMode = v[(node.routingMode.ordinal() + 1) % v.length];
     }
 
-    private void onModeChanged(DuctFaceNode node) {
+    private void onModeChanged(DuctFaceNode node, Direction face) {
         if (node.nodeMode.usesExtractBatchField()) {
             DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
-            if (node.amountField <= 0) {
-                node.amountField = spec.batchDefault();
+            if (node.extractBatch <= 0) {
+                node.extractBatch = spec.batchDefault();
             }
-            clampExtractAmount(node);
+            clampExtractAmount(node, face);
         }
     }
 
-    public void applyClientFieldUpdate(Direction accessFace, int value) {
+    public void applyClientFieldUpdate(Direction accessFace, int insertionPriority, int extractBatch) {
         if (level == null || level.isClientSide) {
             return;
         }
@@ -802,20 +826,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         DuctFaceNode node = getFaceNode(accessFace);
-        if (node.nodeMode.usesInsertionPriorityField()) {
-            node.amountField = value;
-        } else if (node.nodeMode.usesExtractBatchField()) {
-            node.amountField = Math.max(0, value);
-            clampExtractAmount(node);
-        }
+        node.insertionPriority = insertionPriority;
+        node.extractBatch = Math.max(0, extractBatch);
+        clampExtractAmount(node, accessFace);
         setChanged();
         refreshMenuData(accessFace);
     }
 
-    private void clampExtractAmount(DuctFaceNode node) {
-        DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
-        int maxAllowed = spec.batchMax() < 0 ? Integer.MAX_VALUE : Math.max(1, spec.batchMax());
-        node.amountField = Math.min(node.amountField, maxAllowed);
+    private void clampExtractAmount(DuctFaceNode node, Direction face) {
+        int cap = computeExtractBatchSettingCap(face);
+        node.extractBatch = Math.min(Math.max(0, node.extractBatch), cap);
     }
 
     private void enforcePipeSegmentBehavior() {
@@ -830,7 +850,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             DuctFaceNode n = getFaceNode(dir);
-            if (n.nodeMode == NodeMode.NONE && n.amountField == 0 && n.roundRobinCursor == 0) {
+            if (n.nodeMode == NodeMode.NONE
+                    && n.insertionPriority == 0
+                    && n.extractBatch == 0
+                    && n.roundRobinCursor == 0) {
                 continue;
             }
             n.resetPipeSegmentDefaults();
@@ -864,7 +887,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (n.nodeMode != NodeMode.NONE) {
             return true;
         }
-        if (n.amountField != 0 || n.roundRobinCursor != 0 || n.ticksUntilAction != 0) {
+        if (n.insertionPriority != 0
+                || n.extractBatch != 0
+                || n.roundRobinCursor != 0
+                || n.ticksUntilAction != 0) {
             return true;
         }
         if (n.redstoneMode != 0) {

@@ -32,7 +32,9 @@ public final class ModNetwork {
             ByteBufCodecs.VAR_INT,
             DuctFieldPayload::faceOrdinal,
             ByteBufCodecs.INT,
-            DuctFieldPayload::value,
+            DuctFieldPayload::insertionPriority,
+            ByteBufCodecs.INT,
+            DuctFieldPayload::extractBatch,
             DuctFieldPayload::new);
 
     private ModNetwork() {}
@@ -55,7 +57,8 @@ public final class ModNetwork {
                         > 8 * 8) {
                     return;
                 }
-                duct.applyClientFieldUpdate(Direction.values()[fo], payload.value());
+                duct.applyClientFieldUpdate(
+                        Direction.values()[fo], payload.insertionPriority(), payload.extractBatch());
             });
         });
 
@@ -125,8 +128,8 @@ public final class ModNetwork {
         return player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 8 * 8;
     }
 
-    public static void sendFieldUpdate(BlockPos pos, Direction face, int value) {
-        PacketDistributor.sendToServer(new DuctFieldPayload(pos, face.ordinal(), value));
+    public static void sendFieldUpdate(BlockPos pos, Direction face, int insertionPriority, int extractBatch) {
+        PacketDistributor.sendToServer(new DuctFieldPayload(pos, face.ordinal(), insertionPriority, extractBatch));
     }
 
     public static void sendFilterUpdate(
@@ -155,7 +158,8 @@ public final class ModNetwork {
                         node.denyOverridesAllow));
     }
 
-    public record DuctFieldPayload(BlockPos pos, int faceOrdinal, int value) implements CustomPacketPayload {
+    public record DuctFieldPayload(BlockPos pos, int faceOrdinal, int insertionPriority, int extractBatch)
+            implements CustomPacketPayload {
         @Override
         public Type<? extends CustomPacketPayload> type() {
             return DUCT_FIELD;
