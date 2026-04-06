@@ -13,8 +13,9 @@ import java.util.Set;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.unfamily.another_dynamics.duct.DuctConnectable;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
-import net.unfamily.another_dynamics.duct.ItemDuctBlock;
+import net.unfamily.another_dynamics.duct.DuctNetworkType;
 
 /**
  * Shortest paths on the duct-only subgraph. Edge cost = {@link DuctItemTransportSpec} {@code speed}: ticks to
@@ -29,9 +30,9 @@ public final class DuctPathfinder {
         return Math.max(1L, ticks);
     }
 
-    public static Set<BlockPos> connectedDucts(Level level, BlockPos start) {
+    public static Set<BlockPos> connectedDucts(Level level, BlockPos start, DuctNetworkType network) {
         Set<BlockPos> out = new HashSet<>();
-        if (!(level.getBlockState(start).getBlock() instanceof ItemDuctBlock)) {
+        if (!DuctConnectable.isSameNetwork(level.getBlockState(start).getBlock(), network)) {
             return out;
         }
         ArrayList<BlockPos> q = new ArrayList<>();
@@ -43,7 +44,7 @@ public final class DuctPathfinder {
                 if (out.contains(n)) {
                     continue;
                 }
-                if (level.getBlockState(n).getBlock() instanceof ItemDuctBlock) {
+                if (DuctConnectable.isSameNetwork(level.getBlockState(n).getBlock(), network)) {
                     out.add(n);
                     q.add(n);
                 }
@@ -65,11 +66,12 @@ public final class DuctPathfinder {
     /**
      * Dijkstra from {@code from} to {@code to} (both must be ducts). Edge weight = travel ticks per hop.
      */
-    public static Optional<List<BlockPos>> shortestPath(Level level, BlockPos from, BlockPos to, DuctItemTransportSpec spec) {
-        if (!from.equals(to) && !(level.getBlockState(from).getBlock() instanceof ItemDuctBlock)) {
+    public static Optional<List<BlockPos>> shortestPath(
+            Level level, BlockPos from, BlockPos to, DuctItemTransportSpec spec, DuctNetworkType network) {
+        if (!from.equals(to) && !DuctConnectable.isSameNetwork(level.getBlockState(from).getBlock(), network)) {
             return Optional.empty();
         }
-        if (!(level.getBlockState(to).getBlock() instanceof ItemDuctBlock)) {
+        if (!DuctConnectable.isSameNetwork(level.getBlockState(to).getBlock(), network)) {
             return Optional.empty();
         }
         long w = edgeTravelTicks(spec);
@@ -88,7 +90,7 @@ public final class DuctPathfinder {
                 break;
             }
             for (BlockPos n : neighbors6(cur.p)) {
-                if (!(level.getBlockState(n).getBlock() instanceof ItemDuctBlock)) {
+                if (!DuctConnectable.isSameNetwork(level.getBlockState(n).getBlock(), network)) {
                     continue;
                 }
                 long nd = cur.d + w;
@@ -131,8 +133,8 @@ public final class DuctPathfinder {
     }
 
     /** Effective distance from {@code from} to {@code to} (sum of edge costs), or empty if unreachable. */
-    public static OptionalLong distance(Level level, BlockPos from, BlockPos to, DuctItemTransportSpec spec) {
-        Optional<List<BlockPos>> path = shortestPath(level, from, to, spec);
+    public static OptionalLong distance(Level level, BlockPos from, BlockPos to, DuctItemTransportSpec spec, DuctNetworkType network) {
+        Optional<List<BlockPos>> path = shortestPath(level, from, to, spec, network);
         if (path.isEmpty()) {
             return OptionalLong.empty();
         }

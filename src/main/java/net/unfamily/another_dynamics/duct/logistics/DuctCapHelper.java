@@ -14,11 +14,172 @@ import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.ItemDuctBlockEntity;
 
+import org.jetbrains.annotations.Nullable;
+
 /**
- * ItemHandler access for ducts facing external storage.
+ * ItemHandler access for ducts facing external storage (all faces or one face).
  */
 public final class DuctCapHelper {
     private DuctCapHelper() {}
+
+    @Nullable
+    public static IItemHandler getHandlerOnFace(Level level, BlockPos ductPos, Direction ductOutwardFace) {
+        BlockPos adj = ductPos.relative(ductOutwardFace);
+        return level.getCapability(Capabilities.ItemHandler.BLOCK, adj, ductOutwardFace.getOpposite());
+    }
+
+    public static ItemStack insertIntoFace(
+            Level level, BlockPos ductPos, Direction ductOutwardFace, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        IItemHandler h = getHandlerOnFace(level, ductPos, ductOutwardFace);
+        if (h == null) {
+            return stack.copy();
+        }
+        return ItemHandlerHelper.insertItemStacked(h, stack.copy(), false);
+    }
+
+    public static Optional<ItemStack> simulateExtractOneOnFace(Level level, BlockPos ductPos, Direction face) {
+        IItemHandler h = getHandlerOnFace(level, ductPos, face);
+        if (h == null) {
+            return Optional.empty();
+        }
+        for (int slot = 0; slot < h.getSlots(); slot++) {
+            ItemStack sim = h.extractItem(slot, 1, true);
+            if (!sim.isEmpty()) {
+                return Optional.of(sim);
+            }
+        }
+        return Optional.empty();
+    }
+
+    public static boolean canInsertIntoFace(Level level, BlockPos ductPos, Direction face, ItemStack probe) {
+        if (probe.isEmpty()) {
+            return true;
+        }
+        IItemHandler h = getHandlerOnFace(level, ductPos, face);
+        if (h == null) {
+            return false;
+        }
+        ItemStack sim = ItemHandlerHelper.insertItemStacked(copyHandlerForSimulation(h), probe.copy(), true);
+        return sim.isEmpty();
+    }
+
+    public static int countExtractableMatchingOnFace(
+            Level level, BlockPos ductPos, Direction face, ItemStack template, int max) {
+        if (max <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        IItemHandler h = getHandlerOnFace(level, ductPos, face);
+        if (h == null) {
+            return 0;
+        }
+        int total = 0;
+        for (int slot = 0; slot < h.getSlots(); slot++) {
+            ItemStack inSlot = h.getStackInSlot(slot);
+            if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
+                continue;
+            }
+            int want = max - total;
+            if (want <= 0) {
+                return max;
+            }
+            ItemStack sim = h.extractItem(slot, want, true);
+            if (!sim.isEmpty()) {
+                total += sim.getCount();
+                if (total >= max) {
+                    return max;
+                }
+            }
+        }
+        return total;
+    }
+
+    public static ItemStack extractMatchingUpToOnFace(
+            Level level, BlockPos ductPos, Direction face, ItemStack template, int maxCount) {
+        if (maxCount <= 0 || template.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        IItemHandler h = getHandlerOnFace(level, ductPos, face);
+        if (h == null) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack result = ItemStack.EMPTY;
+        int need = maxCount;
+        for (int slot = 0; slot < h.getSlots(); slot++) {
+            ItemStack inSlot = h.getStackInSlot(slot);
+            if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
+                continue;
+            }
+            int take = Math.min(need, inSlot.getCount());
+            if (take <= 0) {
+                continue;
+            }
+            ItemStack ex = h.extractItem(slot, take, false);
+            if (ex.isEmpty()) {
+                continue;
+            }
+            if (result.isEmpty()) {
+                result = ex;
+            } else {
+                result.grow(ex.getCount());
+            }
+            need -= ex.getCount();
+            if (need <= 0) {
+                return result;
+            }
+        }
+        return result;
+    }
+
+    public static int maxInsertableAfterPendingOnFace(
+            Level level,
+            BlockPos ductPos,
+            Direction face,
+            ItemStack template,
+            int limit,
+            List<ItemStack> priorPending) {
+        if (limit <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        IItemHandler h = getHandlerOnFace(level, ductPos, face);
+        if (h == null) {
+            return 0;
+        }
+        ItemStackHandler v = copyHandlerForSimulation(h);
+        for (ItemStack p : priorPending) {
+            if (p.isEmpty()) {
+                continue;
+            }
+            ItemStack rem = p.copy();
+            rem = ItemHandlerHelper.insertItemStacked(v, rem, false);
+            if (!rem.isEmpty()) {
+                return 0;
+            }
+        }
+        int cap = Math.min(limit, template.getMaxStackSize());
+        int lo = 0;
+        int hi = cap;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) / 2;
+            ItemStackHandler trial = copyHandlerForSimulation(h);
+            for (ItemStack p : priorPending) {
+                if (!p.isEmpty()) {
+                    ItemHandlerHelper.insertItemStacked(trial, p.copy(), false);
+                }
+            }
+            ItemStack test = template.copy();
+            test.setCount(mid);
+            ItemStack left = ItemHandlerHelper.insertItemStacked(trial, test, false);
+            if (left.isEmpty()) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return lo;
+    }
 
     public static ItemStack insertIntoStorageFaces(Level level, BlockPos ductPos, ItemDuctBlockEntity duct, ItemStack stack) {
         if (stack.isEmpty()) {
@@ -120,9 +281,126 @@ public final class DuctCapHelper {
     }
 
     /**
-     * Whether stacks can be inserted one after another through the same face order as
-     * {@link #insertIntoStorageFaces}, using cloned handlers so the real world is untouched.
+     * How many items matching {@code template} (same item + components) could be extracted from attached storage, up to {@code max}.
      */
+    public static int countExtractableMatching(
+            Level level, BlockPos ductPos, ItemDuctBlockEntity duct, ItemStack template, int max) {
+        if (max <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
+        int mask = duct.getStorageMask();
+        for (Direction dir : Direction.values()) {
+            if ((mask & (1 << dir.ordinal())) == 0) {
+                continue;
+            }
+            BlockPos adj = ductPos.relative(dir);
+            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            if (h == null) {
+                continue;
+            }
+            for (int slot = 0; slot < h.getSlots(); slot++) {
+                ItemStack inSlot = h.getStackInSlot(slot);
+                if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
+                    continue;
+                }
+                int want = max - total;
+                if (want <= 0) {
+                    return max;
+                }
+                ItemStack sim = h.extractItem(slot, want, true);
+                if (!sim.isEmpty()) {
+                    total += sim.getCount();
+                    if (total >= max) {
+                        return max;
+                    }
+                }
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Extract up to {@code maxCount} items matching {@code template} from attached storage (same item + components).
+     */
+    public static ItemStack extractMatchingUpTo(
+            Level level, BlockPos ductPos, ItemDuctBlockEntity duct, ItemStack template, int maxCount) {
+        if (maxCount <= 0 || template.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack result = ItemStack.EMPTY;
+        int need = maxCount;
+        int mask = duct.getStorageMask();
+        for (Direction dir : Direction.values()) {
+            if ((mask & (1 << dir.ordinal())) == 0) {
+                continue;
+            }
+            BlockPos adj = ductPos.relative(dir);
+            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            if (h == null) {
+                continue;
+            }
+            for (int slot = 0; slot < h.getSlots(); slot++) {
+                ItemStack inSlot = h.getStackInSlot(slot);
+                if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
+                    continue;
+                }
+                int take = Math.min(need, inSlot.getCount());
+                if (take <= 0) {
+                    continue;
+                }
+                ItemStack ex = h.extractItem(slot, take, false);
+                if (ex.isEmpty()) {
+                    continue;
+                }
+                if (result.isEmpty()) {
+                    result = ex;
+                } else {
+                    result.grow(ex.getCount());
+                }
+                need -= ex.getCount();
+                if (need <= 0) {
+                    return result;
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Max count (0..{@code limit}) for {@code template} inserted <strong>after</strong> {@code priorPending} in one sequential pass.
+     */
+    public static int maxInsertableAfterPending(
+            Level level,
+            BlockPos ductPos,
+            ItemDuctBlockEntity duct,
+            ItemStack template,
+            int limit,
+            List<ItemStack> priorPending) {
+        if (limit <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        int cap = Math.min(limit, template.getMaxStackSize());
+        int lo = 0;
+        int hi = cap;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) / 2;
+            List<ItemStack> order = new ArrayList<>(priorPending.size() + 1);
+            for (ItemStack p : priorPending) {
+                order.add(p.copy());
+            }
+            ItemStack last = template.copy();
+            last.setCount(mid);
+            order.add(last);
+            if (canInsertStacksSequentially(level, ductPos, duct, order)) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return lo;
+    }
+
     public static boolean canInsertStacksSequentially(
             Level level, BlockPos ductPos, ItemDuctBlockEntity duct, List<ItemStack> stacks) {
         if (stacks.isEmpty()) {

@@ -14,8 +14,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 /**
- * Tracks stacks currently in transit toward a destination duct (RAM only). Used for capacity checks;
- * {@link net.unfamily.another_dynamics.duct.ItemDuctBlockEntity} persists the actual buffers.
+ * Tracks reserved incoming amounts toward a destination duct (RAM only). Used with planned-only transfers:
+ * items stay in source storage until delivery; this index prevents oversubscribing destination space.
  */
 public final class DuctIncomingIndex {
     private static final Map<ResourceKey<Level>, Map<BlockPos, List<ItemStack>>> BY_DIMENSION =

@@ -8,28 +8,35 @@ import java.util.OptionalLong;
 import java.util.Set;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
+import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.ItemDuctBlockEntity;
+import net.unfamily.another_dynamics.duct.ItemDuctFaceNode;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 
 /**
- * Picks a target duct and path for extraction (to network consumers) or retrieving (from donors to self).
+ * Picks a target duct face and path for extraction (to network consumers) or retrieving (from donors to self).
  */
 public final class DuctTargetSelector {
     private DuctTargetSelector() {}
 
-    public static Optional<List<BlockPos>> selectExtractionDelivery(
+    public record ExtractionRouting(List<BlockPos> path, Direction destStorageFace) {}
+
+    public record RetrieverRouting(List<BlockPos> path, BlockPos donorPos, Direction donorStorageFace) {}
+
+    public static Optional<ExtractionRouting> selectExtractionDelivery(
             ServerLevel level,
             BlockPos extractorPos,
             ItemStack probe,
             RoutingMode routing,
             int[] roundRobinState) {
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
-        Set<BlockPos> net = DuctPathfinder.connectedDucts(level, extractorPos);
+        Set<BlockPos> net = DuctPathfinder.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
         List<Candidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
             if (p.equals(extractorPos)) {
@@ -38,21 +45,25 @@ public final class DuctTargetSelector {
             if (!(level.getBlockEntity(p) instanceof ItemDuctBlockEntity be)) {
                 continue;
             }
-            if (be.getStorageMask() == 0) {
-                continue;
+            int sm = be.getStorageMask();
+            for (Direction d : Direction.values()) {
+                if ((sm & (1 << d.ordinal())) == 0) {
+                    continue;
+                }
+                ItemDuctFaceNode node = be.getFaceNode(d);
+                NodeMode m = node.nodeMode;
+                if (m != NodeMode.NONE && m != NodeMode.FILTERING_INSERTION) {
+                    continue;
+                }
+                if (!DuctCapHelper.canInsertIntoFace(level, p, d, probe)) {
+                    continue;
+                }
+                OptionalLong dist = DuctPathfinder.distance(level, extractorPos, p, spec, DuctNetworkType.ITEM);
+                if (dist.isEmpty()) {
+                    continue;
+                }
+                cands.add(new Candidate(p, d, node.amountField, dist.getAsLong()));
             }
-            NodeMode m = be.getNodeMode();
-            if (m != NodeMode.NONE && m != NodeMode.FILTERING_INSERTION) {
-                continue;
-            }
-            if (!DuctCapHelper.canInsertIntoStorageFaces(level, p, be, probe)) {
-                continue;
-            }
-            OptionalLong dist = DuctPathfinder.distance(level, extractorPos, p, spec);
-            if (dist.isEmpty()) {
-                continue;
-            }
-            cands.add(new Candidate(p, be.getAmountField(), dist.getAsLong()));
         }
         if (cands.isEmpty()) {
             return Optional.empty();
@@ -65,24 +76,27 @@ public final class DuctTargetSelector {
                 tier.add(c);
             }
         }
-        BlockPos pick = pickWithinTier(level, extractorPos, tier, routing, roundRobinState);
+        Candidate pick = pickWithinTier(level, extractorPos, tier, routing, roundRobinState);
         if (pick == null) {
             return Optional.empty();
         }
-        return DuctPathfinder.shortestPath(level, extractorPos, pick, spec);
+        Optional<List<BlockPos>> path =
+                DuctPathfinder.shortestPath(level, extractorPos, pick.ductPos, spec, DuctNetworkType.ITEM);
+        return path.map(positions -> new ExtractionRouting(positions, pick.face));
     }
 
-    public static Optional<List<BlockPos>> selectRetrievingDonorPath(
+    public static Optional<RetrieverRouting> selectRetrievingDonorPath(
             ServerLevel level,
             BlockPos retrieverPos,
+            Direction retrieverInventoryFace,
             RoutingMode routing,
             int[] roundRobinState) {
         if (!(level.getBlockEntity(retrieverPos) instanceof ItemDuctBlockEntity retriever)) {
             return Optional.empty();
         }
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
-        Set<BlockPos> net = DuctPathfinder.connectedDucts(level, retrieverPos);
-        List<Candidate> cands = new ArrayList<>();
+        Set<BlockPos> net = DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
+        List<DonorCandidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
             if (p.equals(retrieverPos)) {
                 continue;
@@ -90,44 +104,51 @@ public final class DuctTargetSelector {
             if (!(level.getBlockEntity(p) instanceof ItemDuctBlockEntity be)) {
                 continue;
             }
-            if (be.getStorageMask() == 0) {
-                continue;
+            int sm = be.getStorageMask();
+            for (Direction d : Direction.values()) {
+                if ((sm & (1 << d.ordinal())) == 0) {
+                    continue;
+                }
+                Optional<ItemStack> sample = DuctCapHelper.simulateExtractOneOnFace(level, p, d);
+                if (sample.isEmpty()) {
+                    continue;
+                }
+                if (!DuctCapHelper.canInsertIntoFace(level, retrieverPos, retrieverInventoryFace, sample.get())) {
+                    continue;
+                }
+                OptionalLong dist = DuctPathfinder.distance(level, retrieverPos, p, spec, DuctNetworkType.ITEM);
+                if (dist.isEmpty()) {
+                    continue;
+                }
+                ItemDuctFaceNode node = be.getFaceNode(d);
+                cands.add(new DonorCandidate(p, d, node.amountField, dist.getAsLong()));
             }
-            Optional<ItemStack> sample = DuctCapHelper.simulateExtractOne(level, p, be);
-            if (sample.isEmpty()) {
-                continue;
-            }
-            if (!DuctCapHelper.canInsertIntoStorageFaces(level, retrieverPos, retriever, sample.get())) {
-                continue;
-            }
-            OptionalLong dist = DuctPathfinder.distance(level, retrieverPos, p, spec);
-            if (dist.isEmpty()) {
-                continue;
-            }
-            cands.add(new Candidate(p, be.getAmountField(), dist.getAsLong()));
         }
         if (cands.isEmpty()) {
             return Optional.empty();
         }
-        cands.sort(Comparator.comparingInt((Candidate c) -> c.priority).reversed());
+        cands.sort(Comparator.comparingInt((DonorCandidate c) -> c.priority).reversed());
         int maxP = cands.get(0).priority;
-        List<Candidate> tier = new ArrayList<>();
-        for (Candidate c : cands) {
+        List<DonorCandidate> tier = new ArrayList<>();
+        for (DonorCandidate c : cands) {
             if (c.priority == maxP) {
                 tier.add(c);
             }
         }
-        BlockPos donor = pickWithinTier(level, retrieverPos, tier, routing, roundRobinState);
-        if (donor == null) {
+        DonorCandidate pick = pickDonorWithinTier(level, retrieverPos, tier, routing, roundRobinState);
+        if (pick == null) {
             return Optional.empty();
         }
-        // path donor -> retriever (items flow along path toward retriever)
-        return DuctPathfinder.shortestPath(level, donor, retrieverPos, spec);
+        Optional<List<BlockPos>> path =
+                DuctPathfinder.shortestPath(level, pick.ductPos, retrieverPos, spec, DuctNetworkType.ITEM);
+        return path.map(positions -> new RetrieverRouting(positions, pick.ductPos, pick.face));
     }
 
-    private record Candidate(BlockPos pos, int priority, long dist) {}
+    private record Candidate(BlockPos ductPos, Direction face, int priority, long dist) {}
 
-    private static BlockPos pickWithinTier(
+    private record DonorCandidate(BlockPos ductPos, Direction face, int priority, long dist) {}
+
+    private static Candidate pickWithinTier(
             ServerLevel level,
             BlockPos origin,
             List<Candidate> tier,
@@ -137,8 +158,8 @@ public final class DuctTargetSelector {
             return null;
         }
         return switch (routing) {
-            case NEAREST_FIRST -> tier.stream().min(Comparator.comparingLong(c -> c.dist)).map(c -> c.pos).orElse(null);
-            case FARTHEST_FIRST -> tier.stream().max(Comparator.comparingLong(c -> c.dist)).map(c -> c.pos).orElse(null);
+            case NEAREST_FIRST -> tier.stream().min(Comparator.comparingLong(c -> c.dist)).orElse(null);
+            case FARTHEST_FIRST -> tier.stream().max(Comparator.comparingLong(c -> c.dist)).orElse(null);
             case MIDDLEST_FIRST -> {
                 double sum = 0;
                 for (Candidate c : tier) {
@@ -147,18 +168,58 @@ public final class DuctTargetSelector {
                 double mean = sum / tier.size();
                 yield tier.stream()
                         .min(Comparator.comparingDouble((Candidate c) -> Math.abs(c.dist - mean))
-                                .thenComparingLong(c -> c.pos.asLong()))
-                        .map(Candidate::pos)
+                                .thenComparingLong(c -> c.ductPos.asLong())
+                                .thenComparingInt(c -> c.face.ordinal()))
                         .orElse(null);
             }
             case ROUND_ROBIN -> {
-                tier.sort(Comparator.comparingLong(c -> c.pos.asLong()));
+                tier.sort(
+                        Comparator.comparingLong((Candidate c) -> c.ductPos.asLong())
+                                .thenComparingInt(c -> c.face.ordinal()));
                 int i = Math.floorMod(roundRobinState[0]++, tier.size());
-                yield tier.get(i).pos;
+                yield tier.get(i);
             }
             case RANDOM -> {
                 int i = level.random.nextInt(tier.size());
-                yield tier.get(i).pos;
+                yield tier.get(i);
+            }
+        };
+    }
+
+    private static DonorCandidate pickDonorWithinTier(
+            ServerLevel level,
+            BlockPos origin,
+            List<DonorCandidate> tier,
+            RoutingMode routing,
+            int[] roundRobinState) {
+        if (tier.isEmpty()) {
+            return null;
+        }
+        return switch (routing) {
+            case NEAREST_FIRST -> tier.stream().min(Comparator.comparingLong(c -> c.dist)).orElse(null);
+            case FARTHEST_FIRST -> tier.stream().max(Comparator.comparingLong(c -> c.dist)).orElse(null);
+            case MIDDLEST_FIRST -> {
+                double sum = 0;
+                for (DonorCandidate c : tier) {
+                    sum += c.dist;
+                }
+                double mean = sum / tier.size();
+                yield tier.stream()
+                        .min(Comparator.comparingDouble((DonorCandidate c) -> Math.abs(c.dist - mean))
+                                .thenComparingLong(c -> c.ductPos.asLong())
+                                .thenComparingInt(c -> c.face.ordinal()))
+                        .orElse(null);
+            }
+            case ROUND_ROBIN -> {
+                tier.sort(
+                        Comparator.comparingLong((DonorCandidate c) -> c.ductPos.asLong())
+                                .thenComparingInt(c -> c.face.ordinal()));
+                int i = Math.floorMod(roundRobinState[0]++, tier.size());
+                yield tier.get(i);
+            }
+            case RANDOM -> {
+                int i = level.random.nextInt(tier.size());
+                yield tier.get(i);
             }
         };
     }

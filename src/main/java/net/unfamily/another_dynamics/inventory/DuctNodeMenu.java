@@ -1,5 +1,6 @@
 package net.unfamily.another_dynamics.inventory;
 
+import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -18,12 +19,10 @@ import net.unfamily.another_dynamics.registry.ModMenuTypes;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Duct node GUI: machine slots (upgrades + copy settings) then player inventory.
- * Layout matches {@code textures/gui/background/node.png}; player grid origin (80, 158).
+ * Duct node GUI for one {@link Direction} face (independent node configuration per side).
  */
 public final class DuctNodeMenu extends AbstractContainerMenu {
     public static final int MACHINE_SLOTS = 6;
-    /** First five: upgrades (stacked left); index 5: copy settings (right column). */
     public static final int UPGRADE_SLOT_COUNT = 5;
     public static final int COPY_SETTINGS_SLOT = 5;
 
@@ -34,29 +33,28 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public static final int SLOT_UPGRADE_X = 14;
     public static final int SLOT_UPGRADE_Y0 = 32;
 
-    /** Right column: keep clear of close button (x=303). */
     public static final int SLOT_COPY_X = 278;
-    /** Below redstone button (32 + 16 + 4). */
     public static final int SLOT_COPY_Y = 52;
 
     private static final int REDSTONE_BUTTON_SIZE = 16;
-    /** Top of right column (redstone button). */
     public static final int REDSTONE_GUI_X = SLOT_COPY_X + (18 - REDSTONE_BUTTON_SIZE) / 2;
     public static final int REDSTONE_GUI_Y = 32;
 
     private final ContainerLevelAccess access;
     private final ContainerData syncData;
     private final @Nullable ItemDuctBlockEntity linkedBlockEntity;
+    private final Direction accessFace;
 
-    public DuctNodeMenu(int containerId, Inventory playerInventory, ItemDuctBlockEntity be) {
+    public DuctNodeMenu(int containerId, Inventory playerInventory, ItemDuctBlockEntity be, Direction accessFace) {
         this(
                 containerId,
                 playerInventory,
-                be.getNodeGuiSlots(),
+                be.getFaceNode(accessFace).guiSlots,
                 ContainerLevelAccess.create(be.getLevel(), be.getBlockPos()),
                 be.getMenuData(),
-                be);
-        be.refreshMenuData();
+                be,
+                accessFace);
+        be.refreshMenuData(accessFace);
     }
 
     public static DuctNodeMenu clientMenu(int containerId, Inventory playerInventory) {
@@ -66,7 +64,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 new ItemStackHandler(MACHINE_SLOTS),
                 ContainerLevelAccess.NULL,
                 new SimpleContainerData(DuctMenuSync.COUNT),
-                null);
+                null,
+                Direction.DOWN);
     }
 
     private DuctNodeMenu(
@@ -75,11 +74,13 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             ItemStackHandler nodeSlots,
             ContainerLevelAccess access,
             ContainerData syncData,
-            @Nullable ItemDuctBlockEntity linkedBlockEntity) {
+            @Nullable ItemDuctBlockEntity linkedBlockEntity,
+            Direction accessFace) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
         this.access = access;
         this.syncData = syncData;
         this.linkedBlockEntity = linkedBlockEntity;
+        this.accessFace = accessFace;
 
         for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
             int y = SLOT_UPGRADE_Y0 + i * 18;
@@ -89,6 +90,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
         addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
         addDataSlots(syncData);
+    }
+
+    public Direction getAccessFace() {
+        return accessFace;
     }
 
     public ContainerData getSyncData() {
@@ -122,7 +127,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         if (linkedBlockEntity == null || linkedBlockEntity.isRemoved()) {
             return false;
         }
-        return linkedBlockEntity.handleMenuButtonClick(player, id);
+        return linkedBlockEntity.handleMenuButtonClick(player, id, accessFace);
     }
 
     @Override

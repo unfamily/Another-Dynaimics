@@ -2,12 +2,13 @@ package net.unfamily.another_dynamics.client.gui;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
@@ -135,15 +136,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 .build());
         r2x = midX + ROW_BTN_W;
         r2x += ROW_GAP;
-        addRenderableWidget(Button.builder(Component.translatable("gui.another_dynamics.duct_node.dump"), b -> {
-                    playClickSound();
-                    if (minecraft != null && minecraft.gameMode != null) {
-                        int id = Screen.hasShiftDown() ? 7 : 6;
-                        minecraft.gameMode.handleInventoryButtonClick(menu.containerId, id);
-                    }
-                })
-                .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
-                .build());
 
         nodeModeButton = Button.builder(Component.empty(), b -> handleMenuButton(0))
                 .bounds(this.leftPos + CENTER_X, this.topPos + ROW3_Y, ROW_BTN_W, BTN_H)
@@ -210,6 +202,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return new BlockPos(d.get(DuctMenuSync.POS_X), d.get(DuctMenuSync.POS_Y), d.get(DuctMenuSync.POS_Z));
     }
 
+    private Direction menuSyncedFace() {
+        int o = menu.getSyncData().get(DuctMenuSync.ACCESS_FACE);
+        return Direction.values()[Mth.clamp(o, 0, Direction.values().length - 1)];
+    }
+
     private Button stubButton(int guiX, int guiY, int w, int h, String translationKey) {
         return Button.builder(Component.translatable(translationKey), b -> playClickSound())
                 .bounds(this.leftPos + guiX, this.topPos + guiY, w, h)
@@ -226,7 +223,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             v = Math.max(0, Math.min(999_999, v + delta));
         }
         routingPriorityBox.setValue(Integer.toString(v));
-        ModNetwork.sendFieldUpdate(menuSyncedPos(), v);
+        ModNetwork.sendFieldUpdate(menuSyncedPos(), menuSyncedFace(), v);
     }
 
     private void commitFieldFromEditBox() {
@@ -235,7 +232,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (nm.usesExtractBatchField()) {
             v = Math.max(0, v);
         }
-        ModNetwork.sendFieldUpdate(menuSyncedPos(), v);
+        ModNetwork.sendFieldUpdate(menuSyncedPos(), menuSyncedFace(), v);
     }
 
     private static int parsePriority(String s) {

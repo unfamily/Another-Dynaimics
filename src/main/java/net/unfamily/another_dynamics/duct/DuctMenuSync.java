@@ -14,7 +14,9 @@ public final class DuctMenuSync {
     public static final int POS_X = 7;
     public static final int POS_Y = 8;
     public static final int POS_Z = 9;
-    public static final int COUNT = 10;
+    /** {@link net.minecraft.core.Direction#ordinal()} for the GUI face (which side's node is being edited). */
+    public static final int ACCESS_FACE = 10;
+    public static final int COUNT = 11;
 
     /** FLAGS bit: routing row active (extractor-like modes). */
     public static final int FLAG_ROUTING_ACTIVE = 1;
