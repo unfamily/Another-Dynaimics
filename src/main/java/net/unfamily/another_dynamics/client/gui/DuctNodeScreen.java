@@ -10,6 +10,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -58,8 +59,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/redstone_gui.png");
     private static final ResourceLocation SINGLE_SLOT =
             ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/single_slot.png");
-    private static final ResourceLocation ENTRY_WIDE =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/entry_wide.png");
+    private static final ResourceLocation ENTRY_ROW_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/entry_duct.png");
     private static final ResourceLocation SCROLLBAR_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/scrollbar.png");
 
@@ -89,18 +90,24 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     /** Visible filter rows; scroll when there are more slots. */
     private static final int VISIBLE_FILTER_ENTRIES = 4;
 
-    private static final int ENTRY_WIDTH = 140;
+    /** Filter row background width; must match {@code entry_duct.png} (220px wide). */
+    private static final int ENTRY_WIDTH = 220;
     private static final int ENTRY_HEIGHT = 24;
     private static final int ENTRY_X = CENTER_X;
+    /** Horizontal inset for edit text field inside the entry column (narrows EditBox slightly). */
+    private static final int EDIT_MODE_TEXT_INSET_X = 10;
     /** Filter entries start directly under the title row (Back / Valid keys are below the list). */
     private static final int FIRST_FILTER_ROW_Y = ROW1_Y;
 
     private static final int SCROLLBAR_WIDTH = 8;
     private static final int SCROLLBAR_HEIGHT = 34;
     private static final int HANDLE_SIZE = 8;
-    /** Gap between last entry row and Back / Valid keys row. */
-    private static final int FILTER_NAV_GAP = 6;
-    /** Small gap between entry list and edit-mode (ghost slot) row. */
+    /** Gap between last entry row and Back / Valid keys row (tight vs {@link DuctNodeMenu#PLAYER_SLOTS_Y}). */
+    private static final int FILTER_NAV_GAP = 4;
+    /**
+     * Gap between last filter row (full {@link #ENTRY_HEIGHT}) and edit-mode block.
+     * Keep {@code FIRST_FILTER_ROW_Y + VISIBLE_FILTER_ENTRIES * ENTRY_HEIGHT + gap + edit block height} below {@link DuctNodeMenu#PLAYER_SLOTS_Y}.
+     */
     private static final int EDIT_MODE_GAP_BELOW_LIST = 4;
 
     private static final int SCROLLBAR_X_REL = ENTRY_X + ENTRY_WIDTH + 4;
@@ -108,9 +115,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private static final int SCROLLBAR_Y_REL = BUTTON_UP_Y_REL + HANDLE_SIZE;
     private static final int BUTTON_DOWN_Y_REL = SCROLLBAR_Y_REL + SCROLLBAR_HEIGHT;
 
-    private static final int HELP_TEXT_START_Y = 24;
-    private static final int HELP_TEXT_X = 8;
-    private static final int HELP_TEXT_LINE_HEIGHT = 12;
+    /** Left inset for Valid keys body text (inside panel border). */
+    private static final int HELP_TEXT_X = 14;
     private static final int HELP_BACK_BUTTON_X = 8;
     private static final int HELP_BACK_BUTTON_Y = TEXTURE_HEIGHT - 25;
 
@@ -172,6 +178,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private ItemStack ghostSlotItem = ItemStack.EMPTY;
     private List<String> filterVariants = new ArrayList<>();
     private int currentFilterVariantIndex = 0;
+
+    private int editGhostSlotScreenX;
+    private int editGhostSlotScreenY;
 
     public DuctNodeScreen(DuctNodeMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -412,10 +421,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         validKeysButton.visible = filterList && !edit && !howto;
 
         for (Button b : filterEditButtons) {
-            b.visible = filterList && !edit;
+            b.visible = filterList;
         }
         for (Button b : filterDeleteButtons) {
-            b.visible = filterList && !edit;
+            b.visible = filterList;
         }
 
         if (editModeTextBox != null) {
@@ -456,7 +465,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
 
         int maxSlots = currentFilterMaxSlots();
-        for (int i = 0; i < VISIBLE_FILTER_ENTRIES; i++) {
+        int vis = visibleFilterEntries();
+        for (int i = 0; i < vis; i++) {
             int filterIndex = filterScrollOffset + i;
             if (filterIndex >= maxSlots) {
                 break;
@@ -516,7 +526,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         this.filterScrollOffset = Mth.clamp(offset, 0, max);
         if (editModeFilterIndex >= 0) {
             int visibleIndex = editModeFilterIndex - filterScrollOffset;
-            if (visibleIndex < 0 || visibleIndex >= VISIBLE_FILTER_ENTRIES) {
+            if (visibleIndex < 0 || visibleIndex >= visibleFilterEntries()) {
                 exitEditMode(true);
             }
         }
@@ -615,20 +625,25 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return false;
     }
 
-    private int editModeInventoryStartX() {
-        return DuctNodeMenu.PLAYER_SLOTS_X;
-    }
-
     private int editModeSlotX() {
-        return this.leftPos + editModeInventoryStartX() + 18 - 1;
+        return editGhostSlotScreenX;
     }
 
     private int editModeSlotY() {
-        return this.topPos + FIRST_FILTER_ROW_Y + VISIBLE_FILTER_ENTRIES * ENTRY_HEIGHT + EDIT_MODE_GAP_BELOW_LIST;
+        return editGhostSlotScreenY;
+    }
+
+    /** Screen Y for the top of the ghost-slot row (below full-height visible list rows). */
+    private int editModeRowAnchorScreenY() {
+        return this.topPos
+                + FIRST_FILTER_ROW_Y
+                + VISIBLE_FILTER_ENTRIES * ENTRY_HEIGHT
+                + EDIT_MODE_GAP_BELOW_LIST;
     }
 
     private void enterEditMode(int index) {
         if (editModeFilterIndex == index) {
+            exitEditMode(true);
             return;
         }
         exitEditMode(false);
@@ -639,6 +654,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         originalFilterValue = list.get(index) != null ? list.get(index) : "";
         createEditModeUI();
+        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
     }
@@ -656,50 +672,50 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         removeEditModeUI();
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
+        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
     }
 
     private void createEditModeUI() {
         removeEditModeUI();
 
-        int inventoryStartX = editModeInventoryStartX();
         int slotSize = 18;
-        int slotX = editModeSlotX();
-        int slotY = editModeSlotY();
-
         int buttonSize = 12;
         int buttonSpacing = 2;
-        int leftButtonX = slotX - buttonSize - buttonSpacing;
-        int leftButtonY = slotY + (slotSize - buttonSize) / 2;
+        int slotY = editModeRowAnchorScreenY();
+        int rowLeft = this.leftPos + ENTRY_X;
+        int rowRight = this.leftPos + ENTRY_X + ENTRY_WIDTH;
+
+        int leftArrowX = rowLeft;
+        int slotX = rowLeft + buttonSize + buttonSpacing;
+        int rightArrowX = slotX + slotSize + buttonSpacing;
+        int closeButtonX = rowRight - buttonSize;
+        int applyButtonX = closeButtonX - buttonSize - buttonSpacing;
+        int clearButtonX = applyButtonX - buttonSize - buttonSpacing;
+        int buttonRowY = slotY + (slotSize - buttonSize) / 2;
+
+        editGhostSlotScreenX = slotX;
+        editGhostSlotScreenY = slotY;
 
         leftArrowButton = Button.builder(Component.literal("\u2190"), b -> {
                     playClickSound();
                     cycleFilterVariant(-1);
                 })
-                .bounds(leftButtonX, leftButtonY, buttonSize, buttonSize)
+                .bounds(leftArrowX, buttonRowY, buttonSize, buttonSize)
                 .build();
         addRenderableWidget(leftArrowButton);
 
-        int rightButtonX = slotX + slotSize + buttonSpacing;
-        int rightButtonY = slotY + (slotSize - buttonSize) / 2;
         rightArrowButton = Button.builder(Component.literal("\u2192"), b -> {
                     playClickSound();
                     cycleFilterVariant(1);
                 })
-                .bounds(rightButtonX, rightButtonY, buttonSize, buttonSize)
+                .bounds(rightArrowX, buttonRowY, buttonSize, buttonSize)
                 .build();
         addRenderableWidget(rightArrowButton);
 
-        int rightEdge = this.leftPos + this.imageWidth;
-        int margin = 5;
-        int closeButtonX = rightEdge - margin - buttonSize;
-        int applyButtonX = closeButtonX - buttonSize - buttonSpacing;
-        int clearButtonX = applyButtonX - buttonSize - buttonSpacing;
-        int buttonRowY = slotY + (slotSize - buttonSize) / 2;
-
-        int textBoxX = this.leftPos + inventoryStartX;
         int textBoxY = slotY + slotSize + 2;
         int textBoxHeight = 15;
-        int textBoxWidth = rightEdge - textBoxX - margin;
+        int textBoxWidth = ENTRY_WIDTH - 2 * EDIT_MODE_TEXT_INSET_X;
+        int textBoxX = this.leftPos + ENTRY_X + EDIT_MODE_TEXT_INSET_X;
 
         editModeTextBox = new EditBox(this.font, textBoxX, textBoxY, textBoxWidth, textBoxHeight, Component.literal("Edit Filter"));
         editModeTextBox.setMaxLength(512);
@@ -758,6 +774,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         removeEditModeUI();
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
+        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
     }
 
     private void removeEditModeUI() {
@@ -785,6 +802,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             removeWidget(editModeCloseButton);
             editModeCloseButton = null;
         }
+        editGhostSlotScreenX = 0;
+        editGhostSlotScreenY = 0;
         ghostSlotItem = ItemStack.EMPTY;
         filterVariants.clear();
         currentFilterVariantIndex = 0;
@@ -1173,10 +1192,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
             int entryX = this.leftPos + ENTRY_X;
             int entryY = this.topPos + FIRST_FILTER_ROW_Y + i * ENTRY_HEIGHT;
-            graphics.blit(ENTRY_WIDE, entryX, entryY, 0, 0, ENTRY_WIDTH, ENTRY_HEIGHT, ENTRY_WIDTH, ENTRY_HEIGHT);
+            graphics.blit(ENTRY_ROW_TEXTURE, entryX, entryY, 0, 0, ENTRY_WIDTH, ENTRY_HEIGHT, ENTRY_WIDTH, ENTRY_HEIGHT);
 
             int slotX = entryX + 3;
-            int slotY = entryY + 3;
+            int slotY = entryY + (ENTRY_HEIGHT - 18) / 2;
             graphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, 18, 18, 18, 18);
             String filter = idx < list.size() && list.get(idx) != null ? list.get(idx) : "";
             ItemStack displayItem = getDisplayItemForFilter(filter);
@@ -1230,6 +1249,19 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     @Override
+    protected void renderSlotHighlight(
+            @NotNull GuiGraphics guiGraphics,
+            @NotNull Slot slot,
+            int mouseX,
+            int mouseY,
+            float partialTick) {
+        if (subView == SubView.HOW_TO_USE) {
+            return;
+        }
+        super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
+    }
+
+    @Override
     protected void renderSlot(@NotNull GuiGraphics graphics, @NotNull Slot slot) {
         if (subView == SubView.HOW_TO_USE) {
             return;
@@ -1272,7 +1304,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 int sx = this.leftPos + exampleData.x;
                 int sy = this.topPos + exampleData.y;
                 if (mouseX >= sx && mouseX <= sx + exampleData.width
-                        && mouseY >= sy && mouseY <= sy + HELP_TEXT_LINE_HEIGHT) {
+                        && mouseY >= sy && mouseY <= sy + this.font.lineHeight) {
                     if (minecraft != null && minecraft.keyboardHandler != null) {
                         minecraft.keyboardHandler.setClipboard(exampleData.example);
                         playClickSound();
@@ -1365,11 +1397,52 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             commitFieldFromEditBox();
             return true;
         }
-        if (editModeTextBox != null && editModeTextBox.isFocused() && keyCode == InputConstants.KEY_RETURN) {
-            applyEditModeAndClose();
+
+        boolean editFilterFocused = editModeTextBox != null && editModeTextBox.isFocused();
+        boolean esc = keyCode == InputConstants.KEY_ESCAPE;
+        boolean inv =
+                minecraft != null && minecraft.options.keyInventory != null
+                        && minecraft.options.keyInventory.matches(keyCode, scanCode);
+
+        if (editFilterFocused) {
+            if (editModeTextBox.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+            if (keyCode == InputConstants.KEY_RETURN) {
+                applyEditModeAndClose();
+                return true;
+            }
+            // While typing a filter, do not close the screen (inventory key / Esc), like DeepDrawerExtractorScreen
+            if (esc || inv) {
+                return true;
+            }
+        }
+
+        if (esc || inv) {
+            if (inEditMode()) {
+                exitEditMode(true);
+                return true;
+            }
+            if (subView != SubView.MAIN) {
+                playClickSound();
+                closeFilterSubview();
+                return true;
+            }
+            onClose();
             return true;
         }
+
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (editModeTextBox != null && editModeTextBox.isFocused()) {
+            if (editModeTextBox.charTyped(codePoint, modifiers)) {
+                return true;
+            }
+        }
+        return super.charTyped(codePoint, modifiers);
     }
 
     private void renderHelpLineWithExample(
@@ -1387,24 +1460,26 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         String beforeText = beforeComponent.getString();
         String exampleText = exampleComponent.getString();
         String afterText = afterComponent.getString();
-        int absX = this.leftPos + x;
-        int absY = this.topPos + y;
+        int rowX = x;
+        int rowY = y;
         int beforeWidth = this.font.width(beforeText);
-        guiGraphics.drawString(this.font, beforeComponent, absX, absY, 0x404040, false);
-        int exampleX = absX + beforeWidth;
+        guiGraphics.drawString(this.font, beforeComponent, rowX, rowY, 0x404040, false);
+        int exampleX = rowX + beforeWidth;
         int exampleWidth = this.font.width(exampleText);
+        int sx = this.leftPos + exampleX;
+        int sy = this.topPos + rowY;
         boolean hovered =
-                mouseX >= exampleX && mouseX <= exampleX + exampleWidth && mouseY >= absY && mouseY <= absY + HELP_TEXT_LINE_HEIGHT;
+                mouseX >= sx && mouseX <= sx + exampleWidth && mouseY >= sy && mouseY <= sy + this.font.lineHeight;
         int exampleColor = hovered ? 0x0066FF : 0x0066CC;
-        guiGraphics.drawString(this.font, exampleText, exampleX, absY, exampleColor, false);
+        guiGraphics.drawString(this.font, exampleText, exampleX, rowY, exampleColor, false);
         if (hovered) {
-            int underlineY = absY + this.font.lineHeight;
+            int underlineY = rowY + this.font.lineHeight;
             guiGraphics.fill(exampleX, underlineY, exampleX + exampleWidth, underlineY + 1, exampleColor);
         }
         exampleDataList.add(new ExampleData(exampleText, x + beforeWidth, y, exampleWidth));
         if (!afterText.isEmpty()) {
             int afterX = exampleX + exampleWidth;
-            guiGraphics.drawString(this.font, afterComponent, afterX, absY, 0x404040, false);
+            guiGraphics.drawString(this.font, afterComponent, afterX, rowY, 0x404040, false);
         }
     }
 
@@ -1429,38 +1504,41 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         String middleText = middleComponent.getString();
         String example2Text = example2Component.getString();
         String afterText = afterComponent.getString();
-        int absX = this.leftPos + x;
-        int absY = this.topPos + y;
+        int rowX = x;
+        int rowY = y;
         int beforeWidth = this.font.width(beforeText);
-        guiGraphics.drawString(this.font, beforeComponent, absX, absY, 0x404040, false);
-        int example1X = absX + beforeWidth;
+        guiGraphics.drawString(this.font, beforeComponent, rowX, rowY, 0x404040, false);
+        int example1X = rowX + beforeWidth;
         int example1Width = this.font.width(example1Text);
+        int s1x = this.leftPos + example1X;
+        int s1y = this.topPos + rowY;
         boolean isHovered1 =
-                mouseX >= example1X && mouseX <= example1X + example1Width && mouseY >= absY && mouseY <= absY + HELP_TEXT_LINE_HEIGHT;
+                mouseX >= s1x && mouseX <= s1x + example1Width && mouseY >= s1y && mouseY <= s1y + this.font.lineHeight;
         int example1Color = isHovered1 ? 0x0066FF : 0x0066CC;
-        guiGraphics.drawString(this.font, example1Text, example1X, absY, example1Color, false);
+        guiGraphics.drawString(this.font, example1Text, example1X, rowY, example1Color, false);
         if (isHovered1) {
-            int underlineY = absY + this.font.lineHeight;
+            int underlineY = rowY + this.font.lineHeight;
             guiGraphics.fill(example1X, underlineY, example1X + example1Width, underlineY + 1, example1Color);
         }
         exampleDataList.add(new ExampleData(example1Text, x + beforeWidth, y, example1Width));
         int middleX = example1X + example1Width;
-        guiGraphics.drawString(this.font, middleComponent, middleX, absY, 0x404040, false);
+        guiGraphics.drawString(this.font, middleComponent, middleX, rowY, 0x404040, false);
         int middleWidth = this.font.width(middleText);
         int example2X = middleX + middleWidth;
         int example2Width = this.font.width(example2Text);
+        int s2x = this.leftPos + example2X;
         boolean isHovered2 =
-                mouseX >= example2X && mouseX <= example2X + example2Width && mouseY >= absY && mouseY <= absY + HELP_TEXT_LINE_HEIGHT;
+                mouseX >= s2x && mouseX <= s2x + example2Width && mouseY >= s1y && mouseY <= s1y + this.font.lineHeight;
         int example2Color = isHovered2 ? 0x0066FF : 0x0066CC;
-        guiGraphics.drawString(this.font, example2Text, example2X, absY, example2Color, false);
+        guiGraphics.drawString(this.font, example2Text, example2X, rowY, example2Color, false);
         if (isHovered2) {
-            int underlineY = absY + this.font.lineHeight;
+            int underlineY = rowY + this.font.lineHeight;
             guiGraphics.fill(example2X, underlineY, example2X + example2Width, underlineY + 1, example2Color);
         }
         exampleDataList.add(new ExampleData(example2Text, x + beforeWidth + example1Width + middleWidth, y, example2Width));
         if (!afterText.isEmpty()) {
             int afterX = example2X + example2Width;
-            guiGraphics.drawString(this.font, afterComponent, afterX, absY, 0x404040, false);
+            guiGraphics.drawString(this.font, afterComponent, afterX, rowY, 0x404040, false);
         }
     }
 
@@ -1469,7 +1547,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int screenX = this.leftPos + exampleData.x;
             int screenY = this.topPos + exampleData.y;
             if (mouseX >= screenX && mouseX <= screenX + exampleData.width
-                    && mouseY >= screenY && mouseY <= screenY + HELP_TEXT_LINE_HEIGHT) {
+                    && mouseY >= screenY && mouseY <= screenY + this.font.lineHeight) {
                 List<Component> tooltip = new ArrayList<>(2);
                 tooltip.add(Component.translatable("gui.another_dynamics.general_filter_text.click_to_copy"));
                 tooltip.add(Component.translatable("gui.another_dynamics.general_filter_text.paste_hint"));
@@ -1489,24 +1567,28 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     case MAIN -> this.title;
                 };
         int titleWidth = this.font.width(titleComponent);
-        int titleX = this.leftPos + (this.imageWidth - titleWidth) / 2;
-        graphics.drawString(this.font, titleComponent, titleX, this.topPos + 7, 0x404040, false);
+        int titleX = (this.imageWidth - titleWidth) / 2;
+        /* Foreground: coordinates are relative—AbstractContainerScreen applies leftPos/topPos on the pose stack. */
+        graphics.drawString(this.font, titleComponent, titleX, 7, 0x404040, false);
 
         if (subView == SubView.HOW_TO_USE) {
             exampleDataList.clear();
-            int helpY = HELP_TEXT_START_Y;
+            int titleBaseline = 7;
+            int gapBelowTitle = 10;
+            int helpLineStep = this.font.lineHeight + 4;
+            int helpY = titleBaseline + this.font.lineHeight + gapBelowTitle;
             String p = "gui.another_dynamics.general_filter_text.";
             renderHelpLineWithExample(graphics, p + "id", p + "id.example", p + "id.after", HELP_TEXT_X, helpY, mouseX, mouseY);
-            helpY += HELP_TEXT_LINE_HEIGHT;
+            helpY += helpLineStep;
             renderHelpLineWithExample(graphics, p + "tag", p + "tag.example", p + "tag.after", HELP_TEXT_X, helpY, mouseX, mouseY);
-            helpY += HELP_TEXT_LINE_HEIGHT;
+            helpY += helpLineStep;
             renderHelpLineWithExample(graphics, p + "modid", p + "modid.example", p + "modid.after", HELP_TEXT_X, helpY, mouseX, mouseY);
-            helpY += HELP_TEXT_LINE_HEIGHT;
-            graphics.drawString(this.font, Component.translatable(p + "nbt"), this.leftPos + HELP_TEXT_X, this.topPos + helpY, 0x404040, false);
-            helpY += HELP_TEXT_LINE_HEIGHT;
+            helpY += helpLineStep;
+            graphics.drawString(this.font, Component.translatable(p + "nbt"), HELP_TEXT_X, helpY, 0x404040, false);
+            helpY += helpLineStep;
             renderHelpLineWithExample(
                     graphics, p + "nbt.example", p + "nbt.example.text", p + "nbt.after", HELP_TEXT_X, helpY, mouseX, mouseY);
-            helpY += HELP_TEXT_LINE_HEIGHT;
+            helpY += helpLineStep;
             renderHelpLineWithTwoExamples(
                     graphics,
                     p + "macro",
@@ -1523,12 +1605,34 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     @Override
     public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        super.render(graphics, mouseX, mouseY, partialTick);
-
         if (subView == SubView.HOW_TO_USE) {
+            renderBackground(graphics, mouseX, mouseY, partialTick);
+            // renderBg blits at absolute (leftPos, topPos); do not pre-translate or the panel draws twice (shifted).
+            renderBg(graphics, partialTick, mouseX, mouseY);
+            for (Renderable renderable : this.renderables) {
+                renderable.render(graphics, mouseX, mouseY, partialTick);
+            }
+            // renderLabels uses coordinates relative to the GUI (same as AbstractContainerScreen after translate).
+            graphics.pose().pushPose();
+            graphics.pose().translate(this.leftPos, this.topPos, 0.0F);
+            renderLabels(graphics, mouseX, mouseY);
+            graphics.pose().popPose();
+            renderTooltip(graphics, mouseX, mouseY);
+            ItemStack carried = this.menu.getCarried();
+            if (!carried.isEmpty()) {
+                int cx = mouseX - 8;
+                int cy = mouseY - 8;
+                graphics.renderItem(carried, cx, cy);
+                graphics.renderItemDecorations(this.font, carried, cx, cy);
+            }
             renderExampleTooltip(graphics, mouseX, mouseY);
             return;
         }
+
+        super.render(graphics, mouseX, mouseY, partialTick);
+        // Slot / container tooltips (same pattern as DeepDrawerExtractorScreen — not always drawn by super alone).
+        this.renderTooltip(graphics, mouseX, mouseY);
+
         if (mouseX >= redstoneButtonScreenX
                 && mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE
                 && mouseY >= redstoneButtonScreenY

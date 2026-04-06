@@ -19,8 +19,8 @@
         "min": 1
       },
       "filter":{
-        "deny":10,
-        "allow":3
+        "deny":4,
+        "allow":4
       }
     }
   ],

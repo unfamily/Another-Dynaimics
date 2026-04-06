@@ -34,7 +34,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public static final int COPY_SETTINGS_SLOT = 5;
 
     public static final int PLAYER_SLOTS_X = 80;
-    public static final int PLAYER_SLOTS_Y = 158;
+    /** Matches player inventory position on {@code node.png} (moved +13px down for filter list space). */
+    public static final int PLAYER_SLOTS_Y = 171;
     private static final int HOTBAR_GAP = 4;
 
     public static final int SLOT_UPGRADE_X = 14;
