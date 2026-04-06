@@ -1,7 +1,12 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
@@ -21,6 +26,15 @@ public final class DuctFaceNode {
     public int redstoneMode;
     public int roundRobinCursor;
     public int ticksUntilAction;
+
+    /**
+     * When true ({@code >>>>>}), deny matches block even if allow would match. When false ({@code <<<<<}), allow can bypass
+     * deny.
+     */
+    public boolean denyOverridesAllow = true;
+
+    public final List<String> allowFilters = new ArrayList<>();
+    public final List<String> denyFilters = new ArrayList<>();
 
     public final ItemStackHandler guiSlots;
 
@@ -49,6 +63,7 @@ public final class DuctFaceNode {
         tag.putInt("RrCursor", roundRobinCursor);
         tag.putInt("TicksAct", ticksUntilAction);
         tag.put("NodeGui", guiSlots.serializeNBT(registries));
+        saveFilters(tag);
     }
 
     public void load(HolderLookup.Provider registries, CompoundTag tag) {
@@ -66,6 +81,7 @@ public final class DuctFaceNode {
         if (tag.contains("NodeGui", Tag.TAG_COMPOUND)) {
             guiSlots.deserializeNBT(registries, tag.getCompound("NodeGui"));
         }
+        loadFilters(tag);
     }
 
     /** Copy legacy single-node NBT into this face (world upgrade). */
@@ -84,5 +100,62 @@ public final class DuctFaceNode {
         redstoneMode = root.getByte("RedstoneMode") & 0xFF;
         roundRobinCursor = root.getInt("RrCursor");
         ticksUntilAction = 0;
+        loadFilters(root);
+    }
+
+    public void clampFilterSizes(DuctItemTransportSpec spec) {
+        int maxA = Math.max(0, spec.filterAllowSlots());
+        int maxD = Math.max(0, spec.filterDenySlots());
+        while (allowFilters.size() > maxA) {
+            allowFilters.remove(allowFilters.size() - 1);
+        }
+        while (denyFilters.size() > maxD) {
+            denyFilters.remove(denyFilters.size() - 1);
+        }
+        while (allowFilters.size() < maxA) {
+            allowFilters.add("");
+        }
+        while (denyFilters.size() < maxD) {
+            denyFilters.add("");
+        }
+    }
+
+    private void saveFilters(CompoundTag tag) {
+        CompoundTag f = new CompoundTag();
+        f.putBoolean("DenyOver", denyOverridesAllow);
+        ListTag a = new ListTag();
+        for (String s : allowFilters) {
+            a.add(StringTag.valueOf(s != null ? s : ""));
+        }
+        ListTag d = new ListTag();
+        for (String s : denyFilters) {
+            d.add(StringTag.valueOf(s != null ? s : ""));
+        }
+        f.put("Allow", a);
+        f.put("Deny", d);
+        tag.put("FaceFilters", f);
+    }
+
+    private void loadFilters(CompoundTag tag) {
+        allowFilters.clear();
+        denyFilters.clear();
+        denyOverridesAllow = true;
+        if (!tag.contains("FaceFilters", Tag.TAG_COMPOUND)) {
+            return;
+        }
+        CompoundTag f = tag.getCompound("FaceFilters");
+        denyOverridesAllow = !f.contains("DenyOver") || f.getBoolean("DenyOver");
+        if (f.contains("Allow", Tag.TAG_LIST)) {
+            ListTag list = f.getList("Allow", Tag.TAG_STRING);
+            for (int i = 0; i < list.size(); i++) {
+                allowFilters.add(list.getString(i));
+            }
+        }
+        if (f.contains("Deny", Tag.TAG_LIST)) {
+            ListTag list = f.getList("Deny", Tag.TAG_STRING);
+            for (int i = 0; i < list.size(); i++) {
+                denyFilters.add(list.getString(i));
+            }
+        }
     }
 }

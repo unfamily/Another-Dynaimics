@@ -19,7 +19,7 @@
         "min": 1
       },
       "filter":{
-        "deny":3,
+        "deny":10,
         "allow":3
       }
     }

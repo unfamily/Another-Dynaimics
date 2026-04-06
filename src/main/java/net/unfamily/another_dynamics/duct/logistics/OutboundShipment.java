@@ -5,10 +5,14 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
+import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
 
 /**
  * Pending item move: {@link #stack} is the planned kind + count (items stay in source inventory until delivery).
  * {@link #sourceFace} / {@link #destFace} select which attached inventories on source/dest ducts are used.
+ * {@link #transportChannel} is {@link net.unfamily.another_dynamics.duct.DuctFaceNode} letter (1–26) for both ends;
+ * {@link DuctChannelPolicy#LEGACY_WILDCARD}
+ * from old saves skips enforcement.
  * {@link #legacyOmniFaces} uses pre-face-aware behaviour (all storage faces) for old saves.
  */
 public final class OutboundShipment {
@@ -19,6 +23,8 @@ public final class OutboundShipment {
     public int travelTicks;
     public BlockPos refundDuct;
     public Direction sourceFace;
+    /** See {@link DuctChannelPolicy}. */
+    public int transportChannel;
     public boolean legacyPhysicalBuffer;
     public boolean legacyOmniFaces;
 
@@ -28,7 +34,8 @@ public final class OutboundShipment {
             Direction destFace,
             int travelTicks,
             BlockPos refundDuct,
-            Direction sourceFace) {
+            Direction sourceFace,
+            int transportChannel) {
         this.stack = plannedStack.copy();
         this.registeredIncoming = this.stack.copy();
         this.destDuct = destDuct.immutable();
@@ -36,6 +43,7 @@ public final class OutboundShipment {
         this.travelTicks = travelTicks;
         this.refundDuct = refundDuct.immutable();
         this.sourceFace = sourceFace;
+        this.transportChannel = transportChannel;
         this.legacyPhysicalBuffer = false;
         this.legacyOmniFaces = false;
     }
@@ -54,6 +62,7 @@ public final class OutboundShipment {
         t.putInt("RefundY", refundDuct.getY());
         t.putInt("RefundZ", refundDuct.getZ());
         t.putByte("SrcF", (byte) sourceFace.ordinal());
+        t.putInt("TC", transportChannel);
         t.putBoolean("PlannedOnly", !legacyPhysicalBuffer);
         t.putBoolean("OmniLegacy", legacyOmniFaces);
         return t;
@@ -69,7 +78,8 @@ public final class OutboundShipment {
                         : dest;
         Direction destFace = t.contains("DstF") ? dirFromSaveByte(t.getByte("DstF")) : Direction.DOWN;
         Direction srcFace = t.contains("SrcF") ? dirFromSaveByte(t.getByte("SrcF")) : Direction.DOWN;
-        OutboundShipment sh = new OutboundShipment(s, dest, destFace, travel, refund, srcFace);
+        int tc = t.contains("TC") ? t.getInt("TC") : DuctChannelPolicy.LEGACY_WILDCARD;
+        OutboundShipment sh = new OutboundShipment(s, dest, destFace, travel, refund, srcFace, tc);
         sh.legacyPhysicalBuffer = !t.contains("PlannedOnly") || !t.getBoolean("PlannedOnly");
         sh.legacyOmniFaces = !t.contains("DstF") || t.getBoolean("OmniLegacy");
         return sh;

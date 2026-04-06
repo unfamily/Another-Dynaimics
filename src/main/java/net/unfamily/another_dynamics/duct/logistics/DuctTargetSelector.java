@@ -11,6 +11,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
@@ -21,6 +22,7 @@ import net.unfamily.another_dynamics.duct.RoutingMode;
 
 /**
  * Picks a target duct face and path for extraction (to network consumers) or retrieving (from donors to self).
+ * Endpoints must share the same {@link net.unfamily.another_dynamics.duct.DuctFaceNode#channelLetter} as the acting face.
  */
 public final class DuctTargetSelector {
     private DuctTargetSelector() {}
@@ -34,7 +36,8 @@ public final class DuctTargetSelector {
             BlockPos extractorPos,
             ItemStack probe,
             RoutingMode routing,
-            int[] roundRobinState) {
+            int[] roundRobinState,
+            int extractorFaceChannel) {
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
         Set<BlockPos> net = DuctPathfinder.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
         List<Candidate> cands = new ArrayList<>();
@@ -53,6 +56,9 @@ public final class DuctTargetSelector {
                 DuctFaceNode node = be.getFaceNode(d);
                 NodeMode m = node.nodeMode;
                 if (m != NodeMode.NONE && m != NodeMode.FILTERING_INSERTION) {
+                    continue;
+                }
+                if (!DuctChannelPolicy.sameChannel(node.channelLetter, extractorFaceChannel)) {
                     continue;
                 }
                 if (!DuctCapHelper.canInsertIntoFace(level, p, d, probe)) {
@@ -90,8 +96,9 @@ public final class DuctTargetSelector {
             BlockPos retrieverPos,
             Direction retrieverInventoryFace,
             RoutingMode routing,
-            int[] roundRobinState) {
-        if (!(level.getBlockEntity(retrieverPos) instanceof DuctBlockEntity retriever)) {
+            int[] roundRobinState,
+            int retrieverFaceChannel) {
+        if (!(level.getBlockEntity(retrieverPos) instanceof DuctBlockEntity)) {
             return Optional.empty();
         }
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
@@ -109,6 +116,14 @@ public final class DuctTargetSelector {
                 if ((sm & (1 << d.ordinal())) == 0) {
                     continue;
                 }
+                DuctFaceNode node = be.getFaceNode(d);
+                NodeMode donorMode = node.nodeMode;
+                if (donorMode != NodeMode.NONE && donorMode != NodeMode.FILTERING_INSERTION) {
+                    continue;
+                }
+                if (!DuctChannelPolicy.sameChannel(node.channelLetter, retrieverFaceChannel)) {
+                    continue;
+                }
                 Optional<ItemStack> sample = DuctCapHelper.simulateExtractOneOnFace(level, p, d);
                 if (sample.isEmpty()) {
                     continue;
@@ -120,7 +135,6 @@ public final class DuctTargetSelector {
                 if (dist.isEmpty()) {
                     continue;
                 }
-                DuctFaceNode node = be.getFaceNode(d);
                 cands.add(new DonorCandidate(p, d, node.amountField, dist.getAsLong()));
             }
         }

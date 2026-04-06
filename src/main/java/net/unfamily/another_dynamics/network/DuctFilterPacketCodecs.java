@@ -1,0 +1,34 @@
+package net.unfamily.another_dynamics.network;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+
+final class DuctFilterPacketCodecs {
+    static final int MAX_FILTER_STRING_UTF = 1024;
+    static final int MAX_LIST_ENTRIES = 64;
+
+    static final StreamCodec<RegistryFriendlyByteBuf, List<String>> STRING_LIST =
+            StreamCodec.of(
+                    (buf, list) -> {
+                        buf.writeVarInt(list.size());
+                        for (String s : list) {
+                            buf.writeUtf(s != null ? s : "", MAX_FILTER_STRING_UTF);
+                        }
+                    },
+                    buf -> {
+                        int n = buf.readVarInt();
+                        if (n < 0 || n > MAX_LIST_ENTRIES) {
+                            throw new IllegalStateException("Invalid duct filter list size: " + n);
+                        }
+                        List<String> list = new ArrayList<>(n);
+                        for (int i = 0; i < n; i++) {
+                            list.add(buf.readUtf(MAX_FILTER_STRING_UTF));
+                        }
+                        return list;
+                    });
+
+    private DuctFilterPacketCodecs() {}
+}

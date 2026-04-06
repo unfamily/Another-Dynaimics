@@ -1,7 +1,9 @@
 package net.unfamily.another_dynamics.network;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -15,7 +17,9 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 
 @EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class ModNetwork {
@@ -54,10 +58,101 @@ public final class ModNetwork {
                 duct.applyClientFieldUpdate(Direction.values()[fo], payload.value());
             });
         });
+
+        reg.playToServer(DuctFilterUpdatePayload.TYPE, DuctFilterUpdatePayload.STREAM_CODEC, (payload, ctx) -> {
+            ctx.enqueueWork(() -> {
+                ServerPlayer player = (ServerPlayer) ctx.player();
+                BlockEntity be = player.level().getBlockEntity(payload.pos());
+                if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
+                    return;
+                }
+                if (!validateDuctGuiDistance(player, payload.pos())) {
+                    return;
+                }
+                int fo = payload.faceOrdinal();
+                if (fo < 0 || fo >= Direction.values().length) {
+                    return;
+                }
+                Direction face = Direction.values()[fo];
+                duct.applyServerFilterConfig(player, face, payload.allow(), payload.deny(), payload.denyOverridesAllow());
+            });
+        });
+
+        reg.playToServer(DuctListLogicPayload.TYPE, DuctListLogicPayload.STREAM_CODEC, (payload, ctx) -> {
+            ctx.enqueueWork(() -> {
+                ServerPlayer player = (ServerPlayer) ctx.player();
+                BlockEntity be = player.level().getBlockEntity(payload.pos());
+                if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
+                    return;
+                }
+                if (!validateDuctGuiDistance(player, payload.pos())) {
+                    return;
+                }
+                int fo = payload.faceOrdinal();
+                if (fo < 0 || fo >= Direction.values().length) {
+                    return;
+                }
+                duct.toggleListLogicFromClient(player, Direction.values()[fo]);
+            });
+        });
+
+        reg.playToClient(DuctFilterSyncPayload.TYPE, DuctFilterSyncPayload.STREAM_CODEC, (payload, ctx) -> {
+            ctx.enqueueWork(
+                    () -> {
+                        if (Minecraft.getInstance().screen instanceof DuctNodeScreen screen) {
+                            screen.receiveFilterSync(
+                                    payload.pos(),
+                                    Direction.values()[Mth.clamp(
+                                            payload.faceOrdinal(), 0, Direction.values().length - 1)],
+                                    payload.allow(),
+                                    payload.deny(),
+                                    payload.denyOverridesAllow());
+                        } else if (Minecraft.getInstance().player != null
+                                && Minecraft.getInstance().player.containerMenu instanceof DuctNodeMenu menu) {
+                            menu.receiveFilterSync(
+                                    payload.pos(),
+                                    Direction.values()[Mth.clamp(
+                                            payload.faceOrdinal(), 0, Direction.values().length - 1)],
+                                    payload.allow(),
+                                    payload.deny(),
+                                    payload.denyOverridesAllow());
+                        }
+                    });
+        });
+    }
+
+    private static boolean validateDuctGuiDistance(ServerPlayer player, BlockPos pos) {
+        return player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 8 * 8;
     }
 
     public static void sendFieldUpdate(BlockPos pos, Direction face, int value) {
         PacketDistributor.sendToServer(new DuctFieldPayload(pos, face.ordinal(), value));
+    }
+
+    public static void sendFilterUpdate(
+            BlockPos pos,
+            Direction face,
+            java.util.List<String> allow,
+            java.util.List<String> deny,
+            boolean denyOverridesAllow) {
+        PacketDistributor.sendToServer(
+                new DuctFilterUpdatePayload(pos, face.ordinal(), allow, deny, denyOverridesAllow));
+    }
+
+    public static void sendListLogicToggle(BlockPos pos, Direction face) {
+        PacketDistributor.sendToServer(new DuctListLogicPayload(pos, face.ordinal()));
+    }
+
+    public static void sendFilterSyncToPlayer(ServerPlayer player, DuctBlockEntity duct, Direction face) {
+        var node = duct.getFaceNode(face);
+        PacketDistributor.sendToPlayer(
+                player,
+                new DuctFilterSyncPayload(
+                        duct.getBlockPos(),
+                        face.ordinal(),
+                        java.util.List.copyOf(node.allowFilters),
+                        java.util.List.copyOf(node.denyFilters),
+                        node.denyOverridesAllow));
     }
 
     public record DuctFieldPayload(BlockPos pos, int faceOrdinal, int value) implements CustomPacketPayload {

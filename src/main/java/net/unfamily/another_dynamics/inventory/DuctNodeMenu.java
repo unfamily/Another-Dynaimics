@@ -1,6 +1,11 @@
 package net.unfamily.another_dynamics.inventory;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -11,8 +16,10 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
+import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
@@ -45,6 +52,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private final @Nullable DuctBlockEntity linkedBlockEntity;
     private final Direction accessFace;
 
+    /** Client-side filter cache (filled by {@link #receiveFilterSync}). */
+    private final List<String> clientAllowFilters = new ArrayList<>();
+    private final List<String> clientDenyFilters = new ArrayList<>();
+    private boolean clientDenyOverridesAllow = true;
+
     public DuctNodeMenu(int containerId, Inventory playerInventory, DuctBlockEntity be, Direction accessFace) {
         this(
                 containerId,
@@ -54,7 +66,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 be.getMenuData(),
                 be,
                 accessFace);
+        be.clampFaceFiltersToSpec();
         be.refreshMenuData(accessFace);
+        if (!be.getLevel().isClientSide() && playerInventory.player instanceof ServerPlayer sp) {
+            ModNetwork.sendFilterSyncToPlayer(sp, be, accessFace);
+        }
     }
 
     public static DuctNodeMenu clientMenu(int containerId, Inventory playerInventory) {
@@ -98,6 +114,72 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     public ContainerData getSyncData() {
         return syncData;
+    }
+
+    public int filterAllowCap() {
+        return DuctDefinitionRegistry.itemDuctTransportSpec().filterAllowSlots();
+    }
+
+    public int filterDenyCap() {
+        return DuctDefinitionRegistry.itemDuctTransportSpec().filterDenySlots();
+    }
+
+    public List<String> getClientAllowFilters() {
+        return clientAllowFilters;
+    }
+
+    public List<String> getClientDenyFilters() {
+        return clientDenyFilters;
+    }
+
+    public boolean getClientDenyOverridesAllow() {
+        return clientDenyOverridesAllow;
+    }
+
+    public void receiveFilterSync(
+            BlockPos pos, Direction face, List<String> allow, List<String> deny, boolean denyOverridesAllow) {
+        int x = syncData.get(DuctMenuSync.POS_X);
+        int y = syncData.get(DuctMenuSync.POS_Y);
+        int z = syncData.get(DuctMenuSync.POS_Z);
+        if (!new BlockPos(x, y, z).equals(pos) || accessFace != face) {
+            return;
+        }
+        clientAllowFilters.clear();
+        clientAllowFilters.addAll(allow);
+        clientDenyFilters.clear();
+        clientDenyFilters.addAll(deny);
+        clientDenyOverridesAllow = denyOverridesAllow;
+    }
+
+    /** Keep {@link #clientDenyOverridesAllow} aligned with synced {@link DuctMenuSync#DENY_OVERRIDES_ALLOW} on client. */
+    public void updateClientDenyOverridesFromSync() {
+        if (linkedBlockEntity == null) {
+            clientDenyOverridesAllow = syncData.get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
+        }
+    }
+
+    public void ensureClientFilterBufferSizes() {
+        int maxA = filterAllowCap();
+        int maxD = filterDenyCap();
+        while (clientAllowFilters.size() < maxA) {
+            clientAllowFilters.add("");
+        }
+        while (clientDenyFilters.size() < maxD) {
+            clientDenyFilters.add("");
+        }
+        while (clientAllowFilters.size() > maxA) {
+            clientAllowFilters.remove(clientAllowFilters.size() - 1);
+        }
+        while (clientDenyFilters.size() > maxD) {
+            clientDenyFilters.remove(clientDenyFilters.size() - 1);
+        }
+    }
+
+    public void pushFilterConfigToServer(List<String> allow, List<String> deny, boolean denyOverridesAllow) {
+        int x = syncData.get(DuctMenuSync.POS_X);
+        int y = syncData.get(DuctMenuSync.POS_Y);
+        int z = syncData.get(DuctMenuSync.POS_Z);
+        ModNetwork.sendFilterUpdate(new BlockPos(x, y, z), accessFace, allow, deny, denyOverridesAllow);
     }
 
     private void addPlayerInventory(Inventory inv, int startX, int startY) {
