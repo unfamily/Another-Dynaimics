@@ -21,9 +21,14 @@ public record DuctDefinition(
         ResourceLocation dataId,
         String logicalId,
         List<String> transportKinds,
+        Optional<DuctItemTransportSpec> itemTransport,
         ResourceLocation defaultTexture,
         Optional<ResourceLocation> compositeModelDefault,
         Optional<ResourceLocation> compositeModelLine,
         boolean putInCreativeMenu,
         Optional<String> sound
-) {}
+) {
+    public DuctItemTransportSpec itemTransportOrFallback() {
+        return itemTransport.orElseGet(DuctItemTransportSpec::fallback);
+    }
+}

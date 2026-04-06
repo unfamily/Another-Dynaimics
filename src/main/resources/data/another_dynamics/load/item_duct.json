@@ -7,7 +7,7 @@
     {
       "dec": "item",
       "batch": {
-        "deafault": 8,
+        "default": 8,
         "max": -1
       },
       "rate": {
@@ -16,7 +16,7 @@
       },
       "speed": {
         "default": 20,
-        "min": 0
+        "min": 1
       },
       "filter":{
         "deny":3,

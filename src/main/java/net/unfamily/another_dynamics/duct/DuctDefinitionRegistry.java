@@ -43,4 +43,11 @@ public final class DuctDefinitionRegistry {
     public static Optional<DuctDefinition> getByLogicalId(String logicalId) {
         return Optional.ofNullable(definitionsByLogicalId.get(logicalId));
     }
+
+    /** Item duct transport spec from datapack or built-in defaults. */
+    public static DuctItemTransportSpec itemDuctTransportSpec() {
+        return getByLogicalId(DuctIds.ITEM_DUCT)
+                .map(DuctDefinition::itemTransportOrFallback)
+                .orElseGet(DuctItemTransportSpec::fallback);
+    }
 }

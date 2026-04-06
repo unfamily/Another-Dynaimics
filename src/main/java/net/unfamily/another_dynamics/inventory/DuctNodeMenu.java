@@ -3,14 +3,19 @@ package net.unfamily.another_dynamics.inventory;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.inventory.ContainerLevelAccess;
+import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
+import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.ItemDuctBlockEntity;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
+
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Duct node GUI: machine slots (upgrades + copy settings) then player inventory.
@@ -40,27 +45,41 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public static final int REDSTONE_GUI_Y = 32;
 
     private final ContainerLevelAccess access;
+    private final ContainerData syncData;
+    private final @Nullable ItemDuctBlockEntity linkedBlockEntity;
 
     public DuctNodeMenu(int containerId, Inventory playerInventory, ItemDuctBlockEntity be) {
         this(
                 containerId,
                 playerInventory,
                 be.getNodeGuiSlots(),
-                ContainerLevelAccess.create(be.getLevel(), be.getBlockPos()));
+                ContainerLevelAccess.create(be.getLevel(), be.getBlockPos()),
+                be.getMenuData(),
+                be);
+        be.refreshMenuData();
     }
 
     public static DuctNodeMenu clientMenu(int containerId, Inventory playerInventory) {
         return new DuctNodeMenu(
-                containerId, playerInventory, new ItemStackHandler(MACHINE_SLOTS), ContainerLevelAccess.NULL);
+                containerId,
+                playerInventory,
+                new ItemStackHandler(MACHINE_SLOTS),
+                ContainerLevelAccess.NULL,
+                new SimpleContainerData(DuctMenuSync.COUNT),
+                null);
     }
 
     private DuctNodeMenu(
             int containerId,
             Inventory playerInventory,
             ItemStackHandler nodeSlots,
-            ContainerLevelAccess access) {
+            ContainerLevelAccess access,
+            ContainerData syncData,
+            @Nullable ItemDuctBlockEntity linkedBlockEntity) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
         this.access = access;
+        this.syncData = syncData;
+        this.linkedBlockEntity = linkedBlockEntity;
 
         for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
             int y = SLOT_UPGRADE_Y0 + i * 18;
@@ -69,6 +88,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         addSlot(new SlotItemHandler(nodeSlots, COPY_SETTINGS_SLOT, SLOT_COPY_X, SLOT_COPY_Y));
 
         addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
+        addDataSlots(syncData);
+    }
+
+    public ContainerData getSyncData() {
+        return syncData;
     }
 
     private void addPlayerInventory(Inventory inv, int startX, int startY) {
@@ -91,6 +115,14 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     @Override
     public boolean stillValid(Player player) {
         return stillValid(access, player, ModBlocks.ITEM_DUCT.get());
+    }
+
+    @Override
+    public boolean clickMenuButton(Player player, int id) {
+        if (linkedBlockEntity == null || linkedBlockEntity.isRemoved()) {
+            return false;
+        }
+        return linkedBlockEntity.handleMenuButtonClick(player, id);
     }
 
     @Override

@@ -1,10 +1,13 @@
 package net.unfamily.another_dynamics.client.gui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
@@ -13,13 +16,17 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.duct.DuctMenuSync;
+import net.unfamily.another_dynamics.duct.NodeMode;
+import net.unfamily.another_dynamics.duct.RoutingMode;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.unfamily.another_dynamics.network.ModNetwork;
 
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Duct node GUI: upgrades, center controls (stub), right column (redstone, copy, channel), player inventory.
- * Control actions are visual / local stubs only until gameplay is wired.
+ * Duct node GUI: upgrades, center controls (partial stubs), right column (redstone, copy, channel), player inventory.
+ * Mode, routing, redstone, channel, and amount/priority field sync from the server via {@link DuctNodeMenu#getSyncData()}.
  */
 public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> {
     private static final ResourceLocation TEXTURE =
@@ -55,13 +62,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     /** Same size as Pattern Crafter filter letter labels (16×10). */
     private static final int CHANNEL_WIDGET_W = 16;
     private static final int CHANNEL_WIDGET_H = 10;
-    private static final int CHANNEL_WIDGET_Y = DuctNodeMenu.SLOT_COPY_Y + 18 + 6;
+    /** Bottom edge aligned with the third-row buttons (e.g. Rendering). */
+    private static final int CHANNEL_WIDGET_Y = ROW3_Y + BTN_H - CHANNEL_WIDGET_H;
 
     private int redstoneButtonScreenX;
     private int redstoneButtonScreenY;
-    /** Local stub: 0–4, same icon order as Pattern Crafter / iskautils. */
+    /** Synced from server via menu data. */
     private int redstoneModeStub;
 
+    private Button nodeModeButton;
+    private Button routingModeButton;
     private ChannelLetterButton channelButton;
     private EditBox routingPriorityBox;
 
@@ -102,7 +112,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 "gui.another_dynamics.duct_node.allow_list"));
 
         int r2x = CENTER_X;
-        addRenderableWidget(stubButton(r2x, ROW2_Y, ROW_BTN_W, BTN_H, "gui.another_dynamics.duct_node.routing_mode"));
+        routingModeButton = Button.builder(Component.empty(), b -> handleMenuButton(1))
+                .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
+                .build();
+        addRenderableWidget(routingModeButton);
         r2x += ROW_BTN_W + ROW_GAP;
         int midX = r2x;
         int stepperW = 11;
@@ -122,9 +135,20 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 .build());
         r2x = midX + ROW_BTN_W;
         r2x += ROW_GAP;
-        addRenderableWidget(stubButton(r2x, ROW2_Y, ROW_BTN_W, BTN_H, "gui.another_dynamics.duct_node.dump"));
+        addRenderableWidget(Button.builder(Component.translatable("gui.another_dynamics.duct_node.dump"), b -> {
+                    playClickSound();
+                    if (minecraft != null && minecraft.gameMode != null) {
+                        int id = Screen.hasShiftDown() ? 7 : 6;
+                        minecraft.gameMode.handleInventoryButtonClick(menu.containerId, id);
+                    }
+                })
+                .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
+                .build());
 
-        addRenderableWidget(stubButton(CENTER_X, ROW3_Y, ROW_BTN_W, BTN_H, "gui.another_dynamics.duct_node.node_mode"));
+        nodeModeButton = Button.builder(Component.empty(), b -> handleMenuButton(0))
+                .bounds(this.leftPos + CENTER_X, this.topPos + ROW3_Y, ROW_BTN_W, BTN_H)
+                .build();
+        addRenderableWidget(nodeModeButton);
         addRenderableWidget(stubButton(
                 CENTER_X + ROW_BTN_W + ROW_GAP,
                 ROW3_Y,
@@ -143,8 +167,47 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 this.leftPos + channelX,
                 this.topPos + CHANNEL_WIDGET_Y,
                 CHANNEL_WIDGET_W,
-                CHANNEL_WIDGET_H);
+                CHANNEL_WIDGET_H,
+                dir -> {
+                    if (minecraft != null && minecraft.gameMode != null) {
+                        int id = dir > 0 ? 4 : 5;
+                        minecraft.gameMode.handleInventoryButtonClick(menu.containerId, id);
+                    }
+                });
         addRenderableWidget(channelButton);
+    }
+
+    private void handleMenuButton(int id) {
+        playClickSound();
+        if (minecraft != null && minecraft.gameMode != null) {
+            minecraft.gameMode.handleInventoryButtonClick(menu.containerId, id);
+        }
+    }
+
+    @Override
+    protected void containerTick() {
+        super.containerTick();
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        nodeModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.mode." + nm.name().toLowerCase()));
+        boolean routing = (menu.getSyncData().get(DuctMenuSync.FLAGS) & DuctMenuSync.FLAG_ROUTING_ACTIVE) != 0;
+        routingModeButton.active = routing;
+        if (routing) {
+            RoutingMode rm = RoutingMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ROUTING_MODE));
+            routingModeButton.setMessage(
+                    Component.translatable("gui.another_dynamics.duct_node.routing." + rm.name().toLowerCase()));
+        } else {
+            routingModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.routing_unroutable"));
+        }
+        redstoneModeStub = menu.getSyncData().get(DuctMenuSync.REDSTONE_MODE);
+        channelButton.setLetterValue(menu.getSyncData().get(DuctMenuSync.CHANNEL));
+        if (!routingPriorityBox.isFocused()) {
+            routingPriorityBox.setValue(Integer.toString(menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD)));
+        }
+    }
+
+    private BlockPos menuSyncedPos() {
+        var d = menu.getSyncData();
+        return new BlockPos(d.get(DuctMenuSync.POS_X), d.get(DuctMenuSync.POS_Y), d.get(DuctMenuSync.POS_Z));
     }
 
     private Button stubButton(int guiX, int guiY, int w, int h, String translationKey) {
@@ -156,8 +219,23 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private void adjustRoutingPriority(int delta) {
         playClickSound();
         int v = parsePriority(routingPriorityBox.getValue());
-        v = Math.max(0, Math.min(999_999, v + delta));
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        if (nm.usesInsertionPriorityField()) {
+            v += delta;
+        } else {
+            v = Math.max(0, Math.min(999_999, v + delta));
+        }
         routingPriorityBox.setValue(Integer.toString(v));
+        ModNetwork.sendFieldUpdate(menuSyncedPos(), v);
+    }
+
+    private void commitFieldFromEditBox() {
+        int v = parsePriority(routingPriorityBox.getValue());
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        if (nm.usesExtractBatchField()) {
+            v = Math.max(0, v);
+        }
+        ModNetwork.sendFieldUpdate(menuSyncedPos(), v);
     }
 
     private static int parsePriority(String s) {
@@ -276,11 +354,19 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 && mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE
                 && mouseY >= redstoneButtonScreenY
                 && mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE) {
-            playClickSound();
-            redstoneModeStub = (redstoneModeStub + 1) % 5;
+            handleMenuButton(2);
             return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (routingPriorityBox.isFocused() && keyCode == InputConstants.KEY_RETURN) {
+            commitFieldFromEditBox();
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override

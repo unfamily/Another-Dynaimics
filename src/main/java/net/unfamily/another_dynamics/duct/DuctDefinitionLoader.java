@@ -41,10 +41,18 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
             }
             String logicalId = DuctIds.normalizeLogicalId(o.get("id").getAsString());
             List<String> kinds = new ArrayList<>();
+            Optional<DuctItemTransportSpec> itemTransport = Optional.empty();
             if (o.has("can_transport") && o.get("can_transport").isJsonArray()) {
                 for (JsonElement t : o.getAsJsonArray("can_transport")) {
-                    if (t.isJsonObject() && t.getAsJsonObject().has("dec")) {
-                        kinds.add(t.getAsJsonObject().get("dec").getAsString());
+                    if (!t.isJsonObject()) {
+                        continue;
+                    }
+                    JsonObject to = t.getAsJsonObject();
+                    if (to.has("dec")) {
+                        kinds.add(to.get("dec").getAsString());
+                    }
+                    if (to.has("dec") && "item".equals(to.get("dec").getAsString())) {
+                        itemTransport = Optional.of(parseItemTransport(to));
                     }
                 }
             }
@@ -79,6 +87,7 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                             e.getKey(),
                             logicalId,
                             List.copyOf(kinds),
+                            itemTransport,
                             defaultTexture,
                             modelDefault,
                             modelLine,
@@ -87,5 +96,63 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
         }
         DuctDefinitionRegistry.replaceAll(out);
         AnotherDynamicsMod.LOGGER.info("Loaded {} duct definition(s) from data/*/load", out.size());
+    }
+
+    private static DuctItemTransportSpec parseItemTransport(JsonObject to) {
+        int batchDefault = 8;
+        int batchMax = DuctItemTransportSpec.UNLIMITED_BATCH;
+        if (to.has("batch") && to.get("batch").isJsonObject()) {
+            JsonObject b = to.getAsJsonObject("batch");
+            if (b.has("default")) {
+                batchDefault = b.get("default").getAsInt();
+            } else if (b.has("deafault")) {
+                batchDefault = b.get("deafault").getAsInt();
+            }
+            if (b.has("max")) {
+                batchMax = b.get("max").getAsInt();
+            }
+        }
+        int rateDefault = 10;
+        int rateMin = 1;
+        if (to.has("rate") && to.get("rate").isJsonObject()) {
+            JsonObject r = to.getAsJsonObject("rate");
+            if (r.has("default")) {
+                rateDefault = r.get("default").getAsInt();
+            }
+            if (r.has("min")) {
+                rateMin = r.get("min").getAsInt();
+            }
+        }
+        int speedDefault = 20;
+        int speedMin = 1;
+        if (to.has("speed") && to.get("speed").isJsonObject()) {
+            JsonObject s = to.getAsJsonObject("speed");
+            if (s.has("default")) {
+                speedDefault = s.get("default").getAsInt();
+            }
+            if (s.has("min")) {
+                speedMin = s.get("min").getAsInt();
+            }
+        }
+        int allow = 3;
+        int deny = 3;
+        if (to.has("filter") && to.get("filter").isJsonObject()) {
+            JsonObject f = to.getAsJsonObject("filter");
+            if (f.has("allow")) {
+                allow = f.get("allow").getAsInt();
+            }
+            if (f.has("deny")) {
+                deny = f.get("deny").getAsInt();
+            }
+        }
+        return new DuctItemTransportSpec(
+                Math.max(0, batchDefault),
+                batchMax,
+                Math.max(1, rateDefault),
+                Math.max(1, rateMin),
+                Math.max(0, speedDefault),
+                Math.max(0, speedMin),
+                Math.max(0, allow),
+                Math.max(0, deny));
     }
 }

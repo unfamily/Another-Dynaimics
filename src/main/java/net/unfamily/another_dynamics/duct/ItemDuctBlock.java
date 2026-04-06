@@ -2,6 +2,7 @@ package net.unfamily.another_dynamics.duct;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -74,13 +75,20 @@ public final class ItemDuctBlock extends Block implements EntityBlock {
     @Nullable
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        return level.isClientSide ? createTicker(type) : null;
+        return createTicker(type);
     }
 
     @Nullable
     private static <T extends BlockEntity> BlockEntityTicker<T> createTicker(BlockEntityType<T> type) {
         return type == ModBlockEntities.ITEM_DUCT.get()
-                ? (level, pos, blockState, be) -> ItemDuctBlockEntity.clientTick(level, pos, blockState, (ItemDuctBlockEntity) be)
+                ? (level, pos, blockState, be) -> {
+                    ItemDuctBlockEntity duct = (ItemDuctBlockEntity) be;
+                    if (level.isClientSide()) {
+                        ItemDuctBlockEntity.clientTick(level, pos, blockState, duct);
+                    } else if (level instanceof ServerLevel sl) {
+                        duct.serverTickPipe(sl);
+                    }
+                }
                 : null;
     }
 

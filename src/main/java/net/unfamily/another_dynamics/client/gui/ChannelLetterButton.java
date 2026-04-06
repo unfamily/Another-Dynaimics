@@ -6,6 +6,10 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 
+import java.util.function.IntConsumer;
+
+import org.jetbrains.annotations.Nullable;
+
 /**
  * Channel selector: cycles A–Z with colored background (Pattern Crafter letter style).
  * No empty/neutral state: value is always {@code 1..26} (A red by default).
@@ -15,9 +19,15 @@ public final class ChannelLetterButton extends AbstractWidget {
     private static final int MAX = 26;
 
     private int value = MIN;
+    private final @Nullable IntConsumer onClickNotifyServer;
 
     public ChannelLetterButton(int x, int y, int width, int height) {
+        this(x, y, width, height, null);
+    }
+
+    public ChannelLetterButton(int x, int y, int width, int height, @Nullable IntConsumer onClickNotifyServer) {
         super(x, y, width, height, Component.empty());
+        this.onClickNotifyServer = onClickNotifyServer;
     }
 
     public int getLetterValue() {
@@ -48,7 +58,9 @@ public final class ChannelLetterButton extends AbstractWidget {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (active && visible && isValidClickButton(button) && clicked(mouseX, mouseY)) {
             playDownSound(Minecraft.getInstance().getSoundManager());
-            if (button == 0) {
+            if (onClickNotifyServer != null) {
+                onClickNotifyServer.accept(button == 0 ? 1 : -1);
+            } else if (button == 0) {
                 cycleForward();
             } else {
                 cycleBackward();
