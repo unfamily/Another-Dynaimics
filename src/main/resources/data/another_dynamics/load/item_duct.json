@@ -20,7 +20,9 @@
       },
       "filter":{
         "deny":4,
-        "allow":4
+        "allow":4,
+        "deny_hybrid":2,
+        "allow_hybrid":2
       }
     }
   ],

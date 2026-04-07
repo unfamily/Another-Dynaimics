@@ -646,7 +646,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             int[] rrProbe = new int[] {node.roundRobinCursor};
             boolean allowSelf = node.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
-            RoutingMode rm = node.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
+            RoutingMode rm =
+                    node.nodeMode == NodeMode.RETRIEVING_EXTRACTION
+                            ? node.routingModeRetriever
+                            : node.nodeMode.isHybrid()
+                                    ? node.routingModeExtractor
+                                    : node.routingMode;
             Optional<DuctTargetSelector.ExtractionRouting> routeOpt =
                     DuctTargetSelector.selectExtractionDelivery(
                             level, worldPosition, probe, rm, rrProbe, node.channelLetter, allowSelf, null);
@@ -842,6 +847,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         menuData.set(DuctMenuSync.EXTRACT_BATCH_CAP, computeExtractBatchSettingCap(accessFace));
         menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
         menuData.set(DuctMenuSync.REDSTONE_MODE, n.redstoneMode);
+        int denyOverSync =
+                switch (n.nodeMode) {
+                    case FILTERING_INSERTION -> n.denyOverridesAllowFilter ? 1 : 0;
+                    case EXTRACTION -> n.denyOverridesAllowExtractor ? 1 : 0;
+                    case RETRIEVING -> n.denyOverridesAllowRetriever ? 1 : 0;
+                    default -> n.denyOverridesAllow ? 1 : 0;
+                };
+        menuData.set(DuctMenuSync.DENY_OVERRIDES_ALLOW, denyOverSync);
         int flags = 0;
         if (n.nodeMode.usesRouting()) {
             flags |= DuctMenuSync.FLAG_ROUTING_ACTIVE;
@@ -857,7 +870,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         // Legacy hashes (kept for existing UI bits); hybrid GUI uses explicit filter sync payloads per bank.
         menuData.set(DuctMenuSync.FILTER_HASH_ALLOW, DuctFilterLogic.listHash(n.allowFilters));
         menuData.set(DuctMenuSync.FILTER_HASH_DENY, DuctFilterLogic.listHash(n.denyFilters));
-        menuData.set(DuctMenuSync.DENY_OVERRIDES_ALLOW, n.denyOverridesAllow ? 1 : 0);
         menuData.set(DuctMenuSync.SELF_FEED, n.selfFeed ? 1 : 0);
     }
 
@@ -912,8 +924,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         List<String> d = node.bankDenyFilters(bank);
         a.clear();
         d.clear();
-        int maxA = Math.max(0, Math.max(0, spec.filterAllowSlots()) / 2);
-        int maxD = Math.max(0, Math.max(0, spec.filterDenySlots()) / 2);
+        int maxA =
+                Math.max(
+                        0,
+                        node.nodeMode.isHybrid() ? spec.filterAllowHybridSlots() : spec.filterAllowSlots());
+        int maxD =
+                Math.max(
+                        0,
+                        node.nodeMode.isHybrid() ? spec.filterDenyHybridSlots() : spec.filterDenySlots());
         for (int i = 0; i < maxA; i++) {
             String s = i < allowIn.size() ? allowIn.get(i) : "";
             a.add(s != null ? s : "");
@@ -982,14 +1000,25 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         yield true;
                     }
                     case 1 -> {
-                        if (node.nodeMode.usesRouting()) {
-                            cycleRoutingMode(node);
-                            yield true;
+                        if (!node.nodeMode.usesRouting()) {
+                            yield false;
                         }
-                        yield false;
+                        cycleRoutingMode(node);
+                        yield true;
                     }
                     case 2 -> {
                         node.redstoneMode = (node.redstoneMode + 1) % 4;
+                        yield true;
+                    }
+                    case 11 -> {
+                        if (!node.nodeMode.usesRouting()) {
+                            yield false;
+                        }
+                        cycleRoutingModeBackward(node);
+                        yield true;
+                    }
+                    case 12 -> {
+                        node.redstoneMode = Math.floorMod(node.redstoneMode - 1, 4);
                         yield true;
                     }
                     case 4 -> {
@@ -1054,8 +1083,39 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void cycleRoutingMode(DuctFaceNode node) {
+        stepRouting(node, 1);
+    }
+
+    private void cycleRoutingModeBackward(DuctFaceNode node) {
+        stepRouting(node, -1);
+    }
+
+    /**
+     * Cycles the routing field that applies to the current node mode (including hybrid extract vs retrieve).
+     */
+    private void stepRouting(DuctFaceNode node, int delta) {
+        if (!node.nodeMode.usesRouting()) {
+            return;
+        }
         RoutingMode[] v = RoutingMode.values();
-        node.routingMode = v[(node.routingMode.ordinal() + 1) % v.length];
+        switch (node.nodeMode) {
+            case EXTRACTION_FILTERING -> {
+                int idx = node.routingModeExtractor.ordinal();
+                RoutingMode next = v[Math.floorMod(idx + delta, v.length)];
+                node.routingModeExtractor = next;
+                node.routingMode = next;
+            }
+            case RETRIEVING_EXTRACTION -> {
+                int idx = node.routingModeRetriever.ordinal();
+                RoutingMode next = v[Math.floorMod(idx + delta, v.length)];
+                node.routingModeRetriever = next;
+                node.routingModeExtractor = next;
+            }
+            default -> {
+                int idx = node.routingMode.ordinal();
+                node.routingMode = v[Math.floorMod(idx + delta, v.length)];
+            }
+        }
     }
 
     private void onModeChanged(DuctFaceNode node, Direction face) {

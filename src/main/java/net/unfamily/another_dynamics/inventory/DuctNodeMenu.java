@@ -153,12 +153,18 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return syncData;
     }
 
-    public int filterAllowCap() {
-        return DuctDefinitionRegistry.itemDuctTransportSpec().filterAllowSlots();
+    /**
+     * @param hybridFilterContext {@code true} when the open GUI is editing a hybrid face sub-panel
+     *     ({@code Extr/Filt} or {@code Retr/Extr}); uses datapack {@code filter.allow_hybrid}/{@code deny_hybrid}.
+     */
+    public int filterAllowCap(boolean hybridFilterContext) {
+        var s = DuctDefinitionRegistry.itemDuctTransportSpec();
+        return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
     }
 
-    public int filterDenyCap() {
-        return DuctDefinitionRegistry.itemDuctTransportSpec().filterDenySlots();
+    public int filterDenyCap(boolean hybridFilterContext) {
+        var s = DuctDefinitionRegistry.itemDuctTransportSpec();
+        return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
     }
 
     public List<String> getClientAllowFilters(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
@@ -222,9 +228,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         }
     }
 
-    public void ensureClientFilterBufferSizes() {
-        int maxA = Math.max(0, filterAllowCap()) / 2;
-        int maxD = Math.max(0, filterDenyCap()) / 2;
+    public void ensureClientFilterBufferSizes(boolean hybridFilterContext) {
+        int maxA = Math.max(0, filterAllowCap(hybridFilterContext));
+        int maxD = Math.max(0, filterDenyCap(hybridFilterContext));
         clampClientList(clientAllowFiltersExtractor, maxA);
         clampClientList(clientDenyFiltersExtractor, maxD);
         clampClientList(clientAllowFiltersRetriever, maxA);

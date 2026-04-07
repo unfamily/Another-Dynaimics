@@ -136,6 +136,8 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
         }
         int allow = 3;
         int deny = 3;
+        int allowHybrid = allow;
+        int denyHybrid = deny;
         if (to.has("filter") && to.get("filter").isJsonObject()) {
             JsonObject f = to.getAsJsonObject("filter");
             if (f.has("allow")) {
@@ -143,6 +145,14 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
             }
             if (f.has("deny")) {
                 deny = f.get("deny").getAsInt();
+            }
+            allowHybrid = allow;
+            denyHybrid = deny;
+            if (f.has("allow_hybrid")) {
+                allowHybrid = f.get("allow_hybrid").getAsInt();
+            }
+            if (f.has("deny_hybrid")) {
+                denyHybrid = f.get("deny_hybrid").getAsInt();
             }
         }
         return new DuctItemTransportSpec(
@@ -153,6 +163,8 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                 Math.max(0, speedDefault),
                 Math.max(0, speedMin),
                 Math.max(0, allow),
-                Math.max(0, deny));
+                Math.max(0, deny),
+                Math.max(0, allowHybrid),
+                Math.max(0, denyHybrid));
     }
 }

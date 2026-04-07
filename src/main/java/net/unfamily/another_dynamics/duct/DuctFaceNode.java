@@ -199,19 +199,25 @@ public final class DuctFaceNode {
     }
 
     public void clampFilterSizes(DuctItemTransportSpec spec) {
-        int maxA = Math.max(0, spec.filterAllowSlots());
-        int maxD = Math.max(0, spec.filterDenySlots());
-        clampList(allowFilters, maxA);
-        clampList(denyFilters, maxD);
+        int legacyA = Math.max(0, spec.filterAllowSlots());
+        int legacyD = Math.max(0, spec.filterDenySlots());
+        clampList(allowFilters, legacyA);
+        clampList(denyFilters, legacyD);
 
-        int halfA = maxA / 2;
-        int halfD = maxD / 2;
-        clampList(allowFiltersExtractor, halfA);
-        clampList(denyFiltersExtractor, halfD);
-        clampList(allowFiltersRetriever, halfA);
-        clampList(denyFiltersRetriever, halfD);
-        clampList(allowFiltersFilter, halfA);
-        clampList(denyFiltersFilter, halfD);
+        int bankA =
+                nodeMode.isHybrid()
+                        ? Math.max(0, spec.filterAllowHybridSlots())
+                        : Math.max(0, spec.filterAllowSlots());
+        int bankD =
+                nodeMode.isHybrid()
+                        ? Math.max(0, spec.filterDenyHybridSlots())
+                        : Math.max(0, spec.filterDenySlots());
+        clampList(allowFiltersExtractor, bankA);
+        clampList(denyFiltersExtractor, bankD);
+        clampList(allowFiltersRetriever, bankA);
+        clampList(denyFiltersRetriever, bankD);
+        clampList(allowFiltersFilter, bankA);
+        clampList(denyFiltersFilter, bankD);
     }
 
     private void saveFilters(CompoundTag tag) {

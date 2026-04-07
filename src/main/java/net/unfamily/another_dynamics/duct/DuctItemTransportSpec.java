@@ -10,13 +10,17 @@ public record DuctItemTransportSpec(
         int rateMinTicks,
         int speedDefault,
         int speedMin,
+        /** Max allow-pattern entries per bank for non-hybrid modes and for legacy root filter lists. */
         int filterAllowSlots,
-        int filterDenySlots
+        int filterDenySlots,
+        /** Max allow/deny entries per bank when the face is in a hybrid mode ({@code Extr/Filt}, {@code Retr/Extr}). */
+        int filterAllowHybridSlots,
+        int filterDenyHybridSlots
 ) {
     public static final int UNLIMITED_BATCH = Integer.MAX_VALUE;
 
     public static DuctItemTransportSpec fallback() {
-        return new DuctItemTransportSpec(8, UNLIMITED_BATCH, 10, 1, 20, 1, 3, 3);
+        return new DuctItemTransportSpec(8, UNLIMITED_BATCH, 10, 1, 20, 1, 3, 3, 3, 3);
     }
 
     /** Datapack {@code speed}: ticks per duct block on a path for billed travel (clamped; avoids zero). */
