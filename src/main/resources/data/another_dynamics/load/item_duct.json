@@ -1,6 +1,7 @@
 {
   "type": "another_dynamics:declare_duct",
-  "id": "another_dynamics:duct",
+  "id": "another_dynamics:item_duct",
+  "name": "duct.another_dynamics.item_duct",
   "put_in_creative_menu": true,
   "sound": "metallic",
   "can_transport": [
