@@ -92,12 +92,24 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         case EXTRACTION, FILTERING_INSERTION, RETRIEVING, NONE -> 0;
                         case EXTRACTION_FILTERING, RETRIEVING_EXTRACTION -> 2;
                     };
-            boolean off = (n.redstoneMode == 4);
+            boolean off = !isNodeEnabledByRedstone(n);
             int row = rowBase + (off ? 1 : 0);
             int idx = row * 4 + col; // 0..15
             packed |= (idx & 0xF) << (d.ordinal() * 4);
         }
         return packed;
+    }
+
+    private boolean isNodeEnabledByRedstone(DuctFaceNode n) {
+        if (level == null) {
+            return true;
+        }
+        return switch (n.redstoneMode) {
+            case 0 -> true; // ignored
+            case 1 -> !level.hasNeighborSignal(worldPosition); // low
+            case 2 -> level.hasNeighborSignal(worldPosition); // high
+            default -> false; // disabled
+        };
     }
 
     public DuctBlockEntity(BlockPos pos, BlockState state) {
@@ -217,6 +229,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             DuctFaceNode node = getFaceNode(dir);
+            if (!isNodeEnabledByRedstone(node)) {
+                continue;
+            }
             if (node.ticksUntilAction > 0) {
                 node.ticksUntilAction--;
                 setChanged();
@@ -908,6 +923,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         cycleNodeMode(node, accessFace);
                         yield true;
                     }
+                    case 10 -> {
+                        cycleNodeModeBackward(node, accessFace);
+                        yield true;
+                    }
                     case 1 -> {
                         if (node.nodeMode.usesRouting()) {
                             cycleRoutingMode(node);
@@ -916,7 +935,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         yield false;
                     }
                     case 2 -> {
-                        node.redstoneMode = (node.redstoneMode + 1) % 5;
+                        node.redstoneMode = (node.redstoneMode + 1) % 4;
                         yield true;
                     }
                     case 4 -> {
@@ -956,6 +975,27 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
         }
         node.nodeMode = order[(idx + 1) % order.length];
+        onModeChanged(node, accessFace);
+    }
+
+    private void cycleNodeModeBackward(DuctFaceNode node, Direction accessFace) {
+        NodeMode[] order =
+                new NodeMode[] {
+                    NodeMode.NONE,
+                    NodeMode.EXTRACTION,
+                    NodeMode.FILTERING_INSERTION,
+                    NodeMode.RETRIEVING,
+                    NodeMode.EXTRACTION_FILTERING,
+                    NodeMode.RETRIEVING_EXTRACTION
+                };
+        int idx = 0;
+        for (int i = 0; i < order.length; i++) {
+            if (order[i] == node.nodeMode) {
+                idx = i;
+                break;
+            }
+        }
+        node.nodeMode = order[Math.floorMod(idx - 1, order.length)];
         onModeChanged(node, accessFace);
     }
 

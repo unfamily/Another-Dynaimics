@@ -61,6 +61,9 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 DuctFaceNode node = be.getFaceNode(d);
+                if (!isNodeEnabledByRedstone(level, p, node)) {
+                    continue;
+                }
                 NodeMode m = node.nodeMode;
                 if (m != NodeMode.NONE
                         && m != NodeMode.FILTERING_INSERTION
@@ -163,6 +166,9 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 DuctFaceNode node = be.getFaceNode(d);
+                if (!isNodeEnabledByRedstone(level, p, node)) {
+                    continue;
+                }
                 NodeMode donorMode = node.nodeMode;
                 if (donorMode != NodeMode.NONE && donorMode != NodeMode.FILTERING_INSERTION) {
                     continue;
@@ -207,6 +213,15 @@ public final class DuctTargetSelector {
     private record Candidate(BlockPos ductPos, Direction face, int priority, long dist) {}
 
     private record DonorCandidate(BlockPos ductPos, Direction face, int priority, long dist) {}
+
+    private static boolean isNodeEnabledByRedstone(ServerLevel level, BlockPos ductPos, DuctFaceNode node) {
+        return switch (node.redstoneMode) {
+            case 0 -> true; // ignored
+            case 1 -> !level.hasNeighborSignal(ductPos); // low
+            case 2 -> level.hasNeighborSignal(ductPos); // high
+            default -> false; // disabled
+        };
+    }
 
     private static Candidate pickWithinTier(
             ServerLevel level,

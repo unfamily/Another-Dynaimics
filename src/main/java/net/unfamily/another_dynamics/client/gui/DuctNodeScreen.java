@@ -1572,8 +1572,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             case 0 -> renderScaledItem(graphics, new ItemStack(Items.GUNPOWDER), iconX, iconY);
             case 1 -> renderScaledItem(graphics, new ItemStack(Items.REDSTONE), iconX, iconY);
             case 2 -> renderScaledTexture(graphics, REDSTONE_GUI, iconX, iconY);
-            case 3 -> renderScaledItem(graphics, new ItemStack(Items.REPEATER), iconX, iconY);
-            case 4 -> renderScaledItem(graphics, new ItemStack(Items.BARRIER), iconX, iconY);
+            case 3 -> renderScaledItem(graphics, new ItemStack(Items.BARRIER), iconX, iconY);
             default -> {}
         }
     }
@@ -1734,6 +1733,19 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Right-click on Mode cycles backward.
+        if (button == 1 && nodeModeButton != null && nodeModeButton.visible) {
+            if (mouseX >= nodeModeButton.getX()
+                    && mouseX < nodeModeButton.getX() + nodeModeButton.getWidth()
+                    && mouseY >= nodeModeButton.getY()
+                    && mouseY < nodeModeButton.getY() + nodeModeButton.getHeight()) {
+                NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+                boolean inHybridPanel = nm.isHybrid() && hybridPanel != HybridPanel.NONE;
+                // In hybrid sub-panels, right-click behaves like Back.
+                handleMenuButton(inHybridPanel ? 0 : 10);
+                return true;
+            }
+        }
         if (subView == SubView.HOW_TO_USE && button == 0) {
             for (ExampleData exampleData : exampleDataList) {
                 int sx = this.leftPos + exampleData.x;

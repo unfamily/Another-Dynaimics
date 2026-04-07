@@ -36,7 +36,11 @@ public final class DuctFaceNode {
     /** Extract / retrieve modes: items moved per operation (0 = use duct default). */
     public int extractBatch;
     public int channelLetter = 1;
-    public int redstoneMode;
+    /**
+     * 0 = ignored (always enabled), 1 = low (enabled when NOT powered), 2 = high (enabled when powered), 3 = disabled.
+     * Pulse mode was removed.
+     */
+    public int redstoneMode = 3;
     public int roundRobinCursor;
     public int ticksUntilAction;
 
@@ -136,6 +140,12 @@ public final class DuctFaceNode {
         }
         channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
         redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
+        // Migrate legacy values: 3=pulse -> ignored, 4=disabled -> disabled(3).
+        if (redstoneMode == 3) {
+            redstoneMode = 0;
+        } else if (redstoneMode >= 4) {
+            redstoneMode = 3;
+        }
         roundRobinCursor = tag.getInt("RrCursor");
         ticksUntilAction = tag.contains("TicksAct") ? tag.getInt("TicksAct") : 0;
         selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
@@ -177,6 +187,12 @@ public final class DuctFaceNode {
         }
         channelLetter = root.contains("Channel") ? root.getByte("Channel") & 0xFF : 1;
         redstoneMode = root.getByte("RedstoneMode") & 0xFF;
+        // Migrate legacy values: 3=pulse -> ignored, 4=disabled -> disabled(3).
+        if (redstoneMode == 3) {
+            redstoneMode = 0;
+        } else if (redstoneMode >= 4) {
+            redstoneMode = 3;
+        }
         roundRobinCursor = root.getInt("RrCursor");
         ticksUntilAction = 0;
         loadFilters(root);
