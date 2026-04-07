@@ -16,6 +16,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
@@ -27,6 +28,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
+import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -35,7 +37,7 @@ import java.util.Optional;
 /**
  * Physical duct block. Hybrid ducts can join <strong>multiple</strong> {@link DuctNetworkType} graphs at the same time;
  * this build registers {@link DuctNetworkType#ITEM} only—add further types to {@link #ductNetworkTypes()} when implemented.
- * Block id in saves remains {@code item_duct} ({@link net.unfamily.another_dynamics.registry.ModBlocks#ITEM_DUCT}).
+ * Block id in saves is {@code duct} ({@link net.unfamily.another_dynamics.registry.ModBlocks#DUCT}).
  */
 public final class DuctBlock extends AbstractDuctBlock {
 
@@ -50,7 +52,7 @@ public final class DuctBlock extends AbstractDuctBlock {
 
     @Override
     protected SoundType soundTypeForDuct() {
-        return DuctSoundTypes.forLogicalDuct(DuctIds.ITEM_DUCT);
+        return DuctSoundTypes.forLogicalDuct(DuctIds.DEFAULT_LOGICAL_ID);
     }
 
     @Override
@@ -72,7 +74,7 @@ public final class DuctBlock extends AbstractDuctBlock {
 
     @Nullable
     private static <T extends BlockEntity> BlockEntityTicker<T> createTicker(BlockEntityType<T> type) {
-        return type == ModBlockEntities.ITEM_DUCT.get()
+        return type == ModBlockEntities.DUCT.get()
                 ? (level, pos, blockState, be) -> {
                     DuctBlockEntity duct = (DuctBlockEntity) be;
                     if (level.isClientSide()) {
@@ -82,6 +84,15 @@ public final class DuctBlock extends AbstractDuctBlock {
                     }
                 }
                 : null;
+    }
+
+    @Override
+    public ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state) {
+        ItemStack stack = super.getCloneItemStack(level, pos, state);
+        if (level.getBlockEntity(pos) instanceof DuctBlockEntity be) {
+            stack.set(ModDataComponents.DUCT_LOGICAL_ID.get(), be.getLogicalDuctId());
+        }
+        return stack;
     }
 
     private static Optional<Direction> nodeFaceFromHitLocation(BlockPos pos, BlockHitResult hit, DuctBlockEntity duct) {
@@ -154,6 +165,7 @@ public final class DuctBlock extends AbstractDuctBlock {
                     buf.writeBlockPos(duct.getBlockPos());
                     buf.writeByte(clickedFace.ordinal());
                     buf.writeBoolean(duct.ductAlwaysOpaqueRendering());
+                    buf.writeUtf(duct.getLogicalDuctId());
                 });
     }
 }

@@ -18,7 +18,10 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
+import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctIds;
+import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.network.ModNetwork;
@@ -61,6 +64,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
      * locks the opaque toggle.
      */
     private final boolean clientDuctAlwaysOpaqueLock;
+    /** Open-menu sync: {@link DuctBlockEntity#getLogicalDuctId()} for correct client-side datapack caps. */
+    private final String clientDuctLogicalId;
 
     /** Detects upgrade-slot changes so {@link DuctMenuSync#EXTRACT_BATCH_CAP} can be refreshed without full menu spam. */
     private int lastUpgradeSlotsFingerprint;
@@ -88,7 +93,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 be,
                 accessFace,
                 be.getBlockPos(),
-                be.ductAlwaysOpaqueRendering());
+                be.ductAlwaysOpaqueRendering(),
+                be.getLogicalDuctId());
         be.clampFaceFiltersToSpec();
         be.refreshMenuData(accessFace);
         if (!be.getLevel().isClientSide() && playerInventory.player instanceof ServerPlayer sp) {
@@ -105,6 +111,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         int fo = extraData.readByte() & 0xFF;
         Direction face = Direction.values()[Mth.clamp(fo, 0, Direction.values().length - 1)];
         boolean alwaysOpaqueLock = extraData.readBoolean();
+        String logicalId = extraData.readUtf();
+        if (logicalId.isEmpty()) {
+            logicalId = DuctIds.DEFAULT_LOGICAL_ID;
+        }
         return new DuctNodeMenu(
                 containerId,
                 playerInventory,
@@ -114,7 +124,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 null,
                 face,
                 pos,
-                alwaysOpaqueLock);
+                alwaysOpaqueLock,
+                logicalId);
     }
 
     private DuctNodeMenu(
@@ -126,7 +137,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             @Nullable DuctBlockEntity linkedBlockEntity,
             Direction accessFace,
             BlockPos ductBlockPos,
-            boolean clientDuctAlwaysOpaqueLock) {
+            boolean clientDuctAlwaysOpaqueLock,
+            String clientDuctLogicalId) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
         this.access = access;
         this.syncData = syncData;
@@ -134,6 +146,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         this.accessFace = accessFace;
         this.ductBlockPos = ductBlockPos;
         this.clientDuctAlwaysOpaqueLock = clientDuctAlwaysOpaqueLock;
+        this.clientDuctLogicalId = clientDuctLogicalId;
 
         for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
             int y = SLOT_UPGRADE_Y0 + i * 18;
@@ -163,6 +176,16 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return clientDuctAlwaysOpaqueLock;
     }
 
+    public String getClientDuctLogicalId() {
+        return clientDuctLogicalId;
+    }
+
+    private DuctItemTransportSpec clientItemTransportSpec() {
+        return DuctDefinitionRegistry.getByLogicalId(clientDuctLogicalId)
+                .map(DuctDefinition::itemTransportOrFallback)
+                .orElseGet(DuctDefinitionRegistry::itemDuctTransportSpec);
+    }
+
     public ContainerData getSyncData() {
         return syncData;
     }
@@ -172,12 +195,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
      *     ({@code Extr/Filt} or {@code Retr/Extr}); uses datapack {@code filter.allow_hybrid}/{@code deny_hybrid}.
      */
     public int filterAllowCap(boolean hybridFilterContext) {
-        var s = DuctDefinitionRegistry.itemDuctTransportSpec();
+        var s = clientItemTransportSpec();
         return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
     }
 
     public int filterDenyCap(boolean hybridFilterContext) {
-        var s = DuctDefinitionRegistry.itemDuctTransportSpec();
+        var s = clientItemTransportSpec();
         return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
     }
 
@@ -315,7 +338,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     @Override
     public boolean stillValid(Player player) {
-        return stillValid(access, player, ModBlocks.ITEM_DUCT.get());
+        return stillValid(access, player, ModBlocks.DUCT.get());
     }
 
     @Override

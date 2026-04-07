@@ -12,7 +12,7 @@ import net.unfamily.another_dynamics.duct.DuctBlock;
 public final class ModBlocks {
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(AnotherDynamicsMod.MOD_ID);
 
-    public static final DeferredBlock<Block> ITEM_DUCT = BLOCKS.register("item_duct", () -> new DuctBlock(
+    public static final DeferredBlock<Block> DUCT = BLOCKS.register("duct", () -> new DuctBlock(
             BlockBehaviour.Properties.of()
                     .mapColor(MapColor.COLOR_LIGHT_GRAY)
                     .strength(0.4f, 1.2f)

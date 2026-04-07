@@ -15,6 +15,7 @@ import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 import net.unfamily.another_dynamics.registry.ModAttachments;
 import net.unfamily.another_dynamics.registry.ModCreativeTabs;
+import net.unfamily.another_dynamics.registry.ModDataComponents;
 import net.unfamily.another_dynamics.registry.ModItems;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
@@ -35,6 +36,7 @@ public final class AnotherDynamicsMod {
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
 
         ModBlocks.BLOCKS.register(modEventBus);
+        ModDataComponents.TYPES.register(modEventBus);
         ModItems.ITEMS.register(modEventBus);
         ModBlockEntities.TYPES.register(modEventBus);
         ModMenuTypes.MENUS.register(modEventBus);

@@ -52,7 +52,10 @@ public final class DuctTargetSelector {
             int extractorFaceChannel,
             boolean allowSelfDestination,
             @Nullable Direction forbidSelfDestFace) {
-        DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
+        DuctItemTransportSpec spec =
+                level.getBlockEntity(extractorPos) instanceof DuctBlockEntity extractorDuct
+                        ? extractorDuct.itemTransportSpec()
+                        : DuctDefinitionRegistry.itemDuctTransportSpec();
         Set<BlockPos> net = DuctPathfinder.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
         List<Candidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
@@ -157,10 +160,10 @@ public final class DuctTargetSelector {
             RoutingMode routing,
             int[] roundRobinState,
             int retrieverFaceChannel) {
-        if (!(level.getBlockEntity(retrieverPos) instanceof DuctBlockEntity)) {
+        if (!(level.getBlockEntity(retrieverPos) instanceof DuctBlockEntity retrieverBe)) {
             return Optional.empty();
         }
-        DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
+        DuctItemTransportSpec spec = retrieverBe.itemTransportSpec();
         Set<BlockPos> net = DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
         List<DonorCandidate> cands = new ArrayList<>();
         for (BlockPos p : net) {

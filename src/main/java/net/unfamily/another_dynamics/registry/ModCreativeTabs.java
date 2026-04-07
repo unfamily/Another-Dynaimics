@@ -31,33 +31,31 @@ public final class ModCreativeTabs {
                 .displayItems((parameters, output) -> {
                     DuctDefinitionRegistry.all().values().stream()
                             .filter(DuctDefinition::putInCreativeMenu)
+                            .filter(d -> ModItems.itemForDuctLogicalId(d.logicalId()).isPresent())
                             .sorted(Comparator.comparing(DuctDefinition::logicalId))
-                            .map(d -> ModItems.itemForDuctLogicalId(d.logicalId()))
-                            .flatMap(Optional::stream)
-                            .map(ItemStack::new)
+                            .map(d -> ModItems.createDuctStack(d.logicalId()))
                             .forEach(output::accept);
                 })
                 .build();
     }
 
     /**
-     * Prefer {@link DuctIds#ITEM_DUCT} when that definition is creative-enabled; otherwise first creative-enabled
+     * Prefer {@link DuctIds#DEFAULT_LOGICAL_ID} when that definition is creative-enabled; otherwise first creative-enabled
      * duct that resolves to an item; finally barrier.
      */
     private static ItemStack tabIconStack() {
-        Optional<DuctDefinition> itemDuctDef = DuctDefinitionRegistry.getByLogicalId(DuctIds.ITEM_DUCT);
+        Optional<DuctDefinition> itemDuctDef = DuctDefinitionRegistry.getByLogicalId(DuctIds.DEFAULT_LOGICAL_ID);
         if (itemDuctDef.isPresent()
                 && itemDuctDef.get().putInCreativeMenu()
-                && ModItems.itemForDuctLogicalId(DuctIds.ITEM_DUCT).isPresent()) {
-            return new ItemStack(ModItems.ITEM_DUCT.get());
+                && ModItems.itemForDuctLogicalId(DuctIds.DEFAULT_LOGICAL_ID).isPresent()) {
+            return ModItems.createDuctStack(DuctIds.DEFAULT_LOGICAL_ID);
         }
         return DuctDefinitionRegistry.all().values().stream()
                 .filter(DuctDefinition::putInCreativeMenu)
+                .filter(d -> ModItems.itemForDuctLogicalId(d.logicalId()).isPresent())
                 .sorted(Comparator.comparing(DuctDefinition::logicalId))
-                .map(d -> ModItems.itemForDuctLogicalId(d.logicalId()))
-                .flatMap(Optional::stream)
+                .map(d -> ModItems.createDuctStack(d.logicalId()))
                 .findFirst()
-                .map(ItemStack::new)
                 .orElseGet(() -> new ItemStack(Items.BARRIER));
     }
 }

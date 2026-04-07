@@ -101,7 +101,7 @@
   "gui.another_dynamics.general_filter_text.macro.after": ")",
   "gui.another_dynamics.general_filter_text.click_to_copy": "Click to copy",
   "gui.another_dynamics.general_filter_text.paste_hint": "For paste use Ctrl+V",
-  "block.another_dynamics.item_duct": "Item Duct",
-  "item.another_dynamics.item_duct": "Item Duct",
+  "block.another_dynamics.duct": "Duct",
+  "item.another_dynamics.duct": "Duct",
   "itemGroup.another_dynamics.ducts": "Another Dynamics Ducts"
 }

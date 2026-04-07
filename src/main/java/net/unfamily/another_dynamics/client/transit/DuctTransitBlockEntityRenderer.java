@@ -18,7 +18,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
-import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.registry.ModAttachments;
 
 /**
@@ -47,7 +46,7 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             return;
         }
         boolean defOpaque =
-                DuctDefinitionRegistry.getByLogicalId(DuctIds.ITEM_DUCT)
+                DuctDefinitionRegistry.getByLogicalId(tile.getLogicalDuctId())
                         .map(d -> d.alwaysOpaqueRendering())
                         .orElse(false);
         boolean opaqueSkip =

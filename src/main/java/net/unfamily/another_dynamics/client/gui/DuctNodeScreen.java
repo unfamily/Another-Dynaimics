@@ -33,6 +33,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
@@ -417,6 +418,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         addRenderableWidget(selfFeedStub);
         opaqueRenderingButton =
                 Button.builder(Component.empty(), b -> {
+                            if (menu.isDuctAlwaysOpaqueLocked()) {
+                                return;
+                            }
                             playClickSound();
                             ModNetwork.sendDuctOpaqueToggle();
                         })
@@ -1301,12 +1305,15 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                             Component.translatable("gui.another_dynamics.duct_node.routing.tooltip." + rm.name().toLowerCase())));
         }
         if (minecraft != null && minecraft.player != null && opaqueRenderingButton != null) {
-            boolean opaqueOn = minecraft.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get());
+            boolean locked = menu.isDuctAlwaysOpaqueLocked();
+            boolean opaqueOn =
+                    locked || minecraft.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get());
             opaqueRenderingButton.setMessage(
                     Component.translatable(
                             opaqueOn
                                     ? "gui.another_dynamics.duct_node.opaque_rendering.on"
                                     : "gui.another_dynamics.duct_node.opaque_rendering.off"));
+            opaqueRenderingButton.active = !locked;
         }
         if (nm.isHybrid()) {
             if (!inHybridPanel) {
@@ -1464,7 +1471,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 // Future: parse upgrade item stats (keep in sync with DuctBlockEntity#getExtractBatchUpgradeBonus).
             }
         }
-        return DuctDefinitionRegistry.itemDuctTransportSpec().extractBatchSettingCap(bonus);
+        return DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
+                .map(DuctDefinition::itemTransportOrFallback)
+                .orElseGet(DuctDefinitionRegistry::itemDuctTransportSpec)
+                .extractBatchSettingCap(bonus);
     }
 
     private void pushAmountFields(int insertionPriority, int extractBatch) {

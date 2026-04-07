@@ -34,7 +34,7 @@ public final class DuctClientSetup {
 
     @SubscribeEvent
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        event.registerBlockEntityRenderer(ModBlockEntities.ITEM_DUCT.get(), DuctTransitBlockEntityRenderer::new);
+        event.registerBlockEntityRenderer(ModBlockEntities.DUCT.get(), DuctTransitBlockEntityRenderer::new);
     }
 
     @SubscribeEvent

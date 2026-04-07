@@ -34,19 +34,19 @@ public final class DuctDefinitionRegistry {
         return definitions;
     }
 
-    /** Key is the resource path under {@code load/}, e.g. {@code another_dynamics:load/item_duct}. */
+    /** Key is the resource path under {@code load/}, e.g. {@code another_dynamics:load/duct}. */
     public static Optional<DuctDefinition> get(ResourceLocation dataId) {
         return Optional.ofNullable(definitions.get(dataId));
     }
 
-    /** Key matches normalized JSON {@code id} (see {@link DuctIds#normalizeLogicalId}), e.g. {@link DuctIds#ITEM_DUCT}. */
+    /** Key matches normalized JSON {@code id} (see {@link DuctIds#normalizeLogicalId}), e.g. {@link DuctIds#DEFAULT_LOGICAL_ID}. */
     public static Optional<DuctDefinition> getByLogicalId(String logicalId) {
         return Optional.ofNullable(definitionsByLogicalId.get(logicalId));
     }
 
     /** Item duct transport spec from datapack or built-in defaults. */
     public static DuctItemTransportSpec itemDuctTransportSpec() {
-        return getByLogicalId(DuctIds.ITEM_DUCT)
+        return getByLogicalId(DuctIds.DEFAULT_LOGICAL_ID)
                 .map(DuctDefinition::itemTransportOrFallback)
                 .orElseGet(DuctItemTransportSpec::fallback);
     }

@@ -29,8 +29,8 @@ public final class DuctPipeAdjacency {
                 || !DuctConnectable.isSameNetwork(bb, DuctNetworkType.ITEM)) {
             return false;
         }
-        String idA = logicalIdOf(ba);
-        String idB = logicalIdOf(bb);
+        String idA = logicalIdOf(level, a, ba);
+        String idB = logicalIdOf(level, b, bb);
         boolean compatA =
                 DuctDefinitionRegistry.getByLogicalId(idA).map(DuctDefinition::connectWithCompatible).orElse(true);
         boolean compatB =
@@ -41,10 +41,16 @@ public final class DuctPipeAdjacency {
         return idA.equals(idB);
     }
 
-    private static String logicalIdOf(Block block) {
+    private static String logicalIdOf(Level level, BlockPos pos, Block block) {
+        if (level != null) {
+            var be = level.getBlockEntity(pos);
+            if (be instanceof DuctBlockEntity ductBe) {
+                return ductBe.getLogicalDuctId();
+            }
+        }
         if (block instanceof DuctConnectable dc) {
             return dc.logicalDuctId();
         }
-        return DuctIds.ITEM_DUCT;
+        return DuctIds.DEFAULT_LOGICAL_ID;
     }
 }

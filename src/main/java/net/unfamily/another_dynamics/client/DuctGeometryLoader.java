@@ -16,7 +16,7 @@ public final class DuctGeometryLoader implements IGeometryLoader<DuctUnbakedGeom
 
     @Override
     public DuctUnbakedGeometry read(JsonObject jsonObject, JsonDeserializationContext deserializationContext) throws JsonParseException {
-        String ductId = jsonObject.has("duct_id") ? jsonObject.get("duct_id").getAsString() : DuctIds.ITEM_DUCT;
+        String ductId = jsonObject.has("duct_id") ? jsonObject.get("duct_id").getAsString() : DuctIds.DEFAULT_LOGICAL_ID;
         return new DuctUnbakedGeometry(ductId, optionalModelId(jsonObject, "model_default"), optionalModelId(jsonObject, "model_line"));
     }
 

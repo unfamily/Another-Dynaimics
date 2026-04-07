@@ -16,7 +16,7 @@ public interface DuctConnectable {
      * maps to a non-default {@link DuctDefinition}.
      */
     default String logicalDuctId() {
-        return DuctIds.ITEM_DUCT;
+        return DuctIds.DEFAULT_LOGICAL_ID;
     }
 
     static boolean isSameNetwork(Block block, DuctNetworkType type) {

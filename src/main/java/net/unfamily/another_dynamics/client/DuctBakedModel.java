@@ -89,8 +89,15 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
             return List.of();
         }
         boolean includeBase = isBasePass;
+        String effectiveDuctId = ductLogicalId;
+        if (modelData != null) {
+            String fromBe = modelData.get(DuctModelProperties.DUCT_LOGICAL_ID);
+            if (fromBe != null && !fromBe.isEmpty()) {
+                effectiveDuctId = fromBe;
+            }
+        }
         boolean defOpaque =
-                DuctDefinitionRegistry.getByLogicalId(ductLogicalId)
+                DuctDefinitionRegistry.getByLogicalId(effectiveDuctId)
                         .map(d -> d.alwaysOpaqueRendering())
                         .orElse(false);
         boolean opaqueRendering =

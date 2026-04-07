@@ -11,8 +11,8 @@ public final class ModBlockEntities {
     public static final DeferredRegister<BlockEntityType<?>> TYPES =
             DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, AnotherDynamicsMod.MOD_ID);
 
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<DuctBlockEntity>> ITEM_DUCT =
-            TYPES.register("item_duct", () -> BlockEntityType.Builder.of(DuctBlockEntity::new, ModBlocks.ITEM_DUCT.get()).build(null));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<DuctBlockEntity>> DUCT =
+            TYPES.register("duct", () -> BlockEntityType.Builder.of(DuctBlockEntity::new, ModBlocks.DUCT.get()).build(null));
 
     private ModBlockEntities() {}
 }

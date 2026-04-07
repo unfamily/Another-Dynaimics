@@ -6,7 +6,14 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "another_dynamics:item_duct"
+          "name": "another_dynamics:duct",
+          "functions": [
+            {
+              "function": "minecraft:copy_components",
+              "source": "block_entity",
+              "include": ["another_dynamics:duct_logical_id"]
+            }
+          ]
         }
       ],
       "conditions": [
