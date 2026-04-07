@@ -53,6 +53,61 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private static final int MAX_BLOCKED_ITEM_KINDS = 5;
     private static final int FACE_COUNT = 6;
 
+    /**
+     * After chunk load, {@link Level#getBlockState} can see an {@link AbstractDuctBlock} before the
+     * {@link DuctBlockEntity} is attached; avoid treating that as a removed/broken duct.
+     */
+    private static boolean ductBlockPresentButBlockEntityPending(Level level, BlockPos pos) {
+        if (!level.isLoaded(pos)) {
+            return false;
+        }
+        return level.getBlockState(pos).getBlock() instanceof AbstractDuctBlock
+                && !(level.getBlockEntity(pos) instanceof DuctBlockEntity);
+    }
+
+    /**
+     * Sum of planned (items still in source) stack sizes for the same source duct face and item — avoids queuing more
+     * of the same kind than the chest can cover.
+     */
+    private int pendingPlannedExtractCountOnSource(BlockPos sourceDuct, Direction sourceFace, ItemStack kind) {
+        int sum = 0;
+        for (OutboundShipment o : outboundShipments) {
+            if (o.stack.isEmpty()) {
+                continue;
+            }
+            if (!o.refundDuct.equals(sourceDuct) || o.sourceFace != sourceFace) {
+                continue;
+            }
+            if (!ItemStack.isSameItemSameComponents(o.stack, kind)) {
+                continue;
+            }
+            if (o.sourceExtractCommitted || o.legacyPhysicalBuffer) {
+                continue;
+            }
+            sum += o.stack.getCount();
+        }
+        return sum;
+    }
+
+    /**
+     * Removes a task from the queue: clears incoming reservations. Refunds only when items were already extracted
+     * ({@link OutboundShipment#sourceExtractCommitted} / legacy physical buffer). Planned-only tasks drop the plan only.
+     */
+    private void cancelOutboundShipment(
+            ServerLevel level, OutboundShipment s, @Nullable Iterator<OutboundShipment> it, BlockPos... extraOverflowDucts) {
+        boolean physical = s.legacyPhysicalBuffer || s.sourceExtractCommitted;
+        ItemStack lump = s.stack.isEmpty() ? ItemStack.EMPTY : s.stack.copy();
+        DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
+        DuctIncomingIndex.unregister(level, s.refundDuct, s.registeredIncoming.copy());
+        s.stack = ItemStack.EMPTY;
+        removeShipmentFromList(s, it);
+        if (!lump.isEmpty() && physical) {
+            DuctOverflowRouting.tryRefundToSourceNoDrop(
+                    level, s, lump, mergeScheduleOwnerWithExtras(worldPosition, extraOverflowDucts));
+        }
+        setChanged();
+    }
+
     private final DuctFaceNode[] faceNodes = new DuctFaceNode[FACE_COUNT];
 
     private final List<OutboundShipment> outboundShipments = new ArrayList<>();
@@ -318,11 +373,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 setChanged();
                 continue;
             }
-            if (!s.stack.isEmpty()) {
-                getOverflowBuffer().absorb(level, this, s.stack.copy());
-            }
-            it.remove();
-            setChanged();
+            cancelOutboundShipment(level, s, it);
         }
     }
 
@@ -346,23 +397,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 }
                 OptionalInt broken = DuctTransitTopology.firstBrokenPathEdge(level, s.ductPath);
                 if (broken.isPresent()) {
-                    int k = broken.getAsInt();
-                    int curIdx = s.currentPathIndex();
-                    boolean continuedLeg = true;
-                    if (s.transitPhase == TransitPhase.FORWARD) {
-                        if (curIdx <= k) {
-                            continuedLeg = beginVisualReturn(level, s, it);
-                        } else {
-                            continuedLeg = replanForwardToDestOrDisperse(level, s, it);
-                        }
-                    } else {
-                        continuedLeg = replanReturnToRefundOrDisperse(level, s, it);
-                    }
-                    if (!continuedLeg) {
-                        dirty = true;
-                        continue;
-                    }
-                    setChanged();
+                    cancelOutboundShipment(level, s, it, DuctTransitTopology.currentDuctPos(s));
                     dirty = true;
                     continue;
                 }
@@ -384,10 +419,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (!level.isLoaded(s.destDuct)) {
                 continue;
             }
-            if (s.destDuct.equals(worldPosition)) {
-                finishRetrieverArrival(level, s, it);
-            } else {
-                finishExtractionDelivery(level, s, it);
+            boolean deliveryDeferred =
+                    s.destDuct.equals(worldPosition)
+                            ? finishRetrieverArrival(level, s, it)
+                            : finishExtractionDelivery(level, s, it);
+            if (deliveryDeferred) {
+                continue;
             }
             dirty = true;
         }
@@ -401,38 +438,41 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
     }
 
+    /**
+     * Mid-transit resize for legacy saves that still have items extracted at schedule time. Planned-only shipments skip
+     * this (capacity is fixed at schedule; delivery adapts counts).
+     */
     private boolean resizePendingShipment(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
         if (s.transitPhase == TransitPhase.RETURN) {
-            // Return leg does not reserve destination capacity.
+            return true;
+        }
+        if (!s.legacyPhysicalBuffer && !s.sourceExtractCommitted) {
             return true;
         }
         if (!level.isLoaded(s.destDuct) || !level.isLoaded(s.refundDuct)) {
-            // Dest/source chunks may lag behind after world load; avoid false "missing duct" and disperse.
             return true;
         }
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
-            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            beginVisualReturn(level, s, it);
-            setChanged();
+            if (ductBlockPresentButBlockEntityPending(level, s.destDuct)) {
+                return true;
+            }
+            cancelOutboundShipment(level, s, it);
             return false;
         }
         if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe)) {
-            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            beginVisualReturn(level, s, it);
-            setChanged();
+            if (ductBlockPresentButBlockEntityPending(level, s.refundDuct)) {
+                return true;
+            }
+            cancelOutboundShipment(level, s, it);
             return false;
         }
         if (!DuctChannelPolicy.faceMatchesShipment(destBe.getFaceNode(s.destFace).channelLetter, s)
                 || !DuctChannelPolicy.faceMatchesShipment(srcBe.getFaceNode(s.sourceFace).channelLetter, s)) {
-            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            beginVisualReturn(level, s, it);
-            setChanged();
+            cancelOutboundShipment(level, s, it);
             return false;
         }
         if (!DuctRedstoneLogic.isItemNodeActive(level, s.destDuct, destBe.getFaceNode(s.destFace))) {
-            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            beginVisualReturn(level, s, it);
-            setChanged();
+            cancelOutboundShipment(level, s, it);
             return false;
         }
         DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
@@ -467,17 +507,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
         if (newPlanned <= 0) {
             if (s.sourceExtractCommitted && planned > 0) {
-                DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, s.stack.copy(), worldPosition);
-                s.stack = ItemStack.EMPTY;
-                it.remove();
-                setChanged();
+                cancelOutboundShipment(level, s, it);
                 return false;
             }
             if (s.legacyPhysicalBuffer && planned > 0) {
                 refundExcessToSource(level, s, planned);
             }
-            beginVisualReturn(level, s, it);
-            setChanged();
+            cancelOutboundShipment(level, s, it);
             return false;
         }
 
@@ -496,94 +532,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return true;
     }
 
-    /**
-     * Start return along a live path from {@link DuctTransitTopology#currentDuctPos} to {@link OutboundShipment#refundDuct},
-     * or disperse into overflow if unreachable.
-     *
-     * @return false if the shipment was removed (dispersed); true if it continues (RETURN leg or no-op)
-     */
-    private boolean beginVisualReturn(ServerLevel level, OutboundShipment s, @Nullable Iterator<OutboundShipment> removalIt) {
-        if (s.transitPhase == TransitPhase.RETURN) {
-            return true;
+    private static BlockPos[] mergeScheduleOwnerWithExtras(BlockPos scheduleOwner, BlockPos[] extras) {
+        if (extras == null || extras.length == 0) {
+            return new BlockPos[] {scheduleOwner};
         }
-        if (s.stack.isEmpty()) {
-            removeShipmentFromList(s, removalIt);
-            return false;
-        }
-        DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
-        BlockPos from = DuctTransitTopology.currentDuctPos(s);
-        Optional<List<BlockPos>> pathOpt =
-                DuctPathfinder.shortestPath(level, from, s.refundDuct, spec, networkType());
-        if (pathOpt.isEmpty()) {
-            disperseShipmentAt(level, s, from, removalIt);
-            return false;
-        }
-        List<BlockPos> path = pathOpt.get();
-        DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-        DuctIncomingIndex.unregister(level, s.refundDuct, s.registeredIncoming.copy());
-        long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
-        int ticks = (int) Math.min(travel, Integer.MAX_VALUE);
-        int edge = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
-        s.resetLeg(TransitPhase.RETURN, path, ticks, edge, level.getGameTime());
-        s.registeredIncoming = s.stack.copy();
-        DuctIncomingIndex.register(level, s.refundDuct, s.registeredIncoming.copy());
-        setChanged();
-        return true;
-    }
-
-    private boolean replanForwardToDestOrDisperse(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
-        if (s.transitPhase != TransitPhase.FORWARD || s.stack.isEmpty()) {
-            return true;
-        }
-        DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
-        BlockPos from = DuctTransitTopology.currentDuctPos(s);
-        Optional<List<BlockPos>> pathOpt =
-                DuctPathfinder.shortestPath(level, from, s.destDuct, spec, networkType());
-        if (pathOpt.isEmpty()) {
-            disperseShipmentAt(level, s, from, it);
-            return false;
-        }
-        List<BlockPos> path = pathOpt.get();
-        long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
-        int ticks = (int) Math.min(travel, Integer.MAX_VALUE);
-        int edge = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
-        s.resetLeg(TransitPhase.FORWARD, path, ticks, edge, level.getGameTime());
-        setChanged();
-        return true;
-    }
-
-    private boolean replanReturnToRefundOrDisperse(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
-        if (s.transitPhase != TransitPhase.RETURN || s.stack.isEmpty()) {
-            return true;
-        }
-        DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
-        BlockPos from = DuctTransitTopology.currentDuctPos(s);
-        Optional<List<BlockPos>> pathOpt =
-                DuctPathfinder.shortestPath(level, from, s.refundDuct, spec, networkType());
-        if (pathOpt.isEmpty()) {
-            disperseShipmentAt(level, s, from, it);
-            return false;
-        }
-        List<BlockPos> path = pathOpt.get();
-        long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
-        int ticks = (int) Math.min(travel, Integer.MAX_VALUE);
-        int edge = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
-        s.resetLeg(TransitPhase.RETURN, path, ticks, edge, level.getGameTime());
-        setChanged();
-        return true;
-    }
-
-    private void disperseShipmentAt(
-            ServerLevel level, OutboundShipment s, BlockPos absorbPos, @Nullable Iterator<OutboundShipment> removalIt) {
-        DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-        DuctIncomingIndex.unregister(level, s.refundDuct, s.registeredIncoming.copy());
-        ItemStack lump = s.stack.copy();
-        s.stack = ItemStack.EMPTY;
-        removeShipmentFromList(s, removalIt);
-        if (!lump.isEmpty()) {
-            DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, lump, worldPosition, absorbPos);
-        }
-        setChanged();
+        BlockPos[] merged = new BlockPos[1 + extras.length];
+        merged[0] = scheduleOwner;
+        System.arraycopy(extras, 0, merged, 1, extras.length);
+        return merged;
     }
 
     private void removeShipmentFromList(OutboundShipment s, @Nullable Iterator<OutboundShipment> removalIt) {
@@ -607,85 +563,112 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
-    private void finishExtractionDelivery(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
+    /**
+     * @return {@code true} if delivery was deferred (world/block entity not ready); {@code false} if resolved this tick.
+     */
+    private boolean finishExtractionDelivery(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
-            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            beginVisualReturn(level, s, it);
-            setChanged();
-            return;
+            if (ductBlockPresentButBlockEntityPending(level, s.destDuct)) {
+                return true;
+            }
+            cancelOutboundShipment(level, s, it);
+            return false;
         }
         if (!DuctChannelPolicy.faceMatchesShipment(destBe.getFaceNode(s.destFace).channelLetter, s)) {
-            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            beginVisualReturn(level, s, it);
-            setChanged();
-            return;
+            cancelOutboundShipment(level, s, it);
+            return false;
         }
         if (!DuctRedstoneLogic.isItemNodeActive(level, s.destDuct, destBe.getFaceNode(s.destFace))) {
-            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            beginVisualReturn(level, s, it);
-            setChanged();
-            return;
+            cancelOutboundShipment(level, s, it);
+            return false;
         }
-        DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
 
         if (s.legacyPhysicalBuffer || s.sourceExtractCommitted) {
+            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
             ItemStack toInsert = s.stack.copy();
             NodeMode dm = destBe.getFaceNode(s.destFace).nodeMode;
             if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                     && !destBe.passesItemFilters(s.destFace, toInsert, level, DuctFaceNode.FilterBank.FILTER)) {
-                DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-                if (s.sourceExtractCommitted) {
-                    DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, s.stack.copy(), worldPosition);
-                    it.remove();
-                } else {
-                    beginVisualReturn(level, s, it);
-                }
-                setChanged();
-                return;
+                cancelOutboundShipment(level, s, it);
+                return false;
             }
             ItemStack remainder =
                     s.legacyOmniFaces
                             ? DuctCapHelper.insertIntoStorageFaces(level, s.destDuct, destBe, s.stack.copy())
                             : DuctCapHelper.insertIntoFace(level, s.destDuct, s.destFace, s.stack.copy());
             it.remove();
+            s.stack = ItemStack.EMPTY;
             if (!remainder.isEmpty()) {
                 DuctOverflowRouting.absorbExtractionDestRemainder(level, s, destBe, remainder, worldPosition);
             }
             setChanged();
-            return;
+            return false;
         }
 
+        DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
         if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe)) {
+            if (ductBlockPresentButBlockEntityPending(level, s.refundDuct)) {
+                DuctIncomingIndex.register(level, s.destDuct, s.registeredIncoming.copy());
+                return true;
+            }
             it.remove();
+            s.stack = ItemStack.EMPTY;
             setChanged();
-            return;
+            return false;
         }
         if (!DuctChannelPolicy.faceMatchesShipment(srcBe.getFaceNode(s.sourceFace).channelLetter, s)) {
-            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
             it.remove();
+            s.stack = ItemStack.EMPTY;
             setChanged();
-            return;
+            return false;
         }
-        int n = s.stack.getCount();
+        int planned = s.stack.getCount();
+        int capExt =
+                s.legacyOmniFaces
+                        ? DuctCapHelper.countExtractableMatching(level, s.refundDuct, srcBe, s.stack, planned)
+                        : DuctCapHelper.countExtractableMatchingOnFace(
+                                level, s.refundDuct, s.sourceFace, s.stack, planned);
+        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, s.destDuct);
+        int capIn =
+                s.legacyOmniFaces
+                        ? DuctCapHelper.maxInsertableAfterPending(
+                                level, s.destDuct, destBe, s.stack, Math.min(planned, capExt), prior)
+                        : DuctCapHelper.maxInsertableAfterPendingOnFace(
+                                level, s.destDuct, s.destFace, s.stack, Math.min(planned, capExt), prior);
+        int n = Math.min(planned, Math.min(capExt, capIn));
+        if (n <= 0) {
+            it.remove();
+            s.stack = ItemStack.EMPTY;
+            setChanged();
+            return false;
+        }
+        ItemStack toExt = s.stack.copy();
+        toExt.setCount(n);
         ItemStack extracted =
                 s.legacyOmniFaces
-                        ? DuctCapHelper.extractMatchingUpTo(level, s.refundDuct, srcBe, s.stack, n)
-                        : DuctCapHelper.extractMatchingUpToOnFace(
-                                level, s.refundDuct, s.sourceFace, s.stack, n);
+                        ? DuctCapHelper.extractMatchingUpTo(level, s.refundDuct, srcBe, toExt, n)
+                        : DuctCapHelper.extractMatchingUpToOnFace(level, s.refundDuct, s.sourceFace, toExt, n);
         if (extracted.isEmpty()) {
+            if (ductBlockPresentButBlockEntityPending(level, s.refundDuct)) {
+                DuctIncomingIndex.register(level, s.destDuct, s.registeredIncoming.copy());
+                return true;
+            }
             it.remove();
+            s.stack = ItemStack.EMPTY;
             setChanged();
-            return;
+            return false;
         }
         NodeMode dm2 = destBe.getFaceNode(s.destFace).nodeMode;
         if ((dm2 == NodeMode.FILTERING_INSERTION || dm2 == NodeMode.EXTRACTION_FILTERING)
                 && !destBe.passesItemFilters(s.destFace, extracted, level, DuctFaceNode.FilterBank.FILTER)) {
-            s.stack = extracted.copy();
-            beginVisualReturn(level, s, it);
+            DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, extracted, worldPosition);
+            it.remove();
+            s.stack = ItemStack.EMPTY;
             setChanged();
-            return;
+            return false;
         }
         it.remove();
+        s.stack = ItemStack.EMPTY;
         ItemStack remainder =
                 s.legacyOmniFaces
                         ? DuctCapHelper.insertIntoStorageFaces(level, s.destDuct, destBe, extracted.copy())
@@ -694,72 +677,100 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             DuctOverflowRouting.absorbExtractionDestRemainder(level, s, destBe, remainder, worldPosition);
         }
         setChanged();
+        return false;
     }
 
-    private void finishRetrieverArrival(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
-        DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
+    /**
+     * @return {@code true} if arrival handling was deferred (world/block entity not ready); {@code false} if resolved.
+     */
+    private boolean finishRetrieverArrival(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
         if (!DuctRedstoneLogic.isItemNodeActive(level, worldPosition, getFaceNode(s.destFace))) {
-            beginVisualReturn(level, s, it);
-            setChanged();
-            return;
+            cancelOutboundShipment(level, s, it);
+            return false;
         }
         if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity donorBe)) {
-            beginVisualReturn(level, s, it);
-            setChanged();
-            return;
+            if (ductBlockPresentButBlockEntityPending(level, s.refundDuct)) {
+                return true;
+            }
+            cancelOutboundShipment(level, s, it);
+            return false;
         }
         if (!DuctChannelPolicy.faceMatchesShipment(donorBe.getFaceNode(s.sourceFace).channelLetter, s)
                 || !DuctChannelPolicy.faceMatchesShipment(getFaceNode(s.destFace).channelLetter, s)) {
-            beginVisualReturn(level, s, it);
-            setChanged();
-            return;
+            cancelOutboundShipment(level, s, it);
+            return false;
         }
+
         if (s.legacyPhysicalBuffer || s.sourceExtractCommitted) {
-            ItemStack toInsert = s.stack.copy();
+            DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
             NodeMode sm = getFaceNode(s.destFace).nodeMode;
+            ItemStack toInsert = s.stack.copy();
             if ((sm == NodeMode.FILTERING_INSERTION || sm == NodeMode.EXTRACTION_FILTERING)
                     && !passesItemFilters(s.destFace, toInsert, level, DuctFaceNode.FilterBank.FILTER)) {
-                DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
-                if (s.sourceExtractCommitted) {
-                    DuctOverflowRouting.absorbRetrieverDestRemainder(level, s, this, donorBe, s.stack.copy(), worldPosition);
-                    it.remove();
-                } else {
-                    beginVisualReturn(level, s, it);
-                }
-                setChanged();
-                return;
+                cancelOutboundShipment(level, s, it);
+                return false;
             }
             ItemStack remainder =
                     s.legacyOmniFaces
                             ? DuctCapHelper.insertIntoStorageFaces(level, worldPosition, this, s.stack.copy())
                             : DuctCapHelper.insertIntoFace(level, worldPosition, s.destFace, s.stack.copy());
             it.remove();
+            s.stack = ItemStack.EMPTY;
             if (!remainder.isEmpty()) {
                 DuctOverflowRouting.absorbRetrieverDestRemainder(level, s, this, donorBe, remainder, worldPosition);
             }
             setChanged();
-            return;
+            return false;
         }
-        int n = s.stack.getCount();
+
+        DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
+        int planned = s.stack.getCount();
+        int capExt =
+                s.legacyOmniFaces
+                        ? DuctCapHelper.countExtractableMatching(level, s.refundDuct, donorBe, s.stack, planned)
+                        : DuctCapHelper.countExtractableMatchingOnFace(
+                                level, s.refundDuct, s.sourceFace, s.stack, planned);
+        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, worldPosition);
+        int capIn =
+                s.legacyOmniFaces
+                        ? DuctCapHelper.maxInsertableAfterPending(
+                                level, worldPosition, this, s.stack, Math.min(planned, capExt), prior)
+                        : DuctCapHelper.maxInsertableAfterPendingOnFace(
+                                level, worldPosition, s.destFace, s.stack, Math.min(planned, capExt), prior);
+        int n = Math.min(planned, Math.min(capExt, capIn));
+        if (n <= 0) {
+            it.remove();
+            s.stack = ItemStack.EMPTY;
+            setChanged();
+            return false;
+        }
+        ItemStack toExt = s.stack.copy();
+        toExt.setCount(n);
         ItemStack extracted =
                 s.legacyOmniFaces
-                        ? DuctCapHelper.extractMatchingUpTo(level, s.refundDuct, donorBe, s.stack, n)
-                        : DuctCapHelper.extractMatchingUpToOnFace(
-                                level, s.refundDuct, s.sourceFace, s.stack, n);
+                        ? DuctCapHelper.extractMatchingUpTo(level, s.refundDuct, donorBe, toExt, n)
+                        : DuctCapHelper.extractMatchingUpToOnFace(level, s.refundDuct, s.sourceFace, toExt, n);
         if (extracted.isEmpty()) {
+            if (ductBlockPresentButBlockEntityPending(level, s.refundDuct)) {
+                DuctIncomingIndex.register(level, worldPosition, s.registeredIncoming.copy());
+                return true;
+            }
             it.remove();
+            s.stack = ItemStack.EMPTY;
             setChanged();
-            return;
+            return false;
         }
         NodeMode sm2 = getFaceNode(s.destFace).nodeMode;
         if ((sm2 == NodeMode.FILTERING_INSERTION || sm2 == NodeMode.EXTRACTION_FILTERING)
                 && !passesItemFilters(s.destFace, extracted, level, DuctFaceNode.FilterBank.FILTER)) {
-            s.stack = extracted.copy();
-            beginVisualReturn(level, s, it);
+            DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, extracted, worldPosition);
+            it.remove();
+            s.stack = ItemStack.EMPTY;
             setChanged();
-            return;
+            return false;
         }
         it.remove();
+        s.stack = ItemStack.EMPTY;
         ItemStack remainder =
                 s.legacyOmniFaces
                         ? DuctCapHelper.insertIntoStorageFaces(level, worldPosition, this, extracted.copy())
@@ -768,6 +779,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             DuctOverflowRouting.absorbRetrieverDestRemainder(level, s, this, donorBe, remainder, worldPosition);
         }
         setChanged();
+        return false;
     }
 
     private void tickOverflowBufferDrain(ServerLevel level) {
@@ -893,20 +905,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             ItemStack planned = probe.copy();
             planned.setCount(plannedCount);
-            if (!canScheduleTowardFace(level, dest, destBe, destFace, planned, spec)) {
+            int pendingSum = pendingPlannedExtractCountOnSource(worldPosition, face, planned);
+            if (pendingSum + plannedCount > avail) {
                 continue;
             }
-            ItemStack extracted =
-                    DuctCapHelper.extractMatchingUpToOnFace(level, worldPosition, face, planned, plannedCount);
-            if (extracted.isEmpty() || extracted.getCount() != plannedCount) {
+            if (!canScheduleTowardFace(level, dest, destBe, destFace, planned, spec)) {
                 continue;
             }
             node.roundRobinCursor = rrProbe[0];
             long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
             int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
             OutboundShipment sh =
-                    new OutboundShipment(extracted, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
-            sh.sourceExtractCommitted = true;
+                    new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
             sh.ductPath = OutboundShipment.copyPath(path);
             sh.totalTravelTicks = travelTicks;
             sh.edgeTicks = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
@@ -971,19 +981,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             ItemStack planned = probe.copy();
             planned.setCount(plannedCount);
-            if (!canScheduleTowardFace(level, worldPosition, this, retrieverFace, planned, spec)) {
+            int pendingSum = pendingPlannedExtractCountOnSource(donor, donorFace, planned);
+            if (pendingSum + plannedCount > avail) {
                 continue;
             }
-            ItemStack extracted =
-                    DuctCapHelper.extractMatchingUpToOnFace(level, donor, donorFace, planned, plannedCount);
-            if (extracted.isEmpty() || extracted.getCount() != plannedCount) {
+            if (!canScheduleTowardFace(level, worldPosition, this, retrieverFace, planned, spec)) {
                 continue;
             }
             long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
             int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
             OutboundShipment sh =
-                    new OutboundShipment(extracted, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
-            sh.sourceExtractCommitted = true;
+                    new OutboundShipment(planned, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
             sh.ductPath = OutboundShipment.copyPath(path);
             sh.totalTravelTicks = travelTicks;
             sh.edgeTicks = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
@@ -1574,7 +1582,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (itemId != null) {
                 item.putString("VizId", itemId.toString());
             }
-            item.putByte("Ph", (byte) s.transitPhase.ordinal());
+            item.putByte("Ph", (byte) TransitPhase.FORWARD.ordinal());
             item.putInt("Tot", s.totalTravelTicks);
             item.putInt("Tr", s.travelTicks);
             item.putInt("Ed", s.edgeTicks);

@@ -105,6 +105,14 @@ public final class DuctPathfinder {
         if (!best.containsKey(to)) {
             return Optional.empty();
         }
+        List<BlockPos> path = reconstructPath(from, to, prev);
+        if (path.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(path);
+    }
+
+    private static List<BlockPos> reconstructPath(BlockPos from, BlockPos to, Map<BlockPos, BlockPos> prev) {
         ArrayList<BlockPos> rev = new ArrayList<>();
         BlockPos c = to;
         while (c != null) {
@@ -115,14 +123,75 @@ public final class DuctPathfinder {
             c = prev.get(c);
         }
         if (rev.isEmpty() || !rev.get(rev.size() - 1).equals(from)) {
-            return Optional.empty();
+            return List.of();
         }
-        List<BlockPos> path = new ArrayList<>(rev.size());
+        ArrayList<BlockPos> path = new ArrayList<>(rev.size());
         for (int i = rev.size() - 1; i >= 0; i--) {
             path.add(rev.get(i));
         }
-        return Optional.of(path);
+        return path;
     }
+
+    /**
+     * Like {@link #shortestPath} but does not treat unloaded chunks as empty air: if the search is blocked only because
+     * neighbors were not loaded, {@link TransitPathResult#incompleteWorld()} is true and callers must defer instead of
+     * dispersing in-flight shipments.
+     */
+    public static TransitPathResult shortestPathForTransit(
+            Level level, BlockPos from, BlockPos to, DuctItemTransportSpec spec, DuctNetworkType network) {
+        if (!level.isLoaded(from) || !level.isLoaded(to)) {
+            return new TransitPathResult(Optional.empty(), true);
+        }
+        if (!from.equals(to) && !DuctConnectable.isSameNetwork(level.getBlockState(from).getBlock(), network)) {
+            return new TransitPathResult(Optional.empty(), false);
+        }
+        if (!DuctConnectable.isSameNetwork(level.getBlockState(to).getBlock(), network)) {
+            return new TransitPathResult(Optional.empty(), false);
+        }
+        long w = edgeTravelTicks(spec);
+        record Node(BlockPos p, long d) {}
+        PriorityQueue<Node> pq = new PriorityQueue<>(Comparator.comparingLong(Node::d));
+        Map<BlockPos, Long> best = new HashMap<>();
+        Map<BlockPos, BlockPos> prev = new HashMap<>();
+        pq.add(new Node(from, 0));
+        best.put(from, 0L);
+        boolean sawUnloadedNeighbor = false;
+        while (!pq.isEmpty()) {
+            Node cur = pq.poll();
+            if (cur.d != best.getOrDefault(cur.p, Long.MAX_VALUE)) {
+                continue;
+            }
+            if (cur.p.equals(to)) {
+                break;
+            }
+            for (BlockPos n : neighbors6(cur.p)) {
+                if (!level.isLoaded(n)) {
+                    sawUnloadedNeighbor = true;
+                    continue;
+                }
+                if (!DuctConnectable.isSameNetwork(level.getBlockState(n).getBlock(), network)) {
+                    continue;
+                }
+                long nd = cur.d + w;
+                if (nd < best.getOrDefault(n, Long.MAX_VALUE)) {
+                    best.put(n, nd);
+                    prev.put(n, cur.p);
+                    pq.add(new Node(n, nd));
+                }
+            }
+        }
+        if (!best.containsKey(to)) {
+            return new TransitPathResult(Optional.empty(), sawUnloadedNeighbor);
+        }
+        List<BlockPos> path = reconstructPath(from, to, prev);
+        if (path.isEmpty()) {
+            return new TransitPathResult(Optional.empty(), sawUnloadedNeighbor);
+        }
+        return new TransitPathResult(Optional.of(path), false);
+    }
+
+    /** Result of {@link #shortestPathForTransit}: when {@link #incompleteWorld()} is true, defer path-based actions. */
+    public record TransitPathResult(Optional<List<BlockPos>> path, boolean incompleteWorld) {}
 
     /**
      * Total travel ticks along an already-resolved path: {@code speed} × number of duct blocks on the path (each

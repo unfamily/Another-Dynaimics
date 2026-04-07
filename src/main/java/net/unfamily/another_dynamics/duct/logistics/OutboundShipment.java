@@ -14,9 +14,10 @@ import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
 
 /**
- * Pending item move: {@link #stack} carries items in transit. When {@link #sourceExtractCommitted} is true, they were
- * removed from the source inventory at schedule time; otherwise (legacy in-flight save) they are still in the source
- * until {@code finish*} extracts.
+ * Pending item move: {@link #stack} is the planned template and count. Items stay in the source storage until
+ * {@code finish*} runs (extract-at-delivery with {@code n = min(planned, source, dest)}). When
+ * {@link #sourceExtractCommitted} is true (NBT {@code SrcXfr} from older worlds), items were removed at schedule time
+ * and the legacy committed path applies until those tasks complete.
  * {@link #sourceFace} / {@link #destFace} select which attached inventories on source/dest ducts are used.
  * {@link #transportChannel} is {@link net.unfamily.another_dynamics.duct.DuctFaceNode} letter (1–26) for both ends;
  * {@link DuctChannelPolicy#LEGACY_WILDCARD}

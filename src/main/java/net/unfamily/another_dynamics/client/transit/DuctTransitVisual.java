@@ -26,8 +26,7 @@ import org.jetbrains.annotations.Nullable;
  * Client-only: ghost item along a duct path. Endpoints are pulled toward storage faces so motion reads as leaving the
  * source node and entering the destination node.
  *
- * <p>On {@link TransitPhase#RETURN} the {@link #ductPath} runs destination → source; attach faces are swapped so the
- * first/last points align with the correct storage sides (avoids visual “kinks” near nodes).
+ * <p>Legacy saves could use {@link TransitPhase#RETURN}; the wire always renders as {@link TransitPhase#FORWARD}.
  */
 public final class DuctTransitVisual {
 
@@ -57,7 +56,6 @@ public final class DuctTransitVisual {
             BlockPos ownerDuct,
             ItemStack stack,
             List<BlockPos> ductPath,
-            TransitPhase phase,
             int totalTravelTicks,
             int travelTicks,
             int edgeTicks,
@@ -68,15 +66,14 @@ public final class DuctTransitVisual {
         this.ownerDuct = ownerDuct;
         this.stack = validateGhost(stack);
         this.ductPath = ductPath;
-        this.phase = phase;
+        this.phase = TransitPhase.FORWARD;
         this.totalTravelTicks = totalTravelTicks;
         this.travelTicks = travelTicks;
         this.edgeTicks = Math.max(1, edgeTicks);
         this.journeyStartGameTime = journeyStartGameTime;
         this.progressAnchorGameTime = progressAnchorGameTime;
-        Direction pathStartFace =
-                phase == TransitPhase.RETURN ? destAttachFace : sourceAttachFace;
-        Direction pathEndFace = phase == TransitPhase.RETURN ? sourceAttachFace : destAttachFace;
+        Direction pathStartFace = sourceAttachFace;
+        Direction pathEndFace = destAttachFace;
         this.pathPoints = buildPathPoints(ductPath, ownerDuct, pathStartFace, pathEndFace);
     }
 
@@ -150,7 +147,6 @@ public final class DuctTransitVisual {
                 ownerDuct,
                 s.stack.copy(),
                 List.copyOf(s.ductPath),
-                s.transitPhase,
                 s.totalTravelTicks,
                 s.travelTicks,
                 s.edgeTicks,
@@ -207,7 +203,6 @@ public final class DuctTransitVisual {
                             ownerDuct,
                             stack,
                             Collections.unmodifiableList(path),
-                            TransitPhase.fromOrdinal(t.getByte("Ph")),
                             tot,
                             tr,
                             t.getInt("Ed"),
