@@ -2,6 +2,7 @@ package net.unfamily.another_dynamics.duct;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import net.minecraft.resources.ResourceLocation;
 
@@ -16,6 +17,10 @@ import net.minecraft.resources.ResourceLocation;
  *
  * <p>Optional {@link #sound} is a block step/place/break group name (e.g. {@code metal}, {@code metallic}, {@code copper});
  * see {@link DuctSoundTypes#resolve}.</p>
+ *
+ * <p>{@link #restrictionsConnectWithCompatible}: when {@code false}, item ducts only connect as pipe to neighbors with
+ * the same {@link #logicalId}. {@link #disabledFeatures} / {@link #forbiddenFeatures} use keys from
+ * {@link DuctFeatureKeys}.</p>
  */
 public record DuctDefinition(
         ResourceLocation dataId,
@@ -26,9 +31,18 @@ public record DuctDefinition(
         Optional<ResourceLocation> compositeModelDefault,
         Optional<ResourceLocation> compositeModelLine,
         boolean putInCreativeMenu,
-        Optional<String> sound
+        Optional<String> sound,
+        boolean restrictionsConnectWithCompatible,
+        Set<String> disabledFeatures,
+        Set<String> forbiddenFeatures,
+        boolean alwaysOpaqueRendering
 ) {
     public DuctItemTransportSpec itemTransportOrFallback() {
         return itemTransport.orElseGet(DuctItemTransportSpec::fallback);
+    }
+
+    /** Synonym for JSON field {@code connect_with_compatible}. */
+    public boolean connectWithCompatible() {
+        return restrictionsConnectWithCompatible;
     }
 }

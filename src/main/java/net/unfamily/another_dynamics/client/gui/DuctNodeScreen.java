@@ -40,6 +40,7 @@ import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
+import net.unfamily.another_dynamics.registry.ModAttachments;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -97,8 +98,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     /**
      * Priority / quantity block: centered, two rows (numeric then 0/A/[M]/Close-without-saving). Slightly above player inventory.
      */
-    /** Ctrl/Alt + +/- step for priority and extract batch (batch stays within {@link DuctMenuSync#EXTRACT_BATCH_CAP}). */
-    private static final int AMOUNT_COARSE_STEP = 100;
+    /** +/- steps: priority uses 1 / Ctrl 10 / Alt 100; quantity uses 1 / Ctrl 8 / Alt 64. Use 0 and M buttons for endpoints. */
+    private static final int PRIORITY_STEP_PLAIN = 1;
+    private static final int PRIORITY_STEP_CTRL = 10;
+    private static final int PRIORITY_STEP_ALT = 100;
+    private static final int BATCH_STEP_PLAIN = 1;
+    private static final int BATCH_STEP_CTRL = 8;
+    private static final int BATCH_STEP_ALT = 64;
     private static final int AMOUNT_STEPPER_W = 14;
     private static final int AMOUNT_INNER_GAP = 2;
     private static final int AMOUNT_EDIT_W = 56;
@@ -111,9 +117,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     /** Gui-local X of {@link #routingPriorityBox} left edge (for label centering). Set in {@link #init}. */
     private int amountEditBoxGuiLeft;
 
-    private static final int CHANNEL_WIDGET_W = 16;
-    private static final int CHANNEL_WIDGET_H = 10;
-    private static final int CHANNEL_WIDGET_Y = ROW3_Y + BTN_H - CHANNEL_WIDGET_H;
+    private static final int CHANNEL_WIDGET_W = 18;
+    private static final int CHANNEL_WIDGET_H = 18;
+    /** Below the copy-settings slot in the same column (slot is 18px tall). */
+    private static final int CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT = 4;
+    private static final int CHANNEL_WIDGET_Y =
+            DuctNodeMenu.SLOT_COPY_Y + 18 + CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT;
 
     /** Visible filter rows; scroll when there are more slots. */
     private static final int VISIBLE_FILTER_ENTRIES = 4;
@@ -168,7 +177,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private Button listLogicButton;
     private Button allowNavButton;
     private Button selfFeedStub;
-    private Button renderingStub;
+    private Button opaqueRenderingButton;
     private Button backButton;
     private Button validKeysButton;
 
@@ -328,7 +337,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         int r2x = CENTER_X + 2 * (ROW_BTN_W + ROW_GAP);
         routingModeButton = Button.builder(Component.empty(), b -> handleMenuButton(1))
-                .bounds(this.leftPos + r2x, this.topPos + ROW3_Y, ROW_BTN_W, BTN_H)
+                .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
                 .build();
         addRenderableWidget(routingModeButton);
 
@@ -395,7 +404,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     }
                     handleMenuButton(0);
                 })
-                .bounds(this.leftPos + CENTER_X, this.topPos + ROW3_Y, ROW_BTN_W, BTN_H)
+                .bounds(this.leftPos + CENTER_X, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
                 .build();
         addRenderableWidget(nodeModeButton);
         selfFeedStub = Button.builder(Component.translatable("gui.another_dynamics.duct_node.self_feed"), b -> playClickSound())
@@ -406,14 +415,19 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         BTN_H)
                 .build();
         addRenderableWidget(selfFeedStub);
-        renderingStub = Button.builder(Component.translatable("gui.another_dynamics.duct_node.rendering"), b -> playClickSound())
-                .bounds(
-                        this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
-                        this.topPos + ROW2_Y,
-                        ROW_BTN_W,
-                        BTN_H)
-                .build();
-        addRenderableWidget(renderingStub);
+        opaqueRenderingButton =
+                Button.builder(Component.empty(), b -> {
+                            playClickSound();
+                            ModNetwork.sendDuctOpaqueToggle();
+                        })
+                        .bounds(
+                                this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
+                                this.topPos + ROW2_Y,
+                                ROW_BTN_W,
+                                BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.opaque_rendering.tooltip")))
+                        .build();
+        addRenderableWidget(opaqueRenderingButton);
 
         backButton = Button.builder(Component.translatable("gui.another_dynamics.duct_node.filters.back"), b -> {
                     playClickSound();
@@ -601,7 +615,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         // In hybrid panels this button becomes Back.
         nodeModeButton.visible = main && !howto;
         selfFeedStub.visible = false;
-        renderingStub.visible = false;
+        opaqueRenderingButton.visible = main && !howto;
 
         closeButton.visible = true;
         channelButton.visible = !howto;
@@ -1286,6 +1300,14 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     Tooltip.create(
                             Component.translatable("gui.another_dynamics.duct_node.routing.tooltip." + rm.name().toLowerCase())));
         }
+        if (minecraft != null && minecraft.player != null && opaqueRenderingButton != null) {
+            boolean opaqueOn = minecraft.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get());
+            opaqueRenderingButton.setMessage(
+                    Component.translatable(
+                            opaqueOn
+                                    ? "gui.another_dynamics.duct_node.opaque_rendering.on"
+                                    : "gui.another_dynamics.duct_node.opaque_rendering.off"));
+        }
         if (nm.isHybrid()) {
             if (!inHybridPanel) {
                 if (nm == NodeMode.EXTRACTION_FILTERING) {
@@ -1449,38 +1471,52 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         ModNetwork.sendFieldUpdate(menuSyncedPos(), menuSyncedFace(), insertionPriority, extractBatch);
     }
 
+    private int stepForPriorityAdjust() {
+        boolean c = hasControlDown();
+        boolean a = hasAltDown();
+        if (a) {
+            return PRIORITY_STEP_ALT;
+        }
+        if (c) {
+            return PRIORITY_STEP_CTRL;
+        }
+        return PRIORITY_STEP_PLAIN;
+    }
+
+    private int stepForBatchAdjust() {
+        boolean c = hasControlDown();
+        boolean a = hasAltDown();
+        if (a) {
+            return BATCH_STEP_ALT;
+        }
+        if (c) {
+            return BATCH_STEP_CTRL;
+        }
+        return BATCH_STEP_PLAIN;
+    }
+
     private void adjustAmountField(int sign) {
         playClickSound();
         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
         int priSynced = syncedInsertionPriority();
         int batchSynced = syncedExtractBatch();
-        boolean coarse = hasControlDown() || hasAltDown();
         if (nm.usesInsertionPriorityField()) {
             int base = parsePriorityOr(routingPriorityBox.getValue(), priSynced);
-            int pri;
-            if (hasShiftDown()) {
-                pri = sign > 0 ? Integer.MAX_VALUE : Integer.MIN_VALUE;
-            } else {
-                pri =
-                        (int)
-                                Mth.clamp(
-                                        (long) base + (long) sign * (coarse ? AMOUNT_COARSE_STEP : 1L),
-                                        Integer.MIN_VALUE,
-                                        Integer.MAX_VALUE);
-            }
+            int step = stepForPriorityAdjust();
+            int pri =
+                    (int)
+                            Mth.clamp(
+                                    (long) base + (long) sign * step,
+                                    Integer.MIN_VALUE,
+                                    Integer.MAX_VALUE);
             syncingAmountBoxFromServer = true;
             routingPriorityBox.setValue(Integer.toString(pri));
             syncingAmountBoxFromServer = false;
         } else {
             int base = parsePriorityOr(routingPriorityBox.getValue(), batchSynced);
             int cap = syncedExtractBatchCap();
-            int batch;
-            if (hasShiftDown()) {
-                batch = sign > 0 ? cap : 0;
-            } else {
-                int step = coarse ? AMOUNT_COARSE_STEP : 1;
-                batch = Mth.clamp(base + sign * step, 0, cap);
-            }
+            int step = stepForBatchAdjust();
+            int batch = Mth.clamp(base + sign * step, 0, cap);
             syncingAmountBoxFromServer = true;
             routingPriorityBox.setValue(Integer.toString(batch));
             syncingAmountBoxFromServer = false;

@@ -20,6 +20,7 @@ import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.unfamily.another_dynamics.registry.ModAttachments;
 
 @EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class ModNetwork {
@@ -103,6 +104,15 @@ public final class ModNetwork {
             });
         });
 
+        reg.playToServer(DuctOpaqueTogglePayload.TYPE, DuctOpaqueTogglePayload.STREAM_CODEC, (_payload, ctx) -> {
+            ctx.enqueueWork(() -> {
+                ServerPlayer player = (ServerPlayer) ctx.player();
+                var att = ModAttachments.DUCT_TRANSIT_OPAQUE.get();
+                boolean next = !player.getData(att);
+                player.setData(att, next);
+            });
+        });
+
         reg.playToServer(DuctSelfFeedPayload.TYPE, DuctSelfFeedPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
@@ -163,6 +173,11 @@ public final class ModNetwork {
 
     public static void sendSelfFeedSet(BlockPos pos, Direction face, boolean enabled) {
         PacketDistributor.sendToServer(new DuctSelfFeedPayload(pos, face.ordinal(), enabled));
+    }
+
+    /** Toggles duct opaque rendering preference (player attachment); server authoritative. */
+    public static void sendDuctOpaqueToggle() {
+        PacketDistributor.sendToServer(DuctOpaqueTogglePayload.INSTANCE);
     }
 
     /**

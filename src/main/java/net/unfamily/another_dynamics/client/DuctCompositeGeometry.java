@@ -269,6 +269,10 @@ public final class DuctCompositeGeometry {
         }
     }
 
+    /**
+     * @param opaqueDuctTextureVShift atlas V delta for opaque skin on {@code center}, {@code con_*}, and line center;
+     *        {@code 0} skips. {@code node_*} quads are added separately in {@link #appendNodeIcon} without this shift.
+     */
     public void appendForWorldWithNodeIcons(
             List<BakedQuad> out,
             int pipeMask,
@@ -276,7 +280,8 @@ public final class DuctCompositeGeometry {
             int packedNodeIcons,
             TextureAtlasSprite nodesSprite,
             boolean includeBase,
-            boolean includeOverlays) {
+            boolean includeOverlays,
+            float opaqueDuctTextureVShift) {
         if (!built) {
             return;
         }
@@ -284,23 +289,25 @@ public final class DuctCompositeGeometry {
         switch (shape) {
             case SINGLE -> {
                 if (includeBase) {
-                    out.addAll(quadsNamed("center"));
+                    addPipeQuadsWithOptionalVShift(out, quadsNamed("center"), opaqueDuctTextureVShift);
                 }
             }
             case PARTIAL -> {
                 if (includeBase) {
-                    out.addAll(quadsNamed("center"));
+                    addPipeQuadsWithOptionalVShift(out, quadsNamed("center"), opaqueDuctTextureVShift);
                 }
                 for (Direction d : Direction.values()) {
                     int bit = 1 << d.ordinal();
                     if ((pipeMask & bit) != 0) {
                         if (includeBase) {
-                            out.addAll(quadsNamed(connectionPiece(d)));
+                            addPipeQuadsWithOptionalVShift(
+                                    out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
                         }
                     }
                     if ((storageMask & bit) != 0) {
                         if (includeBase) {
-                            out.addAll(quadsNamed(connectionPiece(d)));
+                            addPipeQuadsWithOptionalVShift(
+                                    out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
                         }
                         appendNodeIcon(out, d, packedNodeIcons, nodesSprite, includeBase, includeOverlays);
                     }
@@ -309,7 +316,8 @@ public final class DuctCompositeGeometry {
             case LINE_X, LINE_Y, LINE_Z -> {
                 Transformation tr = rotationForLineAxis(shape.lineAxis());
                 if (includeBase) {
-                    out.addAll(transformQuads(lineCenterQuads(), tr));
+                    addPipeQuadsWithOptionalVShift(
+                            out, transformQuads(lineCenterQuads(), tr), opaqueDuctTextureVShift);
                 }
                 Direction na = shape.lineEndNegative();
                 Direction pb = shape.lineEndPositive();
@@ -322,18 +330,20 @@ public final class DuctCompositeGeometry {
             }
             case MULTI -> {
                 if (includeBase) {
-                    out.addAll(quadsNamed("center"));
+                    addPipeQuadsWithOptionalVShift(out, quadsNamed("center"), opaqueDuctTextureVShift);
                 }
                 for (Direction d : Direction.values()) {
                     int bit = 1 << d.ordinal();
                     if ((pipeMask & bit) != 0) {
                         if (includeBase) {
-                            out.addAll(quadsNamed(connectionPiece(d)));
+                            addPipeQuadsWithOptionalVShift(
+                                    out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
                         }
                     }
                     if ((storageMask & bit) != 0) {
                         if (includeBase) {
-                            out.addAll(quadsNamed(connectionPiece(d)));
+                            addPipeQuadsWithOptionalVShift(
+                                    out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
                         }
                     }
                 }
@@ -344,6 +354,35 @@ public final class DuctCompositeGeometry {
                 }
             }
         }
+    }
+
+    private static void addPipeQuadsWithOptionalVShift(List<BakedQuad> out, List<BakedQuad> src, float dv) {
+        if (src.isEmpty()) {
+            return;
+        }
+        if (dv == 0.0f) {
+            out.addAll(src);
+            return;
+        }
+        for (BakedQuad q : src) {
+            out.add(shiftQuadV(q, dv));
+        }
+    }
+
+    private static BakedQuad shiftQuadV(BakedQuad q, float deltaV) {
+        int stride = IQuadTransformer.STRIDE;
+        int uv0 = IQuadTransformer.UV0;
+        int[] v = q.getVertices();
+        if (v == null || v.length < stride * 4) {
+            return q;
+        }
+        int[] nv = v.clone();
+        for (int k = 0; k < 4; k++) {
+            int base = k * stride;
+            float vv = Float.intBitsToFloat(nv[base + uv0 + 1]);
+            nv[base + uv0 + 1] = Float.floatToRawIntBits(vv + deltaV);
+        }
+        return new BakedQuad(nv, q.getTintIndex(), q.getDirection(), q.getSprite(), q.isShade());
     }
 
     private void appendStorageNodesOnly(List<BakedQuad> out, int storageMask) {

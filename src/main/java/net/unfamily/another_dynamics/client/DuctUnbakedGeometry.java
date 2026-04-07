@@ -58,7 +58,7 @@ public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGe
             base = EmptyModel.BAKED;
         }
         TextureAtlasSprite particle = spriteGetter.apply(context.getMaterial("particle"));
-        return new DuctBakedModel(base, geometry, particle, nodesSprite);
+        return new DuctBakedModel(base, geometry, particle, nodesSprite, ductLogicalId);
     }
 
     @Override

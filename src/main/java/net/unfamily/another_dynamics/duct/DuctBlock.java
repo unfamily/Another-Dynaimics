@@ -153,6 +153,7 @@ public final class DuctBlock extends AbstractDuctBlock {
                 buf -> {
                     buf.writeBlockPos(duct.getBlockPos());
                     buf.writeByte(clickedFace.ordinal());
+                    buf.writeBoolean(duct.ductAlwaysOpaqueRendering());
                 });
     }
 }

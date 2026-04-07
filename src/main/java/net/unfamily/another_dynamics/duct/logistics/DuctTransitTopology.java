@@ -5,8 +5,7 @@ import java.util.OptionalInt;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
-import net.unfamily.another_dynamics.duct.DuctConnectable;
-import net.unfamily.another_dynamics.duct.DuctNetworkType;
+import net.unfamily.another_dynamics.duct.DuctPipeAdjacency;
 
 /**
  * Validates duct-only path edges against the live world for in-flight shipments.
@@ -30,14 +29,7 @@ public final class DuctTransitTopology {
 
     /** Adjacent item-duct edge; both positions must be in loaded chunks. */
     private static boolean neighborItemDuctEdgeWhenChunksPresent(Level level, BlockPos a, BlockPos b) {
-        int dx = Math.abs(a.getX() - b.getX());
-        int dy = Math.abs(a.getY() - b.getY());
-        int dz = Math.abs(a.getZ() - b.getZ());
-        if (dx + dy + dz != 1) {
-            return false;
-        }
-        return DuctConnectable.isSameNetwork(level.getBlockState(a).getBlock(), DuctNetworkType.ITEM)
-                && DuctConnectable.isSameNetwork(level.getBlockState(b).getBlock(), DuctNetworkType.ITEM);
+        return DuctPipeAdjacency.areItemPipeNeighbors(level, a, b);
     }
 
     /**

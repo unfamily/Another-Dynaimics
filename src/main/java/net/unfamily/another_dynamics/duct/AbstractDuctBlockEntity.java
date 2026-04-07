@@ -49,7 +49,13 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
         for (Direction dir : Direction.values()) {
             BlockPos n = worldPosition.relative(dir);
             BlockState ns = level.getBlockState(n);
-            if (DuctConnectable.isSameNetwork(ns.getBlock(), net)) {
+            if (net == DuctNetworkType.ITEM) {
+                if (DuctPipeAdjacency.areItemPipeNeighbors(level, worldPosition, n)) {
+                    pipe |= 1 << dir.ordinal();
+                } else {
+                    storageBits |= attachmentMaskForNeighbor(dir, ns, n);
+                }
+            } else if (DuctConnectable.isSameNetwork(ns.getBlock(), net)) {
                 pipe |= 1 << dir.ordinal();
             } else {
                 storageBits |= attachmentMaskForNeighbor(dir, ns, n);

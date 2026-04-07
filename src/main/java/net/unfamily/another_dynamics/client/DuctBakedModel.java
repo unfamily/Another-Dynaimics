@@ -3,6 +3,7 @@ package net.unfamily.another_dynamics.client;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
@@ -14,11 +15,19 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.ChunkRenderTypeSet;
 import net.neoforged.neoforge.client.model.BakedModelWrapper;
 import net.neoforged.neoforge.client.model.data.ModelData;
+import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctModelProperties;
+import net.unfamily.another_dynamics.registry.ModAttachments;
 
 import org.jetbrains.annotations.Nullable;
 
 public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
+    /**
+     * Vertical shift in atlas V for opaque duct skins: lower half of the sprite (stacked normal/opaque in the PNG).
+     * Adjust if art uses unequal bands.
+     */
+    private static final float OPAQUE_TEXTURE_V_SHIFT_RATIO = 0.5f;
+
     private static final ChunkRenderTypeSet BLOCK_RENDER_TYPES =
             ChunkRenderTypeSet.of(RenderType.cutoutMipped(), RenderType.translucent());
     private static final List<RenderType> ITEM_RENDER_TYPES = List.of(RenderType.cutout(), RenderType.translucent());
@@ -26,12 +35,19 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
     private final DuctCompositeGeometry geometry;
     private final TextureAtlasSprite particleSprite;
     private final TextureAtlasSprite nodesSprite;
+    private final String ductLogicalId;
 
-    public DuctBakedModel(BakedModel original, DuctCompositeGeometry geometry, TextureAtlasSprite particleSprite, TextureAtlasSprite nodesSprite) {
+    public DuctBakedModel(
+            BakedModel original,
+            DuctCompositeGeometry geometry,
+            TextureAtlasSprite particleSprite,
+            TextureAtlasSprite nodesSprite,
+            String ductLogicalId) {
         super(original);
         this.geometry = geometry;
         this.particleSprite = particleSprite;
         this.nodesSprite = nodesSprite;
+        this.ductLogicalId = ductLogicalId;
     }
 
     @Override
@@ -73,8 +89,22 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
             return List.of();
         }
         boolean includeBase = isBasePass;
+        boolean defOpaque =
+                DuctDefinitionRegistry.getByLogicalId(ductLogicalId)
+                        .map(d -> d.alwaysOpaqueRendering())
+                        .orElse(false);
+        boolean opaqueRendering =
+                defOpaque
+                        || (Minecraft.getInstance().player != null
+                                && Minecraft.getInstance().player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get()));
+        // Node icon layer (nodes.png) stays on the translucent pass; opaque mode only affects duct atlas + transit items.
         boolean includeOverlays = isOverlayPass;
-        geometry.appendForWorldWithNodeIcons(built, pm, sm, pi, nodesSprite, includeBase, includeOverlays);
+        float ductVShift = 0f;
+        if (opaqueRendering && includeBase && particleSprite != null) {
+            ductVShift = (particleSprite.getV1() - particleSprite.getV0()) * OPAQUE_TEXTURE_V_SHIFT_RATIO;
+        }
+        geometry.appendForWorldWithNodeIcons(
+                built, pm, sm, pi, nodesSprite, includeBase, includeOverlays, ductVShift);
         if (side != null) {
             List<BakedQuad> culled = new ArrayList<>();
             for (BakedQuad q : built) {

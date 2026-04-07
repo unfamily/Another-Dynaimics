@@ -56,6 +56,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private final Direction accessFace;
     /** World position of this duct (authoritative on client from open-menu extra data; avoids relying on sync-before-packet). */
     private final BlockPos ductBlockPos;
+    /**
+     * From server open-menu payload: {@link net.unfamily.another_dynamics.duct.DuctDefinition#alwaysOpaqueRendering()}
+     * locks the opaque toggle.
+     */
+    private final boolean clientDuctAlwaysOpaqueLock;
 
     /** Detects upgrade-slot changes so {@link DuctMenuSync#EXTRACT_BATCH_CAP} can be refreshed without full menu spam. */
     private int lastUpgradeSlotsFingerprint;
@@ -82,7 +87,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 be.getMenuData(),
                 be,
                 accessFace,
-                be.getBlockPos());
+                be.getBlockPos(),
+                be.ductAlwaysOpaqueRendering());
         be.clampFaceFiltersToSpec();
         be.refreshMenuData(accessFace);
         if (!be.getLevel().isClientSide() && playerInventory.player instanceof ServerPlayer sp) {
@@ -98,6 +104,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         BlockPos pos = extraData.readBlockPos();
         int fo = extraData.readByte() & 0xFF;
         Direction face = Direction.values()[Mth.clamp(fo, 0, Direction.values().length - 1)];
+        boolean alwaysOpaqueLock = extraData.readBoolean();
         return new DuctNodeMenu(
                 containerId,
                 playerInventory,
@@ -106,7 +113,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 new SimpleContainerData(DuctMenuSync.COUNT),
                 null,
                 face,
-                pos);
+                pos,
+                alwaysOpaqueLock);
     }
 
     private DuctNodeMenu(
@@ -117,13 +125,15 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             ContainerData syncData,
             @Nullable DuctBlockEntity linkedBlockEntity,
             Direction accessFace,
-            BlockPos ductBlockPos) {
+            BlockPos ductBlockPos,
+            boolean clientDuctAlwaysOpaqueLock) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
         this.access = access;
         this.syncData = syncData;
         this.linkedBlockEntity = linkedBlockEntity;
         this.accessFace = accessFace;
         this.ductBlockPos = ductBlockPos;
+        this.clientDuctAlwaysOpaqueLock = clientDuctAlwaysOpaqueLock;
 
         for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
             int y = SLOT_UPGRADE_Y0 + i * 18;
@@ -147,6 +157,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     public BlockPos getDuctBlockPos() {
         return ductBlockPos;
+    }
+
+    public boolean isDuctAlwaysOpaqueLocked() {
+        return clientDuctAlwaysOpaqueLock;
     }
 
     public ContainerData getSyncData() {

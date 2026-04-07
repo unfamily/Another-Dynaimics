@@ -1,12 +1,17 @@
 package net.unfamily.another_dynamics.duct;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
@@ -69,6 +74,7 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
             }
             Optional<ResourceLocation> modelDefault = Optional.empty();
             Optional<ResourceLocation> modelLine = Optional.empty();
+            boolean alwaysOpaqueRendering = false;
             if (o.has("rendering") && o.get("rendering").isJsonObject()) {
                 JsonObject r = o.getAsJsonObject("rendering");
                 if (r.has("default_texture")) {
@@ -80,7 +86,21 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                 if (r.has("model_line")) {
                     modelLine = Optional.of(ResourceLocation.parse(r.get("model_line").getAsString()));
                 }
+                if (r.has("always_opaque") && r.get("always_opaque").isJsonPrimitive()) {
+                    alwaysOpaqueRendering = r.get("always_opaque").getAsBoolean();
+                }
             }
+            JsonObject restrictionsRoot = resolveRestrictionsObject(o);
+            boolean connectWithCompatible =
+                    readBooleanWithAliases(
+                            restrictionsRoot,
+                            true,
+                            "connect_with_compatible",
+                            "connect_with_compatbile");
+            Set<String> disabledFeatures = readStringFeatureSet(restrictionsRoot, "disabled_features", "disabled_feathures");
+            Set<String> forbiddenFeatures =
+                    readStringFeatureSet(restrictionsRoot, "forbidden_features", "upgrade_features");
+            warnUnknownFeatureKeys(logicalId, disabledFeatures, forbiddenFeatures);
             out.put(
                     e.getKey(),
                     new DuctDefinition(
@@ -92,7 +112,11 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                             modelDefault,
                             modelLine,
                             putInCreativeMenu,
-                            sound));
+                            sound,
+                            connectWithCompatible,
+                            disabledFeatures,
+                            forbiddenFeatures,
+                            alwaysOpaqueRendering));
         }
         DuctDefinitionRegistry.replaceAll(out);
         AnotherDynamicsMod.LOGGER.info("Loaded {} duct definition(s) from data/*/load", out.size());
@@ -166,5 +190,64 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                 Math.max(0, deny),
                 Math.max(0, allowHybrid),
                 Math.max(0, denyHybrid));
+    }
+
+    /** Prefer nested {@code restrictions}; otherwise read keys from the root object (legacy datapacks). */
+    private static JsonObject resolveRestrictionsObject(JsonObject declareRoot) {
+        if (declareRoot.has("restrictions") && declareRoot.get("restrictions").isJsonObject()) {
+            return declareRoot.getAsJsonObject("restrictions");
+        }
+        return declareRoot;
+    }
+
+    private static boolean readBooleanWithAliases(JsonObject o, boolean defaultValue, String... names) {
+        for (String name : names) {
+            if (o.has(name) && o.get(name).isJsonPrimitive()) {
+                return o.get(name).getAsBoolean();
+            }
+        }
+        return defaultValue;
+    }
+
+    private static Set<String> readStringFeatureSet(JsonObject o, String primary, String... aliases) {
+        JsonArray arr = null;
+        if (o.has(primary) && o.get(primary).isJsonArray()) {
+            arr = o.getAsJsonArray(primary);
+        } else {
+            for (String a : aliases) {
+                if (o.has(a) && o.get(a).isJsonArray()) {
+                    arr = o.getAsJsonArray(a);
+                    break;
+                }
+            }
+        }
+        if (arr == null) {
+            return Set.of();
+        }
+        Set<String> out = new HashSet<>();
+        for (JsonElement el : arr) {
+            if (el.isJsonPrimitive()) {
+                String s = el.getAsString().trim().toLowerCase(Locale.ROOT);
+                if (!s.isEmpty()) {
+                    out.add(s);
+                }
+            }
+        }
+        return Collections.unmodifiableSet(out);
+    }
+
+    private static void warnUnknownFeatureKeys(String logicalId, Set<String> disabled, Set<String> forbidden) {
+        for (String s : disabled) {
+            if (!DuctFeatureKeys.looksLikeKnownKey(s)) {
+                AnotherDynamicsMod.LOGGER.warn(
+                        "Duct '{}' disabled_features contains unknown key '{}'", logicalId, s);
+            }
+        }
+        for (String s : forbidden) {
+            if (!DuctFeatureKeys.looksLikeKnownKey(s)) {
+                AnotherDynamicsMod.LOGGER.warn(
+                        "Duct '{}' forbidden_features contains unknown key '{}'", logicalId, s);
+            }
+        }
     }
 }

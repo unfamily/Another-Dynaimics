@@ -1,6 +1,6 @@
 {
   "type": "another_dynamics:declare_duct",
-  "id": "another_dynamics:item_duct",
+  "id": "another_dynamics:item_duct_test",
   "put_in_creative_menu": true,
   "sound": "metallic",
   "can_transport": [
@@ -28,9 +28,9 @@
   ],
   "connect_with_compatbile": true,
   "disabled_features":[],
-  "forbidden_features":[],
+  "upgrade_features":[],
   "rendering": {
-    "always_opaque": false,
+    "always_opaque": true,
     "default_texture": "another_dynamics:block/duct/item/item_duct_0_light",
     "model_default": "another_dynamics:block/simple_duct_default",
     "model_line": "another_dynamics:block/simple_duct_line"

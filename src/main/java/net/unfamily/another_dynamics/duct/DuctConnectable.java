@@ -11,7 +11,16 @@ import net.minecraft.world.level.block.Block;
 public interface DuctConnectable {
     EnumSet<DuctNetworkType> ductNetworkTypes();
 
+    /**
+     * Datapack duct id for connection rules ({@link DuctDefinition#connectWithCompatible()}). Override when a block
+     * maps to a non-default {@link DuctDefinition}.
+     */
+    default String logicalDuctId() {
+        return DuctIds.ITEM_DUCT;
+    }
+
     static boolean isSameNetwork(Block block, DuctNetworkType type) {
         return block instanceof DuctConnectable dc && dc.ductNetworkTypes().contains(type);
     }
 }
+
