@@ -10,9 +10,18 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
 import net.unfamily.another_dynamics.duct.logistics.TransitPhase;
 
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * Client-only: ghost item along a duct path. The server does not move stacks through each segment; delivery happens
+ * when travel completes. Rendering uses synced timing ({@link #journeyStartGameTime}, {@link #totalTravelTicks},
+ * {@link #ductPath}) to simulate motion between network updates.
+ */
 public final class DuctTransitVisual {
     public final BlockPos ownerDuct;
     public final ItemStack stack;
@@ -42,6 +51,19 @@ public final class DuctTransitVisual {
         this.journeyStartGameTime = journeyStartGameTime;
     }
 
+    /** Client rebuild from disk/chunk {@code DuctOutbound} (there is no TransitV1 in saved NBT). */
+    public static DuctTransitVisual fromOutboundShipment(BlockPos ownerDuct, OutboundShipment s) {
+        return new DuctTransitVisual(
+                ownerDuct,
+                s.stack.copy(),
+                List.copyOf(s.ductPath),
+                s.transitPhase,
+                s.totalTravelTicks,
+                s.travelTicks,
+                s.edgeTicks,
+                s.journeyStartGameTime);
+    }
+
     public static List<DuctTransitVisual> listFromUpdateTag(
             BlockPos ownerDuct, CompoundTag root, HolderLookup.Provider registries) {
         if (!root.contains("TransitV1", Tag.TAG_LIST)) {
@@ -59,6 +81,9 @@ public final class DuctTransitVisual {
                 continue;
             }
             ItemStack stack = ItemStack.parse(registries, stackTag).orElse(ItemStack.EMPTY);
+            if (stack.isEmpty()) {
+                continue;
+            }
             ListTag plist = t.getList("Path", Tag.TAG_COMPOUND);
             ArrayList<BlockPos> path = new ArrayList<>(plist.size());
             for (int j = 0; j < plist.size(); j++) {
@@ -79,11 +104,19 @@ public final class DuctTransitVisual {
         return Collections.unmodifiableList(out);
     }
 
-    public float progress01(float partialTicks) {
+    /**
+     * Visual progress 0 = start of leg, 1 = end (not yet delivered). Uses world time when {@link #journeyStartGameTime}
+     * was saved (non-zero); otherwise falls back to the last synced {@link #travelTicks} snapshot (legacy or sparse data).
+     */
+    public float progress01(@Nullable Level level, float partialTick) {
         if (totalTravelTicks <= 0) {
             return 1f;
         }
-        float predictedTravel = Math.max(0f, travelTicks - partialTicks);
+        if (level != null && journeyStartGameTime != 0L) {
+            float elapsed = (level.getGameTime() + partialTick) - journeyStartGameTime;
+            return Math.clamp(elapsed / (float) totalTravelTicks, 0f, 1f);
+        }
+        float predictedTravel = Math.max(0f, travelTicks - partialTick);
         return Math.clamp((totalTravelTicks - predictedTravel) / (float) totalTravelTicks, 0f, 1f);
     }
 

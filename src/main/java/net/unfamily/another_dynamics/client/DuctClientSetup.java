@@ -5,11 +5,14 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
+import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
+import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
 /**
@@ -27,6 +30,11 @@ public final class DuctClientSetup {
     @SubscribeEvent
     public static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
         event.register(ModMenuTypes.DUCT_NODE.get(), DuctNodeScreen::new);
+    }
+
+    @SubscribeEvent
+    public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        event.registerBlockEntityRenderer(ModBlockEntities.ITEM_DUCT.get(), DuctTransitBlockEntityRenderer::new);
     }
 
     @SubscribeEvent

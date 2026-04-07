@@ -121,6 +121,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
+    @Override
+    public void setLevel(Level level) {
+        super.setLevel(level);
+        if (level != null && level.isClientSide && !outboundShipments.isEmpty()) {
+            DuctTransitClientState.syncFromOutboundShipments(worldPosition, outboundShipments);
+        }
+    }
+
     public DuctFaceNode getFaceNode(Direction dir) {
         return faceNodes[dir.ordinal()];
     }
@@ -1297,6 +1305,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         requestModelDataUpdate();
         clampFaceFiltersToSpec();
+        if (level != null && level.isClientSide) {
+            // Chunk NBT has DuctOutbound but not TransitV1; BER reads DuctTransitClientState only.
+            DuctTransitClientState.syncFromOutboundShipments(worldPosition, outboundShipments);
+        }
     }
 
     @Override
@@ -1307,34 +1319,33 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         t.putByte("LatchedFaces", (byte) latchedStorageFaceMask);
         // Pack node icon indices server-side for client rendering.
         t.putInt("PackedNodeIcons", computePackedNodeIcons());
-        if (!outboundShipments.isEmpty()) {
-            ListTag list = new ListTag();
-            for (OutboundShipment s : outboundShipments) {
-                if (s.stack.isEmpty()) {
-                    continue;
-                }
-                CompoundTag st = new CompoundTag();
-                s.stack.save(registries, st);
-                CompoundTag item = new CompoundTag();
-                item.put("Stack", st);
-                item.putByte("Ph", (byte) s.transitPhase.ordinal());
-                item.putInt("Tot", s.totalTravelTicks);
-                item.putInt("Tr", s.travelTicks);
-                item.putInt("Ed", s.edgeTicks);
-                item.putLong("J0", s.journeyStartGameTime);
-                ListTag path = new ListTag();
-                for (BlockPos p : s.ductPath) {
-                    CompoundTag pt = new CompoundTag();
-                    pt.putInt("X", p.getX());
-                    pt.putInt("Y", p.getY());
-                    pt.putInt("Z", p.getZ());
-                    path.add(pt);
-                }
-                item.put("Path", path);
-                list.add(item);
+        ListTag transitList = new ListTag();
+        for (OutboundShipment s : outboundShipments) {
+            if (s.stack.isEmpty()) {
+                continue;
             }
-            t.put("TransitV1", list);
+            CompoundTag st = new CompoundTag();
+            s.stack.save(registries, st);
+            CompoundTag item = new CompoundTag();
+            item.put("Stack", st);
+            item.putByte("Ph", (byte) s.transitPhase.ordinal());
+            item.putInt("Tot", s.totalTravelTicks);
+            item.putInt("Tr", s.travelTicks);
+            item.putInt("Ed", s.edgeTicks);
+            item.putLong("J0", s.journeyStartGameTime);
+            ListTag path = new ListTag();
+            for (BlockPos p : s.ductPath) {
+                CompoundTag pt = new CompoundTag();
+                pt.putInt("X", p.getX());
+                pt.putInt("Y", p.getY());
+                pt.putInt("Z", p.getZ());
+                path.add(pt);
+            }
+            item.put("Path", path);
+            transitList.add(item);
         }
+        // Always send (possibly empty) so clients clear visuals when the last shipment completes.
+        t.put("TransitV1", transitList);
         return t;
     }
 
