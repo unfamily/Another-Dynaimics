@@ -16,6 +16,13 @@ import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
  * per direction (e.g. item + fluid); today this holds the <strong>item</strong> node only (modes, GUI slots, tick cadence).
  */
 public final class DuctFaceNode {
+    public enum FilterBank {
+        /** Filters that govern what this face will extract / retrieve. */
+        EXTRACTOR_RETRIEVER,
+        /** Filters that govern what may pass when this face is in a filtering-insertion role. */
+        FILTER
+    }
+
     public NodeMode nodeMode = NodeMode.NONE;
     public RoutingMode routingMode = RoutingMode.NEAREST_FIRST;
     /** Insert-capable modes ({@link NodeMode#NONE}, {@link NodeMode#FILTERING_INSERTION}): insertion priority for this face. */
@@ -32,9 +39,20 @@ public final class DuctFaceNode {
      * deny.
      */
     public boolean denyOverridesAllow = true;
-
+    /** Legacy single-bank filters (migrated into {@link FilterBank#FILTER} on load). */
     public final List<String> allowFilters = new ArrayList<>();
     public final List<String> denyFilters = new ArrayList<>();
+
+    /** Hybrid: allow this face to consider itself as a destination (only used by Extr/Filt). */
+    public boolean selfFeed;
+
+    public boolean denyOverridesAllowExtractor = true;
+    public final List<String> allowFiltersExtractor = new ArrayList<>();
+    public final List<String> denyFiltersExtractor = new ArrayList<>();
+
+    public boolean denyOverridesAllowFilter = true;
+    public final List<String> allowFiltersFilter = new ArrayList<>();
+    public final List<String> denyFiltersFilter = new ArrayList<>();
 
     public final ItemStackHandler guiSlots;
 
@@ -53,6 +71,7 @@ public final class DuctFaceNode {
         insertionPriority = 0;
         extractBatch = 0;
         roundRobinCursor = 0;
+        selfFeed = false;
     }
 
     public void save(HolderLookup.Provider registries, CompoundTag tag) {
@@ -64,6 +83,7 @@ public final class DuctFaceNode {
         tag.putByte("RedstoneMode", (byte) redstoneMode);
         tag.putInt("RrCursor", roundRobinCursor);
         tag.putInt("TicksAct", ticksUntilAction);
+        tag.putBoolean("SelfFeed", selfFeed);
         tag.put("NodeGui", guiSlots.serializeNBT(registries));
         saveFilters(tag);
     }
@@ -98,6 +118,7 @@ public final class DuctFaceNode {
         redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
         roundRobinCursor = tag.getInt("RrCursor");
         ticksUntilAction = tag.contains("TicksAct") ? tag.getInt("TicksAct") : 0;
+        selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
         if (tag.contains("NodeGui", Tag.TAG_COMPOUND)) {
             guiSlots.deserializeNBT(registries, tag.getCompound("NodeGui"));
         }
@@ -144,33 +165,35 @@ public final class DuctFaceNode {
     public void clampFilterSizes(DuctItemTransportSpec spec) {
         int maxA = Math.max(0, spec.filterAllowSlots());
         int maxD = Math.max(0, spec.filterDenySlots());
-        while (allowFilters.size() > maxA) {
-            allowFilters.remove(allowFilters.size() - 1);
-        }
-        while (denyFilters.size() > maxD) {
-            denyFilters.remove(denyFilters.size() - 1);
-        }
-        while (allowFilters.size() < maxA) {
-            allowFilters.add("");
-        }
-        while (denyFilters.size() < maxD) {
-            denyFilters.add("");
-        }
+        clampList(allowFilters, maxA);
+        clampList(denyFilters, maxD);
+
+        int halfA = (maxA + 1) / 2;
+        int halfD = (maxD + 1) / 2;
+        clampList(allowFiltersExtractor, halfA);
+        clampList(denyFiltersExtractor, halfD);
+        clampList(allowFiltersFilter, halfA);
+        clampList(denyFiltersFilter, halfD);
     }
 
     private void saveFilters(CompoundTag tag) {
         CompoundTag f = new CompoundTag();
+        // Legacy single-bank values (kept for downgrade tolerance; load migrates into FILTER bank when dual banks absent)
         f.putBoolean("DenyOver", denyOverridesAllow);
-        ListTag a = new ListTag();
-        for (String s : allowFilters) {
-            a.add(StringTag.valueOf(s != null ? s : ""));
-        }
-        ListTag d = new ListTag();
-        for (String s : denyFilters) {
-            d.add(StringTag.valueOf(s != null ? s : ""));
-        }
-        f.put("Allow", a);
-        f.put("Deny", d);
+        f.put("Allow", toStringListTag(allowFilters));
+        f.put("Deny", toStringListTag(denyFilters));
+
+        CompoundTag ex = new CompoundTag();
+        ex.putBoolean("DenyOver", denyOverridesAllowExtractor);
+        ex.put("Allow", toStringListTag(allowFiltersExtractor));
+        ex.put("Deny", toStringListTag(denyFiltersExtractor));
+        f.put("Extractor", ex);
+
+        CompoundTag fi = new CompoundTag();
+        fi.putBoolean("DenyOver", denyOverridesAllowFilter);
+        fi.put("Allow", toStringListTag(allowFiltersFilter));
+        fi.put("Deny", toStringListTag(denyFiltersFilter));
+        f.put("Filter", fi);
         tag.put("FaceFilters", f);
     }
 
@@ -178,22 +201,86 @@ public final class DuctFaceNode {
         allowFilters.clear();
         denyFilters.clear();
         denyOverridesAllow = true;
+        allowFiltersExtractor.clear();
+        denyFiltersExtractor.clear();
+        denyOverridesAllowExtractor = true;
+        allowFiltersFilter.clear();
+        denyFiltersFilter.clear();
+        denyOverridesAllowFilter = true;
         if (!tag.contains("FaceFilters", Tag.TAG_COMPOUND)) {
             return;
         }
         CompoundTag f = tag.getCompound("FaceFilters");
         denyOverridesAllow = !f.contains("DenyOver") || f.getBoolean("DenyOver");
-        if (f.contains("Allow", Tag.TAG_LIST)) {
-            ListTag list = f.getList("Allow", Tag.TAG_STRING);
-            for (int i = 0; i < list.size(); i++) {
-                allowFilters.add(list.getString(i));
-            }
+        readStringListInto(f, "Allow", allowFilters);
+        readStringListInto(f, "Deny", denyFilters);
+
+        boolean hasExtractor = f.contains("Extractor", Tag.TAG_COMPOUND);
+        boolean hasFilter = f.contains("Filter", Tag.TAG_COMPOUND);
+        if (hasExtractor) {
+            CompoundTag ex = f.getCompound("Extractor");
+            denyOverridesAllowExtractor = !ex.contains("DenyOver") || ex.getBoolean("DenyOver");
+            readStringListInto(ex, "Allow", allowFiltersExtractor);
+            readStringListInto(ex, "Deny", denyFiltersExtractor);
         }
-        if (f.contains("Deny", Tag.TAG_LIST)) {
-            ListTag list = f.getList("Deny", Tag.TAG_STRING);
-            for (int i = 0; i < list.size(); i++) {
-                denyFilters.add(list.getString(i));
-            }
+        if (hasFilter) {
+            CompoundTag fi = f.getCompound("Filter");
+            denyOverridesAllowFilter = !fi.contains("DenyOver") || fi.getBoolean("DenyOver");
+            readStringListInto(fi, "Allow", allowFiltersFilter);
+            readStringListInto(fi, "Deny", denyFiltersFilter);
+        }
+        if (!hasExtractor && !hasFilter) {
+            // Migration: legacy single-bank -> FILTER bank by default.
+            denyOverridesAllowFilter = denyOverridesAllow;
+            allowFiltersFilter.addAll(allowFilters);
+            denyFiltersFilter.addAll(denyFilters);
+        }
+    }
+
+    public boolean bankDenyOverridesAllow(FilterBank bank) {
+        return bank == FilterBank.EXTRACTOR_RETRIEVER ? denyOverridesAllowExtractor : denyOverridesAllowFilter;
+    }
+
+    public void setBankDenyOverridesAllow(FilterBank bank, boolean v) {
+        if (bank == FilterBank.EXTRACTOR_RETRIEVER) {
+            denyOverridesAllowExtractor = v;
+        } else {
+            denyOverridesAllowFilter = v;
+        }
+    }
+
+    public List<String> bankAllowFilters(FilterBank bank) {
+        return bank == FilterBank.EXTRACTOR_RETRIEVER ? allowFiltersExtractor : allowFiltersFilter;
+    }
+
+    public List<String> bankDenyFilters(FilterBank bank) {
+        return bank == FilterBank.EXTRACTOR_RETRIEVER ? denyFiltersExtractor : denyFiltersFilter;
+    }
+
+    private static void clampList(List<String> list, int max) {
+        while (list.size() > max) {
+            list.remove(list.size() - 1);
+        }
+        while (list.size() < max) {
+            list.add("");
+        }
+    }
+
+    private static ListTag toStringListTag(List<String> list) {
+        ListTag t = new ListTag();
+        for (String s : list) {
+            t.add(StringTag.valueOf(s != null ? s : ""));
+        }
+        return t;
+    }
+
+    private static void readStringListInto(CompoundTag tag, String key, List<String> out) {
+        if (!tag.contains(key, Tag.TAG_LIST)) {
+            return;
+        }
+        ListTag list = tag.getList(key, Tag.TAG_STRING);
+        for (int i = 0; i < list.size(); i++) {
+            out.add(list.getString(i));
         }
     }
 }

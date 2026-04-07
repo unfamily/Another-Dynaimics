@@ -35,6 +35,7 @@ import net.minecraft.world.item.Items;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
+import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
@@ -167,6 +168,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     private SubView subView = SubView.MAIN;
     private SubView filterListBeforeHelp = SubView.DENY_FILTERS;
+    private DuctFaceNode.FilterBank activeFilterBank = DuctFaceNode.FilterBank.FILTER;
     private int filterScrollOffset;
     private boolean isDraggingHandle;
     private int dragStartY;
@@ -226,6 +228,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     public static void applyClientFilterSync(
             BlockPos pos,
             Direction face,
+            int filterBankOrdinal,
             List<String> allow,
             List<String> deny,
             boolean denyOverridesAllow) {
@@ -236,7 +239,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (!(mc.player.containerMenu instanceof DuctNodeMenu menu)) {
             return;
         }
-        menu.receiveFilterSync(pos, face, allow, deny, denyOverridesAllow);
+        menu.receiveFilterSync(pos, face, filterBankOrdinal, allow, deny, denyOverridesAllow);
         if (mc.screen instanceof DuctNodeScreen screen && screen.getMenu() == menu) {
             screen.menu.ensureClientFilterBufferSizes();
             screen.rebuildFilterEntryWidgets();
@@ -260,7 +263,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         denyNavButton = Button.builder(Component.translatable("gui.another_dynamics.duct_node.deny_list"), b -> {
                     playClickSound();
-                    openFilterSubview(SubView.DENY_FILTERS);
+                    NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+                    if (nm.isHybrid()) {
+                        openFilterSubview(SubView.DENY_FILTERS, DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER);
+                    } else {
+                        openFilterSubview(SubView.DENY_FILTERS, DuctFaceNode.FilterBank.FILTER);
+                    }
                 })
                 .bounds(this.leftPos + CENTER_X, this.topPos + ROW1_Y, ROW_BTN_W, BTN_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.deny_list.tooltip")))
@@ -269,7 +277,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         listLogicButton = Button.builder(Component.literal(">>>>>"), b -> {
                     playClickSound();
-                    ModNetwork.sendListLogicToggle(menuSyncedPos(), menuSyncedFace());
+                    NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+                    if (nm == NodeMode.EXTRACTION_FILTERING) {
+                        boolean on = (menu.getSyncData().get(DuctMenuSync.SELF_FEED) != 0);
+                        ModNetwork.sendSelfFeedSet(menuSyncedPos(), menuSyncedFace(), !on);
+                    } else {
+                        ModNetwork.sendListLogicToggle(menuSyncedPos(), menuSyncedFace(), activeFilterBank.ordinal());
+                    }
                 })
                 .bounds(
                         this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
@@ -281,7 +295,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         allowNavButton = Button.builder(Component.translatable("gui.another_dynamics.duct_node.allow_list"), b -> {
                     playClickSound();
-                    openFilterSubview(SubView.ALLOW_FILTERS);
+                    NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+                    if (nm.isHybrid()) {
+                        openFilterSubview(SubView.DENY_FILTERS, DuctFaceNode.FilterBank.FILTER);
+                    } else {
+                        openFilterSubview(SubView.ALLOW_FILTERS, DuctFaceNode.FilterBank.FILTER);
+                    }
                 })
                 .bounds(
                         this.leftPos + CENTER_X + 2 * (ROW_BTN_W + ROW_GAP),
@@ -292,9 +311,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 .build();
         addRenderableWidget(allowNavButton);
 
-        int r2x = CENTER_X;
+        int r2x = CENTER_X + 2 * (ROW_BTN_W + ROW_GAP);
         routingModeButton = Button.builder(Component.empty(), b -> handleMenuButton(1))
-                .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
+                .bounds(this.leftPos + r2x, this.topPos + ROW3_Y, ROW_BTN_W, BTN_H)
                 .build();
         addRenderableWidget(routingModeButton);
 
@@ -345,7 +364,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         amountDiscardButton =
                 Button.builder(Component.literal("\u2715"), b -> amountDiscardDraft())
                         .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.close_without_saving")))
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.undo.tooltip")))
                         .build();
         addRenderableWidget(amountDiscardButton);
 
@@ -356,13 +375,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 .build();
         addRenderableWidget(nodeModeButton);
         selfFeedStub = Button.builder(Component.translatable("gui.another_dynamics.duct_node.self_feed"), b -> playClickSound())
-                .bounds(this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP, this.topPos + ROW3_Y, ROW_BTN_W, BTN_H)
+                .bounds(
+                        this.leftPos + CENTER_X + 2 * (ROW_BTN_W + ROW_GAP),
+                        this.topPos + ROW3_Y,
+                        ROW_BTN_W,
+                        BTN_H)
                 .build();
         addRenderableWidget(selfFeedStub);
         renderingStub = Button.builder(Component.translatable("gui.another_dynamics.duct_node.rendering"), b -> playClickSound())
                 .bounds(
-                        this.leftPos + CENTER_X + 2 * (ROW_BTN_W + ROW_GAP),
-                        this.topPos + ROW3_Y,
+                        this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
+                        this.topPos + ROW2_Y,
                         ROW_BTN_W,
                         BTN_H)
                 .build();
@@ -422,6 +445,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         menu.ensureClientFilterBufferSizes();
         rebuildFilterEntryWidgets();
         applySubViewVisibility();
+    }
+
+    private void openFilterSubview(SubView v, DuctFaceNode.FilterBank bank) {
+        activeFilterBank = bank;
+        openFilterSubview(v);
     }
 
     private void closeFilterSubview() {
@@ -541,7 +569,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         amountMaxButton.visible = main && !howto && amountNodeMode.usesExtractBatchField();
         amountDiscardButton.visible = main && !howto;
         nodeModeButton.visible = main && !howto;
-        selfFeedStub.visible = main && !howto;
+        selfFeedStub.visible = false;
         renderingStub.visible = main && !howto;
 
         closeButton.visible = true;
@@ -636,11 +664,14 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private int currentFilterMaxSlots() {
-        return subView == SubView.ALLOW_FILTERS ? menu.filterAllowCap() : menu.filterDenyCap();
+        int raw = subView == SubView.ALLOW_FILTERS ? menu.filterAllowCap() : menu.filterDenyCap();
+        return (Math.max(0, raw) + 1) / 2;
     }
 
     private List<String> getEditingList() {
-        return subView == SubView.ALLOW_FILTERS ? menu.getClientAllowFilters() : menu.getClientDenyFilters();
+        return subView == SubView.ALLOW_FILTERS
+                ? menu.getClientAllowFilters(activeFilterBank)
+                : menu.getClientDenyFilters(activeFilterBank);
     }
 
     private int visibleFilterEntries() {
@@ -1147,9 +1178,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private void pushFiltersToServer() {
         menu.ensureClientFilterBufferSizes();
         menu.pushFilterConfigToServer(
-                new ArrayList<>(menu.getClientAllowFilters()),
-                new ArrayList<>(menu.getClientDenyFilters()),
-                menu.getClientDenyOverridesAllow());
+                activeFilterBank,
+                new ArrayList<>(menu.getClientAllowFilters(activeFilterBank)),
+                new ArrayList<>(menu.getClientDenyFilters(activeFilterBank)),
+                menu.getClientDenyOverridesAllow(activeFilterBank));
     }
 
     private void handleMenuButton(int id) {
@@ -1174,10 +1206,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (!filtersActive && subView != SubView.MAIN) {
             forceExitFilterUiToMain();
         }
-        denyNavButton.active = filtersActive;
-        listLogicButton.active = filtersActive;
-        allowNavButton.active = filtersActive;
-        routingModeButton.active = routing;
+        boolean routingConfig = routing && nm.allowsRoutingConfig();
+        routingModeButton.active = routingConfig;
         if (routing) {
             RoutingMode rm = RoutingMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ROUTING_MODE));
             routingModeButton.setMessage(
@@ -1190,24 +1220,64 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             routingModeButton.setTooltip(
                     Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.routing.tooltip.unroutable")));
         }
-        boolean denyOver = menu.getSyncData().get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
-        listLogicButton.setMessage(Component.literal(denyOver ? ">>>>>" : "<<<<<"));
-        if (filtersActive) {
+        if (routing && !routingConfig) {
+            routingModeButton.setTooltip(
+                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.routing.tooltip.locked_hybrid")));
+        }
+
+        if (nm.isHybrid()) {
+            denyNavButton.setMessage(
+                    Component.translatable(
+                            nm == NodeMode.EXTRACTION_FILTERING
+                                    ? "gui.another_dynamics.duct_node.hybrid.extractor"
+                                    : "gui.another_dynamics.duct_node.hybrid.retriever"));
+            allowNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.hybrid.filter"));
+            denyNavButton.active = true;
+            allowNavButton.active = true;
+            int sf = menu.getSyncData().get(DuctMenuSync.SELF_FEED);
+            boolean on = sf != 0;
+            listLogicButton.setMessage(
+                    Component.translatable(
+                            on
+                                    ? "gui.another_dynamics.duct_node.hybrid.self_feed.on"
+                                    : "gui.another_dynamics.duct_node.hybrid.self_feed.off"));
+            listLogicButton.active = (nm == NodeMode.EXTRACTION_FILTERING);
             denyNavButton.setTooltip(
-                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.deny_list.tooltip")));
-            allowNavButton.setTooltip(
-                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_list.tooltip")));
-            listLogicButton.setTooltip(
                     Tooltip.create(
                             Component.translatable(
-                                    denyOver
-                                            ? "gui.another_dynamics.duct_node.list_logic.tooltip.deny_wins"
-                                            : "gui.another_dynamics.duct_node.list_logic.tooltip.allow_bypass")));
+                                    nm == NodeMode.EXTRACTION_FILTERING
+                                            ? "gui.another_dynamics.duct_node.hybrid.extractor.tooltip"
+                                            : "gui.another_dynamics.duct_node.hybrid.retriever.tooltip")));
+            allowNavButton.setTooltip(
+                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hybrid.filter.tooltip")));
+            listLogicButton.setTooltip(
+                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hybrid.self_feed.tooltip")));
         } else {
-            var inactive = Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.tooltip.inactive"));
-            denyNavButton.setTooltip(inactive);
-            allowNavButton.setTooltip(inactive);
-            listLogicButton.setTooltip(inactive);
+            denyNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.deny_list"));
+            allowNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.allow_list"));
+            denyNavButton.active = filtersActive;
+            listLogicButton.active = filtersActive;
+            allowNavButton.active = filtersActive;
+            boolean denyOver = menu.getSyncData().get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
+            listLogicButton.setMessage(Component.literal(denyOver ? ">>>>>" : "<<<<<"));
+            if (filtersActive) {
+                denyNavButton.setTooltip(
+                        Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.deny_list.tooltip")));
+                allowNavButton.setTooltip(
+                        Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_list.tooltip")));
+                listLogicButton.setTooltip(
+                        Tooltip.create(
+                                Component.translatable(
+                                        denyOver
+                                                ? "gui.another_dynamics.duct_node.list_logic.tooltip.deny_wins"
+                                                : "gui.another_dynamics.duct_node.list_logic.tooltip.allow_bypass")));
+            } else {
+                var inactive =
+                        Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.tooltip.inactive"));
+                denyNavButton.setTooltip(inactive);
+                allowNavButton.setTooltip(inactive);
+                listLogicButton.setTooltip(inactive);
+            }
         }
 
         routingPriorityBox.setTooltip(
@@ -1372,7 +1442,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
     }
 
-    /** Revert unsent amount/priority edits and defocus; button label ✕, tooltip {@code filters.close_without_saving}. */
+    /** Revert unsent amount/priority edits and defocus; button label ✕. */
     private void amountDiscardDraft() {
         playClickSound();
         revertAmountDraft(true);
@@ -1879,8 +1949,26 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
         Component titleComponent =
                 switch (subView) {
-                    case DENY_FILTERS -> Component.translatable("gui.another_dynamics.duct_node.deny_list");
-                    case ALLOW_FILTERS -> Component.translatable("gui.another_dynamics.duct_node.allow_list");
+                    case DENY_FILTERS -> {
+                        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+                        if (nm.isHybrid()) {
+                            yield Component.translatable(
+                                    activeFilterBank == DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER
+                                            ? "gui.another_dynamics.duct_node.hybrid.title.extractor"
+                                            : "gui.another_dynamics.duct_node.hybrid.title.filter");
+                        }
+                        yield Component.translatable("gui.another_dynamics.duct_node.deny_list");
+                    }
+                    case ALLOW_FILTERS -> {
+                        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+                        if (nm.isHybrid()) {
+                            yield Component.translatable(
+                                    activeFilterBank == DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER
+                                            ? "gui.another_dynamics.duct_node.hybrid.title.extractor"
+                                            : "gui.another_dynamics.duct_node.hybrid.title.filter");
+                        }
+                        yield Component.translatable("gui.another_dynamics.duct_node.allow_list");
+                    }
                     case HOW_TO_USE -> Component.translatable("gui.another_dynamics.duct_node.filters.how_to_use");
                     case MAIN -> this.title;
                 };

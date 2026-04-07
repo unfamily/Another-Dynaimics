@@ -18,6 +18,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 
 @EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
@@ -76,7 +77,9 @@ public final class ModNetwork {
                     return;
                 }
                 Direction face = Direction.values()[fo];
-                duct.applyServerFilterConfig(player, face, payload.allow(), payload.deny(), payload.denyOverridesAllow());
+                DuctFaceNode.FilterBank bank = DuctFaceNode.FilterBank.values()[
+                        Mth.clamp(payload.filterBankOrdinal(), 0, DuctFaceNode.FilterBank.values().length - 1)];
+                duct.applyServerFilterConfig(player, face, bank, payload.allow(), payload.deny(), payload.denyOverridesAllow());
             });
         });
 
@@ -94,7 +97,27 @@ public final class ModNetwork {
                 if (fo < 0 || fo >= Direction.values().length) {
                     return;
                 }
-                duct.toggleListLogicFromClient(player, Direction.values()[fo]);
+                DuctFaceNode.FilterBank bank = DuctFaceNode.FilterBank.values()[
+                        Mth.clamp(payload.filterBankOrdinal(), 0, DuctFaceNode.FilterBank.values().length - 1)];
+                duct.toggleListLogicFromClient(player, Direction.values()[fo], bank);
+            });
+        });
+
+        reg.playToServer(DuctSelfFeedPayload.TYPE, DuctSelfFeedPayload.STREAM_CODEC, (payload, ctx) -> {
+            ctx.enqueueWork(() -> {
+                ServerPlayer player = (ServerPlayer) ctx.player();
+                BlockEntity be = player.level().getBlockEntity(payload.pos());
+                if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
+                    return;
+                }
+                if (!validateDuctGuiDistance(player, payload.pos())) {
+                    return;
+                }
+                int fo = payload.faceOrdinal();
+                if (fo < 0 || fo >= Direction.values().length) {
+                    return;
+                }
+                duct.setSelfFeedFromClient(player, Direction.values()[fo], payload.enabled());
             });
         });
 
@@ -107,6 +130,7 @@ public final class ModNetwork {
                         DuctNodeScreen.applyClientFilterSync(
                                 payload.pos(),
                                 face,
+                                payload.filterBankOrdinal(),
                                 payload.allow(),
                                 payload.deny(),
                                 payload.denyOverridesAllow());
@@ -125,15 +149,20 @@ public final class ModNetwork {
     public static void sendFilterUpdate(
             BlockPos pos,
             Direction face,
+            int filterBankOrdinal,
             java.util.List<String> allow,
             java.util.List<String> deny,
             boolean denyOverridesAllow) {
         PacketDistributor.sendToServer(
-                new DuctFilterUpdatePayload(pos, face.ordinal(), allow, deny, denyOverridesAllow));
+                new DuctFilterUpdatePayload(pos, face.ordinal(), filterBankOrdinal, allow, deny, denyOverridesAllow));
     }
 
-    public static void sendListLogicToggle(BlockPos pos, Direction face) {
-        PacketDistributor.sendToServer(new DuctListLogicPayload(pos, face.ordinal()));
+    public static void sendListLogicToggle(BlockPos pos, Direction face, int filterBankOrdinal) {
+        PacketDistributor.sendToServer(new DuctListLogicPayload(pos, face.ordinal(), filterBankOrdinal));
+    }
+
+    public static void sendSelfFeedSet(BlockPos pos, Direction face, boolean enabled) {
+        PacketDistributor.sendToServer(new DuctSelfFeedPayload(pos, face.ordinal(), enabled));
     }
 
     /**
@@ -160,14 +189,17 @@ public final class ModNetwork {
 
     private static void sendFilterSyncToPlayerNow(ServerPlayer player, DuctBlockEntity duct, Direction face) {
         var node = duct.getFaceNode(face);
-        PacketDistributor.sendToPlayer(
-                player,
-                new DuctFilterSyncPayload(
-                        duct.getBlockPos(),
-                        face.ordinal(),
-                        java.util.List.copyOf(node.allowFilters),
-                        java.util.List.copyOf(node.denyFilters),
-                        node.denyOverridesAllow));
+        for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
+            PacketDistributor.sendToPlayer(
+                    player,
+                    new DuctFilterSyncPayload(
+                            duct.getBlockPos(),
+                            face.ordinal(),
+                            bank.ordinal(),
+                            java.util.List.copyOf(node.bankAllowFilters(bank)),
+                            java.util.List.copyOf(node.bankDenyFilters(bank)),
+                            node.bankDenyOverridesAllow(bank)));
+        }
     }
 
     public record DuctFieldPayload(BlockPos pos, int faceOrdinal, int insertionPriority, int extractBatch)

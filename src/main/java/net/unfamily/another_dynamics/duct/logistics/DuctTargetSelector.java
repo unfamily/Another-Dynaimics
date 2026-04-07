@@ -37,12 +37,13 @@ public final class DuctTargetSelector {
             ItemStack probe,
             RoutingMode routing,
             int[] roundRobinState,
-            int extractorFaceChannel) {
+            int extractorFaceChannel,
+            boolean allowSelfDestination) {
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
         Set<BlockPos> net = DuctPathfinder.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
         List<Candidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
-            if (p.equals(extractorPos)) {
+            if (!allowSelfDestination && p.equals(extractorPos)) {
                 continue;
             }
             if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
@@ -89,6 +90,16 @@ public final class DuctTargetSelector {
         Optional<List<BlockPos>> path =
                 DuctPathfinder.shortestPath(level, extractorPos, pick.ductPos, spec, DuctNetworkType.ITEM);
         return path.map(positions -> new ExtractionRouting(positions, pick.face));
+    }
+
+    public static Optional<ExtractionRouting> selectExtractionDelivery(
+            ServerLevel level,
+            BlockPos extractorPos,
+            ItemStack probe,
+            RoutingMode routing,
+            int[] roundRobinState,
+            int extractorFaceChannel) {
+        return selectExtractionDelivery(level, extractorPos, probe, routing, roundRobinState, extractorFaceChannel, false);
     }
 
     public static Optional<RetrieverRouting> selectRetrievingDonorPath(

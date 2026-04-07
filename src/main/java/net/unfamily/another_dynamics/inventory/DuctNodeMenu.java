@@ -61,9 +61,13 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private int lastUpgradeSlotsFingerprint;
 
     /** Client-side filter cache (filled by {@link #receiveFilterSync}). */
-    private final List<String> clientAllowFilters = new ArrayList<>();
-    private final List<String> clientDenyFilters = new ArrayList<>();
-    private boolean clientDenyOverridesAllow = true;
+    private final List<String> clientAllowFiltersExtractor = new ArrayList<>();
+    private final List<String> clientDenyFiltersExtractor = new ArrayList<>();
+    private boolean clientDenyOverridesAllowExtractor = true;
+
+    private final List<String> clientAllowFiltersFilter = new ArrayList<>();
+    private final List<String> clientDenyFiltersFilter = new ArrayList<>();
+    private boolean clientDenyOverridesAllowFilter = true;
 
     public DuctNodeMenu(int containerId, Inventory playerInventory, DuctBlockEntity be, Direction accessFace) {
         this(
@@ -153,56 +157,85 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return DuctDefinitionRegistry.itemDuctTransportSpec().filterDenySlots();
     }
 
-    public List<String> getClientAllowFilters() {
-        return clientAllowFilters;
+    public List<String> getClientAllowFilters(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
+        return bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER
+                ? clientAllowFiltersExtractor
+                : clientAllowFiltersFilter;
     }
 
-    public List<String> getClientDenyFilters() {
-        return clientDenyFilters;
+    public List<String> getClientDenyFilters(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
+        return bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER
+                ? clientDenyFiltersExtractor
+                : clientDenyFiltersFilter;
     }
 
-    public boolean getClientDenyOverridesAllow() {
-        return clientDenyOverridesAllow;
+    public boolean getClientDenyOverridesAllow(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
+        return bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER
+                ? clientDenyOverridesAllowExtractor
+                : clientDenyOverridesAllowFilter;
     }
 
     public void receiveFilterSync(
-            BlockPos pos, Direction face, List<String> allow, List<String> deny, boolean denyOverridesAllow) {
+            BlockPos pos,
+            Direction face,
+            int filterBankOrdinal,
+            List<String> allow,
+            List<String> deny,
+            boolean denyOverridesAllow) {
         if (!ductBlockPos.equals(pos) || accessFace != face) {
             return;
         }
-        clientAllowFilters.clear();
-        clientAllowFilters.addAll(allow);
-        clientDenyFilters.clear();
-        clientDenyFilters.addAll(deny);
-        clientDenyOverridesAllow = denyOverridesAllow;
+        net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank =
+                net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.values()[
+                        Mth.clamp(
+                                filterBankOrdinal,
+                                0,
+                                net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.values().length - 1)];
+        List<String> a = getClientAllowFilters(bank);
+        List<String> d = getClientDenyFilters(bank);
+        a.clear();
+        a.addAll(allow);
+        d.clear();
+        d.addAll(deny);
+        if (bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER) {
+            clientDenyOverridesAllowExtractor = denyOverridesAllow;
+        } else {
+            clientDenyOverridesAllowFilter = denyOverridesAllow;
+        }
     }
 
     /** Keep {@link #clientDenyOverridesAllow} aligned with synced {@link DuctMenuSync#DENY_OVERRIDES_ALLOW} on client. */
     public void updateClientDenyOverridesFromSync() {
         if (linkedBlockEntity == null) {
-            clientDenyOverridesAllow = syncData.get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
+            // Legacy single sync: keep FILTER bank aligned for non-hybrid UI paths.
+            clientDenyOverridesAllowFilter = syncData.get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
         }
     }
 
     public void ensureClientFilterBufferSizes() {
-        int maxA = filterAllowCap();
-        int maxD = filterDenyCap();
-        while (clientAllowFilters.size() < maxA) {
-            clientAllowFilters.add("");
-        }
-        while (clientDenyFilters.size() < maxD) {
-            clientDenyFilters.add("");
-        }
-        while (clientAllowFilters.size() > maxA) {
-            clientAllowFilters.remove(clientAllowFilters.size() - 1);
-        }
-        while (clientDenyFilters.size() > maxD) {
-            clientDenyFilters.remove(clientDenyFilters.size() - 1);
-        }
+        int maxA = (Math.max(0, filterAllowCap()) + 1) / 2;
+        int maxD = (Math.max(0, filterDenyCap()) + 1) / 2;
+        clampClientList(clientAllowFiltersExtractor, maxA);
+        clampClientList(clientDenyFiltersExtractor, maxD);
+        clampClientList(clientAllowFiltersFilter, maxA);
+        clampClientList(clientDenyFiltersFilter, maxD);
     }
 
-    public void pushFilterConfigToServer(List<String> allow, List<String> deny, boolean denyOverridesAllow) {
-        ModNetwork.sendFilterUpdate(ductBlockPos, accessFace, allow, deny, denyOverridesAllow);
+    public void pushFilterConfigToServer(
+            net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank,
+            List<String> allow,
+            List<String> deny,
+            boolean denyOverridesAllow) {
+        ModNetwork.sendFilterUpdate(ductBlockPos, accessFace, bank.ordinal(), allow, deny, denyOverridesAllow);
+    }
+
+    private static void clampClientList(List<String> list, int max) {
+        while (list.size() < max) {
+            list.add("");
+        }
+        while (list.size() > max) {
+            list.remove(list.size() - 1);
+        }
     }
 
     private void addPlayerInventory(Inventory inv, int startX, int startY) {

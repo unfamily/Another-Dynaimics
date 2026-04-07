@@ -14,7 +14,12 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
  * Server -> client: full filter configuration for one duct face (menu open / after edits).
  */
 public record DuctFilterSyncPayload(
-        BlockPos pos, int faceOrdinal, List<String> allow, List<String> deny, boolean denyOverridesAllow)
+        BlockPos pos,
+        int faceOrdinal,
+        int filterBankOrdinal,
+        List<String> allow,
+        List<String> deny,
+        boolean denyOverridesAllow)
         implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<DuctFilterSyncPayload> TYPE =
             new CustomPacketPayload.Type<>(
@@ -25,6 +30,7 @@ public record DuctFilterSyncPayload(
                     (buf, p) -> {
                         BlockPos.STREAM_CODEC.encode(buf, p.pos());
                         ByteBufCodecs.VAR_INT.encode(buf, p.faceOrdinal());
+                        ByteBufCodecs.VAR_INT.encode(buf, p.filterBankOrdinal());
                         DuctFilterPacketCodecs.STRING_LIST.encode(buf, p.allow());
                         DuctFilterPacketCodecs.STRING_LIST.encode(buf, p.deny());
                         buf.writeBoolean(p.denyOverridesAllow());
@@ -32,10 +38,11 @@ public record DuctFilterSyncPayload(
                     buf -> {
                         BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
                         int face = ByteBufCodecs.VAR_INT.decode(buf);
+                        int bank = ByteBufCodecs.VAR_INT.decode(buf);
                         List<String> allow = DuctFilterPacketCodecs.STRING_LIST.decode(buf);
                         List<String> deny = DuctFilterPacketCodecs.STRING_LIST.decode(buf);
                         boolean over = buf.readBoolean();
-                        return new DuctFilterSyncPayload(pos, face, allow, deny, over);
+                        return new DuctFilterSyncPayload(pos, face, bank, allow, deny, over);
                     });
 
     @Override

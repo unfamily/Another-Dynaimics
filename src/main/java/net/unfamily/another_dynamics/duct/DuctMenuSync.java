@@ -27,7 +27,9 @@ public final class DuctMenuSync {
      * by datapack {@code batch.max} when that value is non-negative.
      */
     public static final int EXTRACT_BATCH_CAP = 14;
-    public static final int COUNT = 15;
+    /** 1 if {@link net.unfamily.another_dynamics.duct.DuctFaceNode#selfFeed} (only used by hybrid Extr/Filt). */
+    public static final int SELF_FEED = 15;
+    public static final int COUNT = 16;
 
     /** FLAGS bit: routing row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesRouting()}). */
     public static final int FLAG_ROUTING_ACTIVE = 1;

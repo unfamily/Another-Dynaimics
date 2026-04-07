@@ -10,8 +10,12 @@ public enum NodeMode {
     EXTRACTION,
     /** Accepts inserts; filters apply when receiving. */
     FILTERING_INSERTION,
+    /** Hybrid: extracts from attached inventory and also filters items inserted through this face. */
+    EXTRACTION_FILTERING,
     /** Pulls items from the network toward the attached inventory. */
-    RETRIEVING;
+    RETRIEVING,
+    /** Hybrid: retrieves from the network into the attached inventory and also extracts into the network. */
+    RETRIEVING_EXTRACTION;
 
     private static final NodeMode[] VALUES = values();
 
@@ -27,11 +31,11 @@ public enum NodeMode {
     }
 
     public boolean usesExtractBatchField() {
-        return this == EXTRACTION || this == RETRIEVING;
+        return this == EXTRACTION || this == RETRIEVING || this == EXTRACTION_FILTERING || this == RETRIEVING_EXTRACTION;
     }
 
     public boolean usesRouting() {
-        return this == EXTRACTION || this == RETRIEVING;
+        return this == EXTRACTION || this == RETRIEVING || this == EXTRACTION_FILTERING || this == RETRIEVING_EXTRACTION;
     }
 
     /**
@@ -39,5 +43,14 @@ public enum NodeMode {
      */
     public boolean usesItemFilterConfig() {
         return this != NONE;
+    }
+
+    public boolean isHybrid() {
+        return this == EXTRACTION_FILTERING || this == RETRIEVING_EXTRACTION;
+    }
+
+    /** Hybrid modes still use routing internally, but the player may not change the routing mode. */
+    public boolean allowsRoutingConfig() {
+        return usesRouting() && !isHybrid();
     }
 }
