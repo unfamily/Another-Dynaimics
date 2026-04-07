@@ -14,7 +14,9 @@ import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
 
 /**
- * Pending item move: {@link #stack} is the planned kind + count (items stay in source inventory until delivery).
+ * Pending item move: {@link #stack} carries items in transit. When {@link #sourceExtractCommitted} is true, they were
+ * removed from the source inventory at schedule time; otherwise (legacy in-flight save) they are still in the source
+ * until {@code finish*} extracts.
  * {@link #sourceFace} / {@link #destFace} select which attached inventories on source/dest ducts are used.
  * {@link #transportChannel} is {@link net.unfamily.another_dynamics.duct.DuctFaceNode} letter (1–26) for both ends;
  * {@link DuctChannelPolicy#LEGACY_WILDCARD}
@@ -33,6 +35,8 @@ public final class OutboundShipment {
     public int transportChannel;
     public boolean legacyPhysicalBuffer;
     public boolean legacyOmniFaces;
+    /** True when {@link #stack} was physically extracted from source at schedule time (modern duct queue). */
+    public boolean sourceExtractCommitted;
 
     /** Current leg phase for visuals. For planned-only shipments, RETURN is purely visual. */
     public TransitPhase transitPhase = TransitPhase.FORWARD;
@@ -68,6 +72,7 @@ public final class OutboundShipment {
         this.legacyPhysicalBuffer = false;
         this.legacyOmniFaces = false;
         this.totalTravelTicks = travelTicks;
+        this.sourceExtractCommitted = false;
     }
 
     public static List<BlockPos> copyPath(List<BlockPos> path) {
@@ -111,6 +116,7 @@ public final class OutboundShipment {
             plist.add(pt);
         }
         t.put("DuctPath", plist);
+        t.putBoolean("SrcXfr", sourceExtractCommitted);
         return t;
     }
 
@@ -157,6 +163,7 @@ public final class OutboundShipment {
             sh.ductPath = List.of(refund.immutable());
         }
         sh.registeredIncoming = sh.stack.copy();
+        sh.sourceExtractCommitted = t.getBoolean("SrcXfr");
         return sh;
     }
 

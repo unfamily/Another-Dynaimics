@@ -38,9 +38,12 @@ public final class DuctFaceNode {
     public int channelLetter = 1;
     /**
      * 0 = ignored (always enabled), 1 = low (enabled when NOT powered), 2 = high (enabled when powered), 3 = disabled.
-     * Pulse mode was removed.
+     * New faces default to {@code 3} until loaded from NBT or the player changes the GUI.
      */
     public int redstoneMode = 3;
+
+    /** Persisted with {@link #save}/{@link #load} so legacy worlds (mode 3 = pulse) migrate only when RsFmt is absent. */
+    private static final byte REDSTONE_FMT_V1 = 1;
     public int roundRobinCursor;
     public int ticksUntilAction;
 
@@ -86,6 +89,7 @@ public final class DuctFaceNode {
         extractBatch = 0;
         roundRobinCursor = 0;
         selfFeed = false;
+        redstoneMode = 3;
     }
 
     public void save(HolderLookup.Provider registries, CompoundTag tag) {
@@ -97,6 +101,7 @@ public final class DuctFaceNode {
         tag.putInt("ExtractBatch", extractBatch);
         tag.putByte("Channel", (byte) channelLetter);
         tag.putByte("RedstoneMode", (byte) redstoneMode);
+        tag.putByte("RsFmt", REDSTONE_FMT_V1);
         tag.putInt("RrCursor", roundRobinCursor);
         tag.putInt("TicksAct", ticksUntilAction);
         tag.putBoolean("SelfFeed", selfFeed);
@@ -140,9 +145,14 @@ public final class DuctFaceNode {
         }
         channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
         redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
-        // Migrate legacy values: 3=pulse -> ignored, 4=disabled -> disabled(3).
-        if (redstoneMode == 3) {
-            redstoneMode = 0;
+        int rsFmt = tag.contains("RsFmt") ? tag.getByte("RsFmt") & 0xFF : 0;
+        if (rsFmt < REDSTONE_FMT_V1) {
+            // Pre–RsFmt: 3 meant pulse (removed) -> ignored; 4+ meant disabled -> 3.
+            if (redstoneMode == 3) {
+                redstoneMode = 0;
+            } else if (redstoneMode >= 4) {
+                redstoneMode = 3;
+            }
         } else if (redstoneMode >= 4) {
             redstoneMode = 3;
         }
@@ -187,9 +197,13 @@ public final class DuctFaceNode {
         }
         channelLetter = root.contains("Channel") ? root.getByte("Channel") & 0xFF : 1;
         redstoneMode = root.getByte("RedstoneMode") & 0xFF;
-        // Migrate legacy values: 3=pulse -> ignored, 4=disabled -> disabled(3).
-        if (redstoneMode == 3) {
-            redstoneMode = 0;
+        int rsFmt = root.contains("RsFmt") ? root.getByte("RsFmt") & 0xFF : 0;
+        if (rsFmt < REDSTONE_FMT_V1) {
+            if (redstoneMode == 3) {
+                redstoneMode = 0;
+            } else if (redstoneMode >= 4) {
+                redstoneMode = 3;
+            }
         } else if (redstoneMode >= 4) {
             redstoneMode = 3;
         }

@@ -17,6 +17,7 @@ import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 
@@ -28,6 +29,15 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class DuctTargetSelector {
     private DuctTargetSelector() {}
+
+    /** Face modes that can receive items from the network (extraction routing / retriever delivery). */
+    public static boolean isNetworkInboundDeliveryMode(NodeMode m) {
+        return m == NodeMode.NONE
+                || m == NodeMode.FILTERING_INSERTION
+                || m == NodeMode.EXTRACTION_FILTERING
+                || m == NodeMode.RETRIEVING
+                || m == NodeMode.RETRIEVING_EXTRACTION;
+    }
 
     public record ExtractionRouting(List<BlockPos> path, Direction destStorageFace) {}
 
@@ -61,7 +71,7 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 DuctFaceNode node = be.getFaceNode(d);
-                if (!isNodeEnabledByRedstone(level, p, node)) {
+                if (!DuctRedstoneLogic.isItemNodeActive(level, p, node)) {
                     continue;
                 }
                 NodeMode m = node.nodeMode;
@@ -166,7 +176,7 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 DuctFaceNode node = be.getFaceNode(d);
-                if (!isNodeEnabledByRedstone(level, p, node)) {
+                if (!DuctRedstoneLogic.isItemNodeActive(level, p, node)) {
                     continue;
                 }
                 NodeMode donorMode = node.nodeMode;
@@ -213,15 +223,6 @@ public final class DuctTargetSelector {
     private record Candidate(BlockPos ductPos, Direction face, int priority, long dist) {}
 
     private record DonorCandidate(BlockPos ductPos, Direction face, int priority, long dist) {}
-
-    private static boolean isNodeEnabledByRedstone(ServerLevel level, BlockPos ductPos, DuctFaceNode node) {
-        return switch (node.redstoneMode) {
-            case 0 -> true; // ignored
-            case 1 -> !level.hasNeighborSignal(ductPos); // low
-            case 2 -> level.hasNeighborSignal(ductPos); // high
-            default -> false; // disabled
-        };
-    }
 
     private static Candidate pickWithinTier(
             ServerLevel level,

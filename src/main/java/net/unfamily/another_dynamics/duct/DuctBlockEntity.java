@@ -14,7 +14,6 @@ import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -23,8 +22,11 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.items.IItemHandler;
+import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctCapHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
+import net.unfamily.another_dynamics.duct.logistics.DuctOverflowBuffer;
+import net.unfamily.another_dynamics.duct.logistics.DuctOverflowRouting;
 import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
 import net.unfamily.another_dynamics.duct.logistics.DuctTargetSelector;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
@@ -53,6 +55,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private final List<OutboundShipment> outboundShipments = new ArrayList<>();
     private final List<ItemStack> migratedStorageBacklog = new ArrayList<>();
+    private final DuctOverflowBuffer overflowBuffer = new DuctOverflowBuffer();
 
     private final SimpleContainerData menuData = new SimpleContainerData(DuctMenuSync.COUNT);
 
@@ -64,6 +67,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     /** Client-only cached icon pack from server; avoids relying on full face-node sync for rendering. */
     private int clientPackedNodeIcons = defaultPackedNodeIcons();
+
+    /**
+     * Server-only: {@link AbstractDuctBlockEntity#refreshFromWorld()} does not send block updates when only neighbor
+     * redstone changes (masks unchanged), but {@link #computePackedNodeIcons()} depends on world power for low/high faces.
+     */
+    private boolean redstonePoweredSyncInitialized;
+    private boolean lastDuctPoweredPackedIcons;
 
     private static int defaultPackedNodeIcons() {
         // Default to NONE (col=3,row=0 => idx=3) for all faces until the first server update arrives.
@@ -106,15 +116,41 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private boolean isNodeEnabledByRedstone(DuctFaceNode n) {
-        if (level == null) {
-            return true;
+        return DuctRedstoneLogic.isItemNodeActive(level, worldPosition, n);
+    }
+
+    /**
+     * True if any visible storage face uses world redstone for its on/off icon row (ignored/disabled do not depend on power).
+     */
+    private boolean anyFaceUsesWorldRedstoneForPackedIcons() {
+        int sm = getVisualStorageMask();
+        for (Direction d : Direction.values()) {
+            if ((sm & (1 << d.ordinal())) == 0) {
+                continue;
+            }
+            int rm = getFaceNode(d).redstoneMode;
+            if (rm == 1 || rm == 2) {
+                return true;
+            }
         }
-        return switch (n.redstoneMode) {
-            case 0 -> true; // ignored
-            case 1 -> !level.hasNeighborSignal(worldPosition); // low
-            case 2 -> level.hasNeighborSignal(worldPosition); // high
-            default -> false; // disabled
-        };
+        return false;
+    }
+
+    private void tickRedstoneVisualSync(ServerLevel serverLevel) {
+        if (!anyFaceUsesWorldRedstoneForPackedIcons()) {
+            return;
+        }
+        boolean powered = DuctRedstoneLogic.isDuctPowered(serverLevel, worldPosition);
+        if (!redstonePoweredSyncInitialized) {
+            redstonePoweredSyncInitialized = true;
+            lastDuctPoweredPackedIcons = powered;
+            syncVisualGeometryToClients();
+            return;
+        }
+        if (powered != lastDuctPoweredPackedIcons) {
+            lastDuctPoweredPackedIcons = powered;
+            syncVisualGeometryToClients();
+        }
     }
 
     public DuctBlockEntity(BlockPos pos, BlockState state) {
@@ -134,6 +170,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     public DuctFaceNode getFaceNode(Direction dir) {
         return faceNodes[dir.ordinal()];
+    }
+
+    public DuctOverflowBuffer getOverflowBuffer() {
+        return overflowBuffer;
     }
 
     public SimpleContainerData getMenuData() {
@@ -228,7 +268,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         refreshFromWorld();
+        tickRedstoneVisualSync(serverLevel);
         tickOutboundShipments(serverLevel);
+        tickOverflowBufferDrain(serverLevel);
         tickMigratedBacklogFlush(serverLevel);
         if (!isStorageAttachmentNode()) {
             return;
@@ -274,7 +316,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 setChanged();
                 continue;
             }
-            // Visual-only system should never negative-count; preserve behavior without dropping items.
+            if (!s.stack.isEmpty()) {
+                getOverflowBuffer().absorb(level, this, s.stack.copy());
+            }
             it.remove();
             setChanged();
         }
@@ -304,8 +348,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             if (s.transitPhase == TransitPhase.RETURN) {
-                // Visual-only: complete return by removing the shipment.
                 DuctIncomingIndex.unregister(level, s.refundDuct, s.registeredIncoming.copy());
+                if (!s.stack.isEmpty()) {
+                    DuctOverflowRouting.finishReturnLegAbsorb(level, s);
+                }
                 it.remove();
                 setChanged();
                 dirty = true;
@@ -355,18 +401,25 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             setChanged();
             return false;
         }
+        if (!DuctRedstoneLogic.isItemNodeActive(level, s.destDuct, destBe.getFaceNode(s.destFace))) {
+            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
+            beginVisualReturn(level, s);
+            setChanged();
+            return false;
+        }
         DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
 
         int planned = s.stack.getCount();
+        boolean itemsAlreadyPulledFromSource = s.legacyPhysicalBuffer || s.sourceExtractCommitted;
         int capExt;
         if (s.legacyOmniFaces) {
             capExt =
-                    s.legacyPhysicalBuffer
+                    itemsAlreadyPulledFromSource
                             ? planned
                             : DuctCapHelper.countExtractableMatching(level, s.refundDuct, srcBe, s.stack, planned);
         } else {
             capExt =
-                    s.legacyPhysicalBuffer
+                    itemsAlreadyPulledFromSource
                             ? planned
                             : DuctCapHelper.countExtractableMatchingOnFace(
                                     level, s.refundDuct, s.sourceFace, s.stack, planned);
@@ -385,6 +438,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int newPlanned = Math.min(planned, Math.min(capExt, capIn));
 
         if (newPlanned <= 0) {
+            if (s.sourceExtractCommitted && planned > 0) {
+                DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, s.stack.copy());
+                s.stack = ItemStack.EMPTY;
+                it.remove();
+                setChanged();
+                return false;
+            }
             if (s.legacyPhysicalBuffer && planned > 0) {
                 refundExcessToSource(level, s, planned);
             }
@@ -393,7 +453,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return false;
         }
 
-        if (s.legacyPhysicalBuffer && newPlanned < planned) {
+        if (itemsAlreadyPulledFromSource && newPlanned < planned) {
             ItemStack excess = s.stack.copy();
             excess.setCount(planned - newPlanned);
             refundStackToSource(level, s, excess);
@@ -442,16 +502,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void refundStackToSource(ServerLevel level, OutboundShipment s, ItemStack excess) {
-        if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe)) {
-            dropAt(level, s.refundDuct, excess);
-            return;
-        }
-        ItemStack left =
-                s.legacyOmniFaces
-                        ? DuctCapHelper.insertIntoStorageFaces(level, s.refundDuct, srcBe, excess)
-                        : DuctCapHelper.insertIntoFace(level, s.refundDuct, s.sourceFace, excess);
-        if (!left.isEmpty()) {
-            dropAt(level, s.refundDuct, left);
+        DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, excess);
+        if (level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe) {
+            srcBe.setChanged();
         }
     }
 
@@ -468,15 +521,26 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             setChanged();
             return;
         }
+        if (!DuctRedstoneLogic.isItemNodeActive(level, s.destDuct, destBe.getFaceNode(s.destFace))) {
+            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
+            beginVisualReturn(level, s);
+            setChanged();
+            return;
+        }
         DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
 
-        if (s.legacyPhysicalBuffer) {
+        if (s.legacyPhysicalBuffer || s.sourceExtractCommitted) {
             ItemStack toInsert = s.stack.copy();
             NodeMode dm = destBe.getFaceNode(s.destFace).nodeMode;
             if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                     && !destBe.passesItemFilters(s.destFace, toInsert, level, DuctFaceNode.FilterBank.FILTER)) {
                 DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-                beginVisualReturn(level, s);
+                if (s.sourceExtractCommitted) {
+                    DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, s.stack.copy());
+                    it.remove();
+                } else {
+                    beginVisualReturn(level, s);
+                }
                 setChanged();
                 return;
             }
@@ -486,7 +550,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                             : DuctCapHelper.insertIntoFace(level, s.destDuct, s.destFace, s.stack.copy());
             it.remove();
             if (!remainder.isEmpty()) {
-                refundStackToSource(level, s, remainder);
+                DuctOverflowRouting.absorbExtractionDestRemainder(level, s, destBe, remainder);
             }
             setChanged();
             return;
@@ -526,19 +590,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         ? DuctCapHelper.insertIntoStorageFaces(level, s.destDuct, destBe, extracted.copy())
                         : DuctCapHelper.insertIntoFace(level, s.destDuct, s.destFace, extracted.copy());
         if (!remainder.isEmpty()) {
-            ItemStack back =
-                    s.legacyOmniFaces
-                            ? DuctCapHelper.insertIntoStorageFaces(level, s.refundDuct, srcBe, remainder)
-                            : DuctCapHelper.insertIntoFace(level, s.refundDuct, s.sourceFace, remainder);
-            if (!back.isEmpty()) {
-                dropAt(level, s.refundDuct, back);
-            }
+            DuctOverflowRouting.absorbExtractionDestRemainder(level, s, destBe, remainder);
         }
         setChanged();
     }
 
     private void finishRetrieverArrival(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
         DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
+        if (!DuctRedstoneLogic.isItemNodeActive(level, worldPosition, getFaceNode(s.destFace))) {
+            beginVisualReturn(level, s);
+            setChanged();
+            return;
+        }
         if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity donorBe)) {
             beginVisualReturn(level, s);
             setChanged();
@@ -550,13 +613,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             setChanged();
             return;
         }
-        if (s.legacyPhysicalBuffer) {
+        if (s.legacyPhysicalBuffer || s.sourceExtractCommitted) {
             ItemStack toInsert = s.stack.copy();
             NodeMode sm = getFaceNode(s.destFace).nodeMode;
             if ((sm == NodeMode.FILTERING_INSERTION || sm == NodeMode.EXTRACTION_FILTERING)
                     && !passesItemFilters(s.destFace, toInsert, level, DuctFaceNode.FilterBank.FILTER)) {
                 DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
-                beginVisualReturn(level, s);
+                if (s.sourceExtractCommitted) {
+                    DuctOverflowRouting.absorbRetrieverDestRemainder(level, s, this, donorBe, s.stack.copy());
+                    it.remove();
+                } else {
+                    beginVisualReturn(level, s);
+                }
                 setChanged();
                 return;
             }
@@ -566,13 +634,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                             : DuctCapHelper.insertIntoFace(level, worldPosition, s.destFace, s.stack.copy());
             it.remove();
             if (!remainder.isEmpty()) {
-                ItemStack back =
-                        s.legacyOmniFaces
-                                ? DuctCapHelper.insertIntoStorageFaces(level, s.refundDuct, donorBe, remainder)
-                                : DuctCapHelper.insertIntoFace(level, s.refundDuct, s.sourceFace, remainder);
-                if (!back.isEmpty()) {
-                    dropAt(level, s.refundDuct, back);
-                }
+                DuctOverflowRouting.absorbRetrieverDestRemainder(level, s, this, donorBe, remainder);
             }
             setChanged();
             return;
@@ -600,15 +662,51 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         ? DuctCapHelper.insertIntoStorageFaces(level, worldPosition, this, extracted.copy())
                         : DuctCapHelper.insertIntoFace(level, worldPosition, s.destFace, extracted.copy());
         if (!remainder.isEmpty()) {
-            ItemStack back =
-                    s.legacyOmniFaces
-                            ? DuctCapHelper.insertIntoStorageFaces(level, s.refundDuct, donorBe, remainder)
-                            : DuctCapHelper.insertIntoFace(level, s.refundDuct, s.sourceFace, remainder);
-            if (!back.isEmpty()) {
-                dropAt(level, s.refundDuct, back);
-            }
+            DuctOverflowRouting.absorbRetrieverDestRemainder(level, s, this, donorBe, remainder);
         }
         setChanged();
+    }
+
+    private void tickOverflowBufferDrain(ServerLevel level) {
+        if (level.isClientSide()) {
+            return;
+        }
+        overflowBuffer.tickTryDrainOne(level, this);
+    }
+
+    /**
+     * Like {@link DuctCapHelper#insertIntoStorageFaces} but skips network-inbound faces that are gated off by redstone.
+     */
+    public ItemStack tryInsertIntoAllStorageFacesRespectingRules(ServerLevel level, ItemStack stack) {
+        return insertIntoStorageFacesRespectingInboundRedstone(level, stack);
+    }
+
+    private ItemStack insertIntoStorageFacesRespectingInboundRedstone(ServerLevel level, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack remaining = stack.copy();
+        int mask = getStorageMask();
+        for (Direction dir : Direction.values()) {
+            if ((mask & (1 << dir.ordinal())) == 0) {
+                continue;
+            }
+            DuctFaceNode n = getFaceNode(dir);
+            if (DuctTargetSelector.isNetworkInboundDeliveryMode(n.nodeMode)
+                    && !DuctRedstoneLogic.isItemNodeActive(level, worldPosition, n)) {
+                continue;
+            }
+            BlockPos adj = worldPosition.relative(dir);
+            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            if (h == null) {
+                continue;
+            }
+            remaining = ItemHandlerHelper.insertItemStacked(h, remaining, false);
+            if (remaining.isEmpty()) {
+                return ItemStack.EMPTY;
+            }
+        }
+        return remaining;
     }
 
     private void tickMigratedBacklogFlush(ServerLevel level) {
@@ -623,7 +721,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 setChanged();
                 continue;
             }
-            ItemStack left = DuctCapHelper.insertIntoStorageFaces(level, worldPosition, this, b.copy());
+            ItemStack left = insertIntoStorageFacesRespectingInboundRedstone(level, b.copy());
             if (left.isEmpty()) {
                 it.remove();
                 setChanged();
@@ -636,6 +734,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private void tickExtractionPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction face, DuctFaceNode node) {
         if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
+            return;
+        }
+        if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
         }
         IItemHandler sourceHandler = DuctCapHelper.getHandlerOnFace(level, worldPosition, face);
@@ -689,14 +790,20 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             ItemStack planned = probe.copy();
             planned.setCount(plannedCount);
-            if (!canScheduleTowardFace(level, dest, destBe, destFace, planned)) {
+            if (!canScheduleTowardFace(level, dest, destBe, destFace, planned, spec)) {
+                continue;
+            }
+            ItemStack extracted =
+                    DuctCapHelper.extractMatchingUpToOnFace(level, worldPosition, face, planned, plannedCount);
+            if (extracted.isEmpty() || extracted.getCount() != plannedCount) {
                 continue;
             }
             node.roundRobinCursor = rrProbe[0];
             long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
             int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
             OutboundShipment sh =
-                    new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
+                    new OutboundShipment(extracted, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
+            sh.sourceExtractCommitted = true;
             sh.ductPath = OutboundShipment.copyPath(path);
             sh.totalTravelTicks = travelTicks;
             sh.edgeTicks = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
@@ -712,6 +819,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private void tickRetrieverPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction retrieverFace, DuctFaceNode node) {
         if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
+            return;
+        }
+        if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
         }
         int[] rr = new int[] {node.roundRobinCursor};
@@ -758,13 +868,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             ItemStack planned = probe.copy();
             planned.setCount(plannedCount);
-            if (!canScheduleTowardFace(level, worldPosition, this, retrieverFace, planned)) {
+            if (!canScheduleTowardFace(level, worldPosition, this, retrieverFace, planned, spec)) {
+                continue;
+            }
+            ItemStack extracted =
+                    DuctCapHelper.extractMatchingUpToOnFace(level, donor, donorFace, planned, plannedCount);
+            if (extracted.isEmpty() || extracted.getCount() != plannedCount) {
                 continue;
             }
             long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
             int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
             OutboundShipment sh =
-                    new OutboundShipment(planned, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
+                    new OutboundShipment(extracted, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
+            sh.sourceExtractCommitted = true;
             sh.ductPath = OutboundShipment.copyPath(path);
             sh.totalTravelTicks = travelTicks;
             sh.edgeTicks = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
@@ -779,8 +895,22 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private boolean canScheduleTowardFace(
-            ServerLevel level, BlockPos destDuct, DuctBlockEntity destBe, Direction destFace, ItemStack addition) {
+            ServerLevel level,
+            BlockPos destDuct,
+            DuctBlockEntity destBe,
+            Direction destFace,
+            ItemStack addition,
+            DuctItemTransportSpec transportSpec) {
         if (addition.isEmpty()) {
+            return false;
+        }
+        if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
+            return false;
+        }
+        if (destBe.getOverflowBuffer().isSchedulingUnavailableForNewPulls()) {
+            return false;
+        }
+        if (!DuctRedstoneLogic.isItemNodeActive(level, destDuct, destBe.getFaceNode(destFace))) {
             return false;
         }
         List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct);
@@ -810,14 +940,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
         }
         return false;
-    }
-
-    private static void dropAt(ServerLevel level, BlockPos pos, ItemStack stack) {
-        if (stack.isEmpty()) {
-            return;
-        }
-        level.addFreshEntity(
-                new ItemEntity(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, stack));
     }
 
     private int effectiveExtractBatch(DuctItemTransportSpec spec, DuctFaceNode node, Direction face) {
@@ -1216,7 +1338,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 || n.ticksUntilAction != 0) {
             return true;
         }
-        if (n.redstoneMode != 0) {
+        // Low/high are always intentional; 0 (ignore) and 3 (disabled) are defaults and must not alone infer latch bits.
+        if (n.redstoneMode == 1 || n.redstoneMode == 2) {
             return true;
         }
         if (n.channelLetter != 1) {
@@ -1271,6 +1394,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             bl.add(bt);
         }
         tag.put("DuctBacklog", bl);
+        CompoundTag ov = new CompoundTag();
+        overflowBuffer.save(registries, ov);
+        tag.put("DuctOverflow", ov);
     }
 
     @Override
@@ -1305,6 +1431,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             for (int i = 0; i < list.size(); i++) {
                 ItemStack.parse(registries, list.getCompound(i)).ifPresent(migratedStorageBacklog::add);
             }
+        }
+        if (tag.contains("DuctOverflow", Tag.TAG_COMPOUND)) {
+            overflowBuffer.load(registries, tag.getCompound("DuctOverflow"));
         }
         requestModelDataUpdate();
         clampFaceFiltersToSpec();
