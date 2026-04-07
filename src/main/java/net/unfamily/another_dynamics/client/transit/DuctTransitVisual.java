@@ -25,6 +25,9 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Client-only: ghost item along a duct path. Endpoints are pulled toward storage faces so motion reads as leaving the
  * source node and entering the destination node.
+ *
+ * <p>On {@link TransitPhase#RETURN} the {@link #ductPath} runs destination → source; attach faces are swapped so the
+ * first/last points align with the correct storage sides (avoids visual “kinks” near nodes).
  */
 public final class DuctTransitVisual {
 
@@ -41,6 +44,12 @@ public final class DuctTransitVisual {
     public final int travelTicks;
     public final int edgeTicks;
     public final long journeyStartGameTime;
+    /**
+     * Client-only: world game time when this leg’s progress was 0, derived at sync as
+     * {@code clientGameTime - max(0, totalTravelTicks - travelTicks)} so each shipment stays distinct and motion
+     * interpolates smoothly betweenPackets (unlike raw {@link #travelTicks} steps alone).
+     */
+    public final long progressAnchorGameTime;
 
     private final Vec3[] pathPoints;
 
@@ -53,6 +62,7 @@ public final class DuctTransitVisual {
             int travelTicks,
             int edgeTicks,
             long journeyStartGameTime,
+            long progressAnchorGameTime,
             @Nullable Direction sourceAttachFace,
             @Nullable Direction destAttachFace) {
         this.ownerDuct = ownerDuct;
@@ -63,7 +73,11 @@ public final class DuctTransitVisual {
         this.travelTicks = travelTicks;
         this.edgeTicks = Math.max(1, edgeTicks);
         this.journeyStartGameTime = journeyStartGameTime;
-        this.pathPoints = buildPathPoints(ductPath, ownerDuct, sourceAttachFace, destAttachFace);
+        this.progressAnchorGameTime = progressAnchorGameTime;
+        Direction pathStartFace =
+                phase == TransitPhase.RETURN ? destAttachFace : sourceAttachFace;
+        Direction pathEndFace = phase == TransitPhase.RETURN ? sourceAttachFace : destAttachFace;
+        this.pathPoints = buildPathPoints(ductPath, ownerDuct, pathStartFace, pathEndFace);
     }
 
     private static ItemStack validateGhost(ItemStack stack) {
@@ -123,8 +137,15 @@ public final class DuctTransitVisual {
         return lastCenter.add(fromPrev.normalize().scale(INFER_ATTACH_PULL));
     }
 
-    /** Client rebuild from disk/chunk {@code DuctOutbound} (there is no TransitV1 list in saved chunk for this path). */
-    public static DuctTransitVisual fromOutboundShipment(BlockPos ownerDuct, OutboundShipment s) {
+    /**
+     * Client rebuild from disk/chunk {@code DuctOutbound} (there is no TransitV1 list in saved chunk for this path).
+     *
+     * @param clientWorldGameTime {@link Level#getGameTime()} when applying client-side shipment data
+     */
+    public static DuctTransitVisual fromOutboundShipment(
+            BlockPos ownerDuct, OutboundShipment s, long clientWorldGameTime) {
+        int elapsed = Math.max(0, s.totalTravelTicks - s.travelTicks);
+        long anchor = clientWorldGameTime - elapsed;
         return new DuctTransitVisual(
                 ownerDuct,
                 s.stack.copy(),
@@ -134,12 +155,13 @@ public final class DuctTransitVisual {
                 s.travelTicks,
                 s.edgeTicks,
                 s.journeyStartGameTime,
+                anchor,
                 s.sourceFace,
                 s.destFace);
     }
 
     public static List<DuctTransitVisual> listFromUpdateTag(
-            BlockPos ownerDuct, CompoundTag root, HolderLookup.Provider registries) {
+            BlockPos ownerDuct, CompoundTag root, HolderLookup.Provider registries, long clientWorldGameTime) {
         if (!root.contains("TransitV1", Tag.TAG_LIST)) {
             return List.of();
         }
@@ -176,16 +198,21 @@ public final class DuctTransitVisual {
             }
             Direction srcFace = readOptionalFace(t, "SrcF");
             Direction dstFace = readOptionalFace(t, "DstF");
+            int tot = t.getInt("Tot");
+            int tr = t.getInt("Tr");
+            int elapsed = Math.max(0, tot - tr);
+            long anchor = clientWorldGameTime - elapsed;
             out.add(
                     new DuctTransitVisual(
                             ownerDuct,
                             stack,
                             Collections.unmodifiableList(path),
                             TransitPhase.fromOrdinal(t.getByte("Ph")),
-                            t.getInt("Tot"),
-                            t.getInt("Tr"),
+                            tot,
+                            tr,
                             t.getInt("Ed"),
                             t.getLong("J0"),
+                            anchor,
                             srcFace,
                             dstFace));
         }
@@ -202,15 +229,15 @@ public final class DuctTransitVisual {
     }
 
     /**
-     * Visual progress 0 = start of leg, 1 = end (not yet delivered). Uses world time when {@link #journeyStartGameTime}
-     * was saved (non-zero); otherwise falls back to the last synced {@link #travelTicks} snapshot (legacy or sparse data).
+     * Visual progress 0 = start of leg, 1 = end (not yet delivered). Uses {@link #progressAnchorGameTime} and world
+     * time for smooth frames between packet updates; anchors differ per shipment when {@link #travelTicks} differs.
      */
     public float progress01(@Nullable Level level, float partialTick) {
         if (totalTravelTicks <= 0) {
             return 1f;
         }
-        if (level != null && journeyStartGameTime != 0L) {
-            float elapsed = (level.getGameTime() + partialTick) - journeyStartGameTime;
+        if (level != null) {
+            float elapsed = (level.getGameTime() + partialTick) - progressAnchorGameTime;
             return Math.clamp(elapsed / (float) totalTravelTicks, 0f, 1f);
         }
         float predictedTravel = Math.max(0f, travelTicks - partialTick);

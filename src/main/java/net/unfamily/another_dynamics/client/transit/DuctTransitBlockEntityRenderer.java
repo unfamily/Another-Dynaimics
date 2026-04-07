@@ -27,7 +27,7 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
 
     /** Vertical tweak and scale for in-duct ghost items (block-local space before item transform). */
     private static final float GHOST_Y_OFFSET = -0.14f;
-    private static final float GHOST_SCALE = 0.52f;
+    private static final float GHOST_SCALE = 0.78f;
 
     public DuctTransitBlockEntityRenderer(BlockEntityRendererProvider.Context ctx) {}
 
