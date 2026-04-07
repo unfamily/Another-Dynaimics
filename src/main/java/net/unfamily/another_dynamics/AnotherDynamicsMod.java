@@ -13,6 +13,7 @@ import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.unfamily.another_dynamics.duct.DuctDefinitionLoader;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModBlocks;
+import net.unfamily.another_dynamics.registry.ModAttachments;
 import net.unfamily.another_dynamics.registry.ModCreativeTabs;
 import net.unfamily.another_dynamics.registry.ModItems;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
@@ -37,6 +38,7 @@ public final class AnotherDynamicsMod {
         ModItems.ITEMS.register(modEventBus);
         ModBlockEntities.TYPES.register(modEventBus);
         ModMenuTypes.MENUS.register(modEventBus);
+        ModAttachments.TYPES.register(modEventBus);
         ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);

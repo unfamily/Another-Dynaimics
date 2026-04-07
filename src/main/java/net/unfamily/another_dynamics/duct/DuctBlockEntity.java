@@ -25,6 +25,8 @@ import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
 import net.unfamily.another_dynamics.duct.logistics.DuctTargetSelector;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
+import net.unfamily.another_dynamics.duct.logistics.TransitPhase;
+import net.unfamily.another_dynamics.client.transit.DuctTransitClientState;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
@@ -261,17 +263,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 setChanged();
                 continue;
             }
-            if (level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity refundBe) {
-                ItemStack left =
-                        s.legacyOmniFaces
-                                ? DuctCapHelper.insertIntoStorageFaces(level, s.refundDuct, refundBe, s.stack.copy())
-                                : DuctCapHelper.insertIntoFace(level, s.refundDuct, s.sourceFace, s.stack.copy());
-                if (!left.isEmpty()) {
-                    dropAt(level, s.refundDuct, left);
-                }
-            } else {
-                dropAt(level, s.refundDuct, s.stack.copy());
-            }
+            // Visual-only system should never negative-count; preserve behavior without dropping items.
             it.remove();
             setChanged();
         }
@@ -280,20 +272,32 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private void tickOutboundShipments(ServerLevel level) {
         resolveNegativeTravelShipments(level);
         Iterator<OutboundShipment> it = outboundShipments.iterator();
+        boolean dirty = false;
         while (it.hasNext()) {
             OutboundShipment s = it.next();
             if (s.stack.isEmpty()) {
                 DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
                 it.remove();
                 setChanged();
+                dirty = true;
                 continue;
             }
             if (s.travelTicks > 0) {
                 if (!resizePendingShipment(level, s, it)) {
+                    dirty = true;
                     continue;
                 }
                 s.travelTicks--;
                 setChanged();
+                dirty = true;
+                continue;
+            }
+            if (s.transitPhase == TransitPhase.RETURN) {
+                // Visual-only: complete return by removing the shipment.
+                DuctIncomingIndex.unregister(level, s.refundDuct, s.registeredIncoming.copy());
+                it.remove();
+                setChanged();
+                dirty = true;
                 continue;
             }
             if (!level.isLoaded(s.destDuct)) {
@@ -304,26 +308,39 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             } else {
                 finishExtractionDelivery(level, s, it);
             }
+            dirty = true;
+        }
+        if (dirty) {
+            pushTransitSnapshotToClients(level);
         }
     }
 
+    private void pushTransitSnapshotToClients(ServerLevel level) {
+        level.blockEntityChanged(getBlockPos());
+        level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+    }
+
     private boolean resizePendingShipment(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
+        if (s.transitPhase == TransitPhase.RETURN) {
+            // Return leg does not reserve destination capacity.
+            return true;
+        }
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            it.remove();
+            beginVisualReturn(level, s);
             setChanged();
             return false;
         }
         if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe)) {
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            it.remove();
+            beginVisualReturn(level, s);
             setChanged();
             return false;
         }
         if (!DuctChannelPolicy.faceMatchesShipment(destBe.getFaceNode(s.destFace).channelLetter, s)
                 || !DuctChannelPolicy.faceMatchesShipment(srcBe.getFaceNode(s.sourceFace).channelLetter, s)) {
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            it.remove();
+            beginVisualReturn(level, s);
             setChanged();
             return false;
         }
@@ -360,7 +377,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (s.legacyPhysicalBuffer && planned > 0) {
                 refundExcessToSource(level, s, planned);
             }
-            it.remove();
+            beginVisualReturn(level, s);
             setChanged();
             return false;
         }
@@ -378,6 +395,33 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctIncomingIndex.register(level, s.destDuct, s.registeredIncoming.copy());
         setChanged();
         return true;
+    }
+
+    private static List<BlockPos> reversedPath(List<BlockPos> path) {
+        if (path == null || path.isEmpty()) {
+            return List.of();
+        }
+        ArrayList<BlockPos> out = new ArrayList<>(path.size());
+        for (int i = path.size() - 1; i >= 0; i--) {
+            out.add(path.get(i));
+        }
+        return OutboundShipment.copyPath(out);
+    }
+
+    private void beginVisualReturn(ServerLevel level, OutboundShipment s) {
+        if (s.transitPhase == TransitPhase.RETURN) {
+            return;
+        }
+        DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
+        DuctIncomingIndex.unregister(level, s.refundDuct, s.registeredIncoming.copy());
+        DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
+        List<BlockPos> path = !s.ductPath.isEmpty() ? reversedPath(s.ductPath) : List.of(s.destDuct, s.refundDuct);
+        long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
+        int ticks = (int) Math.min(travel, Integer.MAX_VALUE);
+        int edge = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
+        s.resetLeg(TransitPhase.RETURN, path, ticks, edge, level.getGameTime());
+        s.registeredIncoming = s.stack.copy();
+        DuctIncomingIndex.register(level, s.refundDuct, s.registeredIncoming.copy());
     }
 
     private void refundExcessToSource(ServerLevel level, OutboundShipment s, int count) {
@@ -403,13 +447,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private void finishExtractionDelivery(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            it.remove();
+            beginVisualReturn(level, s);
             setChanged();
             return;
         }
         if (!DuctChannelPolicy.faceMatchesShipment(destBe.getFaceNode(s.destFace).channelLetter, s)) {
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            it.remove();
+            beginVisualReturn(level, s);
             setChanged();
             return;
         }
@@ -421,8 +465,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                     && !destBe.passesItemFilters(s.destFace, toInsert, level, DuctFaceNode.FilterBank.FILTER)) {
                 DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-                it.remove();
-                refundStackToSource(level, s, toInsert);
+                beginVisualReturn(level, s);
                 setChanged();
                 return;
             }
@@ -463,7 +506,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         NodeMode dm2 = destBe.getFaceNode(s.destFace).nodeMode;
         if ((dm2 == NodeMode.FILTERING_INSERTION || dm2 == NodeMode.EXTRACTION_FILTERING)
                 && !destBe.passesItemFilters(s.destFace, extracted, level, DuctFaceNode.FilterBank.FILTER)) {
-            refundStackToSource(level, s, extracted.copy());
+            beginVisualReturn(level, s);
             setChanged();
             return;
         }
@@ -486,13 +529,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private void finishRetrieverArrival(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
         DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
         if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity donorBe)) {
-            it.remove();
+            beginVisualReturn(level, s);
             setChanged();
             return;
         }
         if (!DuctChannelPolicy.faceMatchesShipment(donorBe.getFaceNode(s.sourceFace).channelLetter, s)
                 || !DuctChannelPolicy.faceMatchesShipment(getFaceNode(s.destFace).channelLetter, s)) {
-            it.remove();
+            beginVisualReturn(level, s);
             setChanged();
             return;
         }
@@ -502,8 +545,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if ((sm == NodeMode.FILTERING_INSERTION || sm == NodeMode.EXTRACTION_FILTERING)
                     && !passesItemFilters(s.destFace, toInsert, level, DuctFaceNode.FilterBank.FILTER)) {
                 DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
-                it.remove();
-                refundStackToSource(level, s, toInsert);
+                beginVisualReturn(level, s);
                 setChanged();
                 return;
             }
@@ -538,7 +580,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         NodeMode sm2 = getFaceNode(s.destFace).nodeMode;
         if ((sm2 == NodeMode.FILTERING_INSERTION || sm2 == NodeMode.EXTRACTION_FILTERING)
                 && !passesItemFilters(s.destFace, extracted, level, DuctFaceNode.FilterBank.FILTER)) {
-            refundStackToSource(level, s, extracted.copy());
+            beginVisualReturn(level, s);
             setChanged();
             return;
         }
@@ -639,9 +681,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
             OutboundShipment sh =
                     new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
+            sh.ductPath = OutboundShipment.copyPath(path);
+            sh.totalTravelTicks = travelTicks;
+            sh.edgeTicks = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
+            sh.journeyStartGameTime = level.getGameTime();
+            sh.transitPhase = TransitPhase.FORWARD;
             outboundShipments.add(sh);
             DuctIncomingIndex.register(level, dest, sh.registeredIncoming.copy());
             setChanged();
+            pushTransitSnapshotToClients(level);
             return;
         }
     }
@@ -701,9 +749,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
             OutboundShipment sh =
                     new OutboundShipment(planned, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
+            sh.ductPath = OutboundShipment.copyPath(path);
+            sh.totalTravelTicks = travelTicks;
+            sh.edgeTicks = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
+            sh.journeyStartGameTime = level.getGameTime();
+            sh.transitPhase = TransitPhase.FORWARD;
             outboundShipments.add(sh);
             DuctIncomingIndex.register(level, worldPosition, sh.registeredIncoming.copy());
             setChanged();
+            pushTransitSnapshotToClients(level);
             return;
         }
     }
@@ -1193,6 +1247,34 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         t.putByte("LatchedFaces", (byte) latchedStorageFaceMask);
         // Pack node icon indices server-side for client rendering.
         t.putInt("PackedNodeIcons", computePackedNodeIcons());
+        if (!outboundShipments.isEmpty()) {
+            ListTag list = new ListTag();
+            for (OutboundShipment s : outboundShipments) {
+                if (s.stack.isEmpty()) {
+                    continue;
+                }
+                CompoundTag st = new CompoundTag();
+                s.stack.save(registries, st);
+                CompoundTag item = new CompoundTag();
+                item.put("Stack", st);
+                item.putByte("Ph", (byte) s.transitPhase.ordinal());
+                item.putInt("Tot", s.totalTravelTicks);
+                item.putInt("Tr", s.travelTicks);
+                item.putInt("Ed", s.edgeTicks);
+                item.putLong("J0", s.journeyStartGameTime);
+                ListTag path = new ListTag();
+                for (BlockPos p : s.ductPath) {
+                    CompoundTag pt = new CompoundTag();
+                    pt.putInt("X", p.getX());
+                    pt.putInt("Y", p.getY());
+                    pt.putInt("Z", p.getZ());
+                    path.add(pt);
+                }
+                item.put("Path", path);
+                list.add(item);
+            }
+            t.put("TransitV1", list);
+        }
         return t;
     }
 
@@ -1211,6 +1293,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (level != null && level.isClientSide) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             }
+        }
+        if (level != null && level.isClientSide) {
+            DuctTransitClientState.onDuctUpdateTag(worldPosition, tag, registries);
         }
     }
 
