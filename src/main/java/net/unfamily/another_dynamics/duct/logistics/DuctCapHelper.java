@@ -101,12 +101,15 @@ public final class DuctCapHelper {
         if (maxCount <= 0 || template.isEmpty()) {
             return ItemStack.EMPTY;
         }
+        int need = Math.min(maxCount, template.getCount());
+        if (need <= 0) {
+            return ItemStack.EMPTY;
+        }
         IItemHandler h = getHandlerOnFace(level, ductPos, face);
         if (h == null) {
             return ItemStack.EMPTY;
         }
         ItemStack result = ItemStack.EMPTY;
-        int need = maxCount;
         for (int slot = 0; slot < h.getSlots(); slot++) {
             ItemStack inSlot = h.getStackInSlot(slot);
             if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
@@ -328,8 +331,11 @@ public final class DuctCapHelper {
         if (maxCount <= 0 || template.isEmpty()) {
             return ItemStack.EMPTY;
         }
+        int need = Math.min(maxCount, template.getCount());
+        if (need <= 0) {
+            return ItemStack.EMPTY;
+        }
         ItemStack result = ItemStack.EMPTY;
-        int need = maxCount;
         int mask = duct.getStorageMask();
         for (Direction dir : Direction.values()) {
             if ((mask & (1 << dir.ordinal())) == 0) {

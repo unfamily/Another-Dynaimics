@@ -26,9 +26,16 @@
       }
     }
   ],
+  "rules":{
+    "connect_with_compatbile": true,
+    "disabled_features":[
+      "mode:extraction_filtering",
+      "mode:retrieving_extraction"
+    ],
+    "forbidden_features":[]
+  },
   "rendering": {
     "always_opaque": false,
-    "connect_with_compatbile": true,
     "default_texture": "another_dynamics:block/duct/item/item_duct_0_light",
     "model_default": "another_dynamics:block/simple_duct_default",
     "model_line": "another_dynamics:block/simple_duct_line"
