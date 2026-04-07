@@ -540,7 +540,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (probe.isEmpty()) {
                 continue;
             }
-            if (!passesItemFilters(face, probe, level, DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER)) {
+            if (!passesItemFilters(face, probe, level, DuctFaceNode.FilterBank.EXTRACTOR)) {
                 continue;
             }
             int[] rrProbe = new int[] {node.roundRobinCursor};
@@ -619,10 +619,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (probe.isEmpty()) {
                 continue;
             }
-            if (!passesItemFilters(retrieverFace, probe, level, DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER)) {
+            if (!passesItemFilters(retrieverFace, probe, level, DuctFaceNode.FilterBank.RETRIEVER)) {
                 continue;
             }
-            if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER)) {
+            if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.RETRIEVER)) {
                 continue;
             }
             int batch = effectiveExtractBatch(spec, node, retrieverFace);
@@ -795,8 +795,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         List<String> d = node.bankDenyFilters(bank);
         a.clear();
         d.clear();
-        int maxA = Math.max(0, (Math.max(0, spec.filterAllowSlots()) + 1) / 2);
-        int maxD = Math.max(0, (Math.max(0, spec.filterDenySlots()) + 1) / 2);
+        int maxA = Math.max(0, Math.max(0, spec.filterAllowSlots()) / 2);
+        int maxD = Math.max(0, Math.max(0, spec.filterDenySlots()) / 2);
         for (int i = 0; i < maxA; i++) {
             String s = i < allowIn.size() ? allowIn.get(i) : "";
             a.add(s != null ? s : "");
@@ -861,7 +861,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         yield true;
                     }
                     case 1 -> {
-                        if (node.nodeMode.allowsRoutingConfig()) {
+                        if (node.nodeMode.usesRouting()) {
                             cycleRoutingMode(node);
                             yield true;
                         }

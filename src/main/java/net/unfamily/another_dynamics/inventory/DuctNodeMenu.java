@@ -65,6 +65,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private final List<String> clientDenyFiltersExtractor = new ArrayList<>();
     private boolean clientDenyOverridesAllowExtractor = true;
 
+    private final List<String> clientAllowFiltersRetriever = new ArrayList<>();
+    private final List<String> clientDenyFiltersRetriever = new ArrayList<>();
+    private boolean clientDenyOverridesAllowRetriever = true;
+
     private final List<String> clientAllowFiltersFilter = new ArrayList<>();
     private final List<String> clientDenyFiltersFilter = new ArrayList<>();
     private boolean clientDenyOverridesAllowFilter = true;
@@ -158,21 +162,27 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     public List<String> getClientAllowFilters(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
-        return bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER
-                ? clientAllowFiltersExtractor
-                : clientAllowFiltersFilter;
+        return switch (bank) {
+            case EXTRACTOR -> clientAllowFiltersExtractor;
+            case RETRIEVER -> clientAllowFiltersRetriever;
+            case FILTER -> clientAllowFiltersFilter;
+        };
     }
 
     public List<String> getClientDenyFilters(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
-        return bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER
-                ? clientDenyFiltersExtractor
-                : clientDenyFiltersFilter;
+        return switch (bank) {
+            case EXTRACTOR -> clientDenyFiltersExtractor;
+            case RETRIEVER -> clientDenyFiltersRetriever;
+            case FILTER -> clientDenyFiltersFilter;
+        };
     }
 
     public boolean getClientDenyOverridesAllow(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
-        return bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER
-                ? clientDenyOverridesAllowExtractor
-                : clientDenyOverridesAllowFilter;
+        return switch (bank) {
+            case EXTRACTOR -> clientDenyOverridesAllowExtractor;
+            case RETRIEVER -> clientDenyOverridesAllowRetriever;
+            case FILTER -> clientDenyOverridesAllowFilter;
+        };
     }
 
     public void receiveFilterSync(
@@ -197,10 +207,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         a.addAll(allow);
         d.clear();
         d.addAll(deny);
-        if (bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.EXTRACTOR_RETRIEVER) {
-            clientDenyOverridesAllowExtractor = denyOverridesAllow;
-        } else {
-            clientDenyOverridesAllowFilter = denyOverridesAllow;
+        switch (bank) {
+            case EXTRACTOR -> clientDenyOverridesAllowExtractor = denyOverridesAllow;
+            case RETRIEVER -> clientDenyOverridesAllowRetriever = denyOverridesAllow;
+            case FILTER -> clientDenyOverridesAllowFilter = denyOverridesAllow;
         }
     }
 
@@ -213,10 +223,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     public void ensureClientFilterBufferSizes() {
-        int maxA = (Math.max(0, filterAllowCap()) + 1) / 2;
-        int maxD = (Math.max(0, filterDenyCap()) + 1) / 2;
+        int maxA = Math.max(0, filterAllowCap()) / 2;
+        int maxD = Math.max(0, filterDenyCap()) / 2;
         clampClientList(clientAllowFiltersExtractor, maxA);
         clampClientList(clientDenyFiltersExtractor, maxD);
+        clampClientList(clientAllowFiltersRetriever, maxA);
+        clampClientList(clientDenyFiltersRetriever, maxD);
         clampClientList(clientAllowFiltersFilter, maxA);
         clampClientList(clientDenyFiltersFilter, maxD);
     }

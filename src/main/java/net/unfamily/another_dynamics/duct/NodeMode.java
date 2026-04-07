@@ -51,6 +51,6 @@ public enum NodeMode {
 
     /** Hybrid modes still use routing internally, but the player may not change the routing mode. */
     public boolean allowsRoutingConfig() {
-        return usesRouting() && !isHybrid();
+        return usesRouting();
     }
 }

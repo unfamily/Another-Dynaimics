@@ -17,8 +17,10 @@ import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
  */
 public final class DuctFaceNode {
     public enum FilterBank {
-        /** Filters that govern what this face will extract / retrieve. */
-        EXTRACTOR_RETRIEVER,
+        /** Filters that govern what this face will extract (inv -> network). */
+        EXTRACTOR,
+        /** Filters that govern what this face will retrieve (network -> inv). */
+        RETRIEVER,
         /** Filters that govern what may pass when this face is in a filtering-insertion role. */
         FILTER
     }
@@ -49,6 +51,10 @@ public final class DuctFaceNode {
     public boolean denyOverridesAllowExtractor = true;
     public final List<String> allowFiltersExtractor = new ArrayList<>();
     public final List<String> denyFiltersExtractor = new ArrayList<>();
+
+    public boolean denyOverridesAllowRetriever = true;
+    public final List<String> allowFiltersRetriever = new ArrayList<>();
+    public final List<String> denyFiltersRetriever = new ArrayList<>();
 
     public boolean denyOverridesAllowFilter = true;
     public final List<String> allowFiltersFilter = new ArrayList<>();
@@ -168,10 +174,12 @@ public final class DuctFaceNode {
         clampList(allowFilters, maxA);
         clampList(denyFilters, maxD);
 
-        int halfA = (maxA + 1) / 2;
-        int halfD = (maxD + 1) / 2;
+        int halfA = maxA / 2;
+        int halfD = maxD / 2;
         clampList(allowFiltersExtractor, halfA);
         clampList(denyFiltersExtractor, halfD);
+        clampList(allowFiltersRetriever, halfA);
+        clampList(denyFiltersRetriever, halfD);
         clampList(allowFiltersFilter, halfA);
         clampList(denyFiltersFilter, halfD);
     }
@@ -189,6 +197,12 @@ public final class DuctFaceNode {
         ex.put("Deny", toStringListTag(denyFiltersExtractor));
         f.put("Extractor", ex);
 
+        CompoundTag re = new CompoundTag();
+        re.putBoolean("DenyOver", denyOverridesAllowRetriever);
+        re.put("Allow", toStringListTag(allowFiltersRetriever));
+        re.put("Deny", toStringListTag(denyFiltersRetriever));
+        f.put("Retriever", re);
+
         CompoundTag fi = new CompoundTag();
         fi.putBoolean("DenyOver", denyOverridesAllowFilter);
         fi.put("Allow", toStringListTag(allowFiltersFilter));
@@ -204,6 +218,9 @@ public final class DuctFaceNode {
         allowFiltersExtractor.clear();
         denyFiltersExtractor.clear();
         denyOverridesAllowExtractor = true;
+        allowFiltersRetriever.clear();
+        denyFiltersRetriever.clear();
+        denyOverridesAllowRetriever = true;
         allowFiltersFilter.clear();
         denyFiltersFilter.clear();
         denyOverridesAllowFilter = true;
@@ -216,6 +233,7 @@ public final class DuctFaceNode {
         readStringListInto(f, "Deny", denyFilters);
 
         boolean hasExtractor = f.contains("Extractor", Tag.TAG_COMPOUND);
+        boolean hasRetriever = f.contains("Retriever", Tag.TAG_COMPOUND);
         boolean hasFilter = f.contains("Filter", Tag.TAG_COMPOUND);
         if (hasExtractor) {
             CompoundTag ex = f.getCompound("Extractor");
@@ -223,13 +241,19 @@ public final class DuctFaceNode {
             readStringListInto(ex, "Allow", allowFiltersExtractor);
             readStringListInto(ex, "Deny", denyFiltersExtractor);
         }
+        if (hasRetriever) {
+            CompoundTag re = f.getCompound("Retriever");
+            denyOverridesAllowRetriever = !re.contains("DenyOver") || re.getBoolean("DenyOver");
+            readStringListInto(re, "Allow", allowFiltersRetriever);
+            readStringListInto(re, "Deny", denyFiltersRetriever);
+        }
         if (hasFilter) {
             CompoundTag fi = f.getCompound("Filter");
             denyOverridesAllowFilter = !fi.contains("DenyOver") || fi.getBoolean("DenyOver");
             readStringListInto(fi, "Allow", allowFiltersFilter);
             readStringListInto(fi, "Deny", denyFiltersFilter);
         }
-        if (!hasExtractor && !hasFilter) {
+        if (!hasExtractor && !hasRetriever && !hasFilter) {
             // Migration: legacy single-bank -> FILTER bank by default.
             denyOverridesAllowFilter = denyOverridesAllow;
             allowFiltersFilter.addAll(allowFilters);
@@ -238,23 +262,35 @@ public final class DuctFaceNode {
     }
 
     public boolean bankDenyOverridesAllow(FilterBank bank) {
-        return bank == FilterBank.EXTRACTOR_RETRIEVER ? denyOverridesAllowExtractor : denyOverridesAllowFilter;
+        return switch (bank) {
+            case EXTRACTOR -> denyOverridesAllowExtractor;
+            case RETRIEVER -> denyOverridesAllowRetriever;
+            case FILTER -> denyOverridesAllowFilter;
+        };
     }
 
     public void setBankDenyOverridesAllow(FilterBank bank, boolean v) {
-        if (bank == FilterBank.EXTRACTOR_RETRIEVER) {
-            denyOverridesAllowExtractor = v;
-        } else {
-            denyOverridesAllowFilter = v;
+        switch (bank) {
+            case EXTRACTOR -> denyOverridesAllowExtractor = v;
+            case RETRIEVER -> denyOverridesAllowRetriever = v;
+            case FILTER -> denyOverridesAllowFilter = v;
         }
     }
 
     public List<String> bankAllowFilters(FilterBank bank) {
-        return bank == FilterBank.EXTRACTOR_RETRIEVER ? allowFiltersExtractor : allowFiltersFilter;
+        return switch (bank) {
+            case EXTRACTOR -> allowFiltersExtractor;
+            case RETRIEVER -> allowFiltersRetriever;
+            case FILTER -> allowFiltersFilter;
+        };
     }
 
     public List<String> bankDenyFilters(FilterBank bank) {
-        return bank == FilterBank.EXTRACTOR_RETRIEVER ? denyFiltersExtractor : denyFiltersFilter;
+        return switch (bank) {
+            case EXTRACTOR -> denyFiltersExtractor;
+            case RETRIEVER -> denyFiltersRetriever;
+            case FILTER -> denyFiltersFilter;
+        };
     }
 
     private static void clampList(List<String> list, int max) {
