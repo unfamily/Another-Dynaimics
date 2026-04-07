@@ -9,10 +9,9 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
-import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -20,43 +19,15 @@ import net.minecraft.world.phys.Vec3;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.registry.ModAttachments;
 
-import org.jetbrains.annotations.Nullable;
-
 /**
- * In-transit items: {@link BlockEntityRenderer} draws stacks via a lightweight {@link ItemEntity} and the
- * entity item renderer (local {@link PoseStack}, no global stage hacks).
+ * Visual-only stacks along the path: uses the vanilla item renderer ({@link Minecraft#getItemRenderer()}) so geometry
+ * ends up in the BER buffer pipeline; a detached item entity is easy to get wrong here.
  */
 public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer<DuctBlockEntity> {
 
-    /** Reused ghost entity + cached {@link EntityRenderer} to avoid per-frame allocation. */
-    private static final class LazyItemGhost {
-        @Nullable
-        private ItemEntity entityItem;
-        @Nullable
-        private EntityRenderer<? super ItemEntity> renderer;
-
-        void init(Level world, BlockPos pos) {
-            // Entity#setLevel is protected on 1.21.x; recreate when the level reference changes.
-            if (entityItem == null || entityItem.level() != world) {
-                entityItem = new ItemEntity(EntityType.ITEM, world);
-                renderer = null;
-            }
-            entityItem.setPos(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
-        }
-
-        void renderAsStack(PoseStack matrix, MultiBufferSource buffer, ItemStack stack, int light) {
-            if (entityItem == null) {
-                return;
-            }
-            if (renderer == null) {
-                renderer = Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(entityItem);
-            }
-            entityItem.setItem(stack);
-            renderer.render(entityItem, 0.0F, 0.0F, matrix, buffer, light);
-        }
-    }
-
-    private final LazyItemGhost itemGhost = new LazyItemGhost();
+    /** Vertical tweak and scale for in-duct ghost items (block-local space before item transform). */
+    private static final float GHOST_Y_OFFSET = -0.14f;
+    private static final float GHOST_SCALE = 0.52f;
 
     public DuctTransitBlockEntityRenderer(BlockEntityRendererProvider.Context ctx) {}
 
@@ -69,22 +40,21 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             int packedLight,
             int packedOverlay) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) {
-            return;
-        }
-        if (mc.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get())) {
-            return;
-        }
+     
         if (tile.getLevel() == null) {
             return;
         }
+        boolean opaqueSkip = mc.player != null && mc.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get());
+        if (opaqueSkip) {
+            return;
+        }
         BlockPos origin = tile.getBlockPos();
+        Level level = tile.getLevel();
         List<DuctTransitVisual> visuals = DuctTransitClientState.visualsAt(origin);
         if (visuals.isEmpty()) {
             return;
         }
-        Level level = tile.getLevel();
-        itemGhost.init(level, origin);
+        int overlay = packedOverlay != 0 ? packedOverlay : OverlayTexture.NO_OVERLAY;
         for (DuctTransitVisual v : visuals) {
             ItemStack stack = v.stack;
             if (stack.isEmpty()) {
@@ -94,16 +64,22 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             Vec3 world = v.positionAt(progress);
             poseStack.pushPose();
             poseStack.translate(world.x - origin.getX(), world.y - origin.getY(), world.z - origin.getZ());
+            poseStack.translate(0.0f, GHOST_Y_OFFSET, 0.0f);
 
             float rot = (level.getGameTime() + partialTick) * 3.0f;
             poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(rot));
-            poseStack.scale(0.35f, 0.35f, 0.35f);
+            poseStack.scale(GHOST_SCALE, GHOST_SCALE, GHOST_SCALE);
 
             BlockPos lightPos = BlockPos.containing(world);
             int light = LevelRenderer.getLightColor(level, lightPos);
+            int seed = (int) (origin.asLong() ^ stack.getItem().hashCode() ^ stack.getCount());
 
-            itemGhost.renderAsStack(poseStack, buffer, stack, light);
+            mc.getItemRenderer()
+                    .renderStatic(stack, ItemDisplayContext.GROUND, light, overlay, poseStack, buffer, level, seed);
             poseStack.popPose();
+        }
+        if (!Minecraft.useShaderTransparency() && buffer instanceof MultiBufferSource.BufferSource source) {
+            source.endLastBatch();
         }
     }
 
@@ -124,5 +100,10 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             }
         }
         return box.inflate(1.0);
+    }
+
+    @Override
+    public int getViewDistance() {
+        return 256;
     }
 }

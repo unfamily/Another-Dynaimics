@@ -3,12 +3,15 @@ package net.unfamily.another_dynamics.duct;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -1324,15 +1327,28 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (s.stack.isEmpty()) {
                 continue;
             }
+            ItemStack oneForWire = s.stack.copy();
+            oneForWire.setCount(1);
             CompoundTag st = new CompoundTag();
-            s.stack.save(registries, st);
+            oneForWire.save(registries, st);
             CompoundTag item = new CompoundTag();
             item.put("Stack", st);
+            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(s.stack.getItem());
+            if (itemId == null) {
+                itemId = BuiltInRegistries.ITEM.getResourceKey(s.stack.getItem())
+                        .map(ResourceKey::location)
+                        .orElse(null);
+            }
+            if (itemId != null) {
+                item.putString("VizId", itemId.toString());
+            }
             item.putByte("Ph", (byte) s.transitPhase.ordinal());
             item.putInt("Tot", s.totalTravelTicks);
             item.putInt("Tr", s.travelTicks);
             item.putInt("Ed", s.edgeTicks);
             item.putLong("J0", s.journeyStartGameTime);
+            item.putByte("SrcF", (byte) s.sourceFace.ordinal());
+            item.putByte("DstF", (byte) s.destFace.ordinal());
             ListTag path = new ListTag();
             for (BlockPos p : s.ductPath) {
                 CompoundTag pt = new CompoundTag();
@@ -1366,7 +1382,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
         }
         if (level != null && level.isClientSide) {
-            DuctTransitClientState.onDuctUpdateTag(worldPosition, tag, registries);
+            // ItemStack components need the live client world registry; packet Provider often yields empty parse.
+            DuctTransitClientState.onDuctUpdateTag(worldPosition, tag, level.registryAccess());
         }
     }
 

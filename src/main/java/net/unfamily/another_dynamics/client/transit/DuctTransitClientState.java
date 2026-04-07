@@ -6,14 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.mojang.logging.LogUtils;
-
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import org.slf4j.Logger;
-import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
 
 /**
@@ -21,7 +17,6 @@ import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
  * visual simulation only; items are applied to inventories when the server finishes the leg.
  */
 public final class DuctTransitClientState {
-    private static final Logger LOGGER = LogUtils.getLogger();
 
     private static final Map<BlockPos, List<DuctTransitVisual>> BY_DUCT = new ConcurrentHashMap<>();
 
@@ -38,7 +33,7 @@ public final class DuctTransitClientState {
     /** After {@code DuctOutbound} loads on the client (chunk data has no TransitV1 list). */
     public static void syncFromOutboundShipments(BlockPos ductPos, List<OutboundShipment> shipments) {
         if (shipments.isEmpty()) {
-            BY_DUCT.remove(ductPos);
+            BY_DUCT.remove(ductPos.immutable());
             return;
         }
         ArrayList<DuctTransitVisual> out = new ArrayList<>();
@@ -49,25 +44,19 @@ public final class DuctTransitClientState {
             out.add(DuctTransitVisual.fromOutboundShipment(ductPos, s));
         }
         if (out.isEmpty()) {
-            BY_DUCT.remove(ductPos);
+            BY_DUCT.remove(ductPos.immutable());
         } else {
             applyVisuals(ductPos, Collections.unmodifiableList(out));
         }
     }
 
     private static void applyVisuals(BlockPos ductPos, List<DuctTransitVisual> visuals) {
+        BlockPos key = ductPos.immutable();
         if (visuals.isEmpty()) {
-            BY_DUCT.remove(ductPos);
-        } else {
-            BY_DUCT.put(ductPos.immutable(), visuals);
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug(
-                        "[{}] Transit client snapshot at {}: {} active shipment(s)",
-                        AnotherDynamicsMod.MOD_ID,
-                        ductPos,
-                        visuals.size());
-            }
+            BY_DUCT.remove(key);
+            return;
         }
+        BY_DUCT.put(key, visuals);
     }
 
     /** Active visuals for the duct block that owns {@code OutboundShipment} state (source of sync packet). */
@@ -80,4 +69,3 @@ public final class DuctTransitClientState {
         return Collections.unmodifiableMap(BY_DUCT);
     }
 }
-

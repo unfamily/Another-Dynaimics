@@ -5,11 +5,16 @@ import java.util.Collections;
 import java.util.List;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
@@ -18,11 +23,16 @@ import net.unfamily.another_dynamics.duct.logistics.TransitPhase;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Client-only: ghost item along a duct path. The server does not move stacks through each segment; delivery happens
- * when travel completes. Rendering uses synced timing ({@link #journeyStartGameTime}, {@link #totalTravelTicks},
- * {@link #ductPath}) to simulate motion between network updates.
+ * Client-only: ghost item along a duct path. Endpoints are pulled toward storage faces so motion reads as leaving the
+ * source node and entering the destination node.
  */
 public final class DuctTransitVisual {
+
+    /** How far (blocks) from duct center toward the attached inventory along {@link #sourceAttachFace}. */
+    private static final double NODE_ATTACH_PULL = 0.34;
+
+    private static final double INFER_ATTACH_PULL = 0.28;
+
     public final BlockPos ownerDuct;
     public final ItemStack stack;
     public final List<BlockPos> ductPath;
@@ -32,6 +42,8 @@ public final class DuctTransitVisual {
     public final int edgeTicks;
     public final long journeyStartGameTime;
 
+    private final Vec3[] pathPoints;
+
     public DuctTransitVisual(
             BlockPos ownerDuct,
             ItemStack stack,
@@ -40,18 +52,78 @@ public final class DuctTransitVisual {
             int totalTravelTicks,
             int travelTicks,
             int edgeTicks,
-            long journeyStartGameTime) {
+            long journeyStartGameTime,
+            @Nullable Direction sourceAttachFace,
+            @Nullable Direction destAttachFace) {
         this.ownerDuct = ownerDuct;
-        this.stack = stack;
+        this.stack = validateGhost(stack);
         this.ductPath = ductPath;
         this.phase = phase;
         this.totalTravelTicks = totalTravelTicks;
         this.travelTicks = travelTicks;
         this.edgeTicks = Math.max(1, edgeTicks);
         this.journeyStartGameTime = journeyStartGameTime;
+        this.pathPoints = buildPathPoints(ductPath, ownerDuct, sourceAttachFace, destAttachFace);
     }
 
-    /** Client rebuild from disk/chunk {@code DuctOutbound} (there is no TransitV1 in saved NBT). */
+    private static ItemStack validateGhost(ItemStack stack) {
+        ItemStack s = stack.copy();
+        s.setCount(1);
+        return s;
+    }
+
+    private static Vec3[] buildPathPoints(
+            List<BlockPos> pathList,
+            BlockPos ownerFallback,
+            @Nullable Direction sourceAttachFace,
+            @Nullable Direction destAttachFace) {
+        if (pathList == null || pathList.isEmpty()) {
+            return new Vec3[] {Vec3.atCenterOf(ownerFallback)};
+        }
+        int n = pathList.size();
+        Vec3[] w = new Vec3[n];
+        for (int i = 0; i < n; i++) {
+            Vec3 c = Vec3.atCenterOf(pathList.get(i));
+            if (i == 0) {
+                if (sourceAttachFace != null) {
+                    c = outwardTowardStorage(c, sourceAttachFace);
+                } else if (n >= 2) {
+                    c = inferStartFromPipeDirection(pathList, c, n);
+                }
+            } else if (i == n - 1) {
+                if (destAttachFace != null) {
+                    c = outwardTowardStorage(c, destAttachFace);
+                } else if (n >= 2) {
+                    c = inferEndFromPipeDirection(pathList, c, n);
+                }
+            }
+            w[i] = c;
+        }
+        return w;
+    }
+
+    private static Vec3 outwardTowardStorage(Vec3 ductCenter, Direction storageFaceOnDuct) {
+        Vec3 step = new Vec3(storageFaceOnDuct.getStepX(), storageFaceOnDuct.getStepY(), storageFaceOnDuct.getStepZ());
+        return ductCenter.add(step.scale(NODE_ATTACH_PULL));
+    }
+
+    private static Vec3 inferStartFromPipeDirection(List<BlockPos> pathList, Vec3 firstCenter, int n) {
+        Vec3 toNext = Vec3.atCenterOf(pathList.get(1)).subtract(firstCenter);
+        if (toNext.lengthSqr() < 1.0e-8) {
+            return firstCenter;
+        }
+        return firstCenter.subtract(toNext.normalize().scale(INFER_ATTACH_PULL));
+    }
+
+    private static Vec3 inferEndFromPipeDirection(List<BlockPos> pathList, Vec3 lastCenter, int n) {
+        Vec3 fromPrev = lastCenter.subtract(Vec3.atCenterOf(pathList.get(n - 2)));
+        if (fromPrev.lengthSqr() < 1.0e-8) {
+            return lastCenter;
+        }
+        return lastCenter.add(fromPrev.normalize().scale(INFER_ATTACH_PULL));
+    }
+
+    /** Client rebuild from disk/chunk {@code DuctOutbound} (there is no TransitV1 list in saved chunk for this path). */
     public static DuctTransitVisual fromOutboundShipment(BlockPos ownerDuct, OutboundShipment s) {
         return new DuctTransitVisual(
                 ownerDuct,
@@ -61,7 +133,9 @@ public final class DuctTransitVisual {
                 s.totalTravelTicks,
                 s.travelTicks,
                 s.edgeTicks,
-                s.journeyStartGameTime);
+                s.journeyStartGameTime,
+                s.sourceFace,
+                s.destFace);
     }
 
     public static List<DuctTransitVisual> listFromUpdateTag(
@@ -73,23 +147,35 @@ public final class DuctTransitVisual {
         ArrayList<DuctTransitVisual> out = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
             CompoundTag t = list.getCompound(i);
-            if (!t.contains("Stack", Tag.TAG_COMPOUND)) {
-                continue;
+            ItemStack stack = ItemStack.EMPTY;
+            if (t.contains("VizId", Tag.TAG_STRING)) {
+                ResourceLocation rid = ResourceLocation.tryParse(t.getString("VizId"));
+                if (rid != null) {
+                    Item item = BuiltInRegistries.ITEM.get(rid);
+                    if (item != Items.AIR) {
+                        stack = new ItemStack(item, 1);
+                    }
+                }
             }
-            CompoundTag stackTag = t.getCompound("Stack");
-            if (stackTag.isEmpty()) {
-                continue;
+            if (stack.isEmpty() && t.contains("Stack", Tag.TAG_COMPOUND)) {
+                CompoundTag stackTag = t.getCompound("Stack");
+                if (!stackTag.isEmpty()) {
+                    stack = ItemStack.parse(registries, stackTag).orElse(ItemStack.EMPTY);
+                }
             }
-            ItemStack stack = ItemStack.parse(registries, stackTag).orElse(ItemStack.EMPTY);
             if (stack.isEmpty()) {
                 continue;
             }
+            stack = stack.copy();
+            stack.setCount(1);
             ListTag plist = t.getList("Path", Tag.TAG_COMPOUND);
             ArrayList<BlockPos> path = new ArrayList<>(plist.size());
             for (int j = 0; j < plist.size(); j++) {
                 CompoundTag pt = plist.getCompound(j);
                 path.add(new BlockPos(pt.getInt("X"), pt.getInt("Y"), pt.getInt("Z")));
             }
+            Direction srcFace = readOptionalFace(t, "SrcF");
+            Direction dstFace = readOptionalFace(t, "DstF");
             out.add(
                     new DuctTransitVisual(
                             ownerDuct,
@@ -99,9 +185,20 @@ public final class DuctTransitVisual {
                             t.getInt("Tot"),
                             t.getInt("Tr"),
                             t.getInt("Ed"),
-                            t.getLong("J0")));
+                            t.getLong("J0"),
+                            srcFace,
+                            dstFace));
         }
         return Collections.unmodifiableList(out);
+    }
+
+    @Nullable
+    private static Direction readOptionalFace(CompoundTag t, String key) {
+        if (!t.contains(key, Tag.TAG_BYTE)) {
+            return null;
+        }
+        int o = t.getByte(key) & 0xFF;
+        return o < 6 ? Direction.values()[o] : null;
     }
 
     /**
@@ -121,17 +218,18 @@ public final class DuctTransitVisual {
     }
 
     public Vec3 positionAt(float progress01) {
-        if (ductPath.isEmpty()) {
+        Vec3[] pts = pathPoints;
+        if (pts.length == 0) {
             return Vec3.atCenterOf(ownerDuct);
         }
+        if (pts.length == 1) {
+            return pts[0];
+        }
         float p = Math.clamp(progress01, 0f, 1f);
-        float scaled = p * Math.max(0, ductPath.size() - 1);
+        float scaled = p * (pts.length - 1);
         int i0 = (int) Math.floor(scaled);
-        int i1 = Math.min(ductPath.size() - 1, i0 + 1);
+        int i1 = Math.min(pts.length - 1, i0 + 1);
         float frac = scaled - i0;
-        Vec3 a = Vec3.atCenterOf(ductPath.get(i0));
-        Vec3 b = Vec3.atCenterOf(ductPath.get(i1));
-        return a.lerp(b, frac);
+        return pts[i0].lerp(pts[i1], frac);
     }
 }
-
