@@ -545,9 +545,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             int[] rrProbe = new int[] {node.roundRobinCursor};
             boolean allowSelf = node.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+            RoutingMode rm = node.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
             Optional<DuctTargetSelector.ExtractionRouting> routeOpt =
                     DuctTargetSelector.selectExtractionDelivery(
-                            level, worldPosition, probe, node.routingMode, rrProbe, node.channelLetter, allowSelf);
+                            level, worldPosition, probe, rm, rrProbe, node.channelLetter, allowSelf, null);
             if (routeOpt.isEmpty()) {
                 continue;
             }
@@ -591,9 +592,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         int[] rr = new int[] {node.roundRobinCursor};
+        RoutingMode rm = node.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
         Optional<DuctTargetSelector.RetrieverRouting> routeOpt =
                 DuctTargetSelector.selectRetrievingDonorPath(
-                        level, worldPosition, retrieverFace, node.routingMode, rr, node.channelLetter);
+                        level, worldPosition, retrieverFace, rm, rr, node.channelLetter);
         node.roundRobinCursor = rr[0];
         if (routeOpt.isEmpty()) {
             return;
@@ -720,6 +722,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctFaceNode n = getFaceNode(accessFace);
         menuData.set(DuctMenuSync.NODE_MODE, n.nodeMode.ordinal());
         menuData.set(DuctMenuSync.ROUTING_MODE, n.routingMode.ordinal());
+        menuData.set(DuctMenuSync.ROUTING_MODE_EXTRACTOR, n.routingModeExtractor.ordinal());
+        menuData.set(DuctMenuSync.ROUTING_MODE_RETRIEVER, n.routingModeRetriever.ordinal());
         menuData.set(DuctMenuSync.PRIORITY, n.insertionPriority);
         menuData.set(DuctMenuSync.AMOUNT_FIELD, n.extractBatch);
         menuData.set(DuctMenuSync.EXTRACT_BATCH_CAP, computeExtractBatchSettingCap(accessFace));
@@ -838,7 +842,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         DuctFaceNode node = getFaceNode(face);
-        if (node.nodeMode != NodeMode.EXTRACTION_FILTERING) {
+        if (node.nodeMode != NodeMode.EXTRACTION_FILTERING && node.nodeMode != NodeMode.RETRIEVING_EXTRACTION) {
             return;
         }
         node.selfFeed = enabled;

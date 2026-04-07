@@ -6,30 +6,34 @@ package net.unfamily.another_dynamics.duct;
 public final class DuctMenuSync {
     public static final int NODE_MODE = 0;
     public static final int ROUTING_MODE = 1;
+    /** Hybrid: routing mode for Extractor sub-node. */
+    public static final int ROUTING_MODE_EXTRACTOR = 2;
+    /** Hybrid: routing mode for Retriever sub-node. */
+    public static final int ROUTING_MODE_RETRIEVER = 3;
     /** {@link net.unfamily.another_dynamics.duct.DuctFaceNode#insertionPriority} (GUI when mode uses insertion priority). */
-    public static final int PRIORITY = 2;
+    public static final int PRIORITY = 4;
     /** {@link net.unfamily.another_dynamics.duct.DuctFaceNode#extractBatch} (GUI when mode uses extract/retrieve batch). */
-    public static final int AMOUNT_FIELD = 3;
-    public static final int CHANNEL = 4;
-    public static final int REDSTONE_MODE = 5;
-    public static final int FLAGS = 6;
-    public static final int POS_X = 7;
-    public static final int POS_Y = 8;
-    public static final int POS_Z = 9;
+    public static final int AMOUNT_FIELD = 5;
+    public static final int CHANNEL = 6;
+    public static final int REDSTONE_MODE = 7;
+    public static final int FLAGS = 8;
+    public static final int POS_X = 9;
+    public static final int POS_Y = 10;
+    public static final int POS_Z = 11;
     /** {@link net.minecraft.core.Direction#ordinal()} for the GUI face (which side's node is being edited). */
-    public static final int ACCESS_FACE = 10;
-    public static final int FILTER_HASH_ALLOW = 11;
-    public static final int FILTER_HASH_DENY = 12;
+    public static final int ACCESS_FACE = 12;
+    public static final int FILTER_HASH_ALLOW = 13;
+    public static final int FILTER_HASH_DENY = 14;
     /** 1 if {@link net.unfamily.another_dynamics.duct.DuctFaceNode#denyOverridesAllow} ({@code >>>>>}), 0 for {@code <<<<<}. */
-    public static final int DENY_OVERRIDES_ALLOW = 13;
+    public static final int DENY_OVERRIDES_ALLOW = 15;
     /**
      * Max extract/retrieve batch the player may configure for this face: {@code batch.default + upgrades}, then clamped
      * by datapack {@code batch.max} when that value is non-negative.
      */
-    public static final int EXTRACT_BATCH_CAP = 14;
+    public static final int EXTRACT_BATCH_CAP = 16;
     /** 1 if {@link net.unfamily.another_dynamics.duct.DuctFaceNode#selfFeed} (only used by hybrid Extr/Filt). */
-    public static final int SELF_FEED = 15;
-    public static final int COUNT = 16;
+    public static final int SELF_FEED = 17;
+    public static final int COUNT = 18;
 
     /** FLAGS bit: routing row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesRouting()}). */
     public static final int FLAG_ROUTING_ACTIVE = 1;

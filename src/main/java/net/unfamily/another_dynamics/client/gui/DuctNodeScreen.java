@@ -580,28 +580,26 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         boolean howto = subView == SubView.HOW_TO_USE;
         boolean edit = inEditMode();
         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-        boolean inHybridPanel = nm.isHybrid() && hybridPanel != HybridPanel.NONE;
-        boolean showRouting =
-                main
-                        && !howto
-                        && nm.usesRouting()
-                        && (!nm.isHybrid()
-                                || hybridPanel == HybridPanel.EXTRACTOR
-                                || hybridPanel == HybridPanel.RETRIEVER);
+        boolean inHybridSelector = nm.isHybrid() && hybridPanel == HybridPanel.NONE;
 
         denyNavButton.visible = main;
         listLogicButton.visible = main;
         allowNavButton.visible = main;
-        routingModeButton.visible = showRouting;
-        routingMinusButton.visible = showRouting;
-        routingPlusButton.visible = showRouting;
-        routingPriorityBox.visible = showRouting;
-        amountClearButton.visible = showRouting;
-        amountApplyButton.visible = showRouting;
+        // Routing row stays visible in all modes; it's just disabled when unused.
+        routingModeButton.visible = main && !howto;
+
+        // Priority/quantity block must stay visible even when routing is unused.
+        boolean showAmountBlock = (main && !howto && !inHybridSelector);
+        routingMinusButton.visible = showAmountBlock;
+        routingPlusButton.visible = showAmountBlock;
+        routingPriorityBox.visible = showAmountBlock;
+        amountClearButton.visible = showAmountBlock;
+        amountApplyButton.visible = showAmountBlock;
         NodeMode amountNodeMode = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-        amountMaxButton.visible = showRouting && amountNodeMode.usesExtractBatchField();
-        amountDiscardButton.visible = showRouting;
-        nodeModeButton.visible = main && !howto && !inHybridPanel;
+        amountMaxButton.visible = showAmountBlock && amountNodeMode.usesExtractBatchField();
+        amountDiscardButton.visible = showAmountBlock;
+        // In hybrid panels this button becomes Back.
+        nodeModeButton.visible = main && !howto;
         selfFeedStub.visible = false;
         renderingStub.visible = false;
 
@@ -1240,24 +1238,36 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.mode.tooltip." + nm.name().toLowerCase())));
         }
         int menuFlags = menu.getSyncData().get(DuctMenuSync.FLAGS);
-        boolean routing = (menuFlags & DuctMenuSync.FLAG_ROUTING_ACTIVE) != 0;
         boolean filtersActive = (menuFlags & DuctMenuSync.FLAG_FILTERS_ACTIVE) != 0;
         if (!filtersActive && subView != SubView.MAIN) {
             forceExitFilterUiToMain();
         }
-        boolean showRouting = routing && (!nm.isHybrid() || hybridPanel == HybridPanel.EXTRACTOR || hybridPanel == HybridPanel.RETRIEVER);
-        routingModeButton.active = routing && (nm.usesRouting()) && (!nm.isHybrid() || showRouting);
-        if (routing) {
-            RoutingMode rm = RoutingMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ROUTING_MODE));
+        boolean routingUsable = nm.usesRouting();
+        boolean hybridAllowsRoutingUi =
+                !nm.isHybrid()
+                        || hybridPanel == HybridPanel.EXTRACTOR
+                        || hybridPanel == HybridPanel.RETRIEVER;
+        boolean routingActive = routingUsable && hybridAllowsRoutingUi;
+
+        if (!routingActive) {
+            routingModeButton.active = false;
+            routingModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.routing_unroutable"));
+            routingModeButton.setTooltip(
+                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.routing.tooltip.unroutable")));
+        } else {
+            routingModeButton.active = true;
+            int rmOrd =
+                    nm.isHybrid()
+                            ? (hybridPanel == HybridPanel.RETRIEVER
+                                    ? menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_RETRIEVER)
+                                    : menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_EXTRACTOR))
+                            : menu.getSyncData().get(DuctMenuSync.ROUTING_MODE);
+            RoutingMode rm = RoutingMode.fromOrdinal(rmOrd);
             routingModeButton.setMessage(
                     Component.translatable("gui.another_dynamics.duct_node.routing." + rm.name().toLowerCase()));
             routingModeButton.setTooltip(
                     Tooltip.create(
                             Component.translatable("gui.another_dynamics.duct_node.routing.tooltip." + rm.name().toLowerCase())));
-        } else {
-            routingModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.routing_unroutable"));
-            routingModeButton.setTooltip(
-                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.routing.tooltip.unroutable")));
         }
         if (nm.isHybrid()) {
             if (!inHybridPanel) {
@@ -2049,7 +2059,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         if (subView == SubView.MAIN) {
             NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-            if (nm == NodeMode.EXTRACTION_FILTERING) {
+            // Hybrid selector: priority/quantity block is hidden there; it appears only inside hybrid sub-panels.
+            if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
                 return;
             }
             Component amountLabel =

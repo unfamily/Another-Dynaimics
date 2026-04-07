@@ -51,7 +51,7 @@
   "gui.another_dynamics.duct_node.hybrid.back.tooltip": "Return to hybrid selector.",
   "gui.another_dynamics.duct_node.hybrid.self_feed.on": "Self Feed: ON",
   "gui.another_dynamics.duct_node.hybrid.self_feed.off": "Self Feed: OFF",
-  "gui.another_dynamics.duct_node.hybrid.self_feed.tooltip": "When ON (Extr/Filt only), this node may route items into itself.",
+  "gui.another_dynamics.duct_node.hybrid.self_feed.tooltip": "When ON this node can route items into itself.",
   "gui.another_dynamics.duct_node.hybrid.title.extractor": "Extractor Node",
   "gui.another_dynamics.duct_node.hybrid.title.filter": "Filter Node",
   "gui.another_dynamics.duct_node.hybrid.title.retriever": "Retriever Node",

@@ -20,6 +20,8 @@ import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 
+import org.jetbrains.annotations.Nullable;
+
 /**
  * Picks a target duct face and path for extraction (to network consumers) or retrieving (from donors to self).
  * Endpoints must share the same {@link net.unfamily.another_dynamics.duct.DuctFaceNode#channelLetter} as the acting face.
@@ -38,7 +40,8 @@ public final class DuctTargetSelector {
             RoutingMode routing,
             int[] roundRobinState,
             int extractorFaceChannel,
-            boolean allowSelfDestination) {
+            boolean allowSelfDestination,
+            @Nullable Direction forbidSelfDestFace) {
         DuctItemTransportSpec spec = DuctDefinitionRegistry.itemDuctTransportSpec();
         Set<BlockPos> net = DuctPathfinder.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
         List<Candidate> cands = new ArrayList<>();
@@ -54,9 +57,16 @@ public final class DuctTargetSelector {
                 if ((sm & (1 << d.ordinal())) == 0) {
                     continue;
                 }
+                if (p.equals(extractorPos) && forbidSelfDestFace != null && d == forbidSelfDestFace) {
+                    continue;
+                }
                 DuctFaceNode node = be.getFaceNode(d);
                 NodeMode m = node.nodeMode;
-                if (m != NodeMode.NONE && m != NodeMode.FILTERING_INSERTION) {
+                if (m != NodeMode.NONE
+                        && m != NodeMode.FILTERING_INSERTION
+                        && m != NodeMode.EXTRACTION_FILTERING
+                        && m != NodeMode.RETRIEVING
+                        && m != NodeMode.RETRIEVING_EXTRACTION) {
                     continue;
                 }
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, extractorFaceChannel)) {
@@ -65,7 +75,8 @@ public final class DuctTargetSelector {
                 if (!DuctCapHelper.canInsertIntoFace(level, p, d, probe)) {
                     continue;
                 }
-                OptionalLong dist = DuctPathfinder.distance(level, extractorPos, p, spec, DuctNetworkType.ITEM);
+                OptionalLong dist =
+                        p.equals(extractorPos) ? OptionalLong.of(0L) : DuctPathfinder.distance(level, extractorPos, p, spec, DuctNetworkType.ITEM);
                 if (dist.isEmpty()) {
                     continue;
                 }
@@ -83,9 +94,33 @@ public final class DuctTargetSelector {
                 tier.add(c);
             }
         }
+        // Tie-break: if any filtering face exists at this priority, prefer it over retriever-mode faces.
+        boolean anyFilter = false;
+        for (Candidate c : tier) {
+            if (level.getBlockEntity(c.ductPos) instanceof DuctBlockEntity be) {
+                NodeMode m = be.getFaceNode(c.face).nodeMode;
+                if (m == NodeMode.FILTERING_INSERTION || m == NodeMode.EXTRACTION_FILTERING) {
+                    anyFilter = true;
+                    break;
+                }
+            }
+        }
+        if (anyFilter) {
+            tier.removeIf(
+                    c -> {
+                        if (!(level.getBlockEntity(c.ductPos) instanceof DuctBlockEntity be)) {
+                            return true;
+                        }
+                        NodeMode m = be.getFaceNode(c.face).nodeMode;
+                        return !(m == NodeMode.FILTERING_INSERTION || m == NodeMode.EXTRACTION_FILTERING);
+                    });
+        }
         Candidate pick = pickWithinTier(level, extractorPos, tier, routing, roundRobinState);
         if (pick == null) {
             return Optional.empty();
+        }
+        if (pick.ductPos.equals(extractorPos)) {
+            return Optional.of(new ExtractionRouting(List.of(extractorPos), pick.face));
         }
         Optional<List<BlockPos>> path =
                 DuctPathfinder.shortestPath(level, extractorPos, pick.ductPos, spec, DuctNetworkType.ITEM);
@@ -99,7 +134,7 @@ public final class DuctTargetSelector {
             RoutingMode routing,
             int[] roundRobinState,
             int extractorFaceChannel) {
-        return selectExtractionDelivery(level, extractorPos, probe, routing, roundRobinState, extractorFaceChannel, false);
+        return selectExtractionDelivery(level, extractorPos, probe, routing, roundRobinState, extractorFaceChannel, false, null);
     }
 
     public static Optional<RetrieverRouting> selectRetrievingDonorPath(

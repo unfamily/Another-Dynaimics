@@ -27,6 +27,10 @@ public final class DuctFaceNode {
 
     public NodeMode nodeMode = NodeMode.NONE;
     public RoutingMode routingMode = RoutingMode.NEAREST_FIRST;
+    /** Hybrid: independent routing mode for the Extractor sub-node. */
+    public RoutingMode routingModeExtractor = RoutingMode.NEAREST_FIRST;
+    /** Hybrid: independent routing mode for the Retriever sub-node. */
+    public RoutingMode routingModeRetriever = RoutingMode.NEAREST_FIRST;
     /** Insert-capable modes ({@link NodeMode#NONE}, {@link NodeMode#FILTERING_INSERTION}): insertion priority for this face. */
     public int insertionPriority;
     /** Extract / retrieve modes: items moved per operation (0 = use duct default). */
@@ -83,6 +87,8 @@ public final class DuctFaceNode {
     public void save(HolderLookup.Provider registries, CompoundTag tag) {
         tag.putByte("NodeMode", (byte) nodeMode.ordinal());
         tag.putByte("RoutingMode", (byte) routingMode.ordinal());
+        tag.putByte("RoutingModeEx", (byte) routingModeExtractor.ordinal());
+        tag.putByte("RoutingModeRe", (byte) routingModeRetriever.ordinal());
         tag.putInt("InsertionPriority", insertionPriority);
         tag.putInt("ExtractBatch", extractBatch);
         tag.putByte("Channel", (byte) channelLetter);
@@ -97,6 +103,14 @@ public final class DuctFaceNode {
     public void load(HolderLookup.Provider registries, CompoundTag tag) {
         nodeMode = NodeMode.fromOrdinal(tag.getByte("NodeMode"));
         routingMode = RoutingMode.fromOrdinal(tag.getByte("RoutingMode"));
+        routingModeExtractor =
+                tag.contains("RoutingModeEx")
+                        ? RoutingMode.fromOrdinal(tag.getByte("RoutingModeEx"))
+                        : routingMode;
+        routingModeRetriever =
+                tag.contains("RoutingModeRe")
+                        ? RoutingMode.fromOrdinal(tag.getByte("RoutingModeRe"))
+                        : routingMode;
         insertionPriority = 0;
         extractBatch = 0;
         if (tag.contains("InsertionPriority")) {
