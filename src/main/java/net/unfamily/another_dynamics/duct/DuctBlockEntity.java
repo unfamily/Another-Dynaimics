@@ -6,6 +6,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerLevel;
@@ -55,6 +56,49 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
      * inventory is removed. Does not add node voxels (those follow {@link #getStorageMask()} only).
      */
     private int latchedStorageFaceMask;
+
+    /** Client-only cached icon pack from server; avoids relying on full face-node sync for rendering. */
+    private int clientPackedNodeIcons = defaultPackedNodeIcons();
+
+    private static int defaultPackedNodeIcons() {
+        // Default to NONE (col=3,row=0 => idx=3) for all faces until the first server update arrives.
+        int packed = 0;
+        for (Direction d : Direction.values()) {
+            packed |= (3 & 0xF) << (d.ordinal() * 4);
+        }
+        return packed;
+    }
+
+    private int computePackedNodeIcons() {
+        int packed = 0;
+        int sm = getVisualStorageMask();
+        for (Direction d : Direction.values()) {
+            int bit = 1 << d.ordinal();
+            if ((sm & bit) == 0) {
+                continue;
+            }
+            DuctFaceNode n = getFaceNode(d);
+            int col =
+                    switch (n.nodeMode) {
+                        case EXTRACTION -> 0;
+                        case FILTERING_INSERTION -> 1;
+                        case RETRIEVING -> 2;
+                        case NONE -> 3;
+                        case EXTRACTION_FILTERING -> 0;
+                        case RETRIEVING_EXTRACTION -> 1;
+                    };
+            int rowBase =
+                    switch (n.nodeMode) {
+                        case EXTRACTION, FILTERING_INSERTION, RETRIEVING, NONE -> 0;
+                        case EXTRACTION_FILTERING, RETRIEVING_EXTRACTION -> 2;
+                    };
+            boolean off = (n.redstoneMode == 4);
+            int row = rowBase + (off ? 1 : 0);
+            int idx = row * 4 + col; // 0..15
+            packed |= (idx & 0xF) << (d.ordinal() * 4);
+        }
+        return packed;
+    }
 
     public DuctBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.ITEM_DUCT.get(), pos, state);
@@ -980,6 +1024,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private void syncVisualGeometryToClients() {
         requestModelDataUpdate();
         if (level != null && !level.isClientSide()) {
+            // Ensure the BE update packet is sent so client can refresh PackedNodeIcons immediately.
+            level.blockEntityChanged(getBlockPos());
             level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
         }
     }
@@ -1105,6 +1151,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         t.putByte("PipeMask", (byte) getPipeMask());
         t.putByte("StorageMask", (byte) getStorageMask());
         t.putByte("LatchedFaces", (byte) latchedStorageFaceMask);
+        // Pack node icon indices server-side for client rendering.
+        t.putInt("PackedNodeIcons", computePackedNodeIcons());
         return t;
     }
 
@@ -1113,6 +1161,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         super.handleUpdateTag(tag, registries);
         if (tag.contains("LatchedFaces", Tag.TAG_BYTE)) {
             latchedStorageFaceMask = tag.getByte("LatchedFaces") & 0xFF;
+        }
+        int previousPacked = clientPackedNodeIcons;
+        int nextPacked = tag.contains("PackedNodeIcons", Tag.TAG_INT) ? tag.getInt("PackedNodeIcons") : defaultPackedNodeIcons();
+        clientPackedNodeIcons = nextPacked;
+        if (previousPacked != nextPacked) {
+            // Force chunk re-bake client-side only when icon pack changes.
+            requestModelDataUpdate();
+            if (level != null && level.isClientSide) {
+                level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            }
         }
     }
 
@@ -1123,10 +1181,23 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     @Override
+    public void onDataPacket(Connection connection, ClientboundBlockEntityDataPacket packet, HolderLookup.Provider registries) {
+        super.onDataPacket(connection, packet, registries);
+        handleUpdateTag(packet.getTag(), registries);
+    }
+
+    @Override
     public ModelData getModelData() {
+        int packed;
+        if (level != null && level.isClientSide) {
+            packed = clientPackedNodeIcons;
+        } else {
+            packed = computePackedNodeIcons();
+        }
         return ModelData.builder()
                 .with(DuctModelProperties.PIPE_MASK, getPipeMask())
                 .with(DuctModelProperties.STORAGE_MASK, getStorageMask())
+                .with(DuctModelProperties.NODE_ICONS_PACKED, packed)
                 .build();
     }
 }

@@ -31,6 +31,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctConnectionShape;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 
+import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 
@@ -39,6 +40,7 @@ import org.joml.Quaternionf;
  * Element names must match the engine ({@code center}, {@code con_*}, {@code node_*}, line {@code center}).
  */
 public final class DuctCompositeGeometry {
+    private static final boolean DEBUG_FORCE_NODE_ICON0 = false;
     public static final ResourceLocation DEFAULT_MODEL_DEFAULT =
             ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_default");
     public static final ResourceLocation DEFAULT_MODEL_LINE =
@@ -267,11 +269,204 @@ public final class DuctCompositeGeometry {
         }
     }
 
+    public void appendForWorldWithNodeIcons(
+            List<BakedQuad> out,
+            int pipeMask,
+            int storageMask,
+            int packedNodeIcons,
+            TextureAtlasSprite nodesSprite,
+            boolean includeBase,
+            boolean includeOverlays) {
+        if (!built) {
+            return;
+        }
+        DuctConnectionShape shape = DuctConnectionShape.classify(pipeMask, storageMask);
+        switch (shape) {
+            case SINGLE -> {
+                if (includeBase) {
+                    out.addAll(quadsNamed("center"));
+                }
+            }
+            case PARTIAL -> {
+                if (includeBase) {
+                    out.addAll(quadsNamed("center"));
+                }
+                for (Direction d : Direction.values()) {
+                    int bit = 1 << d.ordinal();
+                    if ((pipeMask & bit) != 0) {
+                        if (includeBase) {
+                            out.addAll(quadsNamed(connectionPiece(d)));
+                        }
+                    }
+                    if ((storageMask & bit) != 0) {
+                        if (includeBase) {
+                            out.addAll(quadsNamed(connectionPiece(d)));
+                        }
+                        appendNodeIcon(out, d, packedNodeIcons, nodesSprite, includeBase, includeOverlays);
+                    }
+                }
+            }
+            case LINE_X, LINE_Y, LINE_Z -> {
+                Transformation tr = rotationForLineAxis(shape.lineAxis());
+                if (includeBase) {
+                    out.addAll(transformQuads(lineCenterQuads(), tr));
+                }
+                Direction na = shape.lineEndNegative();
+                Direction pb = shape.lineEndPositive();
+                if ((storageMask & (1 << na.ordinal())) != 0) {
+                    appendNodeIcon(out, na, packedNodeIcons, nodesSprite, includeBase, includeOverlays);
+                }
+                if ((storageMask & (1 << pb.ordinal())) != 0) {
+                    appendNodeIcon(out, pb, packedNodeIcons, nodesSprite, includeBase, includeOverlays);
+                }
+            }
+            case MULTI -> {
+                if (includeBase) {
+                    out.addAll(quadsNamed("center"));
+                }
+                for (Direction d : Direction.values()) {
+                    int bit = 1 << d.ordinal();
+                    if ((pipeMask & bit) != 0) {
+                        if (includeBase) {
+                            out.addAll(quadsNamed(connectionPiece(d)));
+                        }
+                    }
+                    if ((storageMask & bit) != 0) {
+                        if (includeBase) {
+                            out.addAll(quadsNamed(connectionPiece(d)));
+                        }
+                    }
+                }
+                for (Direction d : Direction.values()) {
+                    if ((storageMask & (1 << d.ordinal())) != 0) {
+                        appendNodeIcon(out, d, packedNodeIcons, nodesSprite, includeBase, includeOverlays);
+                    }
+                }
+            }
+        }
+    }
+
     private void appendStorageNodesOnly(List<BakedQuad> out, int storageMask) {
         for (Direction d : Direction.values()) {
             if ((storageMask & (1 << d.ordinal())) != 0) {
                 out.addAll(quadsNamed(nodePiece(d)));
             }
         }
+    }
+
+    private void appendNodeIcon(
+            List<BakedQuad> out,
+            Direction face,
+            int packed,
+            TextureAtlasSprite nodesSprite,
+            boolean includeBase,
+            boolean includeOverlays) {
+        int idx = (packed >>> (face.ordinal() * 4)) & 0xF;
+        if (DEBUG_FORCE_NODE_ICON0) {
+            idx = 0;
+        }
+        List<BakedQuad> src = quadsNamed(nodePiece(face));
+        for (BakedQuad q : src) {
+            if (includeBase) {
+                out.add(q);
+            }
+            Direction qDir = q.getDirection();
+            // The icon should be visible on the 4 lateral sides of the node piece, not on the face pointing to storage.
+            // For a node pointing to `face`, the lateral sides are the 4 directions perpendicular to `face`.
+            if (qDir == face || qDir == face.getOpposite()) {
+                continue;
+            }
+            if (!includeOverlays) {
+                continue;
+            }
+            BakedQuad overlay = buildNodeIconOverlay(q, idx, nodesSprite);
+            if (overlay != null) {
+                out.add(overlay);
+            }
+        }
+    }
+
+    /**
+     * Builds an overlay quad (same geometry) with UVs mapped onto nodes.png (64x32, 4x4 cells, each 16x8).
+     *
+     * NeoForge note: do not assume vertex layout indices; use {@link IQuadTransformer} offsets/stride.
+     */
+    private static @Nullable BakedQuad buildNodeIconOverlay(BakedQuad q, int iconIdx, TextureAtlasSprite nodesSprite) {
+        if (nodesSprite == null) {
+            return null;
+        }
+        if (iconIdx < 0 || iconIdx > 15) {
+            return null;
+        }
+        int[] v = q.getVertices();
+        if (v == null || v.length < IQuadTransformer.STRIDE * 4) {
+            return null;
+        }
+        int stride = IQuadTransformer.STRIDE;
+        int pos = IQuadTransformer.POSITION;
+        int color = IQuadTransformer.COLOR;
+        int uv0 = IQuadTransformer.UV0;
+        float uMin = Float.POSITIVE_INFINITY;
+        float uMax = Float.NEGATIVE_INFINITY;
+        float vMin = Float.POSITIVE_INFINITY;
+        float vMax = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < 4; i++) {
+            int base = i * stride;
+            float u = Float.intBitsToFloat(v[base + uv0]);
+            float vv = Float.intBitsToFloat(v[base + uv0 + 1]);
+            uMin = Math.min(uMin, u);
+            uMax = Math.max(uMax, u);
+            vMin = Math.min(vMin, vv);
+            vMax = Math.max(vMax, vv);
+        }
+        float w = uMax - uMin;
+        float h = vMax - vMin;
+        if (w <= 1e-6f || h <= 1e-6f) {
+            return null;
+        }
+        int col = Math.floorMod(iconIdx, 4);
+        int row = Math.floorDiv(iconIdx, 4);
+        float u0 = nodesSprite.getU0();
+        float u1 = nodesSprite.getU1();
+        float vv0 = nodesSprite.getV0();
+        float vv1 = nodesSprite.getV1();
+        float du = u1 - u0;
+        float dv = vv1 - vv0;
+        float cellX = col * 16.0f;
+        float cellY = row * 8.0f;
+        int[] out = v.clone();
+        for (int i = 0; i < 4; i++) {
+            int base = i * stride;
+            // Push the overlay slightly outward to avoid Z-fighting with the original node face.
+            float ox = Float.intBitsToFloat(out[base + pos]);
+            float oy = Float.intBitsToFloat(out[base + pos + 1]);
+            float oz = Float.intBitsToFloat(out[base + pos + 2]);
+            float eps = 0.0005f;
+            ox += q.getDirection().getStepX() * eps;
+            oy += q.getDirection().getStepY() * eps;
+            oz += q.getDirection().getStepZ() * eps;
+            out[base + pos] = Float.floatToRawIntBits(ox);
+            out[base + pos + 1] = Float.floatToRawIntBits(oy);
+            out[base + pos + 2] = Float.floatToRawIntBits(oz);
+
+            float ou = Float.intBitsToFloat(out[base + uv0]);
+            float ov = Float.intBitsToFloat(out[base + uv0 + 1]);
+            float tu = (ou - uMin) / w;
+            float tv = (ov - vMin) / h;
+            float nu = u0 + du * ((cellX + tu * 16.0f) / 64.0f);
+            float nv = vv0 + dv * ((cellY + tv * 8.0f) / 32.0f);
+            out[base + uv0] = Float.floatToRawIntBits(nu);
+            out[base + uv0 + 1] = Float.floatToRawIntBits(nv);
+
+            // 75% alpha to keep the node texture readable beneath.
+            if (out.length > base + color) {
+                int c = out[base + color];
+                out[base + color] = (c & 0x00FFFFFF) | (0xBF << 24);
+            }
+        }
+        BakedQuad overlay = new BakedQuad(out, -1, q.getDirection(), nodesSprite, false);
+        // Make the icon readable even in darkness.
+        overlay = QuadTransformers.settingMaxEmissivity().process(overlay);
+        return overlay;
     }
 }

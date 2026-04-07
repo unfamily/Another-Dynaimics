@@ -19,16 +19,19 @@ import net.unfamily.another_dynamics.duct.DuctModelProperties;
 import org.jetbrains.annotations.Nullable;
 
 public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
-    private static final ChunkRenderTypeSet BLOCK_RENDER_TYPES = ChunkRenderTypeSet.of(RenderType.cutoutMipped());
-    private static final List<RenderType> ITEM_RENDER_TYPES = List.of(RenderType.cutout());
+    private static final ChunkRenderTypeSet BLOCK_RENDER_TYPES =
+            ChunkRenderTypeSet.of(RenderType.cutoutMipped(), RenderType.translucent());
+    private static final List<RenderType> ITEM_RENDER_TYPES = List.of(RenderType.cutout(), RenderType.translucent());
 
     private final DuctCompositeGeometry geometry;
     private final TextureAtlasSprite particleSprite;
+    private final TextureAtlasSprite nodesSprite;
 
-    public DuctBakedModel(BakedModel original, DuctCompositeGeometry geometry, TextureAtlasSprite particleSprite) {
+    public DuctBakedModel(BakedModel original, DuctCompositeGeometry geometry, TextureAtlasSprite particleSprite, TextureAtlasSprite nodesSprite) {
         super(original);
         this.geometry = geometry;
         this.particleSprite = particleSprite;
+        this.nodesSprite = nodesSprite;
     }
 
     @Override
@@ -58,10 +61,20 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
         }
         Integer pipe = modelData.get(DuctModelProperties.PIPE_MASK);
         Integer storage = modelData.get(DuctModelProperties.STORAGE_MASK);
+        Integer packedIcons = modelData.get(DuctModelProperties.NODE_ICONS_PACKED);
         int pm = pipe != null ? pipe : 0;
         int sm = storage != null ? storage : 0;
         List<BakedQuad> built = new ArrayList<>();
-        geometry.appendForWorld(built, pm, sm);
+        int pi = packedIcons != null ? packedIcons : 0;
+        // RenderType instances are not guaranteed to be reference-equal across calls; use a robust check.
+        boolean isOverlayPass = renderType != null && renderType.toString().startsWith("RenderType[translucent");
+        boolean isBasePass = renderType == null || renderType.toString().startsWith("RenderType[cutout_mipped");
+        if (!isOverlayPass && !isBasePass) {
+            return List.of();
+        }
+        boolean includeBase = isBasePass;
+        boolean includeOverlays = isOverlayPass;
+        geometry.appendForWorldWithNodeIcons(built, pm, sm, pi, nodesSprite, includeBase, includeOverlays);
         if (side != null) {
             List<BakedQuad> culled = new ArrayList<>();
             for (BakedQuad q : built) {

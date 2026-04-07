@@ -11,6 +11,7 @@ import net.minecraft.client.resources.model.ModelBaker;
 import net.minecraft.client.resources.model.ModelState;
 import net.minecraft.client.resources.model.UnbakedModel;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.neoforged.neoforge.client.model.EmptyModel;
 import net.neoforged.neoforge.client.model.geometry.IGeometryBakingContext;
 import net.neoforged.neoforge.client.model.geometry.IUnbakedGeometry;
@@ -45,6 +46,11 @@ public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGe
                 .or(() -> DuctDefinitionRegistry.getByLogicalId(ductLogicalId).flatMap(DuctDefinition::compositeModelLine))
                 .orElse(DuctCompositeGeometry.DEFAULT_MODEL_LINE);
         String texStr = DuctTextures.compositeBlockTexture(ductLogicalId).toString();
+        TextureAtlasSprite nodesSprite =
+                spriteGetter.apply(
+                        new Material(
+                                InventoryMenu.BLOCK_ATLAS,
+                                ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/nodes")));
         DuctCompositeGeometry geometry = DuctCompositeGeometry.bake(modelDefault, modelLine, texStr, spriteGetter);
 
         BakedModel base = baker.bake(CENTER_ONLY, modelState);
@@ -52,7 +58,7 @@ public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGe
             base = EmptyModel.BAKED;
         }
         TextureAtlasSprite particle = spriteGetter.apply(context.getMaterial("particle"));
-        return new DuctBakedModel(base, geometry, particle);
+        return new DuctBakedModel(base, geometry, particle, nodesSprite);
     }
 
     @Override
