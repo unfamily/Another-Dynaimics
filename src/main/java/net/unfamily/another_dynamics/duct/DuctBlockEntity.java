@@ -1051,13 +1051,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             node.roundRobinCursor = rrProbe[0];
-            long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
-            int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
+            long travel = DuctPathfinder.pathTravelTicks(path, spec);
+            int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
             OutboundShipment sh =
                     new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
             sh.ductPath = OutboundShipment.copyPath(path);
             sh.totalTravelTicks = travelTicks;
-            sh.edgeTicks = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
+            sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec));
             sh.journeyStartGameTime = level.getGameTime();
             sh.transitPhase = TransitPhase.FORWARD;
             outboundShipments.add(sh);
@@ -1136,14 +1136,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (!canScheduleTowardFace(level, worldPosition, this, retrieverFace, planned, spec)) {
                 continue;
             }
-            long travel = Math.max(1L, DuctPathfinder.pathTravelTicks(path, spec));
-            int travelTicks = (int) Math.min(travel, Integer.MAX_VALUE);
+            long travel = DuctPathfinder.pathTravelTicks(path, spec);
+            int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
             OutboundShipment sh =
                     new OutboundShipment(
                             planned, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
             sh.ductPath = OutboundShipment.copyPath(path);
             sh.totalTravelTicks = travelTicks;
-            sh.edgeTicks = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec)));
+            sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec));
             sh.journeyStartGameTime = level.getGameTime();
             sh.transitPhase = TransitPhase.FORWARD;
             outboundShipments.add(sh);

@@ -144,7 +144,7 @@ public final class OutboundShipment {
             sh.totalTravelTicks = travel;
         }
         if (t.contains("EdgeW", Tag.TAG_INT)) {
-            sh.edgeTicks = Math.max(1, t.getInt("EdgeW"));
+            sh.edgeTicks = Math.max(0, t.getInt("EdgeW"));
         }
         if (t.contains("JStart", Tag.TAG_LONG)) {
             sh.journeyStartGameTime = t.getLong("JStart");
@@ -181,7 +181,10 @@ public final class OutboundShipment {
         if (ductPath.isEmpty()) {
             return 0;
         }
-        int idx = elapsedOnLeg() / Math.max(1, edgeTicks);
+        if (edgeTicks <= 0) {
+            return ductPath.size() - 1;
+        }
+        int idx = elapsedOnLeg() / edgeTicks;
         return Math.min(ductPath.size() - 1, idx);
     }
 
@@ -190,7 +193,7 @@ public final class OutboundShipment {
         this.ductPath = copyPath(path);
         this.totalTravelTicks = totalTicks;
         this.travelTicks = totalTicks;
-        this.edgeTicks = Math.max(1, edgeTicks);
+        this.edgeTicks = Math.max(0, edgeTicks);
         this.journeyStartGameTime = gameTime;
     }
 }

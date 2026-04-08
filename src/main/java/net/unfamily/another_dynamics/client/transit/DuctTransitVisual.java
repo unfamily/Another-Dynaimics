@@ -69,7 +69,7 @@ public final class DuctTransitVisual {
         this.phase = TransitPhase.FORWARD;
         this.totalTravelTicks = totalTravelTicks;
         this.travelTicks = travelTicks;
-        this.edgeTicks = Math.max(1, edgeTicks);
+        this.edgeTicks = Math.max(0, edgeTicks);
         this.journeyStartGameTime = journeyStartGameTime;
         this.progressAnchorGameTime = progressAnchorGameTime;
         Direction pathStartFace = sourceAttachFace;

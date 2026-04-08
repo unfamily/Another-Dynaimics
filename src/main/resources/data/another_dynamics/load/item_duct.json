@@ -17,7 +17,7 @@
       },
       "speed": {
         "default": 20,
-        "min": 1
+        "min": 5
       },
       "filter":{
         "deny":4,

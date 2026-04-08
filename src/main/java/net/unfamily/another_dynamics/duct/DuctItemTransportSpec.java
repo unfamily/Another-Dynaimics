@@ -20,13 +20,16 @@ public record DuctItemTransportSpec(
     public static final int UNLIMITED_BATCH = Integer.MAX_VALUE;
 
     public static DuctItemTransportSpec fallback() {
-        return new DuctItemTransportSpec(8, UNLIMITED_BATCH, 10, 1, 20, 1, 3, 3, 3, 3);
+        return new DuctItemTransportSpec(8, UNLIMITED_BATCH, 10, 1, 20, 0, 3, 3, 3, 3);
     }
 
-    /** Datapack {@code speed}: ticks per duct block on a path for billed travel (clamped; avoids zero). */
+    /**
+     * Datapack {@code speed}: ticks per duct block on a path for billed travel.
+     * {@code speed.min} may be {@code 0} for instant travel ({@code 0} ticks per block).
+     */
     public int effectiveSpeed(int configured) {
         int s = configured <= 0 ? speedDefault : configured;
-        int min = Math.max(1, speedMin);
+        int min = Math.max(0, speedMin);
         return Math.max(min, s);
     }
 

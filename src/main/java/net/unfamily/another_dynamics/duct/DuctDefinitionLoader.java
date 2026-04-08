@@ -251,7 +251,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             }
         }
         int speedDefault = 20;
-        int speedMin = 1;
+        int speedMin = 0;
         if (to.has("speed") && to.get("speed").isJsonObject()) {
             JsonObject s = to.getAsJsonObject("speed");
             if (s.has("default")) {

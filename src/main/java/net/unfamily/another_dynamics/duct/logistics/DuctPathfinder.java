@@ -26,10 +26,10 @@ import net.unfamily.another_dynamics.duct.DuctPipeAdjacency;
 public final class DuctPathfinder {
     private DuctPathfinder() {}
 
-    /** Datapack {@code speed}: ticks multiplied by path duct count in {@link #pathTravelTicks} (minimum 1). */
+    /** Datapack {@code speed}: ticks multiplied by path duct count in {@link #pathTravelTicks} (minimum 0). */
     public static long edgeTravelTicks(DuctItemTransportSpec spec) {
         int ticks = spec.effectiveSpeed(spec.speedDefault());
-        return Math.max(1L, ticks);
+        return Math.max(0L, ticks);
     }
 
     public static Set<BlockPos> connectedDucts(Level level, BlockPos start, DuctNetworkType network) {

@@ -1,23 +1,23 @@
 {
   "type": "another_dynamics:declare_duct",
-  "id": "another_dynamics:item_duct_test_2",
-  "name": "duct.another_dynamics.item_duct",
+  "id": "another_dynamics:fluid_duct",
+  "name": "duct.another_dynamics.fluid_duct",
   "put_in_creative_menu": true,
   "sound": "metallic",
   "can_transport": [
     {
-      "dec": "item",
+      "dec": "fluid",
       "batch": {
-        "default": 8,
+        "default": 1000,
         "max": -1
       },
       "rate": {
-        "default": 2,
+        "default": 30,
         "min": 1
       },
       "speed": {
-        "default": 0,
-        "min": 0
+        "default": 20,
+        "min": 1
       },
       "filter":{
         "deny":4,
@@ -27,12 +27,12 @@
       }
     }
   ],
-  "connect_with_compatbile": false,
+  "connect_with_compatbile": true,
   "disabled_features":[],
   "upgrade_features":[],
   "rendering": {
     "always_opaque": false,
-    "default_texture": "another_dynamics:block/duct/item/item_duct_0_dark",
+    "default_texture": "another_dynamics:block/duct/fluid/fluid_duct_0_copper",
     "model_default": "another_dynamics:block/simple_duct_default",
     "model_line": "another_dynamics:block/simple_duct_line"
   },
