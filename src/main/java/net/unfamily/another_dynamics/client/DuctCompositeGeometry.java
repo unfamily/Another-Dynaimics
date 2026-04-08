@@ -48,11 +48,14 @@ public final class DuctCompositeGeometry {
 
     private final Map<String, List<BakedQuad>> defaultByName;
     private final List<BakedQuad> lineCenterQuadsIdentity;
+    /** All quads from the line model combined (center + end caps), for item display. */
+    private final List<BakedQuad> lineAllQuadsIdentity;
     private final boolean built;
 
-    private DuctCompositeGeometry(Map<String, List<BakedQuad>> defaultByName, List<BakedQuad> lineCenterQuads, boolean built) {
+    private DuctCompositeGeometry(Map<String, List<BakedQuad>> defaultByName, List<BakedQuad> lineCenterQuads, List<BakedQuad> lineAllQuads, boolean built) {
         this.defaultByName = defaultByName;
         this.lineCenterQuadsIdentity = lineCenterQuads;
+        this.lineAllQuadsIdentity = lineAllQuads;
         this.built = built;
     }
 
@@ -87,14 +90,16 @@ public final class DuctCompositeGeometry {
                 }
             }
             lineCenter = UnbakedGeometryHelper.bakeElements(lineCenterElements, spriteGetter, identity);
-            return new DuctCompositeGeometry(Map.copyOf(byName), lineCenter, true);
+            // Bake ALL line model elements for item display (center + end caps like node_N, node_S).
+            List<BakedQuad> lineAll = UnbakedGeometryHelper.bakeElements(lineEls, spriteGetter, identity);
+            return new DuctCompositeGeometry(Map.copyOf(byName), lineCenter, List.copyOf(lineAll), true);
         } catch (Exception ex) {
             AnotherDynamicsMod.LOGGER.error(
                     "Failed to bake duct composite geometry (default={}, line={})",
                     modelDefaultId,
                     modelLineId,
                     ex);
-            return new DuctCompositeGeometry(Map.of(), List.of(), false);
+            return new DuctCompositeGeometry(Map.of(), List.of(), List.of(), false);
         }
     }
 
@@ -173,6 +178,31 @@ public final class DuctCompositeGeometry {
 
     public List<BakedQuad> lineCenterQuads() {
         return lineCenterQuadsIdentity;
+    }
+
+    /** All quads from the line model (center + end caps). Used for item display. */
+    public List<BakedQuad> lineAllQuads() {
+        return lineAllQuadsIdentity;
+    }
+
+    /**
+     * Returns the main texture sprite for this geometry (from the center element),
+     * used for block-breaking particles and other single-sprite contexts.
+     */
+    public @Nullable TextureAtlasSprite mainSprite() {
+        List<BakedQuad> center = quadsNamed("center");
+        if (!center.isEmpty() && center.get(0).getSprite() != null) {
+            return center.get(0).getSprite();
+        }
+        for (List<BakedQuad> quads : defaultByName.values()) {
+            if (!quads.isEmpty() && quads.get(0).getSprite() != null) {
+                return quads.get(0).getSprite();
+            }
+        }
+        if (!lineCenterQuadsIdentity.isEmpty() && lineCenterQuadsIdentity.get(0).getSprite() != null) {
+            return lineCenterQuadsIdentity.get(0).getSprite();
+        }
+        return null;
     }
 
     public List<BakedQuad> transformQuads(List<BakedQuad> source, Transformation transform) {
@@ -369,7 +399,7 @@ public final class DuctCompositeGeometry {
         }
     }
 
-    private static BakedQuad shiftQuadV(BakedQuad q, float deltaV) {
+    static BakedQuad shiftQuadV(BakedQuad q, float deltaV) {
         int stride = IQuadTransformer.STRIDE;
         int uv0 = IQuadTransformer.UV0;
         int[] v = q.getVertices();

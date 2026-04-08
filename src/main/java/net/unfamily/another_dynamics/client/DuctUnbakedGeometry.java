@@ -3,6 +3,7 @@ package net.unfamily.another_dynamics.client;
 import java.util.Optional;
 import java.util.function.Function;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.model.ItemOverrides;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
@@ -17,6 +18,7 @@ import net.neoforged.neoforge.client.model.geometry.IGeometryBakingContext;
 import net.neoforged.neoforge.client.model.geometry.IUnbakedGeometry;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
+import net.unfamily.another_dynamics.duct.DuctDefinitionLoader;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctTextures;
 
@@ -26,6 +28,7 @@ import net.unfamily.another_dynamics.duct.DuctTextures;
  */
 public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGeometry> {
     static final ResourceLocation CENTER_ONLY = ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_center_only");
+    static final ResourceLocation SIMPLE_DUCT_LINE = ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_line");
 
     private final String ductLogicalId;
     private final Optional<ResourceLocation> blockModelDefault;
@@ -39,6 +42,14 @@ public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGe
 
     @Override
     public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> spriteGetter, ModelState modelState, ItemOverrides overrides) {
+        // ModelManager bakes models before DuctDefinitionLoader.apply() runs; eagerly load definitions here if needed.
+        if (DuctDefinitionRegistry.all().isEmpty()) {
+            try {
+                DuctDefinitionLoader.loadEager(Minecraft.getInstance().getResourceManager());
+            } catch (Exception ex) {
+                AnotherDynamicsMod.LOGGER.error("Failed to eager-load duct definitions during baking", ex);
+            }
+        }
         ResourceLocation modelDefault = blockModelDefault
                 .or(() -> DuctDefinitionRegistry.getByLogicalId(ductLogicalId).flatMap(DuctDefinition::compositeModelDefault))
                 .orElse(DuctCompositeGeometry.DEFAULT_MODEL_DEFAULT);
@@ -54,7 +65,9 @@ public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGe
         DuctCompositeGeometry geometry = DuctCompositeGeometry.bake(modelDefault, modelLine, texStr, spriteGetter);
         var geometryById = DuctBakedModel.bakeAllGeometries(spriteGetter, geometry);
 
-        BakedModel base = baker.bake(CENTER_ONLY, modelState);
+        // Use simple_duct_line as the base model: it exists, has correct item display transforms,
+        // and provides a sensible visual fallback if geometry fails to build.
+        BakedModel base = baker.bake(SIMPLE_DUCT_LINE, modelState);
         if (base == null) {
             base = EmptyModel.BAKED;
         }
@@ -64,9 +77,11 @@ public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGe
 
     @Override
     public void resolveParents(Function<ResourceLocation, UnbakedModel> modelGetter, IGeometryBakingContext context) {
-        UnbakedModel m = modelGetter.apply(CENTER_ONLY);
-        if (m != null) {
-            m.resolveParents(modelGetter);
+        for (ResourceLocation dep : new ResourceLocation[]{SIMPLE_DUCT_LINE, CENTER_ONLY}) {
+            UnbakedModel m = modelGetter.apply(dep);
+            if (m != null) {
+                m.resolveParents(modelGetter);
+            }
         }
     }
 }

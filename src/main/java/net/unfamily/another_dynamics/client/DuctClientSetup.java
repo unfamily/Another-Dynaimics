@@ -1,5 +1,11 @@
 package net.unfamily.another_dynamics.client;
 
+import java.util.Map;
+import java.util.function.Function;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.Material;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
@@ -47,5 +53,18 @@ public final class DuctClientSetup {
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_center_only")));
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_default")));
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_line")));
+    }
+
+    /**
+     * Fired after ALL models are baked and the texture atlas is fully stitched.
+     * Mirrors the {@code onBakingCompleted} pattern from Custom-Machinery: use this hook to build
+     * any data that requires the complete atlas, then store it for runtime use.
+     */
+    @SubscribeEvent
+    public static void onBakingCompleted(ModelEvent.BakingCompleted event) {
+        Function<Material, TextureAtlasSprite> spriteGetter = mat ->
+                Minecraft.getInstance().getTextureAtlas(mat.atlasLocation()).apply(mat.texture());
+        Map<String, DuctCompositeGeometry> cache = DuctBakedModel.bakeAllGeometries(spriteGetter, null);
+        DuctBakedModel.updateGlobalGeometryCache(cache);
     }
 }

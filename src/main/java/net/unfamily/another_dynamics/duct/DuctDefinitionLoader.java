@@ -29,6 +29,32 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
         super(GSON, "load");
     }
 
+    /**
+     * Synchronously loads all duct definitions from the given resource manager into the registry.
+     * Safe to call from the model baking phase (main client thread) to work around the ordering issue
+     * where ModelManager bakes models before DuctDefinitionLoader.apply() has run.
+     */
+    public static void loadEager(net.minecraft.server.packs.resources.ResourceManager resourceManager) {
+        Map<ResourceLocation, JsonElement> prepared = new java.util.HashMap<>();
+        String prefix = "load";
+        var resources = resourceManager.listResources(prefix, rl -> rl.getPath().endsWith(".json"));
+        for (var entry : resources.entrySet()) {
+            ResourceLocation fileRl = entry.getKey();
+            try (var reader = new java.io.InputStreamReader(entry.getValue().open(), java.nio.charset.StandardCharsets.UTF_8)) {
+                JsonElement parsed = GSON.fromJson(reader, JsonElement.class);
+                // Strip the leading "load/" prefix and .json suffix to match SimpleJsonResourceReloadListener key format
+                String path = fileRl.getPath();
+                String strippedPath = path.substring(prefix.length() + 1, path.length() - ".json".length());
+                ResourceLocation key = ResourceLocation.fromNamespaceAndPath(fileRl.getNamespace(), strippedPath);
+                prepared.put(key, parsed);
+            } catch (Exception ex) {
+                AnotherDynamicsMod.LOGGER.error("Failed to parse duct load file {}: {}", fileRl, ex.getMessage());
+            }
+        }
+        // apply() override does not use the profiler; null is safe here
+        new DuctDefinitionLoader().apply(prepared, resourceManager, null);
+    }
+
     @Override
     protected void apply(Map<ResourceLocation, JsonElement> prepared, ResourceManager resourceManager, ProfilerFiller profiler) {
         Map<ResourceLocation, DuctDefinition> out = new HashMap<>();

@@ -11,6 +11,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 public final class DuctDefinitionRegistry {
     private static Map<ResourceLocation, DuctDefinition> definitions = Map.of();
     private static Map<String, DuctDefinition> definitionsByLogicalId = Map.of();
+    private static volatile int version = 0;
 
     private DuctDefinitionRegistry() {}
 
@@ -28,6 +29,12 @@ public final class DuctDefinitionRegistry {
             }
         }
         definitionsByLogicalId = Collections.unmodifiableMap(logical);
+        version++;
+    }
+
+    /** Monotonically increasing counter incremented every time the registry is replaced. */
+    public static int version() {
+        return version;
     }
 
     public static Map<ResourceLocation, DuctDefinition> all() {
