@@ -265,12 +265,4 @@ public final class DuctShapes {
         }
         return ductCoreBodyContains(pipeMask, storageMask, lx, ly, lz);
     }
-
-    /**
-     * Hit lies on the duct core body (central 6×6×6 cube for hub shapes, or the full line bar for straight-line shapes),
-     * excluding connector arms and storage node caps — used for sneak-break and core reconnect targeting.
-     */
-    public static boolean isHitOnDuctCoreBody(int pipeMask, int storageMask, double lx, double ly, double lz) {
-        return ductCoreBodyContains(pipeMask, storageMask, lx, ly, lz);
-    }
 }

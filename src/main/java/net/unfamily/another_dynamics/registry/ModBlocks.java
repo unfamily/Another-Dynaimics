@@ -15,7 +15,7 @@ public final class ModBlocks {
     public static final DeferredBlock<Block> DUCT = BLOCKS.register("duct", () -> new DuctBlock(
             BlockBehaviour.Properties.of()
                     .mapColor(MapColor.COLOR_LIGHT_GRAY)
-                    .strength(0.4f, 1.2f)
+                    .strength(0.05f, 1.2f)
                     .sound(SoundType.COPPER)
                     .noOcclusion()));
 
