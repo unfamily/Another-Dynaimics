@@ -25,6 +25,7 @@ import net.minecraft.resources.ResourceLocation;
 public record DuctDefinition(
         ResourceLocation dataId,
         String logicalId,
+        Optional<String> translationKey,
         List<String> transportKinds,
         Optional<DuctItemTransportSpec> itemTransport,
         ResourceLocation defaultTexture,

@@ -113,7 +113,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private final DuctFaceNode[] faceNodes = new DuctFaceNode[FACE_COUNT];
 
-    /** Normalized {@link DuctDefinition#logicalId()} for this placed block (item component + NBT). */
+    /** {@link DuctDefinition#logicalId()} for this placed block (item component + NBT). */
     private String logicalDuctId = DuctIds.DEFAULT_LOGICAL_ID;
 
     private final List<OutboundShipment> outboundShipments = new ArrayList<>();
@@ -228,10 +228,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public void setLogicalDuctId(String id) {
-        String n =
-                id == null || id.isEmpty()
-                        ? DuctIds.DEFAULT_LOGICAL_ID
-                        : DuctIds.canonicalLogicalId(DuctIds.normalizeLogicalId(id));
+        String n = DuctIds.normalize(id);
         if (n.equals(logicalDuctId)) {
             return;
         }
@@ -259,7 +256,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         super.applyImplicitComponents(input);
         String id = input.get(ModDataComponents.DUCT_LOGICAL_ID.get());
         if (id != null && !id.isEmpty()) {
-            logicalDuctId = DuctIds.canonicalLogicalId(DuctIds.normalizeLogicalId(id));
+            logicalDuctId = DuctIds.normalize(id);
             setChanged();
         }
     }
@@ -1917,8 +1914,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             overflowBuffer.load(registries, tag.getCompound("DuctOverflow"));
         }
         if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
-            logicalDuctId =
-                    DuctIds.canonicalLogicalId(DuctIds.normalizeLogicalId(tag.getString("DuctLogicalId")));
+            logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
         }
         requestModelDataUpdate();
         clampFaceFiltersToSpec();
@@ -1990,8 +1986,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public void handleUpdateTag(CompoundTag tag, HolderLookup.Provider registries) {
         super.handleUpdateTag(tag, registries);
         if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
-            logicalDuctId =
-                    DuctIds.canonicalLogicalId(DuctIds.normalizeLogicalId(tag.getString("DuctLogicalId")));
+            logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
             requestModelDataUpdate();
         }
         if (tag.contains("LatchedFaces", Tag.TAG_BYTE)) {

@@ -2,27 +2,25 @@ package net.unfamily.another_dynamics.registry;
 
 import java.util.Optional;
 
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.duct.DuctBlockItem;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
-import net.unfamily.another_dynamics.duct.DuctIds;
 
 public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(AnotherDynamicsMod.MOD_ID);
 
-    public static final DeferredItem<BlockItem> DUCT =
+    public static final DeferredItem<DuctBlockItem> DUCT =
             ITEMS.register(
                     "duct",
                     () ->
-                            new BlockItem(
+                            new DuctBlockItem(
                                     ModBlocks.DUCT.get(),
-                                    new Item.Properties()
-                                            .component(ModDataComponents.DUCT_LOGICAL_ID.get(), DuctIds.DEFAULT_LOGICAL_ID)));
+                                    new Item.Properties()));
 
     private ModItems() {}
 

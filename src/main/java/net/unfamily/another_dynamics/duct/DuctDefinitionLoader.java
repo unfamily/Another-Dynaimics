@@ -44,8 +44,14 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                 AnotherDynamicsMod.LOGGER.warn("Skipping duct load entry {}: missing id", e.getKey());
                 continue;
             }
-            String logicalId =
-                    DuctIds.canonicalLogicalId(DuctIds.normalizeLogicalId(o.get("id").getAsString()));
+            String logicalId = DuctIds.normalize(o.get("id").getAsString());
+            Optional<String> translationKey = Optional.empty();
+            if (o.has("name")) {
+                String s = o.get("name").getAsString();
+                if (s != null && !s.isBlank()) {
+                    translationKey = Optional.of(s.trim());
+                }
+            }
             List<String> kinds = new ArrayList<>();
             Optional<DuctItemTransportSpec> itemTransport = Optional.empty();
             if (o.has("can_transport") && o.get("can_transport").isJsonArray()) {
@@ -107,6 +113,7 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                     new DuctDefinition(
                             e.getKey(),
                             logicalId,
+                            translationKey,
                             List.copyOf(kinds),
                             itemTransport,
                             defaultTexture,

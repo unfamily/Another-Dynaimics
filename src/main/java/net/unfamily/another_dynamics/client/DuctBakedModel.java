@@ -1,23 +1,35 @@
 package net.unfamily.another_dynamics.client;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.ItemOverrides;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.Material;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.ChunkRenderTypeSet;
 import net.neoforged.neoforge.client.model.BakedModelWrapper;
 import net.neoforged.neoforge.client.model.data.ModelData;
+import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.duct.DuctModelProperties;
+import net.unfamily.another_dynamics.duct.DuctTextures;
 import net.unfamily.another_dynamics.registry.ModAttachments;
+import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -33,6 +45,10 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
     private static final List<RenderType> ITEM_RENDER_TYPES = List.of(RenderType.cutout(), RenderType.translucent());
 
     private final DuctCompositeGeometry geometry;
+    private final Map<String, DuctCompositeGeometry> geometryByLogicalId;
+    private final boolean itemForceDefinitionOpaqueOnly;
+    private final @Nullable String itemFixedLogicalId;
+    private final Map<String, DuctBakedModel> itemModelsByLogicalId = new HashMap<>();
     private final TextureAtlasSprite particleSprite;
     private final TextureAtlasSprite nodesSprite;
     private final String ductLogicalId;
@@ -42,12 +58,76 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
             DuctCompositeGeometry geometry,
             TextureAtlasSprite particleSprite,
             TextureAtlasSprite nodesSprite,
-            String ductLogicalId) {
+            String ductLogicalId,
+            Map<String, DuctCompositeGeometry> geometryByLogicalId) {
+        this(original, geometry, particleSprite, nodesSprite, ductLogicalId, geometryByLogicalId, false, null);
+    }
+
+    private DuctBakedModel(
+            BakedModel original,
+            DuctCompositeGeometry geometry,
+            TextureAtlasSprite particleSprite,
+            TextureAtlasSprite nodesSprite,
+            String ductLogicalId,
+            Map<String, DuctCompositeGeometry> geometryByLogicalId,
+            boolean itemForceDefinitionOpaqueOnly,
+            @Nullable String itemFixedLogicalId) {
         super(original);
         this.geometry = geometry;
         this.particleSprite = particleSprite;
         this.nodesSprite = nodesSprite;
         this.ductLogicalId = ductLogicalId;
+        this.geometryByLogicalId = geometryByLogicalId;
+        this.itemForceDefinitionOpaqueOnly = itemForceDefinitionOpaqueOnly;
+        this.itemFixedLogicalId = itemFixedLogicalId;
+    }
+
+    public static Map<String, DuctCompositeGeometry> bakeAllGeometries(
+            Function<Material, TextureAtlasSprite> spriteGetter,
+            DuctCompositeGeometry fallbackGeometry) {
+        Map<String, DuctCompositeGeometry> out = new HashMap<>();
+        for (DuctDefinition def : DuctDefinitionRegistry.all().values()) {
+            String logicalId = def.logicalId();
+            try {
+                String texStr = DuctTextures.compositeBlockTexture(logicalId).toString();
+                var modelDefault = def.compositeModelDefault().orElse(DuctCompositeGeometry.DEFAULT_MODEL_DEFAULT);
+                var modelLine = def.compositeModelLine().orElse(DuctCompositeGeometry.DEFAULT_MODEL_LINE);
+                out.put(logicalId, DuctCompositeGeometry.bake(modelDefault, modelLine, texStr, spriteGetter));
+            } catch (Exception ignored) {
+                // Fallback below.
+            }
+        }
+        if (fallbackGeometry != null) {
+            out.putIfAbsent(ductIdFallbackKey(), fallbackGeometry);
+        }
+        return Map.copyOf(out);
+    }
+
+    private static String ductIdFallbackKey() {
+        return "__fallback__";
+    }
+
+    @Override
+    public ItemOverrides getOverrides() {
+        return new ItemOverrides() {
+            @Override
+            public BakedModel resolve(BakedModel original, ItemStack stack, @Nullable ClientLevel level, @Nullable LivingEntity entity, int seed) {
+                String id = stack.get(ModDataComponents.DUCT_LOGICAL_ID.get());
+                if (id == null || id.isEmpty()) {
+                    id = DuctIds.DEFAULT_LOGICAL_ID;
+                }
+                final DuctCompositeGeometry g0 =
+                        Optional.ofNullable(geometryByLogicalId.get(id))
+                                .orElseGet(() -> geometryByLogicalId.getOrDefault(ductIdFallbackKey(), geometry));
+                final DuctCompositeGeometry g = g0 != null ? g0 : geometry;
+                if (g == null) {
+                    return DuctBakedModel.this;
+                }
+                return itemModelsByLogicalId.computeIfAbsent(
+                        id,
+                        k -> new DuctBakedModel(originalModel, g, particleSprite, nodesSprite, ductLogicalId, geometryByLogicalId, true, k));
+            }
+        };
     }
 
     @Override
@@ -89,28 +169,36 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
             return List.of();
         }
         boolean includeBase = isBasePass;
-        String effectiveDuctId = ductLogicalId;
+        String effectiveDuctId = itemFixedLogicalId != null ? itemFixedLogicalId : ductLogicalId;
         if (modelData != null) {
             String fromBe = modelData.get(DuctModelProperties.DUCT_LOGICAL_ID);
             if (fromBe != null && !fromBe.isEmpty()) {
                 effectiveDuctId = fromBe;
             }
         }
+        DuctCompositeGeometry effectiveGeometry =
+                Optional.ofNullable(geometryByLogicalId.get(effectiveDuctId))
+                        .orElseGet(() -> geometryByLogicalId.getOrDefault(ductIdFallbackKey(), geometry));
+        if (effectiveGeometry == null || !effectiveGeometry.isBuilt()) {
+            effectiveGeometry = geometry;
+        }
         boolean defOpaque =
                 DuctDefinitionRegistry.getByLogicalId(effectiveDuctId)
                         .map(d -> d.alwaysOpaqueRendering())
                         .orElse(false);
         boolean opaqueRendering =
-                defOpaque
-                        || (Minecraft.getInstance().player != null
-                                && Minecraft.getInstance().player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get()));
+                itemForceDefinitionOpaqueOnly
+                        ? defOpaque
+                        : (defOpaque
+                                || (Minecraft.getInstance().player != null
+                                        && Minecraft.getInstance().player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get())));
         // Node icon layer (nodes.png) stays on the translucent pass; opaque mode only affects duct atlas + transit items.
         boolean includeOverlays = isOverlayPass;
         float ductVShift = 0f;
         if (opaqueRendering && includeBase && particleSprite != null) {
             ductVShift = (particleSprite.getV1() - particleSprite.getV0()) * OPAQUE_TEXTURE_V_SHIFT_RATIO;
         }
-        geometry.appendForWorldWithNodeIcons(
+        effectiveGeometry.appendForWorldWithNodeIcons(
                 built, pm, sm, pi, nodesSprite, includeBase, includeOverlays, ductVShift);
         if (side != null) {
             List<BakedQuad> culled = new ArrayList<>();

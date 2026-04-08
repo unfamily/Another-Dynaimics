@@ -103,5 +103,6 @@
   "gui.another_dynamics.general_filter_text.paste_hint": "For paste use Ctrl+V",
   "block.another_dynamics.duct": "Duct",
   "item.another_dynamics.duct": "Duct",
+  "duct.another_dynamics.item_duct": "Item Duct",
   "itemGroup.another_dynamics.ducts": "Another Dynamics Ducts"
 }

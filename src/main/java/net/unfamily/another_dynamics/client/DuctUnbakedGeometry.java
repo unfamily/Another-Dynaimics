@@ -52,13 +52,14 @@ public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGe
                                 InventoryMenu.BLOCK_ATLAS,
                                 ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/nodes")));
         DuctCompositeGeometry geometry = DuctCompositeGeometry.bake(modelDefault, modelLine, texStr, spriteGetter);
+        var geometryById = DuctBakedModel.bakeAllGeometries(spriteGetter, geometry);
 
         BakedModel base = baker.bake(CENTER_ONLY, modelState);
         if (base == null) {
             base = EmptyModel.BAKED;
         }
         TextureAtlasSprite particle = spriteGetter.apply(context.getMaterial("particle"));
-        return new DuctBakedModel(base, geometry, particle, nodesSprite, ductLogicalId);
+        return new DuctBakedModel(base, geometry, particle, nodesSprite, ductLogicalId, geometryById);
     }
 
     @Override
