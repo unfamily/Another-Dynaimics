@@ -1,9 +1,5 @@
 {
-  "loader": "another_dynamics:duct",
-  "duct_id": "another_dynamics:item_duct",
-  "textures": {
-    "particle": "another_dynamics:block/duct/item/item_duct_0_light"
-  },
+  "parent": "builtin/entity",
   "display": {
     "thirdperson_righthand": {
       "rotation": [-75, 0, 0],

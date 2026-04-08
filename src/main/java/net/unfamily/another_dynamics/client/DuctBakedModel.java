@@ -57,6 +57,24 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
         GLOBAL_GEOMETRY_CACHE = cache;
     }
 
+    /**
+     * Returns the geometry cache for all duct logical IDs.
+     * If the cache from {@code ModelEvent.BakingCompleted} is not yet available, performs a
+     * lazy rebuild using the live block atlas and stores the result for subsequent calls.
+     */
+    public static Map<String, DuctCompositeGeometry> getGlobalGeometryCache() {
+        Map<String, DuctCompositeGeometry> cache = GLOBAL_GEOMETRY_CACHE;
+        if (!cache.isEmpty()) return cache;
+        Function<Material, TextureAtlasSprite> spriteGetter = mat ->
+                Minecraft.getInstance().getTextureAtlas(mat.atlasLocation()).apply(mat.texture());
+        Map<String, DuctCompositeGeometry> built = bakeAllGeometries(spriteGetter, null);
+        if (!built.isEmpty()) {
+            GLOBAL_GEOMETRY_CACHE = built;
+            return built;
+        }
+        return cache;
+    }
+
     private final DuctCompositeGeometry geometry;
     private final AtomicReference<Map<String, DuctCompositeGeometry>> geometryByLogicalIdRef;
     private final AtomicInteger lastKnownRegistryVersion = new AtomicInteger(-1);

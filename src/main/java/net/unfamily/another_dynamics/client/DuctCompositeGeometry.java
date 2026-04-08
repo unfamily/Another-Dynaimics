@@ -50,12 +50,15 @@ public final class DuctCompositeGeometry {
     private final List<BakedQuad> lineCenterQuadsIdentity;
     /** All quads from the line model combined (center + end caps), for item display. */
     private final List<BakedQuad> lineAllQuadsIdentity;
+    /** Non-center end-cap quads from the line model (e.g. node_N, node_S). Never V-shifted. */
+    private final List<BakedQuad> lineNodeCapsQuadsIdentity;
     private final boolean built;
 
-    private DuctCompositeGeometry(Map<String, List<BakedQuad>> defaultByName, List<BakedQuad> lineCenterQuads, List<BakedQuad> lineAllQuads, boolean built) {
+    private DuctCompositeGeometry(Map<String, List<BakedQuad>> defaultByName, List<BakedQuad> lineCenterQuads, List<BakedQuad> lineAllQuads, List<BakedQuad> lineNodeCapsQuads, boolean built) {
         this.defaultByName = defaultByName;
         this.lineCenterQuadsIdentity = lineCenterQuads;
         this.lineAllQuadsIdentity = lineAllQuads;
+        this.lineNodeCapsQuadsIdentity = lineNodeCapsQuads;
         this.built = built;
     }
 
@@ -92,14 +95,25 @@ public final class DuctCompositeGeometry {
             lineCenter = UnbakedGeometryHelper.bakeElements(lineCenterElements, spriteGetter, identity);
             // Bake ALL line model elements for item display (center + end caps like node_N, node_S).
             List<BakedQuad> lineAll = UnbakedGeometryHelper.bakeElements(lineEls, spriteGetter, identity);
-            return new DuctCompositeGeometry(Map.copyOf(byName), lineCenter, List.copyOf(lineAll), true);
+            // Bake only the non-center (end-cap / node) elements of the line model separately,
+            // so callers can skip the V-shift on them when applying the opaque offset.
+            List<BlockElement> lineNonCenterElements = new ArrayList<>();
+            for (int i = 0; i < lineEls.size(); i++) {
+                if (i >= lineNames.size() || !"center".equals(lineNames.get(i))) {
+                    lineNonCenterElements.add(lineEls.get(i));
+                }
+            }
+            List<BakedQuad> lineNodeCaps = lineNonCenterElements.isEmpty()
+                    ? List.of()
+                    : UnbakedGeometryHelper.bakeElements(lineNonCenterElements, spriteGetter, identity);
+            return new DuctCompositeGeometry(Map.copyOf(byName), lineCenter, List.copyOf(lineAll), List.copyOf(lineNodeCaps), true);
         } catch (Exception ex) {
             AnotherDynamicsMod.LOGGER.error(
                     "Failed to bake duct composite geometry (default={}, line={})",
                     modelDefaultId,
                     modelLineId,
                     ex);
-            return new DuctCompositeGeometry(Map.of(), List.of(), List.of(), false);
+            return new DuctCompositeGeometry(Map.of(), List.of(), List.of(), List.of(), false);
         }
     }
 
@@ -183,6 +197,15 @@ public final class DuctCompositeGeometry {
     /** All quads from the line model (center + end caps). Used for item display. */
     public List<BakedQuad> lineAllQuads() {
         return lineAllQuadsIdentity;
+    }
+
+    /**
+     * Non-center end-cap quads from the line model (e.g. {@code node_N}, {@code node_S}).
+     * These share the same texture as the default duct (not the opaque variant) and must
+     * never receive a V-shift when {@code always_opaque} is enabled.
+     */
+    public List<BakedQuad> lineNodeCapsQuads() {
+        return lineNodeCapsQuadsIdentity;
     }
 
     /**
