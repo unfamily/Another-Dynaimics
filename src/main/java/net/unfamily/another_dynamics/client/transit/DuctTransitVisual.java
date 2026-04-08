@@ -166,19 +166,21 @@ public final class DuctTransitVisual {
         for (int i = 0; i < list.size(); i++) {
             CompoundTag t = list.getCompound(i);
             ItemStack stack = ItemStack.EMPTY;
-            if (t.contains("VizId", Tag.TAG_STRING)) {
+            // Prefer the full Stack compound (includes data components/NBT) over the bare VizId.
+            // VizId is kept only as a lightweight fallback for legacy packets that lack Stack.
+            if (t.contains("Stack", Tag.TAG_COMPOUND)) {
+                CompoundTag stackTag = t.getCompound("Stack");
+                if (!stackTag.isEmpty()) {
+                    stack = ItemStack.parse(registries, stackTag).orElse(ItemStack.EMPTY);
+                }
+            }
+            if (stack.isEmpty() && t.contains("VizId", Tag.TAG_STRING)) {
                 ResourceLocation rid = ResourceLocation.tryParse(t.getString("VizId"));
                 if (rid != null) {
                     Item item = BuiltInRegistries.ITEM.get(rid);
                     if (item != Items.AIR) {
                         stack = new ItemStack(item, 1);
                     }
-                }
-            }
-            if (stack.isEmpty() && t.contains("Stack", Tag.TAG_COMPOUND)) {
-                CompoundTag stackTag = t.getCompound("Stack");
-                if (!stackTag.isEmpty()) {
-                    stack = ItemStack.parse(registries, stackTag).orElse(ItemStack.EMPTY);
                 }
             }
             if (stack.isEmpty()) {
