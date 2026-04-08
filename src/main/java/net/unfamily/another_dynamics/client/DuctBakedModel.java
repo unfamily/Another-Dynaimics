@@ -205,6 +205,21 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
         return List.of(this);
     }
 
+    /**
+     * Vanilla {@code ItemRenderer.renderModelLists} (not patched by NeoForge) calls the
+     * 3-parameter {@code getQuads(state, side, rand)} — NOT the NeoForge 5-param version.
+     * {@link BakedModelWrapper} delegates this to {@code originalModel}, bypassing our logic.
+     * This override routes item rendering ({@code state == null}) through {@link #getItemQuads}.
+     */
+    @SuppressWarnings("deprecation")
+    @Override
+    public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource rand) {
+        if (state == null) {
+            return getItemQuads(side, null);
+        }
+        return originalModel.getQuads(state, side, rand);
+    }
+
     @Override
     public TextureAtlasSprite getParticleIcon() {
         return particleSprite != null ? particleSprite : originalModel.getParticleIcon();
