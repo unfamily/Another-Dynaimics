@@ -58,6 +58,14 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
     }
 
     /**
+     * After {@link net.unfamily.another_dynamics.duct.DuctDefinitionRegistry} changes (datapack reload), the baked
+     * composite cache would otherwise stay stale because {@link #geometryByLogicalId()} prefers a non-empty global map.
+     */
+    public static void invalidateGlobalGeometryCacheForReload() {
+        GLOBAL_GEOMETRY_CACHE = Map.of();
+    }
+
+    /**
      * Returns the geometry cache for all duct logical IDs.
      * If the cache from {@code ModelEvent.BakingCompleted} is not yet available, performs a
      * lazy rebuild using the live block atlas and stores the result for subsequent calls.

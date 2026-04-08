@@ -1,5 +1,8 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -9,6 +12,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -16,47 +21,101 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 
-public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener {
+/**
+ * Loads duct declarations from {@code data/&lt;namespace&gt;/load/*.json} on server and client reload. Uses
+ * {@link ResourceManager#listResourceStacks} so overrides from high-priority packs (including injected packs) win, same
+ * pattern as Colossal Reactors {@code load/} data.
+ */
+public final class DuctDefinitionLoader implements PreparableReloadListener {
     private static final Gson GSON = new Gson();
+    private static final String LOAD_FOLDER = "load";
     private static final String DECLARE_TYPE = "another_dynamics:declare_duct";
 
-    public DuctDefinitionLoader() {
-        super(GSON, "load");
-    }
+    public DuctDefinitionLoader() {}
 
-    /**
-     * Synchronously loads all duct definitions from the given resource manager into the registry.
-     * Safe to call from the model baking phase (main client thread) to work around the ordering issue
-     * where ModelManager bakes models before DuctDefinitionLoader.apply() has run.
-     */
-    public static void loadEager(net.minecraft.server.packs.resources.ResourceManager resourceManager) {
-        Map<ResourceLocation, JsonElement> prepared = new java.util.HashMap<>();
-        String prefix = "load";
-        var resources = resourceManager.listResources(prefix, rl -> rl.getPath().endsWith(".json"));
-        for (var entry : resources.entrySet()) {
-            ResourceLocation fileRl = entry.getKey();
-            try (var reader = new java.io.InputStreamReader(entry.getValue().open(), java.nio.charset.StandardCharsets.UTF_8)) {
-                JsonElement parsed = GSON.fromJson(reader, JsonElement.class);
-                // Strip the leading "load/" prefix and .json suffix to match SimpleJsonResourceReloadListener key format
-                String path = fileRl.getPath();
-                String strippedPath = path.substring(prefix.length() + 1, path.length() - ".json".length());
-                ResourceLocation key = ResourceLocation.fromNamespaceAndPath(fileRl.getNamespace(), strippedPath);
-                prepared.put(key, parsed);
-            } catch (Exception ex) {
-                AnotherDynamicsMod.LOGGER.error("Failed to parse duct load file {}: {}", fileRl, ex.getMessage());
-            }
-        }
-        // apply() override does not use the profiler; null is safe here
-        new DuctDefinitionLoader().apply(prepared, resourceManager, null);
+    @Override
+    public String getName() {
+        return AnotherDynamicsMod.MOD_ID + ":duct_definitions";
     }
 
     @Override
-    protected void apply(Map<ResourceLocation, JsonElement> prepared, ResourceManager resourceManager, ProfilerFiller profiler) {
+    public CompletableFuture<Void> reload(
+            PreparableReloadListener.PreparationBarrier stage,
+            ResourceManager resourceManager,
+            ProfilerFiller prepareProfiler,
+            ProfilerFiller applyProfiler,
+            Executor prepareExecutor,
+            Executor applyExecutor) {
+        return CompletableFuture.supplyAsync(
+                        () -> {
+                            prepareProfiler.push(getName());
+                            Map<ResourceLocation, JsonElement> prepared = collectLoadJson(resourceManager);
+                            prepareProfiler.pop();
+                            return prepared;
+                        },
+                        prepareExecutor)
+                .thenCompose(stage::wait)
+                .thenAcceptAsync(
+                        prepared -> {
+                            applyProfiler.push(getName());
+                            tryApplyPrepared(prepared);
+                            applyProfiler.pop();
+                        },
+                        applyExecutor);
+    }
+
+    /**
+     * Synchronously loads all duct definitions from the given resource manager into the registry. Used when model
+     * baking runs before the normal reload listener apply order.
+     */
+    public static void loadEager(ResourceManager resourceManager) {
+        tryApplyPrepared(collectLoadJson(resourceManager));
+    }
+
+    static Map<ResourceLocation, JsonElement> collectLoadJson(ResourceManager resourceManager) {
+        Map<ResourceLocation, JsonElement> prepared = new HashMap<>();
+        Map<ResourceLocation, List<Resource>> stacks =
+                resourceManager.listResourceStacks(LOAD_FOLDER, rl -> rl.getPath().endsWith(".json"));
+        for (Map.Entry<ResourceLocation, List<Resource>> entry : stacks.entrySet()) {
+            ResourceLocation fileRl = entry.getKey();
+            List<Resource> stack = entry.getValue();
+            if (stack.isEmpty()) {
+                continue;
+            }
+            Resource resource = stack.getLast();
+            try (Reader reader = new InputStreamReader(resource.open(), StandardCharsets.UTF_8)) {
+                JsonElement parsed = GSON.fromJson(reader, JsonElement.class);
+                if (parsed != null) {
+                    prepared.put(stripLoadJsonKey(fileRl), parsed);
+                }
+            } catch (Exception ex) {
+                AnotherDynamicsMod.LOGGER.error(
+                        "Failed to parse duct load file {} ({}): {}",
+                        fileRl,
+                        resource.sourcePackId(),
+                        ex.getMessage());
+            }
+        }
+        return prepared;
+    }
+
+    /** Path {@code <ns>:load/foo.json} → definition map key {@code <ns>:foo} (matches legacy SimpleJson listener). */
+    static ResourceLocation stripLoadJsonKey(ResourceLocation fileRl) {
+        String path = fileRl.getPath();
+        String prefix = LOAD_FOLDER + "/";
+        String body = path.startsWith(prefix) ? path.substring(prefix.length()) : path;
+        String withoutJson = body.endsWith(".json") ? body.substring(0, body.length() - ".json".length()) : body;
+        return ResourceLocation.fromNamespaceAndPath(fileRl.getNamespace(), withoutJson);
+    }
+
+    private static void tryApplyPrepared(Map<ResourceLocation, JsonElement> prepared) {
         Map<ResourceLocation, DuctDefinition> out = new HashMap<>();
         for (Map.Entry<ResourceLocation, JsonElement> e : prepared.entrySet()) {
             if (!e.getValue().isJsonObject()) {
@@ -152,8 +211,18 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                             forbiddenFeatures,
                             alwaysOpaqueRendering));
         }
+
+        if (out.isEmpty() && !DuctDefinitionRegistry.all().isEmpty()) {
+            AnotherDynamicsMod.LOGGER.warn(
+                    "Duct load reload found no declare_duct JSON entries; keeping {} prior definition(s). "
+                            + "Check that data packs still expose data/*/load/*.json .",
+                    DuctDefinitionRegistry.all().size());
+            return;
+        }
+
         DuctDefinitionRegistry.replaceAll(out);
-        AnotherDynamicsMod.LOGGER.info("Loaded {} duct definition(s) from data/*/load", out.size());
+        NeoForge.EVENT_BUS.post(new DuctDefinitionsReloadedEvent());
+        AnotherDynamicsMod.LOGGER.info("Loaded {} duct definition(s) from data/*/load (resource stacks)", out.size());
     }
 
     private static DuctItemTransportSpec parseItemTransport(JsonObject to) {
@@ -226,7 +295,6 @@ public final class DuctDefinitionLoader extends SimpleJsonResourceReloadListener
                 Math.max(0, denyHybrid));
     }
 
-    /** Prefer nested {@code restrictions}; otherwise read keys from the root object (legacy datapacks). */
     private static JsonObject resolveRestrictionsObject(JsonObject declareRoot) {
         if (declareRoot.has("restrictions") && declareRoot.get("restrictions").isJsonObject()) {
             return declareRoot.getAsJsonObject("restrictions");

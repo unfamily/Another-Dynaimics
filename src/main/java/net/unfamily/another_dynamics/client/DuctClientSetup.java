@@ -11,11 +11,14 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.duct.DuctDefinitionsReloadedEvent;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
@@ -27,6 +30,18 @@ import net.unfamily.another_dynamics.registry.ModMenuTypes;
 @EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public final class DuctClientSetup {
     private DuctClientSetup() {}
+
+    @SubscribeEvent
+    public static void onClientSetup(FMLClientSetupEvent event) {
+        NeoForge.EVENT_BUS.addListener(DuctClientSetup::onDuctDefinitionsReloaded);
+    }
+
+    private static void onDuctDefinitionsReloaded(DuctDefinitionsReloadedEvent event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft != null) {
+            minecraft.execute(DuctBakedModel::invalidateGlobalGeometryCacheForReload);
+        }
+    }
 
     @SubscribeEvent
     public static void onRegisterClientReloadListeners(RegisterClientReloadListenersEvent event) {
