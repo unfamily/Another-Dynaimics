@@ -369,10 +369,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
-    public static void clientTick(Level level, BlockPos pos, BlockState state, DuctBlockEntity be) {
-        be.refreshFromWorld();
-    }
-
     public void serverTickPipe(ServerLevel serverLevel) {
         if (isRemoved()) {
             return;
@@ -1846,11 +1842,51 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return false;
     }
 
+    public void applyWrenchDisconnect(Level level, Direction face) {
+        orUserDisconnectedFace(face);
+        BlockPos npos = worldPosition.relative(face);
+        if (level.getBlockEntity(npos) instanceof DuctBlockEntity neighbor) {
+            neighbor.orUserDisconnectedFace(face.getOpposite());
+            neighbor.setChanged();
+            neighbor.refreshFromWorld();
+        }
+        setChanged();
+        refreshFromWorld();
+        propagateNeighborRefreshAfterWrench(level, npos);
+    }
+
+    public void tryReconnectFace(Level level, Direction hitFace) {
+        if (!clearUserDisconnectedFace(hitFace)) {
+            return;
+        }
+        BlockPos npos = worldPosition.relative(hitFace);
+        if (level.getBlockEntity(npos) instanceof DuctBlockEntity neighbor) {
+            neighbor.clearUserDisconnectedFace(hitFace.getOpposite());
+            neighbor.setChanged();
+            neighbor.refreshFromWorld();
+        }
+        setChanged();
+        refreshFromWorld();
+        propagateNeighborRefreshAfterWrench(level, npos);
+    }
+
+    private void propagateNeighborRefreshAfterWrench(Level level, BlockPos neighborPos) {
+        BlockState st = getBlockState();
+        if (st.getBlock() instanceof AbstractDuctBlock ad) {
+            AbstractDuctBlock.refreshAdjacentDuctBlockEntities(level, worldPosition, ad.ductNetworkTypes());
+        }
+        BlockState ns = level.getBlockState(neighborPos);
+        if (ns.getBlock() instanceof AbstractDuctBlock nad) {
+            AbstractDuctBlock.refreshAdjacentDuctBlockEntities(level, neighborPos, nad.ductNetworkTypes());
+        }
+    }
+
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         tag.putByte("PipeMask", (byte) getPipeMask());
         tag.putByte("StorageMask", (byte) getStorageMask());
+        tag.putByte("UserDisc", (byte) getUserDisconnectedFaceMask());
         tag.putByte("LatchedFaces", (byte) latchedStorageFaceMask);
         ListTag faces = new ListTag();
         for (Direction d : Direction.values()) {
@@ -1916,6 +1952,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
             logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
         }
+        setUserDisconnectedFaceMaskForLoad(tag.contains("UserDisc", Tag.TAG_BYTE) ? tag.getByte("UserDisc") & 0xFF : 0);
         requestModelDataUpdate();
         clampFaceFiltersToSpec();
         for (Direction d : Direction.values()) {
@@ -1935,6 +1972,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         CompoundTag t = super.getUpdateTag(registries);
         t.putByte("PipeMask", (byte) getPipeMask());
         t.putByte("StorageMask", (byte) getStorageMask());
+        t.putByte("UserDisc", (byte) getUserDisconnectedFaceMask());
         t.putByte("LatchedFaces", (byte) latchedStorageFaceMask);
         // Pack node icon indices server-side for client rendering.
         t.putInt("PackedNodeIcons", computePackedNodeIcons());
@@ -1985,12 +2023,23 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     @Override
     public void handleUpdateTag(CompoundTag tag, HolderLookup.Provider registries) {
         super.handleUpdateTag(tag, registries);
+        if (tag.contains("PipeMask", Tag.TAG_BYTE) && tag.contains("StorageMask", Tag.TAG_BYTE)) {
+            setConnectionMasksForLoad(tag.getByte("PipeMask") & 0xFF, tag.getByte("StorageMask") & 0xFF);
+            requestModelDataUpdate();
+            if (level != null && level.isClientSide) {
+                level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            }
+        }
         if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
             logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
             requestModelDataUpdate();
         }
         if (tag.contains("LatchedFaces", Tag.TAG_BYTE)) {
             latchedStorageFaceMask = tag.getByte("LatchedFaces") & 0xFF;
+        }
+        if (tag.contains("UserDisc", Tag.TAG_BYTE)) {
+            setUserDisconnectedFaceMaskForLoad(tag.getByte("UserDisc") & 0xFF);
+            requestModelDataUpdate();
         }
         int previousPacked = clientPackedNodeIcons;
         int nextPacked = tag.contains("PackedNodeIcons", Tag.TAG_INT) ? tag.getInt("PackedNodeIcons") : defaultPackedNodeIcons();

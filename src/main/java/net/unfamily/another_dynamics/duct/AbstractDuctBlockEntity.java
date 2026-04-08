@@ -14,6 +14,8 @@ import net.minecraft.world.level.block.state.BlockState;
 public abstract class AbstractDuctBlockEntity extends BlockEntity {
     private int pipeMask;
     private int storageMask;
+    /** Per-face manual disconnect (wrench): excluded from pipe adjacency and storage attachment until cleared via core click. */
+    private int userDisconnectedFaceMask;
 
     protected AbstractDuctBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
@@ -47,6 +49,9 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
         int pipe = 0;
         int storageBits = 0;
         for (Direction dir : Direction.values()) {
+            if ((userDisconnectedFaceMask & (1 << dir.ordinal())) != 0) {
+                continue;
+            }
             BlockPos n = worldPosition.relative(dir);
             BlockState ns = level.getBlockState(n);
             if (net == DuctNetworkType.ITEM) {
@@ -99,6 +104,27 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
      */
     public boolean isStorageAttachmentNode() {
         return storageMask != 0;
+    }
+
+    public int getUserDisconnectedFaceMask() {
+        return userDisconnectedFaceMask;
+    }
+
+    protected void setUserDisconnectedFaceMaskForLoad(int mask) {
+        this.userDisconnectedFaceMask = mask & 0xFF;
+    }
+
+    protected void orUserDisconnectedFace(Direction face) {
+        userDisconnectedFaceMask |= 1 << face.ordinal();
+    }
+
+    protected boolean clearUserDisconnectedFace(Direction face) {
+        int bit = 1 << face.ordinal();
+        if ((userDisconnectedFaceMask & bit) == 0) {
+            return false;
+        }
+        userDisconnectedFaceMask &= ~bit;
+        return true;
     }
 
     protected void setConnectionMasksForLoad(int pipe, int storage) {

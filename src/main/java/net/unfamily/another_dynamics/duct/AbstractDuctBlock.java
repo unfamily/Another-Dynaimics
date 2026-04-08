@@ -71,7 +71,15 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     }
 
     protected void notifySameNetworkNeighbors(LevelAccessor level, BlockPos pos) {
-        EnumSet<DuctNetworkType> mine = ductNetworkTypes();
+        refreshAdjacentDuctBlockEntities(level, pos, ductNetworkTypes());
+    }
+
+    /**
+     * Refreshes connection masks on all directly touching duct block entities that share a {@link DuctNetworkType} with
+     * {@code networks} (e.g. after wrench disconnect / reconnect).
+     */
+    public static void refreshAdjacentDuctBlockEntities(
+            LevelAccessor level, BlockPos pos, EnumSet<DuctNetworkType> networks) {
         for (Direction d : Direction.values()) {
             BlockPos n = pos.relative(d);
             BlockState ns = level.getBlockState(n);
@@ -79,7 +87,7 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
             if (!(neighborBlock instanceof DuctConnectable nb)) {
                 continue;
             }
-            if (Collections.disjoint(mine, nb.ductNetworkTypes())) {
+            if (Collections.disjoint(networks, nb.ductNetworkTypes())) {
                 continue;
             }
             BlockEntity be = level.getBlockEntity(n);

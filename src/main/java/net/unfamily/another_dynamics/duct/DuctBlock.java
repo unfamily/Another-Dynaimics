@@ -76,11 +76,8 @@ public final class DuctBlock extends AbstractDuctBlock {
     private static <T extends BlockEntity> BlockEntityTicker<T> createTicker(BlockEntityType<T> type) {
         return type == ModBlockEntities.DUCT.get()
                 ? (level, pos, blockState, be) -> {
-                    DuctBlockEntity duct = (DuctBlockEntity) be;
-                    if (level.isClientSide()) {
-                        DuctBlockEntity.clientTick(level, pos, blockState, duct);
-                    } else if (level instanceof ServerLevel sl) {
-                        duct.serverTickPipe(sl);
+                    if (!level.isClientSide() && level instanceof ServerLevel sl) {
+                        ((DuctBlockEntity) be).serverTickPipe(sl);
                     }
                 }
                 : null;
@@ -103,10 +100,46 @@ public final class DuctBlock extends AbstractDuctBlock {
         return DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
     }
 
+    private static double[] localHit(BlockPos pos, BlockHitResult hit) {
+        Vec3 l = hit.getLocation();
+        return new double[] {l.x - pos.getX(), l.y - pos.getY(), l.z - pos.getZ()};
+    }
+
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
         BlockEntity entity = level.getBlockEntity(pos);
         if (entity instanceof DuctBlockEntity duct) {
+            if (!level.isClientSide()) {
+                duct.refreshFromWorld();
+            }
+            double[] loc = localHit(pos, hit);
+            if (player.isShiftKeyDown()
+                    && DuctShapes.isHitOnDuctCoreBody(
+                            duct.getPipeMask(), duct.getVisualStorageMask(), loc[0], loc[1], loc[2])) {
+                if (level.isClientSide()) {
+                    return InteractionResult.SUCCESS;
+                }
+                if (player instanceof ServerPlayer sp && sp.mayBuild()) {
+                    sp.gameMode.destroyBlock(pos);
+                    return InteractionResult.CONSUME;
+                }
+                return InteractionResult.PASS;
+            }
+            if (!player.isShiftKeyDown()
+                    && DuctShapes.canReconnectFromCoreHit(
+                    duct.getPipeMask(),
+                    duct.getVisualStorageMask(),
+                    duct.getUserDisconnectedFaceMask(),
+                    loc[0],
+                    loc[1],
+                    loc[2],
+                    hit.getDirection())) {
+                if (level.isClientSide()) {
+                    return InteractionResult.SUCCESS;
+                }
+                duct.tryReconnectFace(level, hit.getDirection());
+                return InteractionResult.CONSUME;
+            }
             Optional<Direction> face = nodeFaceFromHitLocation(pos, hit, duct);
             if (face.isEmpty()) {
                 return InteractionResult.PASS;
@@ -133,6 +166,50 @@ public final class DuctBlock extends AbstractDuctBlock {
             BlockHitResult hitResult) {
         BlockEntity entity = level.getBlockEntity(pos);
         if (entity instanceof DuctBlockEntity duct) {
+            if (!level.isClientSide()) {
+                duct.refreshFromWorld();
+            }
+            double[] loc = localHit(pos, hitResult);
+            double lx = loc[0];
+            double ly = loc[1];
+            double lz = loc[2];
+            if (player.isShiftKeyDown()
+                    && DuctShapes.isHitOnDuctCoreBody(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz)) {
+                if (level.isClientSide()) {
+                    return ItemInteractionResult.SUCCESS;
+                }
+                if (player instanceof ServerPlayer sp && sp.mayBuild()) {
+                    sp.gameMode.destroyBlock(pos);
+                    return ItemInteractionResult.sidedSuccess(level.isClientSide());
+                }
+                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            }
+            if (stack.is(DuctWrenchTags.WRENCH)) {
+                Optional<Direction> wFace =
+                        DuctShapes.resolveWrenchDisconnectFace(
+                                duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
+                if (wFace.isPresent()) {
+                    if (level.isClientSide()) {
+                        return ItemInteractionResult.SUCCESS;
+                    }
+                    duct.applyWrenchDisconnect(level, wFace.get());
+                    return ItemInteractionResult.CONSUME;
+                }
+            } else if (!player.isShiftKeyDown()
+                    && DuctShapes.canReconnectFromCoreHit(
+                            duct.getPipeMask(),
+                            duct.getVisualStorageMask(),
+                            duct.getUserDisconnectedFaceMask(),
+                            lx,
+                            ly,
+                            lz,
+                            hitResult.getDirection())) {
+                if (level.isClientSide()) {
+                    return ItemInteractionResult.SUCCESS;
+                }
+                duct.tryReconnectFace(level, hitResult.getDirection());
+                return ItemInteractionResult.SUCCESS;
+            }
             Optional<Direction> face = nodeFaceFromHitLocation(pos, hitResult, duct);
             if (face.isEmpty()) {
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;

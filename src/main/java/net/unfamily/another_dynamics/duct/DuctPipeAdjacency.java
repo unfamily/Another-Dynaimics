@@ -1,5 +1,6 @@
 package net.unfamily.another_dynamics.duct;
 
+import net.minecraft.core.Direction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -21,6 +22,13 @@ public final class DuctPipeAdjacency {
         if (dx + dy + dz != 1) {
             return false;
         }
+        Direction fromA = directionFromAToB(a, b);
+        if (fromA == null) {
+            return false;
+        }
+        if (faceDisconnected(level, a, fromA) || faceDisconnected(level, b, fromA.getOpposite())) {
+            return false;
+        }
         BlockState sa = level.getBlockState(a);
         BlockState sb = level.getBlockState(b);
         Block ba = sa.getBlock();
@@ -39,6 +47,39 @@ public final class DuctPipeAdjacency {
             return true;
         }
         return idA.equals(idB);
+    }
+
+    private static Direction directionFromAToB(BlockPos a, BlockPos b) {
+        int dx = b.getX() - a.getX();
+        int dy = b.getY() - a.getY();
+        int dz = b.getZ() - a.getZ();
+        if (dx == 1) {
+            return Direction.EAST;
+        }
+        if (dx == -1) {
+            return Direction.WEST;
+        }
+        if (dy == 1) {
+            return Direction.UP;
+        }
+        if (dy == -1) {
+            return Direction.DOWN;
+        }
+        if (dz == 1) {
+            return Direction.SOUTH;
+        }
+        if (dz == -1) {
+            return Direction.NORTH;
+        }
+        return null;
+    }
+
+    private static boolean faceDisconnected(Level level, BlockPos pos, Direction faceOnBlock) {
+        var be = level.getBlockEntity(pos);
+        if (be instanceof AbstractDuctBlockEntity duct) {
+            return (duct.getUserDisconnectedFaceMask() & (1 << faceOnBlock.ordinal())) != 0;
+        }
+        return false;
     }
 
     private static String logicalIdOf(Level level, BlockPos pos, Block block) {
