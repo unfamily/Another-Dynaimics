@@ -25,6 +25,7 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
+import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.logistics.DuctCapHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowBuffer;
@@ -557,6 +558,28 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     DuctCapHelper.maxInsertableAfterPendingOnFace(
                             level, s.destDuct, s.destFace, s.stack, Math.min(planned, capExt), prior);
         }
+        if (!s.legacyOmniFaces) {
+            capIn =
+                    capInsertableForFilterAllowLimit(
+                            level, s.destDuct, s.destFace, destBe, s.stack, capIn, prior);
+            if (!itemsAlreadyPulledFromSource) {
+                DuctFaceNode.FilterBank srcAllowBank =
+                        s.destDuct.equals(worldPosition)
+                                ? DuctFaceNode.FilterBank.RETRIEVER
+                                : DuctFaceNode.FilterBank.EXTRACTOR;
+                capExt =
+                        Math.min(
+                                capExt,
+                                capExtractableForAllowKeep(
+                                        level,
+                                        s.refundDuct,
+                                        s.sourceFace,
+                                        srcBe,
+                                        srcAllowBank,
+                                        s.stack,
+                                        capExt));
+            }
+        }
         int newPlanned = Math.min(planned, Math.min(capExt, capIn));
 
         if (newPlanned <= 0) {
@@ -652,6 +675,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             ItemStack chunk = s.stack.copy();
             chunk.setCount(take);
+            if (!s.legacyOmniFaces) {
+                List<ItemStack> priorR = DuctIncomingIndex.snapshot(level, s.destDuct);
+                int maxIns =
+                        DuctCapHelper.maxInsertableAfterPendingOnFace(
+                                level, s.destDuct, s.destFace, chunk, chunk.getCount(), priorR);
+                maxIns =
+                        capInsertableForFilterAllowLimit(
+                                level, s.destDuct, s.destFace, destBe, chunk, maxIns, priorR);
+                take = Math.min(take, maxIns);
+                if (take <= 0) {
+                    cancelOutboundShipment(level, s, it);
+                    return false;
+                }
+                chunk.setCount(take);
+            }
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
             NodeMode dm = destBe.getFaceNode(s.destFace).nodeMode;
             if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
@@ -715,6 +753,22 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 level, s.destDuct, destBe, s.stack, Math.min(planned, capExt), prior)
                         : DuctCapHelper.maxInsertableAfterPendingOnFace(
                                 level, s.destDuct, s.destFace, s.stack, Math.min(planned, capExt), prior);
+        if (!s.legacyOmniFaces) {
+            capIn =
+                    capInsertableForFilterAllowLimit(
+                            level, s.destDuct, s.destFace, destBe, s.stack, capIn, prior);
+            capExt =
+                    Math.min(
+                            capExt,
+                            capExtractableForAllowKeep(
+                                    level,
+                                    s.refundDuct,
+                                    s.sourceFace,
+                                    srcBe,
+                                    DuctFaceNode.FilterBank.EXTRACTOR,
+                                    s.stack,
+                                    capExt));
+        }
         int n = Math.min(planned, Math.min(capExt, capIn));
         n = Math.min(n, moduleCap);
         if (n <= 0) {
@@ -803,6 +857,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             ItemStack chunk = s.stack.copy();
             chunk.setCount(take);
+            if (!s.legacyOmniFaces) {
+                List<ItemStack> priorR = DuctIncomingIndex.snapshot(level, worldPosition);
+                int maxIns =
+                        DuctCapHelper.maxInsertableAfterPendingOnFace(
+                                level, worldPosition, s.destFace, chunk, chunk.getCount(), priorR);
+                maxIns =
+                        capInsertableForFilterAllowLimit(
+                                level, worldPosition, s.destFace, this, chunk, maxIns, priorR);
+                take = Math.min(take, maxIns);
+                if (take <= 0) {
+                    cancelOutboundShipment(level, s, it);
+                    return false;
+                }
+                chunk.setCount(take);
+            }
             DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
             NodeMode sm = getFaceNode(s.destFace).nodeMode;
             if ((sm == NodeMode.FILTERING_INSERTION || sm == NodeMode.EXTRACTION_FILTERING)
@@ -850,6 +919,22 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 level, worldPosition, this, s.stack, Math.min(planned, capExt), prior)
                         : DuctCapHelper.maxInsertableAfterPendingOnFace(
                                 level, worldPosition, s.destFace, s.stack, Math.min(planned, capExt), prior);
+        if (!s.legacyOmniFaces) {
+            capIn =
+                    capInsertableForFilterAllowLimit(
+                            level, worldPosition, s.destFace, this, s.stack, capIn, prior);
+            capExt =
+                    Math.min(
+                            capExt,
+                            capExtractableForAllowKeep(
+                                    level,
+                                    s.refundDuct,
+                                    s.sourceFace,
+                                    donorBe,
+                                    DuctFaceNode.FilterBank.RETRIEVER,
+                                    s.stack,
+                                    capExt));
+        }
         int n = Math.min(planned, Math.min(capExt, capIn));
         n = Math.min(n, moduleCap);
         if (n <= 0) {
@@ -1042,6 +1127,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             /* Una sola spedizione per tick: min(batch, rimanente) */
             int plannedCount = Math.min(tubeBatch, remainingInStorage);
+            plannedCount =
+                    Math.min(
+                            plannedCount,
+                            capExtractableForAllowKeep(
+                                    level,
+                                    worldPosition,
+                                    face,
+                                    this,
+                                    DuctFaceNode.FilterBank.EXTRACTOR,
+                                    probe,
+                                    plannedCount));
             if (plannedCount <= 0) {
                 continue;
             }
@@ -1128,6 +1224,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             int plannedCount = Math.min(tubeBatch, remainingInStorage);
+            plannedCount =
+                    Math.min(
+                            plannedCount,
+                            capExtractableForAllowKeep(
+                                    level,
+                                    donor,
+                                    donorFace,
+                                    donorBe,
+                                    DuctFaceNode.FilterBank.RETRIEVER,
+                                    probe,
+                                    plannedCount));
             if (plannedCount <= 0) {
                 continue;
             }
@@ -1177,6 +1284,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int cap =
                 DuctCapHelper.maxInsertableAfterPendingOnFace(
                         level, destDuct, destFace, addition, addition.getCount(), prior);
+        cap = capInsertableForFilterAllowLimit(level, destDuct, destFace, destBe, addition, cap, prior);
         return cap >= addition.getCount();
     }
 
@@ -1319,7 +1427,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     n.routingModeRetriever = RoutingMode.NEAREST_FIRST;
                     any = true;
                 }
-                if (n.nodeMode == NodeMode.EXTRACTION_FILTERING || n.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
+                if (n.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
                     n.routingMode = n.routingModeExtractor;
                 }
             }
@@ -1412,6 +1520,77 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return passesItemFilters(face, stack, level, DuctFaceNode.FilterBank.FILTER);
     }
 
+    private static boolean destFaceUsesFilterAllowLimit(NodeMode destMode) {
+        return destMode == NodeMode.FILTERING_INSERTION || destMode == NodeMode.EXTRACTION_FILTERING;
+    }
+
+    /**
+     * Further caps insert count for FILTER-bank allow-line limits (0 = unlimited) on filtering insertion faces.
+     */
+    private int capInsertableForFilterAllowLimit(
+            Level level,
+            BlockPos destDuctPos,
+            Direction destFace,
+            DuctBlockEntity destBe,
+            ItemStack template,
+            int maxFromCapacity,
+            List<ItemStack> priorIncoming) {
+        if (maxFromCapacity <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        NodeMode dm = destBe.getFaceNode(destFace).nodeMode;
+        if (!destFaceUsesFilterAllowLimit(dm)) {
+            return maxFromCapacity;
+        }
+        IItemHandler raw = DuctCapHelper.getHandlerOnFace(level, destDuctPos, destFace);
+        if (raw == null) {
+            return maxFromCapacity;
+        }
+        DuctFaceNode destNode = destBe.getFaceNode(destFace);
+        ItemStackHandler simulated = DuctCapHelper.simulateInventoryAfterPending(raw, priorIncoming);
+        int maxAdd =
+                DuctAllowLimitLogic.maxAdditionalInsertForAllowLine(
+                        simulated,
+                        destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER),
+                        destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER),
+                        template,
+                        level.registryAccess());
+        if (maxAdd == Integer.MAX_VALUE) {
+            return maxFromCapacity;
+        }
+        return Math.min(maxFromCapacity, maxAdd);
+    }
+
+    /** Caps how many items may be extracted while respecting per-allow-line Keep on the source face. */
+    private int capExtractableForAllowKeep(
+            Level level,
+            BlockPos sourceDuctPos,
+            Direction sourceFace,
+            DuctBlockEntity sourceBe,
+            DuctFaceNode.FilterBank allowBank,
+            ItemStack template,
+            int maxWant) {
+        if (maxWant <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        IItemHandler h = DuctCapHelper.getHandlerOnFace(level, sourceDuctPos, sourceFace);
+        if (h == null) {
+            return maxWant;
+        }
+        DuctFaceNode srcNode = sourceBe.getFaceNode(sourceFace);
+        int cap =
+                DuctAllowLimitLogic.maxExtractRespectingKeep(
+                        h,
+                        srcNode.bankAllowFilters(allowBank),
+                        srcNode.bankAllowCaps(allowBank),
+                        template,
+                        level.registryAccess());
+        if (cap == Integer.MAX_VALUE) {
+            return maxWant;
+        }
+        return Math.min(maxWant, cap);
+    }
+
     public boolean passesItemFilters(Direction face, ItemStack stack, Level level, DuctFaceNode.FilterBank bank) {
         if (stack.isEmpty()) {
             return false;
@@ -1443,6 +1622,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             DuctFaceNode.FilterBank bank,
             List<String> allowIn,
             List<String> denyIn,
+            List<Integer> allowCapsIn,
             boolean denyOverridesAllow) {
         if (level == null || level.isClientSide) {
             return;
@@ -1455,10 +1635,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!node.nodeMode.usesItemFilterConfig()) {
             return;
         }
+        if (allowCapsIn == null) {
+            allowCapsIn = List.of();
+        }
         List<String> a = node.bankAllowFilters(bank);
         List<String> d = node.bankDenyFilters(bank);
+        List<Integer> caps = node.bankAllowCaps(bank);
         a.clear();
         d.clear();
+        caps.clear();
         int maxA =
                 Math.max(
                         0,
@@ -1473,6 +1658,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             String s = i < allowIn.size() ? allowIn.get(i) : "";
             s = s != null ? s : "";
             a.add(clampFilterLine(def, hasUpgrade, s));
+            Integer capObj = i < allowCapsIn.size() ? allowCapsIn.get(i) : null;
+            int cap = capObj != null ? capObj : 0;
+            caps.add(Math.max(0, cap));
         }
         for (int i = 0; i < maxD; i++) {
             String s = i < denyIn.size() ? denyIn.get(i) : "";
@@ -1697,7 +1885,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasUpgrade);
                 if (nxt != cur) {
                     node.routingModeExtractor = nxt;
-                    node.routingMode = nxt;
                     yield true;
                 }
                 yield false;

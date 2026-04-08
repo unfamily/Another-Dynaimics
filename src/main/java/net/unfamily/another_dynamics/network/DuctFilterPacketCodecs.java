@@ -31,5 +31,25 @@ final class DuctFilterPacketCodecs {
                         return list;
                     });
 
+    static final StreamCodec<RegistryFriendlyByteBuf, List<Integer>> INT_LIST =
+            StreamCodec.of(
+                    (buf, list) -> {
+                        buf.writeVarInt(list.size());
+                        for (int v : list) {
+                            buf.writeVarInt(Math.max(0, v));
+                        }
+                    },
+                    buf -> {
+                        int n = buf.readVarInt();
+                        if (n < 0 || n > MAX_LIST_ENTRIES) {
+                            throw new IllegalStateException("Invalid duct allow-cap list size: " + n);
+                        }
+                        List<Integer> list = new ArrayList<>(n);
+                        for (int i = 0; i < n; i++) {
+                            list.add(Math.max(0, buf.readVarInt()));
+                        }
+                        return list;
+                    });
+
     private DuctFilterPacketCodecs() {}
 }

@@ -446,6 +446,23 @@ public final class DuctCapHelper {
         return true;
     }
 
+    /**
+     * Snapshot of {@code h} with {@code priorPending} stacks merged in (same order as
+     * {@link #maxInsertableAfterPendingOnFace}).
+     */
+    public static ItemStackHandler simulateInventoryAfterPending(IItemHandler h, List<ItemStack> priorPending) {
+        ItemStackHandler v = copyHandlerForSimulation(h);
+        if (priorPending != null) {
+            for (ItemStack p : priorPending) {
+                if (p.isEmpty()) {
+                    continue;
+                }
+                ItemHandlerHelper.insertItemStacked(v, p.copy(), false);
+            }
+        }
+        return v;
+    }
+
     private static ItemStackHandler copyHandlerForSimulation(IItemHandler h) {
         ItemStackHandler c = new ItemStackHandler(h.getSlots());
         for (int i = 0; i < h.getSlots(); i++) {

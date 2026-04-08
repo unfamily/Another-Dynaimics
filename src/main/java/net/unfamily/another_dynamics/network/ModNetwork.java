@@ -80,7 +80,14 @@ public final class ModNetwork {
                 Direction face = Direction.values()[fo];
                 DuctFaceNode.FilterBank bank = DuctFaceNode.FilterBank.values()[
                         Mth.clamp(payload.filterBankOrdinal(), 0, DuctFaceNode.FilterBank.values().length - 1)];
-                duct.applyServerFilterConfig(player, face, bank, payload.allow(), payload.deny(), payload.denyOverridesAllow());
+                duct.applyServerFilterConfig(
+                        player,
+                        face,
+                        bank,
+                        payload.allow(),
+                        payload.deny(),
+                        payload.allowCaps(),
+                        payload.denyOverridesAllow());
             });
         });
 
@@ -143,6 +150,7 @@ public final class ModNetwork {
                                 payload.filterBankOrdinal(),
                                 payload.allow(),
                                 payload.deny(),
+                                payload.allowCaps(),
                                 payload.denyOverridesAllow());
                     });
         });
@@ -162,9 +170,11 @@ public final class ModNetwork {
             int filterBankOrdinal,
             java.util.List<String> allow,
             java.util.List<String> deny,
+            java.util.List<Integer> allowCaps,
             boolean denyOverridesAllow) {
         PacketDistributor.sendToServer(
-                new DuctFilterUpdatePayload(pos, face.ordinal(), filterBankOrdinal, allow, deny, denyOverridesAllow));
+                new DuctFilterUpdatePayload(
+                        pos, face.ordinal(), filterBankOrdinal, allow, deny, allowCaps, denyOverridesAllow));
     }
 
     public static void sendListLogicToggle(BlockPos pos, Direction face, int filterBankOrdinal) {
@@ -213,6 +223,7 @@ public final class ModNetwork {
                             bank.ordinal(),
                             java.util.List.copyOf(node.bankAllowFilters(bank)),
                             java.util.List.copyOf(node.bankDenyFilters(bank)),
+                            java.util.List.copyOf(node.bankAllowCaps(bank)),
                             node.bankDenyOverridesAllow(bank)));
         }
     }

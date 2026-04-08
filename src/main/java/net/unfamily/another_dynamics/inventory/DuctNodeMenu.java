@@ -83,6 +83,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private final List<String> clientDenyFiltersFilter = new ArrayList<>();
     private boolean clientDenyOverridesAllowFilter = true;
 
+    private final List<Integer> clientAllowCapsExtractor = new ArrayList<>();
+    private final List<Integer> clientAllowCapsRetriever = new ArrayList<>();
+    private final List<Integer> clientAllowCapsFilter = new ArrayList<>();
+
     public DuctNodeMenu(int containerId, Inventory playerInventory, DuctBlockEntity be, Direction accessFace) {
         this(
                 containerId,
@@ -228,12 +232,21 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         };
     }
 
+    public List<Integer> getClientAllowCaps(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> clientAllowCapsExtractor;
+            case RETRIEVER -> clientAllowCapsRetriever;
+            case FILTER -> clientAllowCapsFilter;
+        };
+    }
+
     public void receiveFilterSync(
             BlockPos pos,
             Direction face,
             int filterBankOrdinal,
             List<String> allow,
             List<String> deny,
+            List<Integer> allowCaps,
             boolean denyOverridesAllow) {
         if (!ductBlockPos.equals(pos) || accessFace != face) {
             return;
@@ -246,10 +259,17 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                                 net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.values().length - 1)];
         List<String> a = getClientAllowFilters(bank);
         List<String> d = getClientDenyFilters(bank);
+        List<Integer> caps = getClientAllowCaps(bank);
         a.clear();
         a.addAll(allow);
         d.clear();
         d.addAll(deny);
+        caps.clear();
+        if (allowCaps != null) {
+            for (Integer v : allowCaps) {
+                caps.add(Math.max(0, v != null ? v : 0));
+            }
+        }
         switch (bank) {
             case EXTRACTOR -> clientDenyOverridesAllowExtractor = denyOverridesAllow;
             case RETRIEVER -> clientDenyOverridesAllowRetriever = denyOverridesAllow;
@@ -274,19 +294,32 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         clampClientList(clientDenyFiltersRetriever, maxD);
         clampClientList(clientAllowFiltersFilter, maxA);
         clampClientList(clientDenyFiltersFilter, maxD);
+        clampClientIntList(clientAllowCapsExtractor, maxA);
+        clampClientIntList(clientAllowCapsRetriever, maxA);
+        clampClientIntList(clientAllowCapsFilter, maxA);
     }
 
     public void pushFilterConfigToServer(
             net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank,
             List<String> allow,
             List<String> deny,
+            List<Integer> allowCaps,
             boolean denyOverridesAllow) {
-        ModNetwork.sendFilterUpdate(ductBlockPos, accessFace, bank.ordinal(), allow, deny, denyOverridesAllow);
+        ModNetwork.sendFilterUpdate(ductBlockPos, accessFace, bank.ordinal(), allow, deny, allowCaps, denyOverridesAllow);
     }
 
     private static void clampClientList(List<String> list, int max) {
         while (list.size() < max) {
             list.add("");
+        }
+        while (list.size() > max) {
+            list.remove(list.size() - 1);
+        }
+    }
+
+    private static void clampClientIntList(List<Integer> list, int max) {
+        while (list.size() < max) {
+            list.add(0);
         }
         while (list.size() > max) {
             list.remove(list.size() - 1);

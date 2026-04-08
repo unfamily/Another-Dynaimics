@@ -59,6 +59,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         MAIN,
         DENY_FILTERS,
         ALLOW_FILTERS,
+        ADVANCED_FILTERING,
         HOW_TO_USE
     }
 
@@ -99,13 +100,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     /**
      * Priority / quantity block: centered, two rows (numeric then 0/A/[M]/Close-without-saving). Slightly above player inventory.
      */
-    /** +/- steps: priority uses 1 / Ctrl 10 / Alt 100; quantity uses 1 / Ctrl 8 / Alt 64. Use 0 and M buttons for endpoints. */
+    /** +/- steps: priority uses 1 / Ctrl 10 / Alt 100. Quantity and allow-cap Limit/Keep: 1 / Ctrl+Alt 8 / Shift 64. */
     private static final int PRIORITY_STEP_PLAIN = 1;
     private static final int PRIORITY_STEP_CTRL = 10;
     private static final int PRIORITY_STEP_ALT = 100;
     private static final int BATCH_STEP_PLAIN = 1;
-    private static final int BATCH_STEP_CTRL = 8;
-    private static final int BATCH_STEP_ALT = 64;
+    private static final int BATCH_STEP_CTRL_OR_ALT = 8;
+    private static final int BATCH_STEP_SHIFT = 64;
     private static final int AMOUNT_STEPPER_W = 14;
     private static final int AMOUNT_INNER_GAP = 2;
     private static final int AMOUNT_EDIT_W = 56;
@@ -114,9 +115,20 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private static final int AMOUNT_ROWS_GAP = 4;
     private static final int AMOUNT_ROW_Y = 118;
     private static final int AMOUNT_LABEL_ABOVE_GAP = 3;
+    /**
+     * GUI-local Y of the Limit/Keep numeric row in {@link SubView#ADVANCED_FILTERING}. Lowered so the cap block sits above
+     * the filter entry editor (same anchor as non-advanced: {@link #FIRST_FILTER_ROW_Y} + visible rows) without overlapping it.
+     */
+    private static final int ADVANCED_CAP_NUMERIC_ROW_GUI_Y = 88;
+    /** ARGB; filter entry {@link EditBox} uses the same white in allow edit and advanced (always readable on field). */
+    private static final int FILTER_ENTRY_EDIT_TEXT_COLOR = 0xFFFFFFFF;
+    /** Width of "Advanced filtering" button beside the filter edit line (allow list edit mode). */
+    private static final int ADVANCED_FILTER_BUTTON_WIDTH = 64;
 
     /** Gui-local X of {@link #routingPriorityBox} left edge (for label centering). Set in {@link #init}. */
     private int amountEditBoxGuiLeft;
+    /** Gui-local X of {@link #advCapEditBox} left edge (for Limit/Keep label centering). Set in {@link #layoutAdvancedCapBlock}. */
+    private int advCapEditBoxGuiLeft;
 
     private static final int CHANNEL_WIDGET_W = 18;
     private static final int CHANNEL_WIDGET_H = 18;
@@ -225,6 +237,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private Button editModeClearButton;
     private Button editModeApplyButton;
     private Button editModeCloseButton;
+    private Button advancedFilteringOpenButton;
+    private int editModeAllowCapValue;
+    private int originalAllowCapValue;
+    private Button advCapMinusButton;
+    private Button advCapPlusButton;
+    private EditBox advCapEditBox;
+    private Button advCapInfinityButton;
+    private Button advCapApplyButton;
+    private Button advCapUndoButton;
+    private boolean advCapEditHadFocus;
     private ItemStack ghostSlotItem = ItemStack.EMPTY;
     private List<String> filterVariants = new ArrayList<>();
     private int currentFilterVariantIndex = 0;
@@ -249,6 +271,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int filterBankOrdinal,
             List<String> allow,
             List<String> deny,
+            List<Integer> allowCaps,
             boolean denyOverridesAllow) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
@@ -257,7 +280,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (!(mc.player.containerMenu instanceof DuctNodeMenu menu)) {
             return;
         }
-        menu.receiveFilterSync(pos, face, filterBankOrdinal, allow, deny, denyOverridesAllow);
+        menu.receiveFilterSync(pos, face, filterBankOrdinal, allow, deny, allowCaps, denyOverridesAllow);
         if (mc.screen instanceof DuctNodeScreen screen && screen.getMenu() == menu) {
             screen.menu.ensureClientFilterBufferSizes(screen.useHybridFilterCaps());
             screen.rebuildFilterEntryWidgets();
@@ -399,6 +422,62 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         layoutAmountBlock();
 
+        advCapMinusButton =
+                Button.builder(Component.literal("-"), b -> adjustAdvCap(-1))
+                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.minus.limit")))
+                        .build();
+        addRenderableWidget(advCapMinusButton);
+        advCapEditBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.literal("Limit/Keep"));
+        advCapEditBox.setMaxLength(10);
+        advCapEditBox.setResponder(
+                v -> {
+                    String t = v.trim();
+                    if (t.isEmpty() || t.equals("\u221e") || t.equalsIgnoreCase("inf")) {
+                        editModeAllowCapValue = 0;
+                        return;
+                    }
+                    try {
+                        editModeAllowCapValue =
+                                (int) Mth.clamp(Long.parseLong(t), 0L, Integer.MAX_VALUE);
+                    } catch (NumberFormatException ignored) {
+                    }
+                });
+        addRenderableWidget(advCapEditBox);
+        advCapPlusButton =
+                Button.builder(Component.literal("+"), b -> adjustAdvCap(1))
+                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.plus.limit")))
+                        .build();
+        addRenderableWidget(advCapPlusButton);
+        advCapInfinityButton =
+                Button.builder(Component.literal("\u221e"), b -> {
+                            playClickSound();
+                            editModeAllowCapValue = 0;
+                            syncAllowCapEditBoxDisplay();
+                        })
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable("gui.another_dynamics.duct_node.allow_cap.infinity")))
+                        .build();
+        addRenderableWidget(advCapInfinityButton);
+        advCapApplyButton =
+                Button.builder(Component.literal("A"), b -> applyAllowCapField())
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.apply")))
+                        .build();
+        addRenderableWidget(advCapApplyButton);
+        advCapUndoButton =
+                Button.builder(Component.literal("\u2715"), b -> undoAllowCapDraft())
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable("gui.another_dynamics.duct_node.amount.undo.tooltip")))
+                        .build();
+        addRenderableWidget(advCapUndoButton);
+        layoutAdvancedCapBlock();
+
         nodeModeButton = Button.builder(Component.empty(), b -> {
                     playClickSound();
                     NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
@@ -439,7 +518,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         backButton = Button.builder(Component.translatable("gui.another_dynamics.duct_node.filters.back"), b -> {
                     playClickSound();
-                    closeFilterSubview();
+                    if (subView == SubView.ADVANCED_FILTERING) {
+                        closeAdvancedFiltering();
+                    } else {
+                        closeFilterSubview();
+                    }
                 })
                 .bounds(
                         this.leftPos + CENTER_X,
@@ -521,6 +604,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
             onClose();
         } else {
+            if (subView == SubView.ADVANCED_FILTERING) {
+                playClickSound();
+                closeAdvancedFiltering();
+                return;
+            }
             closeFilterSubview();
         }
     }
@@ -538,6 +626,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             backButton.setY(this.topPos + HELP_BACK_BUTTON_Y);
             backButton.setWidth(ROW_BTN_W);
             backButton.setHeight(BTN_H);
+        } else if (subView == SubView.ADVANCED_FILTERING) {
+            // Back is placed with {@link #layoutEditModeWidgets()} (same slot as the old Advanced button).
         } else if (filterList && !inEditMode()) {
             int ny = this.topPos + filterNavRowScreenY();
             backButton.setX(this.leftPos + CENTER_X);
@@ -613,21 +703,120 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         amountDiscardButton.setPosition(ax, actY);
     }
 
+    /** Centered Limit/Keep editor (same geometry as {@link #layoutAmountBlock}). */
+    private void layoutAdvancedCapBlock() {
+        int numericRowW = AMOUNT_STEPPER_W + AMOUNT_INNER_GAP + AMOUNT_EDIT_W + AMOUNT_INNER_GAP + AMOUNT_STEPPER_W;
+        int actionRowW = AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+        int blockW = Math.max(numericRowW, actionRowW);
+        int blockGuiX = (TEXTURE_WIDTH - blockW) / 2;
+        int numericGuiX = blockGuiX + (blockW - numericRowW) / 2;
+        int actionGuiX = blockGuiX + (blockW - actionRowW) / 2;
+
+        int capRowGuiY = subView == SubView.ADVANCED_FILTERING ? ADVANCED_CAP_NUMERIC_ROW_GUI_Y : AMOUNT_ROW_Y;
+        int amX = this.leftPos + numericGuiX;
+        int amY = this.topPos + capRowGuiY;
+        advCapMinusButton.setPosition(amX, amY);
+
+        int boxX = amX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        advCapEditBoxGuiLeft = numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        advCapEditBox.setPosition(boxX, amY);
+
+        int plusX = boxX + AMOUNT_EDIT_W + AMOUNT_INNER_GAP;
+        advCapPlusButton.setPosition(plusX, amY);
+
+        int actY = amY + BTN_H + AMOUNT_ROWS_GAP;
+        int ax = this.leftPos + actionGuiX;
+        advCapInfinityButton.setPosition(ax, actY);
+        ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+        advCapApplyButton.setPosition(ax, actY);
+        ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+        advCapUndoButton.setPosition(ax, actY);
+    }
+
+    private void applyFilterEntryEditBoxTextStyle() {
+        if (editModeTextBox == null) {
+            return;
+        }
+        editModeTextBox.setTextColor(FILTER_ENTRY_EDIT_TEXT_COLOR);
+    }
+
+    /**
+     * Pushes the current list line into the filter {@link EditBox} and {@link #originalFilterValue}. Use when opening
+     * advanced or after edit widgets are laid out so text renders without an extra click. Optionally focuses the field
+     * (non-advanced edit) so the client draws the value immediately.
+     */
+    private void reloadFilterEntryTextBoxFromList(boolean grabFilterFocus) {
+        if (editModeTextBox == null || editModeFilterIndex < 0) {
+            return;
+        }
+        menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+        List<String> list = getEditingList();
+        while (list.size() <= editModeFilterIndex) {
+            list.add("");
+        }
+        String line = list.get(editModeFilterIndex) != null ? list.get(editModeFilterIndex) : "";
+        originalFilterValue = line;
+        editModeTextBox.setValue(line);
+        editModeTextBox.setCursorPosition(0);
+        editModeTextBox.setHighlightPos(0);
+        applyFilterEntryEditBoxTextStyle();
+        if (grabFilterFocus) {
+            editModeTextBox.setFocused(true);
+        }
+    }
+
+    private void openAdvancedFiltering() {
+        if (subView != SubView.ALLOW_FILTERS || editModeFilterIndex < 0) {
+            return;
+        }
+        menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+        List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+        while (caps.size() <= editModeFilterIndex) {
+            caps.add(0);
+        }
+        editModeAllowCapValue = caps.get(editModeFilterIndex);
+        originalAllowCapValue = editModeAllowCapValue;
+        subView = SubView.ADVANCED_FILTERING;
+        reloadFilterEntryTextBoxFromList(false);
+        layoutAdvancedCapBlock();
+        layoutEditModeWidgets();
+        layoutFilterNavAndHelpButtons();
+        syncAllowCapEditBoxDisplay();
+        advCapEditHadFocus = advCapEditBox.isFocused();
+        applySubViewVisibility();
+        rebuildFilterEntryWidgets();
+    }
+
+    private void closeAdvancedFiltering() {
+        if (subView != SubView.ADVANCED_FILTERING) {
+            return;
+        }
+        if (advCapEditBox != null) {
+            advCapEditBox.setFocused(false);
+        }
+        subView = SubView.ALLOW_FILTERS;
+        layoutAdvancedCapBlock();
+        layoutEditModeWidgets();
+        layoutFilterNavAndHelpButtons();
+        applySubViewVisibility();
+        rebuildFilterEntryWidgets();
+    }
+
     private void applySubViewVisibility() {
         boolean main = subView == SubView.MAIN;
+        boolean advancedFiltering = subView == SubView.ADVANCED_FILTERING;
         boolean filterList = subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS;
         boolean howto = subView == SubView.HOW_TO_USE;
         boolean edit = inEditMode();
         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
         boolean inHybridSelector = nm.isHybrid() && hybridPanel == HybridPanel.NONE;
+        boolean showMainStyleChrome = main || advancedFiltering;
 
         denyNavButton.visible = main;
         listLogicButton.visible = main;
         allowNavButton.visible = main;
-        // Routing row stays visible in all modes; it's just disabled when unused.
-        routingModeButton.visible = main && !howto;
+        routingModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering;
 
-        // Priority/quantity block must stay visible even when routing is unused.
         boolean showAmountBlock = (main && !howto && !inHybridSelector);
         routingMinusButton.visible = showAmountBlock;
         routingPlusButton.visible = showAmountBlock;
@@ -638,16 +827,24 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         amountMaxButton.visible =
                 showAmountBlock && amountNodeMode.usesExtractBatchField() && !amountFieldEditsPriority();
         amountDiscardButton.visible = showAmountBlock;
-        // In hybrid panels this button becomes Back.
-        nodeModeButton.visible = main && !howto;
+
+        boolean showAdvCapBlock = advancedFiltering;
+        advCapMinusButton.visible = showAdvCapBlock;
+        advCapPlusButton.visible = showAdvCapBlock;
+        advCapEditBox.visible = showAdvCapBlock;
+        advCapInfinityButton.visible = showAdvCapBlock;
+        advCapApplyButton.visible = showAdvCapBlock;
+        advCapUndoButton.visible = showAdvCapBlock;
+
+        nodeModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering;
         selfFeedStub.visible = false;
-        opaqueRenderingButton.visible = main && !howto;
+        opaqueRenderingButton.visible = showMainStyleChrome && !howto && !advancedFiltering;
 
         closeButton.visible = true;
         channelButton.visible = !howto;
 
-        backButton.visible = !main && !edit;
-        validKeysButton.visible = filterList && !edit && !howto;
+        backButton.visible = howto || advancedFiltering || (filterList && !edit);
+        validKeysButton.visible = filterList && !edit && !howto && !advancedFiltering;
 
         for (Button b : filterEditButtons) {
             b.visible = filterList;
@@ -657,26 +854,57 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
 
         if (editModeTextBox != null) {
-            boolean showEdit = edit;
-            editModeTextBox.visible = showEdit;
+            boolean showFilterEditChrome =
+                    edit
+                            && (subView == SubView.DENY_FILTERS
+                                    || subView == SubView.ALLOW_FILTERS
+                                    || subView == SubView.ADVANCED_FILTERING);
+            editModeTextBox.visible = showFilterEditChrome;
             if (leftArrowButton != null) {
-                leftArrowButton.visible = showEdit;
+                leftArrowButton.visible = showFilterEditChrome;
             }
             if (rightArrowButton != null) {
-                rightArrowButton.visible = showEdit;
+                rightArrowButton.visible = showFilterEditChrome;
             }
             if (editModeClearButton != null) {
-                editModeClearButton.visible = showEdit;
+                editModeClearButton.visible = showFilterEditChrome;
             }
             if (editModeApplyButton != null) {
-                editModeApplyButton.visible = showEdit;
+                editModeApplyButton.visible = showFilterEditChrome;
             }
             if (editModeCloseButton != null) {
-                editModeCloseButton.visible = showEdit;
+                editModeCloseButton.visible = showFilterEditChrome;
             }
+            if (advancedFilteringOpenButton != null) {
+                advancedFilteringOpenButton.visible =
+                        showFilterEditChrome && subView == SubView.ALLOW_FILTERS;
+            }
+            if (editModeApplyButton != null && editModeCloseButton != null) {
+                if (subView == SubView.ADVANCED_FILTERING) {
+                    editModeApplyButton.setTooltip(
+                            Tooltip.create(
+                                    Component.translatable(
+                                            "gui.another_dynamics.duct_node.filters.apply_keep_open.tooltip")));
+                    editModeCloseButton.setMessage(Component.literal("\u2715"));
+                    editModeCloseButton.setTooltip(
+                            Tooltip.create(
+                                    Component.translatable("gui.another_dynamics.duct_node.amount.undo.tooltip")));
+                } else {
+                    editModeApplyButton.setTooltip(
+                            Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.apply")));
+                    editModeCloseButton.setMessage(Component.literal("\u2715"));
+                    editModeCloseButton.setTooltip(
+                            Tooltip.create(
+                                    Component.translatable("gui.another_dynamics.duct_node.filters.close_without_saving")));
+                }
+            }
+            applyFilterEntryEditBoxTextStyle();
         }
 
         layoutFilterNavAndHelpButtons();
+        if (subView == SubView.ADVANCED_FILTERING && editModeTextBox != null) {
+            layoutEditModeWidgets();
+        }
     }
 
     private void rebuildFilterEntryWidgets() {
@@ -713,6 +941,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     Button.builder(Component.literal("C"), b -> {
                                 playClickSound();
                                 getEditingList().set(idx, "");
+                                if (subView == SubView.ALLOW_FILTERS) {
+                                    List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+                                    while (caps.size() <= idx) {
+                                        caps.add(0);
+                                    }
+                                    caps.set(idx, 0);
+                                }
                                 pushFiltersToServer();
                             })
                             .bounds(deleteX, buttonY, buttonSize, buttonSize)
@@ -736,7 +971,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     private int currentFilterMaxSlots() {
         boolean hyb = useHybridFilterCaps();
-        int raw = subView == SubView.ALLOW_FILTERS ? menu.filterAllowCap(hyb) : menu.filterDenyCap(hyb);
+        int raw =
+                (subView == SubView.ALLOW_FILTERS || subView == SubView.ADVANCED_FILTERING)
+                        ? menu.filterAllowCap(hyb)
+                        : menu.filterDenyCap(hyb);
         return Math.max(0, raw);
     }
 
@@ -747,9 +985,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private List<String> getEditingList() {
-        return subView == SubView.ALLOW_FILTERS
-                ? menu.getClientAllowFilters(activeFilterBank)
-                : menu.getClientDenyFilters(activeFilterBank);
+        if (subView == SubView.ALLOW_FILTERS || subView == SubView.ADVANCED_FILTERING) {
+            return menu.getClientAllowFilters(activeFilterBank);
+        }
+        return menu.getClientDenyFilters(activeFilterBank);
     }
 
     private int visibleFilterEntries() {
@@ -872,7 +1111,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return editGhostSlotScreenY;
     }
 
-    /** Screen Y for the top of the ghost-slot row (below full-height visible list rows). */
+    /**
+     * Screen Y for the top of the ghost-slot row: same below the visible filter list in allow/deny edit and in advanced
+     * filtering (list rows are not drawn in advanced, but the entry editor stays aligned with the non-advanced layout).
+     */
     private int editModeRowAnchorScreenY() {
         return this.topPos
                 + FIRST_FILTER_ROW_Y
@@ -880,43 +1122,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 + EDIT_MODE_GAP_BELOW_LIST;
     }
 
-    private void enterEditMode(int index) {
-        if (editModeFilterIndex == index) {
-            exitEditMode(true);
+    /** Repositions filter-entry edit widgets when {@link #leftPos}/{@link #topPos} or {@link #subView} changes. */
+    private void layoutEditModeWidgets() {
+        if (editModeTextBox == null) {
             return;
         }
-        exitEditMode(false);
-        editModeFilterIndex = index;
-        List<String> list = getEditingList();
-        while (list.size() <= index) {
-            list.add("");
-        }
-        originalFilterValue = list.get(index) != null ? list.get(index) : "";
-        createEditModeUI();
-        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
-        applySubViewVisibility();
-        rebuildFilterEntryWidgets();
-    }
-
-    private void exitEditMode(boolean restoreValue) {
-        if (editModeFilterIndex >= 0 && restoreValue) {
-            List<String> list = getEditingList();
-            while (list.size() <= editModeFilterIndex) {
-                list.add("");
-            }
-            list.set(editModeFilterIndex, originalFilterValue);
-        }
-        editModeFilterIndex = -1;
-        originalFilterValue = "";
-        removeEditModeUI();
-        applySubViewVisibility();
-        rebuildFilterEntryWidgets();
-        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
-    }
-
-    private void createEditModeUI() {
-        removeEditModeUI();
-
         int slotSize = 18;
         int buttonSize = 12;
         int buttonSpacing = 2;
@@ -935,11 +1145,107 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         editGhostSlotScreenX = slotX;
         editGhostSlotScreenY = slotY;
 
+        leftArrowButton.setPosition(leftArrowX, buttonRowY);
+        rightArrowButton.setPosition(rightArrowX, buttonRowY);
+
+        if (advancedFilteringOpenButton != null) {
+            int advBtnW = ADVANCED_FILTER_BUTTON_WIDTH;
+            int advBtnX = rightArrowX + buttonSize + buttonSpacing;
+            int advBtnY = slotY + (slotSize - BTN_H) / 2;
+            advancedFilteringOpenButton.setPosition(advBtnX, advBtnY);
+            advancedFilteringOpenButton.setWidth(advBtnW);
+            advancedFilteringOpenButton.setHeight(BTN_H);
+        }
+
+        int textBoxY = slotY + slotSize + 2;
+        int textBoxHeight = 15;
+        int textBoxX = this.leftPos + ENTRY_X + EDIT_MODE_TEXT_INSET_X;
+        int entryContentRight = this.leftPos + ENTRY_X + ENTRY_WIDTH - EDIT_MODE_TEXT_INSET_X;
+        int textBoxWidth = entryContentRight - textBoxX;
+        editModeTextBox.setPosition(textBoxX, textBoxY);
+        editModeTextBox.setWidth(textBoxWidth);
+        editModeTextBox.setHeight(textBoxHeight);
+
+        editModeClearButton.setPosition(clearButtonX, buttonRowY);
+        editModeApplyButton.setPosition(applyButtonX, buttonRowY);
+        editModeCloseButton.setPosition(closeButtonX, buttonRowY);
+
+        if (subView == SubView.ADVANCED_FILTERING) {
+            int advBtnW = ADVANCED_FILTER_BUTTON_WIDTH;
+            int advBtnX = rightArrowX + buttonSize + buttonSpacing;
+            int advBtnY = slotY + (slotSize - BTN_H) / 2;
+            backButton.setX(advBtnX);
+            backButton.setY(advBtnY);
+            backButton.setWidth(advBtnW);
+            backButton.setHeight(BTN_H);
+        }
+    }
+
+    private void enterEditMode(int index) {
+        if (editModeFilterIndex == index) {
+            exitEditMode(true);
+            return;
+        }
+        exitEditMode(false);
+        editModeFilterIndex = index;
+        List<String> list = getEditingList();
+        while (list.size() <= index) {
+            list.add("");
+        }
+        originalFilterValue = list.get(index) != null ? list.get(index) : "";
+        if (subView == SubView.ALLOW_FILTERS) {
+            menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+            List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+            while (caps.size() <= index) {
+                caps.add(0);
+            }
+            editModeAllowCapValue = caps.get(index);
+            originalAllowCapValue = editModeAllowCapValue;
+        } else {
+            editModeAllowCapValue = 0;
+            originalAllowCapValue = 0;
+        }
+        createEditModeUI();
+        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
+        applySubViewVisibility();
+        rebuildFilterEntryWidgets();
+        layoutEditModeWidgets();
+        reloadFilterEntryTextBoxFromList(true);
+    }
+
+    private void exitEditMode(boolean restoreValue) {
+        if (editModeFilterIndex >= 0 && restoreValue) {
+            List<String> list = getEditingList();
+            while (list.size() <= editModeFilterIndex) {
+                list.add("");
+            }
+            list.set(editModeFilterIndex, originalFilterValue);
+            if (subView == SubView.ALLOW_FILTERS || subView == SubView.ADVANCED_FILTERING) {
+                List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+                while (caps.size() <= editModeFilterIndex) {
+                    caps.add(0);
+                }
+                caps.set(editModeFilterIndex, originalAllowCapValue);
+            }
+        }
+        editModeFilterIndex = -1;
+        originalFilterValue = "";
+        removeEditModeUI();
+        applySubViewVisibility();
+        rebuildFilterEntryWidgets();
+        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
+    }
+
+    private void createEditModeUI() {
+        removeEditModeUI();
+
+        int buttonSize = 12;
+
         leftArrowButton = Button.builder(Component.literal("\u2190"), b -> {
                     playClickSound();
                     cycleFilterVariant(-1);
                 })
-                .bounds(leftArrowX, buttonRowY, buttonSize, buttonSize)
+                .bounds(0, 0, buttonSize, buttonSize)
                 .build();
         addRenderableWidget(leftArrowButton);
 
@@ -947,16 +1253,29 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     playClickSound();
                     cycleFilterVariant(1);
                 })
-                .bounds(rightArrowX, buttonRowY, buttonSize, buttonSize)
+                .bounds(0, 0, buttonSize, buttonSize)
                 .build();
         addRenderableWidget(rightArrowButton);
 
-        int textBoxY = slotY + slotSize + 2;
-        int textBoxHeight = 15;
-        int textBoxWidth = ENTRY_WIDTH - 2 * EDIT_MODE_TEXT_INSET_X;
-        int textBoxX = this.leftPos + ENTRY_X + EDIT_MODE_TEXT_INSET_X;
+        advancedFilteringOpenButton = null;
+        if (subView == SubView.ALLOW_FILTERS) {
+            advancedFilteringOpenButton =
+                    Button.builder(
+                                    Component.translatable("gui.another_dynamics.duct_node.advanced_filtering.button"),
+                                    b -> {
+                                        playClickSound();
+                                        openAdvancedFiltering();
+                                    })
+                            .bounds(0, 0, ADVANCED_FILTER_BUTTON_WIDTH, BTN_H)
+                            .tooltip(
+                                    Tooltip.create(
+                                            Component.translatable(
+                                                    "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip")))
+                            .build();
+            addRenderableWidget(advancedFilteringOpenButton);
+        }
 
-        editModeTextBox = new EditBox(this.font, textBoxX, textBoxY, textBoxWidth, textBoxHeight, Component.literal("Edit Filter"));
+        editModeTextBox = new EditBox(this.font, 0, 0, 1, 15, Component.empty());
         editModeTextBox.setMaxLength(16_384);
         editModeTextBox.setValue(originalFilterValue);
         editModeTextBox.setResponder(v -> {});
@@ -970,32 +1289,81 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         editModeTextBox.setHighlightPos(0);
                     }
                 })
-                .bounds(clearButtonX, buttonRowY, buttonSize, buttonSize)
+                .bounds(0, 0, buttonSize, buttonSize)
                 .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.clear")))
                 .build();
         addRenderableWidget(editModeClearButton);
 
         editModeApplyButton = Button.builder(Component.literal("A"), b -> {
-                    playClickSound();
-                    applyEditModeAndClose();
+                    if (subView == SubView.ADVANCED_FILTERING) {
+                        applyFilterEditDraft();
+                    } else {
+                        playClickSound();
+                        applyEditModeAndClose();
+                    }
                 })
-                .bounds(applyButtonX, buttonRowY, buttonSize, buttonSize)
+                .bounds(0, 0, buttonSize, buttonSize)
                 .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.apply")))
                 .build();
         addRenderableWidget(editModeApplyButton);
 
         editModeCloseButton = Button.builder(Component.literal("\u2715"), b -> {
-                    playClickSound();
-                    exitEditMode(true);
+                    if (subView == SubView.ADVANCED_FILTERING) {
+                        undoFilterEditDraft();
+                    } else {
+                        playClickSound();
+                        exitEditMode(true);
+                    }
                 })
-                .bounds(closeButtonX, buttonRowY, buttonSize, buttonSize)
+                .bounds(0, 0, buttonSize, buttonSize)
                 .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.close_without_saving")))
                 .build();
         addRenderableWidget(editModeCloseButton);
 
+        layoutEditModeWidgets();
+        applyFilterEntryEditBoxTextStyle();
+
         ghostSlotItem = ItemStack.EMPTY;
         filterVariants.clear();
         currentFilterVariantIndex = 0;
+    }
+
+    /**
+     * Saves filter text (and allow caps for this line) while staying in {@link SubView#ADVANCED_FILTERING} and keeping
+     * edit widgets open.
+     */
+    private void applyFilterEditDraft() {
+        if (editModeTextBox == null || editModeFilterIndex < 0 || subView != SubView.ADVANCED_FILTERING) {
+            return;
+        }
+        playClickSound();
+        String value = editModeTextBox.getValue();
+        List<String> list = getEditingList();
+        while (list.size() <= editModeFilterIndex) {
+            list.add("");
+        }
+        list.set(editModeFilterIndex, value);
+        List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+        while (caps.size() <= editModeFilterIndex) {
+            caps.add(0);
+        }
+        caps.set(editModeFilterIndex, editModeAllowCapValue);
+        originalAllowCapValue = editModeAllowCapValue;
+        originalFilterValue = value;
+        pushFiltersToServer();
+    }
+
+    /** Reverts filter text and Limit/Keep draft to last applied values (advanced filtering only). */
+    private void undoFilterEditDraft() {
+        if (editModeTextBox == null || editModeFilterIndex < 0 || subView != SubView.ADVANCED_FILTERING) {
+            return;
+        }
+        playClickSound();
+        editModeTextBox.setValue(originalFilterValue);
+        editModeTextBox.setCursorPosition(0);
+        editModeTextBox.setHighlightPos(0);
+        editModeAllowCapValue = originalAllowCapValue;
+        syncAllowCapEditBoxDisplay();
     }
 
     private void applyEditModeAndClose() {
@@ -1006,10 +1374,19 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 list.add("");
             }
             list.set(editModeFilterIndex, value);
+            if (subView == SubView.ALLOW_FILTERS || subView == SubView.ADVANCED_FILTERING) {
+                List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+                while (caps.size() <= editModeFilterIndex) {
+                    caps.add(0);
+                }
+                caps.set(editModeFilterIndex, editModeAllowCapValue);
+                originalAllowCapValue = editModeAllowCapValue;
+            }
             pushFiltersToServer();
         }
         editModeFilterIndex = -1;
         originalFilterValue = "";
+        originalAllowCapValue = 0;
         removeEditModeUI();
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
@@ -1040,6 +1417,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (editModeCloseButton != null) {
             removeWidget(editModeCloseButton);
             editModeCloseButton = null;
+        }
+        if (advancedFilteringOpenButton != null) {
+            removeWidget(advancedFilteringOpenButton);
+            advancedFilteringOpenButton = null;
         }
         editGhostSlotScreenX = 0;
         editGhostSlotScreenY = 0;
@@ -1259,7 +1640,85 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 activeFilterBank,
                 new ArrayList<>(menu.getClientAllowFilters(activeFilterBank)),
                 new ArrayList<>(menu.getClientDenyFilters(activeFilterBank)),
+                new ArrayList<>(menu.getClientAllowCaps(activeFilterBank)),
                 menu.getClientDenyOverridesAllow(activeFilterBank));
+    }
+
+    private void syncAllowCapEditBoxDisplay() {
+        if (advCapEditBox == null || subView != SubView.ADVANCED_FILTERING) {
+            return;
+        }
+        if (advCapEditBox.isFocused()) {
+            return;
+        }
+        if (editModeAllowCapValue <= 0) {
+            advCapEditBox.setValue("\u221e");
+        } else {
+            advCapEditBox.setValue(Integer.toString(editModeAllowCapValue));
+        }
+    }
+
+    private static int parseAllowCapFromEditBox(String raw) {
+        if (raw == null) {
+            return 0;
+        }
+        String t = raw.trim();
+        if (t.isEmpty()
+                || t.equals("\u221e")
+                || t.equalsIgnoreCase("inf")) {
+            return 0;
+        }
+        try {
+            return (int) Mth.clamp(Long.parseLong(t), 0L, Integer.MAX_VALUE);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private void adjustAdvCap(int sign) {
+        playClickSound();
+        int step = stepForBatchAdjust();
+        if (sign < 0) {
+            if (editModeAllowCapValue <= 0) {
+                return;
+            }
+            editModeAllowCapValue = Math.max(0, editModeAllowCapValue - step);
+        } else {
+            if (editModeAllowCapValue <= 0) {
+                editModeAllowCapValue = step;
+            } else {
+                editModeAllowCapValue =
+                        (int) Mth.clamp((long) editModeAllowCapValue + (long) step, 1L, Integer.MAX_VALUE);
+            }
+        }
+        syncAllowCapEditBoxDisplay();
+    }
+
+    /** Commits allow-line Limit/Keep to the client menu cache and server. */
+    private void applyAllowCapField() {
+        if (subView != SubView.ADVANCED_FILTERING || editModeFilterIndex < 0 || advCapEditBox == null) {
+            return;
+        }
+        playClickSound();
+        editModeAllowCapValue = parseAllowCapFromEditBox(advCapEditBox.getValue());
+        List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+        while (caps.size() <= editModeFilterIndex) {
+            caps.add(0);
+        }
+        caps.set(editModeFilterIndex, editModeAllowCapValue);
+        originalAllowCapValue = editModeAllowCapValue;
+        pushFiltersToServer();
+    }
+
+    /** Reverts Limit/Keep draft to the last applied value. */
+    private void undoAllowCapDraft() {
+        if (advCapEditBox == null) {
+            return;
+        }
+        playClickSound();
+        editModeAllowCapValue = originalAllowCapValue;
+        advCapEditBox.setFocused(false);
+        syncAllowCapEditBoxDisplay();
     }
 
     private void handleMenuButton(int id) {
@@ -1274,6 +1733,36 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         super.containerTick();
         menu.updateClientDenyOverridesFromSync();
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+        if (subView == SubView.ADVANCED_FILTERING && advCapEditBox != null) {
+            boolean f = advCapEditBox.isFocused();
+            if (f != advCapEditHadFocus) {
+                advCapEditHadFocus = f;
+                if (!f) {
+                    syncAllowCapEditBoxDisplay();
+                } else if (editModeAllowCapValue == 0) {
+                    advCapEditBox.setValue("");
+                }
+            }
+            boolean limitCtx = activeFilterBank == DuctFaceNode.FilterBank.FILTER;
+            advCapMinusButton.setTooltip(
+                    Tooltip.create(
+                            Component.translatable(
+                                    limitCtx
+                                            ? "gui.another_dynamics.duct_node.allow_cap.minus.limit"
+                                            : "gui.another_dynamics.duct_node.allow_cap.minus.keep")));
+            advCapPlusButton.setTooltip(
+                    Tooltip.create(
+                            Component.translatable(
+                                    limitCtx
+                                            ? "gui.another_dynamics.duct_node.allow_cap.plus.limit"
+                                            : "gui.another_dynamics.duct_node.allow_cap.plus.keep")));
+            advCapEditBox.setTooltip(
+                    Tooltip.create(
+                            Component.translatable(
+                                    limitCtx
+                                            ? "gui.another_dynamics.duct_node.allow_cap.field.limit"
+                                            : "gui.another_dynamics.duct_node.allow_cap.field.keep")));
+        }
         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
         syncActiveFilterBankToNodeMode(nm);
         boolean inHybridPanel = nm.isHybrid() && hybridPanel != HybridPanel.NONE;
@@ -1294,11 +1783,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         boolean hybridAllowsRoutingUi =
                 !nm.isHybrid()
                         || (nm == NodeMode.EXTRACTION_FILTERING
-                                && (hybridPanel == HybridPanel.EXTRACTOR
+                                && (hybridPanel == HybridPanel.NONE
+                                        || hybridPanel == HybridPanel.EXTRACTOR
                                         || hybridPanel == HybridPanel.FILTERING))
                         || (nm == NodeMode.RETRIEVING_EXTRACTION && hybridPanel == HybridPanel.RETRIEVER);
         boolean routingMovedUi =
-                nm == NodeMode.RETRIEVING_EXTRACTION && hybridPanel == HybridPanel.EXTRACTOR;
+                nm == NodeMode.RETRIEVING_EXTRACTION && hybridPanel != HybridPanel.RETRIEVER;
         boolean routingActive = routingUsable && hybridAllowsRoutingUi;
 
         if (routingMovedUi) {
@@ -1433,6 +1923,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             amountBlockLayoutCache = layoutKey;
             amountFieldsDirty = false;
             layoutAmountBlock();
+            if (subView == SubView.ADVANCED_FILTERING) {
+                layoutAdvancedCapBlock();
+                layoutEditModeWidgets();
+            }
             applySubViewVisibility();
         }
         if (!routingPriorityBox.isFocused() && !amountFieldsDirty) {
@@ -1530,13 +2024,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private int stepForBatchAdjust() {
-        boolean c = hasControlDown();
-        boolean a = hasAltDown();
-        if (a) {
-            return BATCH_STEP_ALT;
+        if (hasShiftDown()) {
+            return BATCH_STEP_SHIFT;
         }
-        if (c) {
-            return BATCH_STEP_CTRL;
+        if (hasControlDown() || hasAltDown()) {
+            return BATCH_STEP_CTRL_OR_ALT;
         }
         return BATCH_STEP_PLAIN;
     }
@@ -1671,9 +2163,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         if (subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS) {
             renderFilterPanel(graphics, mouseX, mouseY);
-            if (inEditMode()) {
+            if (inEditMode() && (subView == SubView.ALLOW_FILTERS || subView == SubView.DENY_FILTERS)) {
                 renderEditModeSlot(graphics);
             }
+        } else if (subView == SubView.ADVANCED_FILTERING && inEditMode()) {
+            renderEditModeSlot(graphics);
         }
 
         boolean hovered = mouseX >= redstoneButtonScreenX
@@ -1980,6 +2474,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return true;
         }
 
+        if (advCapEditBox != null && advCapEditBox.isFocused() && keyCode == InputConstants.KEY_RETURN) {
+            applyAllowCapField();
+            return true;
+        }
+
         if (subView == SubView.MAIN
                 && !inEditMode()
                 && keyCode == GLFW.GLFW_KEY_M) {
@@ -2011,6 +2510,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
 
         if (esc || inv) {
+            if (subView == SubView.ADVANCED_FILTERING) {
+                playClickSound();
+                closeAdvancedFiltering();
+                return true;
+            }
             if (inEditMode()) {
                 exitEditMode(true);
                 return true;
@@ -2038,6 +2542,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     public boolean charTyped(char codePoint, int modifiers) {
         if (editModeTextBox != null && editModeTextBox.isFocused()) {
             if (editModeTextBox.charTyped(codePoint, modifiers)) {
+                return true;
+            }
+        }
+        if (advCapEditBox != null && advCapEditBox.isFocused()) {
+            if (advCapEditBox.charTyped(codePoint, modifiers)) {
                 return true;
             }
         }
@@ -2160,6 +2669,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
         Component titleComponent =
                 switch (subView) {
+                    case ADVANCED_FILTERING ->
+                            Component.translatable("gui.another_dynamics.duct_node.advanced_filtering.title");
                     case DENY_FILTERS -> {
                         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
                         if (nm.isHybrid()) {
@@ -2203,6 +2714,18 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int titleX = (this.imageWidth - titleWidth) / 2;
         /* Foreground: coordinates are relative—AbstractContainerScreen applies leftPos/topPos on the pose stack. */
         graphics.drawString(this.font, titleComponent, titleX, 7, 0x404040, false);
+
+        if (subView == SubView.ADVANCED_FILTERING) {
+            Component capLabel =
+                    Component.translatable(
+                            activeFilterBank == DuctFaceNode.FilterBank.FILTER
+                                    ? "gui.another_dynamics.duct_node.allow_cap.label.limit"
+                                    : "gui.another_dynamics.duct_node.allow_cap.label.keep");
+            int lw = this.font.width(capLabel);
+            int labelX = advCapEditBoxGuiLeft + (AMOUNT_EDIT_W - lw) / 2;
+            int labelY = ADVANCED_CAP_NUMERIC_ROW_GUI_Y - this.font.lineHeight - AMOUNT_LABEL_ABOVE_GAP;
+            graphics.drawString(this.font, capLabel, labelX, labelY, 0x404040, false);
+        }
 
         if (subView == SubView.MAIN) {
             NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
