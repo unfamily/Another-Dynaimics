@@ -55,6 +55,28 @@ public final class DuctFluidTransitVisual {
                 DuctTransitPathGeometry.buildOrthogonalTransitPath(ductPath, ownerDuct, sourceAttachFace, destAttachFace);
     }
 
+    /**
+     * Client rebuild from disk/chunk {@code DuctFluidTransit} (there is no FluidTransitV1 list in saved chunk for this path).
+     *
+     * @param clientWorldGameTime {@link Level#getGameTime()} when applying client-side shipment data
+     */
+    public static DuctFluidTransitVisual fromFluidShipment(
+            BlockPos ownerDuct, net.unfamily.another_dynamics.duct.logistics.FluidTransitShipment s, long clientWorldGameTime) {
+        int elapsed = Math.max(0, s.totalTravelTicks - s.travelTicks);
+        long anchor = clientWorldGameTime - elapsed;
+        return new DuctFluidTransitVisual(
+                ownerDuct,
+                s.fluid.copy(),
+                List.copyOf(s.ductPath),
+                s.totalTravelTicks,
+                s.travelTicks,
+                s.edgeTicks,
+                s.journeyStartGameTime,
+                anchor,
+                s.sourceFace,
+                s.destFace);
+    }
+
     public static List<DuctFluidTransitVisual> listFromUpdateTag(
             BlockPos ownerDuct, CompoundTag root, HolderLookup.Provider registries, long clientWorldGameTime) {
         if (!root.contains("FluidTransitV1", Tag.TAG_LIST)) {

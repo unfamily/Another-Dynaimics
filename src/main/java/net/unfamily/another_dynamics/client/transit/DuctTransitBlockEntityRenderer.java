@@ -28,6 +28,7 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
 
     /** Vertical tweak and scale for in-duct ghost items (block-local space before item transform). */
     private static final float GHOST_Y_OFFSET = -0.14f;
+    private static final float FLUID_Y_OFFSET = 0.0f;
     private static final float GHOST_SCALE = 0.78f;
 
     public DuctTransitBlockEntityRenderer(BlockEntityRendererProvider.Context ctx) {}
@@ -94,7 +95,7 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             Vec3 world = fv.positionAt(progress);
             poseStack.pushPose();
             poseStack.translate(world.x - origin.getX(), world.y - origin.getY(), world.z - origin.getZ());
-            poseStack.translate(0.0f, GHOST_Y_OFFSET, 0.0f);
+            poseStack.translate(0.0f, FLUID_Y_OFFSET, 0.0f);
             float rot = (level.getGameTime() + partialTick) * 3.0f;
             poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(rot));
             poseStack.scale(GHOST_SCALE, GHOST_SCALE, GHOST_SCALE);

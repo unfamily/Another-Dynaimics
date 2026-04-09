@@ -2541,6 +2541,34 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             out.add(s.save(registries));
         }
         tag.put("DuctOutbound", out);
+        ListTag fOut = new ListTag();
+        for (FluidTransitShipment s : fluidTransitShipments) {
+            if (s.fluid.isEmpty()) {
+                continue;
+            }
+            CompoundTag ft = new CompoundTag();
+            ft.put("Fluid", (CompoundTag) s.fluid.save(registries));
+            ft.putInt("Tot", s.totalTravelTicks);
+            ft.putInt("Tr", s.travelTicks);
+            ft.putInt("Ed", s.edgeTicks);
+            ft.putLong("J0", s.journeyStartGameTime);
+            ft.putByte("SrcF", (byte) s.sourceFace.ordinal());
+            ft.putByte("DstF", (byte) s.destFace.ordinal());
+            ft.putInt("DestX", s.destDuct.getX());
+            ft.putInt("DestY", s.destDuct.getY());
+            ft.putInt("DestZ", s.destDuct.getZ());
+            ListTag path = new ListTag();
+            for (BlockPos p : s.ductPath) {
+                CompoundTag pt = new CompoundTag();
+                pt.putInt("X", p.getX());
+                pt.putInt("Y", p.getY());
+                pt.putInt("Z", p.getZ());
+                path.add(pt);
+            }
+            ft.put("Path", path);
+            fOut.add(ft);
+        }
+        tag.put("DuctFluidTransit", fOut);
         ListTag bl = new ListTag();
         for (ItemStack b : migratedStorageBacklog) {
             CompoundTag bt = new CompoundTag();
@@ -2579,6 +2607,34 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 outboundShipments.add(OutboundShipment.load(registries, list.getCompound(i)));
             }
         }
+        fluidTransitShipments.clear();
+        if (tag.contains("DuctFluidTransit", Tag.TAG_LIST)) {
+            ListTag list = tag.getList("DuctFluidTransit", Tag.TAG_COMPOUND);
+            for (int i = 0; i < list.size(); i++) {
+                CompoundTag ft = list.getCompound(i);
+                FluidStack fs = FluidStack.EMPTY;
+                if (ft.contains("Fluid", Tag.TAG_COMPOUND)) {
+                    fs = FluidStack.parse(registries, ft.getCompound("Fluid")).orElse(FluidStack.EMPTY);
+                }
+                if (fs.isEmpty()) {
+                    continue;
+                }
+                ListTag plist = ft.getList("Path", Tag.TAG_COMPOUND);
+                ArrayList<BlockPos> path = new ArrayList<>(plist.size());
+                for (int j = 0; j < plist.size(); j++) {
+                    CompoundTag pt = plist.getCompound(j);
+                    path.add(new BlockPos(pt.getInt("X"), pt.getInt("Y"), pt.getInt("Z")));
+                }
+                Direction srcFace = Direction.values()[ft.getByte("SrcF") & 0xFF];
+                Direction dstFace = Direction.values()[ft.getByte("DstF") & 0xFF];
+                BlockPos destDuct = new BlockPos(ft.getInt("DestX"), ft.getInt("DestY"), ft.getInt("DestZ"));
+                int tot = ft.getInt("Tot");
+                int tr = ft.getInt("Tr");
+                int ed = ft.getInt("Ed");
+                long j0 = ft.getLong("J0");
+                fluidTransitShipments.add(new FluidTransitShipment(fs, List.copyOf(path), tot, tr, ed, j0, srcFace, dstFace, destDuct));
+            }
+        }
         migratedStorageBacklog.clear();
         if (tag.contains("DuctBacklog", Tag.TAG_LIST)) {
             ListTag list = tag.getList("DuctBacklog", Tag.TAG_COMPOUND);
@@ -2604,6 +2660,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level != null && level.isClientSide()) {
             // Chunk NBT has DuctOutbound but not TransitV1; BER reads DuctTransitClientState only.
             DuctTransitClientState.syncFromOutboundShipments(worldPosition, outboundShipments, level);
+            DuctFluidTransitClientState.syncFromFluidShipments(worldPosition, fluidTransitShipments, level);
         }
     }
 
@@ -2666,9 +2723,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (wireFluid.getAmount() > 1000) {
                 wireFluid.setAmount(1000);
             }
-            CompoundTag fluidTag = new CompoundTag();
-            wireFluid.save(registries, fluidTag);
-            ft.put("Fluid", fluidTag);
+            ft.put("Fluid", (CompoundTag) wireFluid.save(registries));
             ft.putInt("Tot", s.totalTravelTicks);
             ft.putInt("Tr", s.travelTicks);
             ft.putInt("Ed", s.edgeTicks);
