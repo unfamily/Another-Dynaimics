@@ -46,11 +46,14 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public static final int PLAYER_SLOTS_Y = 171;
     private static final int HOTBAR_GAP = 4;
 
-    public static final int SLOT_UPGRADE_X = 14;
-    public static final int SLOT_UPGRADE_Y0 = 32;
+    /** Fine alignment vs {@code node.png} slot art (right and down). */
+    private static final int SLOT_GEOMETRY_NUDGE = 1;
 
-    public static final int SLOT_COPY_X = 278;
-    public static final int SLOT_COPY_Y = 52;
+    public static final int SLOT_UPGRADE_X = 14 + SLOT_GEOMETRY_NUDGE;
+    public static final int SLOT_UPGRADE_Y0 = 32 + SLOT_GEOMETRY_NUDGE;
+
+    public static final int SLOT_COPY_X = 278 + SLOT_GEOMETRY_NUDGE;
+    public static final int SLOT_COPY_Y = 52 + SLOT_GEOMETRY_NUDGE;
 
     private static final int REDSTONE_BUTTON_SIZE = 16;
     public static final int REDSTONE_GUI_X = SLOT_COPY_X + (18 - REDSTONE_BUTTON_SIZE) / 2;
@@ -176,7 +179,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                     new SlotItemHandler(nodeSlots, i, SLOT_UPGRADE_X, y) {
                         @Override
                         public boolean isActive() {
-                            return super.isActive() && machineSlotsInteractive();
+                            return super.isActive() && upgradeSlotsInteractive();
                         }
                     });
         }
@@ -184,7 +187,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 new SlotItemHandler(nodeSlots, COPY_SETTINGS_SLOT, SLOT_COPY_X, SLOT_COPY_Y) {
                     @Override
                     public boolean isActive() {
-                        return super.isActive() && machineSlotsInteractive();
+                        return super.isActive();
                     }
                 });
 
@@ -263,8 +266,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return syncData;
     }
 
-    /** When false (hub layer), machine slots are inactive and shift-clicks stay in the player inventory. */
-    public boolean machineSlotsInteractive() {
+    /**
+     * Upgrade slots are inactive on the multi-transport hub; the copy-settings slot stays usable there.
+     */
+    public boolean upgradeSlotsInteractive() {
         if (linkedBlockEntity != null
                 && linkedBlockEntity.getLevel() != null
                 && !linkedBlockEntity.getLevel().isClientSide()) {
@@ -517,23 +522,45 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         int playerFirst = playerSlotStart();
         int playerLast = this.slots.size();
 
-        if (!machineSlotsInteractive()) {
+        if (!upgradeSlotsInteractive()) {
             Slot slot = this.slots.get(index);
             if (slot == null || !slot.hasItem()) {
                 return ItemStack.EMPTY;
+            }
+            if (index >= 0 && index < UPGRADE_SLOT_COUNT) {
+                return ItemStack.EMPTY;
+            }
+            if (index == COPY_SETTINGS_SLOT) {
+                ItemStack stack = slot.getItem();
+                ItemStack result = stack.copy();
+                if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
+                    return ItemStack.EMPTY;
+                }
+                if (stack.isEmpty()) {
+                    slot.setByPlayer(ItemStack.EMPTY);
+                } else {
+                    slot.setChanged();
+                }
+                if (stack.getCount() == result.getCount()) {
+                    return ItemStack.EMPTY;
+                }
+                slot.onTake(player, stack);
+                return result;
             }
             if (index < MACHINE_SLOTS) {
                 return ItemStack.EMPTY;
             }
             ItemStack stack = slot.getItem();
             ItemStack result = stack.copy();
-            if (index < playerFirst + 27) {
-                if (!moveItemStackTo(stack, playerFirst + 27, playerLast, true)) {
-                    return ItemStack.EMPTY;
-                }
-            } else {
-                if (!moveItemStackTo(stack, playerFirst, playerFirst + 27, false)) {
-                    return ItemStack.EMPTY;
+            if (!moveItemStackTo(stack, COPY_SETTINGS_SLOT, MACHINE_SLOTS, false)) {
+                if (index < playerFirst + 27) {
+                    if (!moveItemStackTo(stack, playerFirst + 27, playerLast, true)) {
+                        return ItemStack.EMPTY;
+                    }
+                } else {
+                    if (!moveItemStackTo(stack, playerFirst, playerFirst + 27, false)) {
+                        return ItemStack.EMPTY;
+                    }
                 }
             }
             if (stack.isEmpty()) {

@@ -174,7 +174,6 @@
   "gui.another_dynamics.duct_node.transport.item": "Items",
   "gui.another_dynamics.duct_node.transport.fluid": "Fluids",
   "gui.another_dynamics.duct_node.transport.gas": "Gases",
-  "gui.another_dynamics.duct_node.transport_kind.pick.tooltip": "Open this transport lane’s node settings. Grayed out if this duct does not support that lane.",
   "gui.another_dynamics.duct_node.hub_back": "Back",
   "gui.another_dynamics.duct_node.hub_back.tooltip": "Return to transport selection",
   "another_dynamics.item_duct.node": "Item Duct Node",

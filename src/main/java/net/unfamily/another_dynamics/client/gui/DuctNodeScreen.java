@@ -684,9 +684,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             Button b =
                     Button.builder(Component.empty(), btn -> handleMenuButton(DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE + kindOrdinal))
                             .bounds(0, 0, ROW_BTN_W, BTN_H)
-                            .tooltip(
-                                    Tooltip.create(
-                                            Component.translatable("gui.another_dynamics.duct_node.transport_kind.pick.tooltip")))
                             .build();
             transportKindPickerButtons.add(b);
             addRenderableWidget(b);
@@ -713,7 +710,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0;
     }
 
-    /** Multi-transport picker: no machine slots should appear (upgrade / copy backgrounds or items). */
+    /** Multi-transport hub: hide upgrade slots only; copy-settings slot stays visible and interactive. */
     private boolean isTransportHubMainView() {
         return subView == SubView.MAIN
                 && menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
@@ -3170,23 +3167,22 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private void blitMachineSlotBackgrounds(GuiGraphics graphics) {
-        if (isTransportHubMainView()) {
-            return;
-        }
         int sw = 18;
         int sh = 18;
-        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
-            int y = DuctNodeMenu.SLOT_UPGRADE_Y0 + i * 18;
-            graphics.blit(
-                    SINGLE_SLOT,
-                    this.leftPos + DuctNodeMenu.SLOT_UPGRADE_X,
-                    this.topPos + y,
-                    0,
-                    0,
-                    sw,
-                    sh,
-                    sw,
-                    sh);
+        if (!isTransportHubMainView()) {
+            for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
+                int y = DuctNodeMenu.SLOT_UPGRADE_Y0 + i * 18;
+                graphics.blit(
+                        SINGLE_SLOT,
+                        this.leftPos + DuctNodeMenu.SLOT_UPGRADE_X,
+                        this.topPos + y,
+                        0,
+                        0,
+                        sw,
+                        sh,
+                        sw,
+                        sh);
+            }
         }
         graphics.blit(
                 SINGLE_SLOT,
@@ -3210,7 +3206,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (subView == SubView.HOW_TO_USE) {
             return;
         }
-        if (isTransportHubMainView() && slot.index >= 0 && slot.index < DuctNodeMenu.MACHINE_SLOTS) {
+        if (isTransportHubMainView()
+                && slot.index >= 0
+                && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
             return;
         }
         super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
@@ -3221,7 +3219,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (subView == SubView.HOW_TO_USE) {
             return;
         }
-        if (isTransportHubMainView() && slot.index >= 0 && slot.index < DuctNodeMenu.MACHINE_SLOTS) {
+        if (isTransportHubMainView()
+                && slot.index >= 0
+                && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
             return;
         }
         if (slot.index >= 0 && slot.index < DuctNodeMenu.MACHINE_SLOTS) {
