@@ -3,6 +3,7 @@ package net.unfamily.another_dynamics.client.gui;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 
 import com.mojang.blaze3d.platform.InputConstants;
 
@@ -17,6 +18,7 @@ import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
@@ -33,6 +35,8 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.Fluids;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
@@ -46,6 +50,8 @@ import net.unfamily.another_dynamics.duct.RoutingMode;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModAttachments;
+import net.neoforged.neoforge.fluids.FluidStack;
+import net.neoforged.neoforge.fluids.FluidUtil;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -257,6 +263,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private Button advCapUndoButton;
     private boolean advCapEditHadFocus;
     private ItemStack ghostSlotItem = ItemStack.EMPTY;
+    /** When editing fluid filters, preview still sprite from {@link FluidUtil#getFluidContained} on the ghost item. */
+    private FluidStack ghostSlotFluid = FluidStack.EMPTY;
     private List<String> filterVariants = new ArrayList<>();
     private int currentFilterVariantIndex = 0;
 
@@ -1416,6 +1424,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         applyFilterEntryEditBoxTextStyle();
 
         ghostSlotItem = ItemStack.EMPTY;
+        ghostSlotFluid = FluidStack.EMPTY;
         filterVariants.clear();
         currentFilterVariantIndex = 0;
     }
@@ -1517,8 +1526,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         editGhostSlotScreenX = 0;
         editGhostSlotScreenY = 0;
         ghostSlotItem = ItemStack.EMPTY;
+        ghostSlotFluid = FluidStack.EMPTY;
         filterVariants.clear();
         currentFilterVariantIndex = 0;
+    }
+
+    private boolean isFluidFilterTransport() {
+        return menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal();
     }
 
     private void renderEditModeSlot(GuiGraphics guiGraphics) {
@@ -1526,7 +1540,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int slotX = editModeSlotX();
         int slotY = editModeSlotY();
         guiGraphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, slotSize, slotSize, slotSize, slotSize);
-        if (!ghostSlotItem.isEmpty()) {
+        if (!ghostSlotFluid.isEmpty()) {
+            GuiFluidStillBlit.blit16(guiGraphics, ghostSlotFluid, slotX + 1, slotY + 1);
+        } else if (!ghostSlotItem.isEmpty()) {
             guiGraphics.renderItem(ghostSlotItem, slotX + 1, slotY + 1);
             guiGraphics.renderItemDecorations(this.font, ghostSlotItem, slotX + 1, slotY + 1);
         }
@@ -1539,6 +1555,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         ItemStack cursorItem = this.menu.getCarried();
         if (cursorItem.isEmpty()) {
             ghostSlotItem = ItemStack.EMPTY;
+            ghostSlotFluid = FluidStack.EMPTY;
             filterVariants.clear();
             currentFilterVariantIndex = 0;
             if (editModeTextBox != null) {
@@ -1547,7 +1564,26 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 editModeTextBox.setHighlightPos(0);
             }
             playClickSound();
+        } else if (isFluidFilterTransport()) {
+            Optional<FluidStack> contained = FluidUtil.getFluidContained(cursorItem);
+            if (contained.isPresent() && !contained.get().isEmpty()) {
+                ghostSlotItem = ItemStack.EMPTY;
+                ghostSlotFluid = contained.get().copy();
+                filterVariants = generateFluidFilterVariants(ghostSlotFluid);
+            } else {
+                ghostSlotFluid = FluidStack.EMPTY;
+                ghostSlotItem = cursorItem.copy();
+                filterVariants = generateAllFilterVariants(ghostSlotItem);
+            }
+            currentFilterVariantIndex = 0;
+            if (editModeTextBox != null && !filterVariants.isEmpty()) {
+                editModeTextBox.setValue(filterVariants.getFirst());
+                editModeTextBox.setCursorPosition(0);
+                editModeTextBox.setHighlightPos(0);
+            }
+            playClickSound();
         } else {
+            ghostSlotFluid = FluidStack.EMPTY;
             ghostSlotItem = cursorItem.copy();
             filterVariants = generateAllFilterVariants(cursorItem);
             currentFilterVariantIndex = 0;
@@ -1632,6 +1668,56 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return variants;
     }
 
+    /**
+     * Filter presets from a contained fluid (ghost slot): same prefix rules as {@link net.unfamily.another_dynamics.duct.DuctFluidFilterMatcher}.
+     */
+    private List<String> generateFluidFilterVariants(FluidStack stack) {
+        List<String> variants = new ArrayList<>();
+        if (stack.isEmpty() || minecraft == null || minecraft.level == null) {
+            return variants;
+        }
+        var registries = minecraft.level.registryAccess();
+        Fluid fluid = stack.getFluid();
+        if (fluid == Fluids.EMPTY) {
+            return variants;
+        }
+        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluid);
+        if (fluidId == null) {
+            return variants;
+        }
+        variants.add("-" + fluidId);
+        variants.add(fluidId.toString());
+        String namespace = fluidId.getNamespace();
+        if (!"minecraft".equals(namespace)) {
+            variants.add("@" + namespace);
+        }
+        var holder = BuiltInRegistries.FLUID.wrapAsHolder(fluid);
+        List<String> fluidTags =
+                BuiltInRegistries.FLUID.getTagNames()
+                        .filter(
+                                tagKey -> BuiltInRegistries.FLUID.getTag(tagKey)
+                                        .map(t -> t.contains(holder))
+                                        .orElse(false))
+                        .map(TagKey::location)
+                        .map(ResourceLocation::toString)
+                        .sorted()
+                        .toList();
+        for (String tagId : fluidTags) {
+            variants.add("#" + tagId);
+        }
+        try {
+            Tag saved = stack.save(registries);
+            if (saved instanceof CompoundTag compound) {
+                String snbt = compound.toString();
+                if (!snbt.isEmpty()) {
+                    variants.add("?" + snbt);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return variants;
+    }
+
     private static ItemStack getDisplayItemForFilter(String filter) {
         if (filter == null || filter.trim().isEmpty()) {
             return ItemStack.EMPTY;
@@ -1679,6 +1765,72 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         } catch (Exception e) {
             return ItemStack.EMPTY;
         }
+    }
+
+    /** Sample fluid for filter row / still icon when the duct is in fluid filter mode. */
+    private static FluidStack getDisplayFluidForFilter(String filter) {
+        if (filter == null || filter.trim().isEmpty()) {
+            return FluidStack.EMPTY;
+        }
+        String f = filter.trim();
+        if (f.startsWith("?") || f.startsWith("&")) {
+            return FluidStack.EMPTY;
+        }
+        if (f.startsWith("-")) {
+            return fluidStackFromId(f.substring(1));
+        }
+        if (f.startsWith("#")) {
+            return firstFluidInFluidTag(f.substring(1));
+        }
+        if (f.startsWith("@")) {
+            return firstFluidInMod(f.substring(1));
+        }
+        try {
+            ResourceLocation id = ResourceLocation.parse(f);
+            Fluid fluid = BuiltInRegistries.FLUID.get(id);
+            if (fluid == null || fluid == Fluids.EMPTY) {
+                return FluidStack.EMPTY;
+            }
+            return new FluidStack(fluid, 1000);
+        } catch (Exception e) {
+            return FluidStack.EMPTY;
+        }
+    }
+
+    private static FluidStack fluidStackFromId(String idStr) {
+        try {
+            ResourceLocation id = ResourceLocation.parse(idStr);
+            Fluid fluid = BuiltInRegistries.FLUID.get(id);
+            if (fluid == null || fluid == Fluids.EMPTY) {
+                return FluidStack.EMPTY;
+            }
+            return new FluidStack(fluid, 1000);
+        } catch (Exception e) {
+            return FluidStack.EMPTY;
+        }
+    }
+
+    private static FluidStack firstFluidInFluidTag(String tagId) {
+        try {
+            ResourceLocation loc = ResourceLocation.parse(tagId);
+            TagKey<Fluid> tagKey = TagKey.create(Registries.FLUID, loc);
+            return BuiltInRegistries.FLUID.getTag(tagKey)
+                    .flatMap(t -> t.stream().findFirst())
+                    .map(h -> new FluidStack(h.value(), 1000))
+                    .orElse(FluidStack.EMPTY);
+        } catch (Exception e) {
+            return FluidStack.EMPTY;
+        }
+    }
+
+    private static FluidStack firstFluidInMod(String modId) {
+        for (Fluid fluid : BuiltInRegistries.FLUID) {
+            ResourceLocation id = BuiltInRegistries.FLUID.getKey(fluid);
+            if (id != null && id.getNamespace().startsWith(modId) && fluid != Fluids.EMPTY) {
+                return new FluidStack(fluid, 1000);
+            }
+        }
+        return FluidStack.EMPTY;
     }
 
     private static ItemStack parseItemStackFromSNBT(String snbtString) {
@@ -2367,10 +2519,23 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int slotY = entryY + (ENTRY_HEIGHT - 18) / 2;
             graphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, 18, 18, 18, 18);
             String filter = idx < list.size() && list.get(idx) != null ? list.get(idx) : "";
-            ItemStack displayItem = getDisplayItemForFilter(filter);
-            if (!displayItem.isEmpty()) {
-                graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-                graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+            if (isFluidFilterTransport() && minecraft != null && minecraft.level != null) {
+                FluidStack displayFluid = getDisplayFluidForFilter(filter);
+                if (!displayFluid.isEmpty()) {
+                    GuiFluidStillBlit.blit16(graphics, displayFluid, slotX + 1, slotY + 1);
+                } else {
+                    ItemStack displayItem = getDisplayItemForFilter(filter);
+                    if (!displayItem.isEmpty()) {
+                        graphics.renderItem(displayItem, slotX + 1, slotY + 1);
+                        graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+                    }
+                }
+            } else {
+                ItemStack displayItem = getDisplayItemForFilter(filter);
+                if (!displayItem.isEmpty()) {
+                    graphics.renderItem(displayItem, slotX + 1, slotY + 1);
+                    graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+                }
             }
 
             int textX = slotX + 18 + 6;

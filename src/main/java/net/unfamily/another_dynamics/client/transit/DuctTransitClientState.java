@@ -72,4 +72,8 @@ public final class DuctTransitClientState {
     public static Map<BlockPos, List<DuctTransitVisual>> snapshot() {
         return Collections.unmodifiableMap(BY_DUCT);
     }
+
+    public static void removeAt(BlockPos ductPos) {
+        BY_DUCT.remove(ductPos.immutable());
+    }
 }

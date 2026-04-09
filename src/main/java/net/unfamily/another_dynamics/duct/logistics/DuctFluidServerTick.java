@@ -14,16 +14,16 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
-import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidFilterLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
+import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.NodeMode;
 
 /**
- * Fluid logistics: extract from an attached tank, push to another duct on the fluid network that can accept into a tank;
- * the extracting duct schedules a client-only in-pipe visual along the shortest fluid path.
+ * Fluid logistics: plan extract+fill with simulation only, enqueue {@link FluidTransitShipment}; {@link DuctBlockEntity}
+ * executes transfer when travel completes and re-validates each tick in transit.
  */
 public final class DuctFluidServerTick {
     private DuctFluidServerTick() {}
@@ -89,27 +89,29 @@ public final class DuctFluidServerTick {
             if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
                 continue;
             }
-            Optional<FillResult> fill =
-                    tryFillIntoNetworkNeighbor(level, srcCap, destBe, available.copy());
-            if (fill.isPresent()) {
+            Optional<FillPlan> plan = simulateFillIntoNetworkNeighbor(level, srcCap, destBe, available.copy());
+            if (plan.isPresent()) {
                 node.roundRobinCursor = (start + i + 1) % n;
                 sourceBe.setChanged();
-                destBe.setChanged();
-                FillResult fr = fill.get();
+                FillPlan p = plan.get();
+                FluidStack planned = new FluidStack(available.getFluid(), p.movedMb());
                 List<BlockPos> rawPath =
                         DuctPathfinder.shortestPath(level, srcPos, destPos, spec, DuctNetworkType.FLUID)
                                 .orElseGet(() -> List.of(srcPos, destPos));
                 List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
-                FluidStack viz = new FluidStack(available.getFluid(), Math.min(1000, fr.movedMb()));
-                sourceBe.scheduleFluidTransitVisual(level, viz, pathWire, sourceFace, fr.destStorageFace(), spec);
+                sourceBe.scheduleFluidTransitPending(
+                        level, planned, pathWire, sourceFace, p.destStorageFace(), destPos, spec);
                 return;
             }
         }
     }
 
-    private record FillResult(int movedMb, Direction destStorageFace) {}
+    private record FillPlan(int movedMb, Direction destStorageFace) {}
 
-    private static Optional<FillResult> tryFillIntoNetworkNeighbor(
+    /**
+     * Pick first valid destination face; drain/fill are simulated only.
+     */
+    private static Optional<FillPlan> simulateFillIntoNetworkNeighbor(
             ServerLevel level, IFluidHandler srcCap, DuctBlockEntity destBe, FluidStack toMove) {
         if (toMove.isEmpty()) {
             return Optional.empty();
@@ -134,7 +136,8 @@ public final class DuctFluidServerTick {
                             destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
                 continue;
             }
-            IFluidHandler destCap = level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
+            IFluidHandler destCap =
+                    level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
             if (destCap == null) {
                 continue;
             }
@@ -146,20 +149,137 @@ public final class DuctFluidServerTick {
             if (drain.isEmpty() || drain.getAmount() < simulated) {
                 continue;
             }
-            FluidStack actually = srcCap.drain(drain, IFluidHandler.FluidAction.EXECUTE);
-            if (actually.isEmpty()) {
-                return Optional.empty();
-            }
-            int filled = destCap.fill(actually, IFluidHandler.FluidAction.EXECUTE);
-            if (filled < actually.getAmount()) {
-                // Should be rare: refund excess to source
-                srcCap.fill(
-                        new FluidStack(actually.getFluid(), actually.getAmount() - filled),
-                        IFluidHandler.FluidAction.EXECUTE);
-            }
-            return Optional.of(new FillResult(filled, df));
+            return Optional.of(new FillPlan(simulated, df));
         }
         return Optional.empty();
+    }
+
+    /**
+     * While {@code travelTicks} &gt; 0: path intact, faces still valid, simulate still allows the planned move. Unloaded
+     * chunks do not invalidate (same idea as item path checks).
+     */
+    public static boolean fluidShipmentMidTransitValid(ServerLevel level, DuctBlockEntity sourceBe, FluidTransitShipment s) {
+        BlockPos srcPos = sourceBe.getBlockPos();
+        if (!level.isLoaded(srcPos) || !level.isLoaded(s.destDuct)) {
+            return true;
+        }
+        DuctFaceLanes srcLanes = sourceBe.getFaceLanes(s.sourceFace);
+        if (!DuctRedstoneLogic.isFaceTransportActive(level, srcPos, srcLanes.redstoneMode)) {
+            return false;
+        }
+        NodeMode sm = srcLanes.nodeMode;
+        if (sm != NodeMode.EXTRACTION
+                && sm != NodeMode.EXTRACTION_FILTERING
+                && sm != NodeMode.RETRIEVING_EXTRACTION) {
+            return false;
+        }
+        DuctFaceNode srcNode = srcLanes.fluid;
+        if (!DuctFluidFilterLogic.passesFluidFiltersForBank(srcNode, DuctFaceNode.FilterBank.EXTRACTOR, s.fluid, level)) {
+            return false;
+        }
+        IFluidHandler srcCap =
+                level.getCapability(Capabilities.FluidHandler.BLOCK, srcPos.relative(s.sourceFace), s.sourceFace.getOpposite());
+        if (srcCap == null) {
+            return false;
+        }
+        if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
+            return false;
+        }
+        return pinnedFaceSimulatesOk(level, destBe, srcCap, s);
+    }
+
+    private static boolean pinnedFaceSimulatesOk(
+            ServerLevel level, DuctBlockEntity destBe, IFluidHandler srcCap, FluidTransitShipment s) {
+        BlockPos destPos = destBe.getBlockPos();
+        Direction df = s.destFace;
+        int dsm = destBe.getStorageMask();
+        if ((dsm & (1 << df.ordinal())) == 0) {
+            return false;
+        }
+        DuctFaceLanes destLanes = destBe.getFaceLanes(df);
+        if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
+            return false;
+        }
+        NodeMode dm = destLanes.nodeMode;
+        if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION && dm != NodeMode.EXTRACTION_FILTERING) {
+            return false;
+        }
+        if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
+                && !DuctFluidFilterLogic.passesFluidFiltersForBank(
+                        destLanes.fluid, DuctFaceNode.FilterBank.FILTER, s.fluid, level)) {
+            return false;
+        }
+        IFluidHandler destCap =
+                level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
+        if (destCap == null) {
+            return false;
+        }
+        int simulated = destCap.fill(s.fluid, IFluidHandler.FluidAction.SIMULATE);
+        if (simulated <= 0) {
+            return false;
+        }
+        int amt = Math.min(s.fluid.getAmount(), simulated);
+        FluidStack drain = srcCap.drain(new FluidStack(s.fluid.getFluid(), amt), IFluidHandler.FluidAction.SIMULATE);
+        return !drain.isEmpty() && drain.getAmount() >= amt;
+    }
+
+    /** Performs drain+fill for the pinned destination face; refunds if fill accepts less than drained. */
+    public static void tryExecutePlannedFluidTransfer(ServerLevel level, DuctBlockEntity sourceBe, FluidTransitShipment s) {
+        BlockPos srcPos = sourceBe.getBlockPos();
+        IFluidHandler srcCap =
+                level.getCapability(Capabilities.FluidHandler.BLOCK, srcPos.relative(s.sourceFace), s.sourceFace.getOpposite());
+        if (srcCap == null || s.fluid.isEmpty()) {
+            return;
+        }
+        if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
+            return;
+        }
+        BlockPos destPos = destBe.getBlockPos();
+        Direction df = s.destFace;
+        int dsm = destBe.getStorageMask();
+        if ((dsm & (1 << df.ordinal())) == 0) {
+            return;
+        }
+        DuctFaceLanes destLanes = destBe.getFaceLanes(df);
+        if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
+            return;
+        }
+        NodeMode dm = destLanes.nodeMode;
+        if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION && dm != NodeMode.EXTRACTION_FILTERING) {
+            return;
+        }
+        FluidStack toMove = s.fluid.copy();
+        if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
+                && !DuctFluidFilterLogic.passesFluidFiltersForBank(
+                        destLanes.fluid, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
+            return;
+        }
+        IFluidHandler destCap =
+                level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
+        if (destCap == null) {
+            return;
+        }
+        int simulated = destCap.fill(toMove, IFluidHandler.FluidAction.SIMULATE);
+        if (simulated <= 0) {
+            return;
+        }
+        int take = Math.min(toMove.getAmount(), simulated);
+        FluidStack drainSim = srcCap.drain(new FluidStack(toMove.getFluid(), take), IFluidHandler.FluidAction.SIMULATE);
+        if (drainSim.isEmpty() || drainSim.getAmount() < take) {
+            return;
+        }
+        FluidStack actually = srcCap.drain(new FluidStack(toMove.getFluid(), take), IFluidHandler.FluidAction.EXECUTE);
+        if (actually.isEmpty()) {
+            return;
+        }
+        int filled = destCap.fill(actually, IFluidHandler.FluidAction.EXECUTE);
+        if (filled < actually.getAmount()) {
+            srcCap.fill(
+                    new FluidStack(actually.getFluid(), actually.getAmount() - filled),
+                    IFluidHandler.FluidAction.EXECUTE);
+        }
+        sourceBe.setChanged();
+        destBe.setChanged();
     }
 
     private static FluidStack drainProbe(IFluidHandler h, int maxMb) {

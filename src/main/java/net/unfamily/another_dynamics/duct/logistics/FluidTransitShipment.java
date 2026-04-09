@@ -7,8 +7,9 @@ import net.minecraft.core.Direction;
 import net.neoforged.neoforge.fluids.FluidStack;
 
 /**
- * Visual-only fluid blob moving along a duct path (logic already applied; this exists for client animation like
- * {@link OutboundShipment} for items).
+ * Pending fluid move along a duct path: transfer runs when {@code travelTicks} reaches zero (planned-only, like modern
+ * item {@link OutboundShipment}). Client receives path + fluid visual only via {@code getUpdateTag}; {@code destDuct} is
+ * server-only.
  */
 public final class FluidTransitShipment {
     public FluidStack fluid;
@@ -18,7 +19,9 @@ public final class FluidTransitShipment {
     public int edgeTicks;
     public long journeyStartGameTime;
     public Direction sourceFace;
+    /** Storage attachment face on {@link #destDuct}. */
     public Direction destFace;
+    public BlockPos destDuct;
 
     public FluidTransitShipment(
             FluidStack fluid,
@@ -28,7 +31,8 @@ public final class FluidTransitShipment {
             int edgeTicks,
             long journeyStartGameTime,
             Direction sourceFace,
-            Direction destFace) {
+            Direction destStorageFace,
+            BlockPos destDuct) {
         this.fluid = fluid.copy();
         this.ductPath = ductPath;
         this.totalTravelTicks = totalTravelTicks;
@@ -36,6 +40,7 @@ public final class FluidTransitShipment {
         this.edgeTicks = Math.max(0, edgeTicks);
         this.journeyStartGameTime = journeyStartGameTime;
         this.sourceFace = sourceFace;
-        this.destFace = destFace;
+        this.destFace = destStorageFace;
+        this.destDuct = destDuct.immutable();
     }
 }

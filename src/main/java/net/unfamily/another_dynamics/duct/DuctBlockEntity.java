@@ -517,6 +517,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level != null && !level.isClientSide() && level instanceof ServerLevel sl) {
             unregisterOutboundFromIncomingIndex(sl);
         }
+        if (level != null && level.isClientSide()) {
+            BlockPos p = worldPosition.immutable();
+            DuctFluidTransitClientState.removeAt(p);
+            DuctTransitClientState.removeAt(p);
+        }
         super.setRemoved();
     }
 
@@ -659,37 +664,35 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     /**
-     * Schedules a client-side fluid blob moving along {@code path} (logic already applied). Path must be the duct
-     * polyline from this block toward the destination duct, same as item transit.
+     * Queues a planned fluid transfer along {@code path}: liquid moves only when {@code travelTicks} elapses, after
+     * per-tick revalidation (same idea as item {@link OutboundShipment}).
      */
-    public void scheduleFluidTransitVisual(
+    public void scheduleFluidTransitPending(
             ServerLevel level,
-            FluidStack movedVisual,
+            FluidStack plannedFluid,
             List<BlockPos> path,
             Direction sourceFace,
             Direction destStorageFace,
+            BlockPos destDuct,
             DuctFluidTransportSpec spec) {
-        if (path == null || path.isEmpty() || movedVisual.isEmpty()) {
+        if (path == null || path.isEmpty() || plannedFluid.isEmpty()) {
             return;
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(path);
         long travel = DuctPathfinder.pathTravelTicks(pathWire, spec);
         int tot = (int) Math.min(Math.max(1L, travel), Integer.MAX_VALUE);
         int edge = (int) Math.min(Math.max(1L, DuctPathfinder.edgeTravelTicks(spec)), Integer.MAX_VALUE);
-        FluidStack viz = movedVisual.copy();
-        if (viz.getAmount() > 1000) {
-            viz.setAmount(1000);
-        }
         fluidTransitShipments.add(
                 new FluidTransitShipment(
-                        viz,
+                        plannedFluid.copy(),
                         pathWire,
                         tot,
                         tot,
                         edge,
                         level.getGameTime(),
                         sourceFace,
-                        destStorageFace));
+                        destStorageFace,
+                        destDuct));
         setChanged();
         pushTransitSnapshotToClients(level);
     }
@@ -708,13 +711,23 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             if (s.travelTicks > 0) {
+                if (DuctTransitTopology.firstBrokenFluidPathEdge(level, s.ductPath).isPresent()) {
+                    it.remove();
+                    dirty = true;
+                    continue;
+                }
+                if (!DuctFluidServerTick.fluidShipmentMidTransitValid(level, this, s)) {
+                    it.remove();
+                    dirty = true;
+                    continue;
+                }
                 s.travelTicks--;
                 dirty = true;
+                continue;
             }
-            if (s.travelTicks <= 0) {
-                it.remove();
-                dirty = true;
-            }
+            DuctFluidServerTick.tryExecutePlannedFluidTransfer(level, this, s);
+            it.remove();
+            dirty = true;
         }
         if (dirty) {
             setChanged();
@@ -2649,7 +2662,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             CompoundTag ft = new CompoundTag();
-            ft.put("Fluid", s.fluid.save(registries));
+            FluidStack wireFluid = s.fluid.copy();
+            if (wireFluid.getAmount() > 1000) {
+                wireFluid.setAmount(1000);
+            }
+            CompoundTag fluidTag = new CompoundTag();
+            wireFluid.save(registries, fluidTag);
+            ft.put("Fluid", fluidTag);
             ft.putInt("Tot", s.totalTravelTicks);
             ft.putInt("Tr", s.travelTicks);
             ft.putInt("Ed", s.edgeTicks);

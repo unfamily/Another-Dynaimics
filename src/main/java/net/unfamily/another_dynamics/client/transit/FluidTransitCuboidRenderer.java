@@ -7,7 +7,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.resources.ResourceLocation;
@@ -15,9 +15,13 @@ import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtension
 import net.neoforged.neoforge.fluids.FluidStack;
 
 /**
- * Small axis-aligned cuboid textured with the fluid still sprite (Mekanism-style in-pipe hint, item-like spin applied by caller).
+ * Small axis-aligned cuboid textured with the fluid still sprite; uses entity translucent (no back-face cull) so all
+ * sides stay visible while the BER applies Y spin.
  */
 public final class FluidTransitCuboidRenderer {
+
+    /** Half-extent tuned to match in-duct item ghost scale (~{@link DuctTransitBlockEntityRenderer} GHOST_SCALE on items). */
+    private static final float HALF_EXTENT = 0.145f;
 
     private FluidTransitCuboidRenderer() {}
 
@@ -39,8 +43,8 @@ public final class FluidTransitCuboidRenderer {
         float r = ((tint >> 16) & 0xFF) / 255f;
         float g = ((tint >> 8) & 0xFF) / 255f;
         float b = (tint & 0xFF) / 255f;
-        VertexConsumer vc = buffer.getBuffer(Sheets.translucentCullBlockSheet());
-        float h = 0.4f;
+        VertexConsumer vc = buffer.getBuffer(RenderType.entityTranslucent(InventoryMenu.BLOCK_ATLAS));
+        float h = HALF_EXTENT;
         drawBox(poseStack.last(), vc, sprite, -h, -h, -h, h, h, h, r, g, b, a, packedLight, packedOverlay);
     }
 

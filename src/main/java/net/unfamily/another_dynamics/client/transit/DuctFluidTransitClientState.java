@@ -39,4 +39,9 @@ public final class DuctFluidTransitClientState {
     public static Map<BlockPos, List<DuctFluidTransitVisual>> snapshot() {
         return Collections.unmodifiableMap(BY_DUCT);
     }
+
+    /** Clears cached visuals when the duct block entity is removed client-side (avoids stale ghosts). */
+    public static void removeAt(BlockPos ductPos) {
+        BY_DUCT.remove(ductPos.immutable());
+    }
 }
