@@ -230,6 +230,18 @@ public final class MekanismChemicalCompat {
         }
     }
 
+    /** Returns Mekanism chemical tint (RRGGBB) or 0 on failure. */
+    public static int getTint(Object stack) {
+        if (stack == null || isEmptyStack(stack)) {
+            return 0;
+        }
+        try {
+            return (int) stack.getClass().getMethod("getChemicalTint").invoke(stack);
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
     public static Object emptyStack() {
         try {
             Class<?> cls = Class.forName("mekanism.api.chemical.ChemicalStack");

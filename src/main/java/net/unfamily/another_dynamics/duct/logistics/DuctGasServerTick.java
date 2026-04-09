@@ -3,6 +3,7 @@ package net.unfamily.another_dynamics.duct.logistics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.*;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
@@ -21,6 +22,7 @@ public final class DuctGasServerTick {
     private DuctGasServerTick() {}
 
     public static void tick(DuctBlockEntity be, ServerLevel level) {
+        try {
         if (!MekanismChemicalCompat.isLoaded()) {
             return;
         }
@@ -50,6 +52,10 @@ public final class DuctGasServerTick {
                     || lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
                 tryExtractPush(level, be, dir, lanes.nodeMode, node, spec);
             }
+        }
+        } catch (Throwable t) {
+            // Never let a bad compat call disable ticking for this block entity.
+            AnotherDynamicsMod.LOGGER.error("Gas tick failed at {} (ductId={})", be.getBlockPos(), be.getLogicalDuctId(), t);
         }
     }
 

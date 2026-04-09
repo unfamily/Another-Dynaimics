@@ -45,7 +45,26 @@ public final class FluidTransitCuboidRenderer {
         float b = (tint & 0xFF) / 255f;
         VertexConsumer vc = buffer.getBuffer(Sheets.translucentCullBlockSheet());
         float h = HALF_EXTENT;
-        drawBox(poseStack.last(), vc, sprite, -h, -h, -h, h, h, h, r, g, b, a, packedLight, packedOverlay);
+        renderCuboidInternal(sprite, poseStack, vc, -h, -h, -h, h, h, h, r, g, b, a, packedLight, packedOverlay);
+    }
+
+    static void renderCuboidInternal(
+            TextureAtlasSprite sp,
+            PoseStack poseStack,
+            VertexConsumer vc,
+            float minX,
+            float minY,
+            float minZ,
+            float maxX,
+            float maxY,
+            float maxZ,
+            float r,
+            float g,
+            float b,
+            float a,
+            int light,
+            int overlay) {
+        drawBox(poseStack.last(), vc, sp, minX, minY, minZ, maxX, maxY, maxZ, r, g, b, a, light, overlay);
     }
 
     private static void drawBox(

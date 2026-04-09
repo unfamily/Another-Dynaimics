@@ -44,6 +44,7 @@ import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
 import net.unfamily.another_dynamics.duct.logistics.TransitPhase;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.client.transit.DuctFluidTransitClientState;
+import net.unfamily.another_dynamics.client.transit.DuctGasTransitClientState;
 import net.unfamily.another_dynamics.client.transit.DuctTransitClientState;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -570,6 +571,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level != null && level.isClientSide()) {
             BlockPos p = worldPosition.immutable();
             DuctFluidTransitClientState.removeAt(p);
+            DuctGasTransitClientState.removeAt(p);
             DuctTransitClientState.removeAt(p);
         }
         super.setRemoved();
@@ -826,6 +828,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             DuctGasIncomingIndex.register(level, destDuct, id, amt);
         }
         setChanged();
+        pushTransitSnapshotToClients(level);
     }
 
     private void tickGasTransitShipments(ServerLevel level) {
@@ -873,13 +876,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
 
-            tryExecutePlannedGasTransfer(level, this, s);
-            DuctGasIncomingIndex.unregister(level, s.destDuct, id, amt);
-            it.remove();
-            dirty = true;
+            try {
+                tryExecutePlannedGasTransfer(level, this, s);
+            } catch (Throwable t) {
+                // Avoid "ticking block entity" hard-disable if compat throws.
+                net.unfamily.another_dynamics.AnotherDynamicsMod.LOGGER.error(
+                        "Gas shipment execute failed at {} (ductId={})", worldPosition, logicalDuctId, t);
+            } finally {
+                DuctGasIncomingIndex.unregister(level, s.destDuct, id, amt);
+                it.remove();
+                dirty = true;
+            }
         }
         if (dirty) {
             setChanged();
+            pushTransitSnapshotToClients(level);
         }
     }
 
@@ -3079,6 +3090,36 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             fluidTransitList.add(ft);
         }
         t.put("FluidTransitV1", fluidTransitList);
+        ListTag gasTransitList = new ListTag();
+        for (GasTransitShipment s : gasTransitShipments) {
+            if (s.stack == null || MekanismChemicalCompat.isEmptyStack(s.stack)) {
+                continue;
+            }
+            long amt = MekanismChemicalCompat.getAmount(s.stack);
+            if (amt <= 0) {
+                continue;
+            }
+            CompoundTag gt = new CompoundTag();
+            gt.putInt("Tint", MekanismChemicalCompat.getTint(s.stack));
+            gt.putLong("Amt", amt);
+            gt.putInt("Tot", s.totalTravelTicks);
+            gt.putInt("Tr", s.travelTicks);
+            gt.putInt("Ed", s.edgeTicks);
+            gt.putLong("J0", s.journeyStartGameTime);
+            gt.putByte("SrcF", (byte) s.sourceFace.ordinal());
+            gt.putByte("DstF", (byte) s.destFace.ordinal());
+            ListTag gpath = new ListTag();
+            for (BlockPos p : s.ductPath) {
+                CompoundTag pt = new CompoundTag();
+                pt.putInt("X", p.getX());
+                pt.putInt("Y", p.getY());
+                pt.putInt("Z", p.getZ());
+                gpath.add(pt);
+            }
+            gt.put("Path", gpath);
+            gasTransitList.add(gt);
+        }
+        t.put("GasTransitV1", gasTransitList);
         t.putString("DuctLogicalId", logicalDuctId);
         return t;
     }
@@ -3119,6 +3160,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             DuctTransitClientState.onDuctUpdateTag(
                     worldPosition, tag, level.registryAccess(), level.getGameTime());
             DuctFluidTransitClientState.applyDuctUpdateTag(
+                    worldPosition, tag, level.registryAccess(), level.getGameTime());
+            DuctGasTransitClientState.applyDuctUpdateTag(
                     worldPosition, tag, level.registryAccess(), level.getGameTime());
         }
     }

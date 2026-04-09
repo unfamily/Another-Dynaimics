@@ -60,7 +60,8 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
         Level level = tile.getLevel();
         List<DuctTransitVisual> visuals = DuctTransitClientState.visualsAt(origin);
         List<DuctFluidTransitVisual> fluidVisuals = DuctFluidTransitClientState.visualsAt(origin);
-        if (visuals.isEmpty() && fluidVisuals.isEmpty()) {
+        List<DuctGasTransitVisual> gasVisuals = DuctGasTransitClientState.visualsAt(origin);
+        if (visuals.isEmpty() && fluidVisuals.isEmpty() && gasVisuals.isEmpty()) {
             return;
         }
         int overlay = packedOverlay != 0 ? packedOverlay : OverlayTexture.NO_OVERLAY;
@@ -104,6 +105,23 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             FluidTransitCuboidRenderer.renderCuboid(fv.fluid, poseStack, buffer, light, overlay);
             poseStack.popPose();
         }
+        for (DuctGasTransitVisual gv : gasVisuals) {
+            if (gv.amount <= 0) {
+                continue;
+            }
+            float progress = gv.progress01(level, partialTick);
+            Vec3 world = gv.positionAt(progress);
+            poseStack.pushPose();
+            poseStack.translate(world.x - origin.getX(), world.y - origin.getY(), world.z - origin.getZ());
+            poseStack.translate(0.0f, FLUID_Y_OFFSET, 0.0f);
+            float rot = (level.getGameTime() + partialTick) * 3.0f;
+            poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(rot));
+            poseStack.scale(GHOST_SCALE, GHOST_SCALE, GHOST_SCALE);
+            BlockPos lightPos = BlockPos.containing(world);
+            int light = LevelRenderer.getLightColor(level, lightPos);
+            GasTransitCuboidRenderer.renderCuboid(gv.tintRgb, poseStack, buffer, light, overlay);
+            poseStack.popPose();
+        }
         if (!Minecraft.useShaderTransparency() && buffer instanceof MultiBufferSource.BufferSource source) {
             source.endLastBatch();
         }
@@ -113,7 +131,8 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
     public AABB getRenderBoundingBox(DuctBlockEntity blockEntity) {
         List<DuctTransitVisual> visuals = DuctTransitClientState.visualsAt(blockEntity.getBlockPos());
         List<DuctFluidTransitVisual> fluidVisuals = DuctFluidTransitClientState.visualsAt(blockEntity.getBlockPos());
-        if (visuals.isEmpty() && fluidVisuals.isEmpty()) {
+        List<DuctGasTransitVisual> gasVisuals = DuctGasTransitClientState.visualsAt(blockEntity.getBlockPos());
+        if (visuals.isEmpty() && fluidVisuals.isEmpty() && gasVisuals.isEmpty()) {
             return BlockEntityRenderer.super.getRenderBoundingBox(blockEntity);
         }
         AABB box = new AABB(blockEntity.getBlockPos());
@@ -127,6 +146,15 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             }
         }
         for (DuctFluidTransitVisual v : fluidVisuals) {
+            if (v.ductPath.isEmpty()) {
+                box = box.minmax(new AABB(v.ownerDuct));
+            } else {
+                for (BlockPos p : v.ductPath) {
+                    box = box.minmax(new AABB(p));
+                }
+            }
+        }
+        for (DuctGasTransitVisual v : gasVisuals) {
             if (v.ductPath.isEmpty()) {
                 box = box.minmax(new AABB(v.ownerDuct));
             } else {
