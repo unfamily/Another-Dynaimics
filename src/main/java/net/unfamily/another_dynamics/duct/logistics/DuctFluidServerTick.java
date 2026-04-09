@@ -14,6 +14,7 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctFluidAllowLimitLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidFilterLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
@@ -71,6 +72,23 @@ public final class DuctFluidServerTick {
         FluidStack available = drainProbe(srcCap, wantMb);
         if (available.isEmpty()) {
             return;
+        }
+        // Respect per-allow-line Keep (mB) on the source when allow filters are configured.
+        int keepCap =
+                DuctFluidAllowLimitLogic.maxExtractRespectingKeepMb(
+                        srcCap,
+                        node.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR),
+                        node.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR),
+                        available,
+                        level.registryAccess());
+        if (keepCap != Integer.MAX_VALUE) {
+            int capped = Math.min(available.getAmount(), keepCap);
+            if (capped <= 0) {
+                return;
+            }
+            if (capped < available.getAmount()) {
+                available = new FluidStack(available.getFluid(), capped);
+            }
         }
         if (!DuctFluidFilterLogic.passesFluidFiltersForBank(node, DuctFaceNode.FilterBank.EXTRACTOR, available, level)) {
             return;
@@ -144,6 +162,22 @@ public final class DuctFluidServerTick {
             int simulated = destCap.fill(toMove, IFluidHandler.FluidAction.SIMULATE);
             if (simulated <= 0) {
                 continue;
+            }
+            // Respect per-allow-line Limit (mB) on the destination FILTER bank.
+            if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
+                int maxAdd =
+                        DuctFluidAllowLimitLogic.maxAdditionalInsertForAllowLineMb(
+                                destCap,
+                                destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER),
+                                destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER),
+                                toMove,
+                                level.registryAccess());
+                if (maxAdd != Integer.MAX_VALUE) {
+                    simulated = Math.min(simulated, maxAdd);
+                    if (simulated <= 0) {
+                        continue;
+                    }
+                }
             }
             FluidStack drain = srcCap.drain(new FluidStack(toMove.getFluid(), simulated), IFluidHandler.FluidAction.SIMULATE);
             if (drain.isEmpty() || drain.getAmount() < simulated) {

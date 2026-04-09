@@ -7,7 +7,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.resources.ResourceLocation;
@@ -43,7 +43,7 @@ public final class FluidTransitCuboidRenderer {
         float r = ((tint >> 16) & 0xFF) / 255f;
         float g = ((tint >> 8) & 0xFF) / 255f;
         float b = (tint & 0xFF) / 255f;
-        VertexConsumer vc = buffer.getBuffer(RenderType.entityTranslucent(InventoryMenu.BLOCK_ATLAS));
+        VertexConsumer vc = buffer.getBuffer(Sheets.translucentCullBlockSheet());
         float h = HALF_EXTENT;
         drawBox(poseStack.last(), vc, sprite, -h, -h, -h, h, h, h, r, g, b, a, packedLight, packedOverlay);
     }
@@ -69,18 +69,52 @@ public final class FluidTransitCuboidRenderer {
         float u1 = sp.getU1();
         float v0 = sp.getV0();
         float v1 = sp.getV1();
+        // Draw each face twice (both windings) so it remains visible even on cull-enabled translucent sheets.
         // Down -Y
-        quad(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 0, -1, 0, minX, minY, minZ, maxX, minY, minZ, maxX, minY, maxZ, minX, minY, maxZ);
+        quadBoth(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 0, -1, 0, minX, minY, minZ, maxX, minY, minZ, maxX, minY, maxZ, minX, minY, maxZ);
         // Up +Y
-        quad(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 0, 1, 0, minX, maxY, minZ, minX, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ);
+        quadBoth(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 0, 1, 0, minX, maxY, minZ, minX, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ);
         // North -Z
-        quad(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 0, 0, -1, minX, minY, minZ, maxX, minY, minZ, maxX, maxY, minZ, minX, maxY, minZ);
+        quadBoth(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 0, 0, -1, minX, minY, minZ, maxX, minY, minZ, maxX, maxY, minZ, minX, maxY, minZ);
         // South +Z
-        quad(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 0, 0, 1, maxX, minY, maxZ, minX, minY, maxZ, minX, maxY, maxZ, maxX, maxY, maxZ);
+        quadBoth(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 0, 0, 1, maxX, minY, maxZ, minX, minY, maxZ, minX, maxY, maxZ, maxX, maxY, maxZ);
         // West -X
-        quad(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, -1, 0, 0, minX, minY, maxZ, minX, minY, minZ, minX, maxY, minZ, minX, maxY, maxZ);
+        quadBoth(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, -1, 0, 0, minX, minY, maxZ, minX, minY, minZ, minX, maxY, minZ, minX, maxY, maxZ);
         // East +X
-        quad(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 1, 0, 0, maxX, minY, minZ, maxX, minY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ);
+        quadBoth(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, 1, 0, 0, maxX, minY, minZ, maxX, minY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ);
+    }
+
+    private static void quadBoth(
+            VertexConsumer vc,
+            PoseStack.Pose pose,
+            Matrix4f mat,
+            float r,
+            float g,
+            float b,
+            float a,
+            int light,
+            int overlay,
+            float u0,
+            float u1,
+            float v0,
+            float v1,
+            float nx,
+            float ny,
+            float nz,
+            float x1,
+            float y1,
+            float z1,
+            float x2,
+            float y2,
+            float z2,
+            float x3,
+            float y3,
+            float z3,
+            float x4,
+            float y4,
+            float z4) {
+        quad(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, nx, ny, nz, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4);
+        quad(vc, pose, mat, r, g, b, a, light, overlay, u0, u1, v0, v1, -nx, -ny, -nz, x4, y4, z4, x3, y3, z3, x2, y2, z2, x1, y1, z1);
     }
 
     private static void quad(

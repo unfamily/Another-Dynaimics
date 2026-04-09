@@ -270,6 +270,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     private int editGhostSlotScreenX;
     private int editGhostSlotScreenY;
+    private int lastMouseX;
+    private int lastMouseY;
 
     public DuctNodeScreen(DuctNodeMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -614,6 +616,14 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         layoutTransportKindPickers();
         layoutHubBackButton();
         applySubViewVisibility();
+
+        // JEI (and some UI transitions) can cause a screen re-init that clears widgets.
+        // If we are mid edit-mode, restore the edit widgets without grabbing keyboard focus.
+        if (inEditMode()) {
+            createEditModeUI();
+            applySubViewVisibility();
+            reloadFilterEntryTextBoxFromList(false);
+        }
     }
 
     private boolean shouldReturnToTransportHubInsteadOfClosing() {
@@ -1571,13 +1581,15 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 ghostSlotFluid = contained.get().copy();
                 filterVariants = generateFluidFilterVariants(ghostSlotFluid);
             } else {
+                // In fluid filter mode, do not fall back to item filters: this ghost slot is a "calibrator" for fluids.
                 ghostSlotFluid = FluidStack.EMPTY;
-                ghostSlotItem = cursorItem.copy();
-                filterVariants = generateAllFilterVariants(ghostSlotItem);
+                ghostSlotItem = ItemStack.EMPTY;
+                filterVariants = List.of();
             }
             currentFilterVariantIndex = 0;
-            if (editModeTextBox != null && !filterVariants.isEmpty()) {
-                editModeTextBox.setValue(filterVariants.getFirst());
+            if (editModeTextBox != null) {
+                String v = filterVariants.isEmpty() ? "" : filterVariants.getFirst();
+                editModeTextBox.setValue(v);
                 editModeTextBox.setCursorPosition(0);
                 editModeTextBox.setHighlightPos(0);
             }
@@ -1686,7 +1698,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return variants;
         }
         variants.add("-" + fluidId);
-        variants.add(fluidId.toString());
         String namespace = fluidId.getNamespace();
         if (!"minecraft".equals(namespace)) {
             variants.add("@" + namespace);
@@ -2004,8 +2015,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     Tooltip.create(
                             Component.translatable(
                                     limitCtx
-                                            ? "gui.another_dynamics.duct_node.allow_cap.field.limit"
-                                            : "gui.another_dynamics.duct_node.allow_cap.field.keep")));
+                                            ? (isFluidFilterTransport()
+                                                    ? "gui.another_dynamics.duct_node.allow_cap.field.limit_mb"
+                                                    : "gui.another_dynamics.duct_node.allow_cap.field.limit")
+                                            : (isFluidFilterTransport()
+                                                    ? "gui.another_dynamics.duct_node.allow_cap.field.keep_mb"
+                                                    : "gui.another_dynamics.duct_node.allow_cap.field.keep"))));
         }
         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
         syncActiveFilterBankToNodeMode(nm);
@@ -2658,6 +2673,22 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
     }
 
+    private boolean isMouseInsideOurGui() {
+        return lastMouseX >= this.leftPos
+                && lastMouseX < this.leftPos + this.imageWidth
+                && lastMouseY >= this.topPos
+                && lastMouseY < this.topPos + this.imageHeight;
+    }
+
+    private static boolean jeiIsHandlingKeyboard() {
+        try {
+            Class<?> c = Class.forName("net.unfamily.another_dynamics.integration.jei.JeiRuntimeState");
+            return (boolean) c.getMethod("jeiHasKeyboardFocusOrRecipesGuiOpen").invoke(null);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0 && subView != SubView.HOW_TO_USE && !isMouseOverAnyVisibleTextField(mouseX, mouseY)) {
@@ -2804,18 +2835,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 minecraft != null && minecraft.options.keyInventory != null
                         && minecraft.options.keyInventory.matches(keyCode, scanCode);
 
-        if (esc || inv) {
-            if (routingPriorityBox.isFocused()) {
-                routingPriorityBox.setFocused(false);
-                return true;
-            }
-            if (advCapEditBox != null && advCapEditBox.isFocused()) {
-                advCapEditBox.setFocused(false);
-                syncAllowCapEditBoxDisplay();
-                return true;
-            }
-        }
-
         boolean editFilterFocused = editModeTextBox != null && editModeTextBox.isFocused();
 
         if (editFilterFocused) {
@@ -2826,14 +2845,18 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 applyEditModeAndClose();
                 return true;
             }
-            // Drop focus only (do not close GUI); allows JEI search and inventory after E / Esc.
+            // Unfocus only by clicking outside the field (do not change focus via Esc/E).
             if (esc || inv) {
-                editModeTextBox.setFocused(false);
                 return true;
             }
         }
 
         if (esc || inv) {
+            // JEI overlays can be active while this screen is open; only treat Esc/E as our close keys when interacting
+            // with our GUI (mouse over it).
+            if (jeiIsHandlingKeyboard() || !isMouseInsideOurGui()) {
+                return super.keyPressed(keyCode, scanCode, modifiers);
+            }
             if (subView == SubView.ADVANCED_FILTERING) {
                 playClickSound();
                 closeAdvancedFiltering();
@@ -3074,7 +3097,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int gapBelowTitle = 10;
             int helpLineStep = this.font.lineHeight + 4;
             int helpY = titleBaseline + this.font.lineHeight + gapBelowTitle;
-            String p = "gui.another_dynamics.general_filter_text.";
+            String p =
+                    menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal()
+                            ? "gui.another_dynamics.fluid_filter_text."
+                            : "gui.another_dynamics.general_filter_text.";
             renderHelpLineWithExample(graphics, p + "id", p + "id.example", p + "id.after", HELP_TEXT_X, helpY, mouseX, mouseY);
             helpY += helpLineStep;
             renderHelpLineWithExample(graphics, p + "tag", p + "tag.example", p + "tag.after", HELP_TEXT_X, helpY, mouseX, mouseY);
@@ -3086,22 +3112,28 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             renderHelpLineWithExample(
                     graphics, p + "nbt.example", p + "nbt.example.text", p + "nbt.after", HELP_TEXT_X, helpY, mouseX, mouseY);
             helpY += helpLineStep;
-            renderHelpLineWithTwoExamples(
-                    graphics,
-                    p + "macro",
-                    p + "macro.example1",
-                    p + "macro.middle",
-                    p + "macro.example2",
-                    p + "macro.after",
-                    HELP_TEXT_X,
-                    helpY,
-                    mouseX,
-                    mouseY);
+            if (p.endsWith("general_filter_text.")) {
+                renderHelpLineWithTwoExamples(
+                        graphics,
+                        p + "macro",
+                        p + "macro.example1",
+                        p + "macro.middle",
+                        p + "macro.example2",
+                        p + "macro.after",
+                        HELP_TEXT_X,
+                        helpY,
+                        mouseX,
+                        mouseY);
+            } else {
+                renderHelpLineWithExample(graphics, p + "macro", p + "macro.example1", p + "macro.after", HELP_TEXT_X, helpY, mouseX, mouseY);
+            }
         }
     }
 
     @Override
     public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
         if (subView == SubView.HOW_TO_USE) {
             renderBackground(graphics, mouseX, mouseY, partialTick);
             // renderBg blits at absolute (leftPos, topPos); do not pre-translate or the panel draws twice (shifted).

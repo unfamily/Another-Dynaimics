@@ -5,6 +5,7 @@ import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.ingredients.subtypes.ISubtypeInterpreter;
 import mezz.jei.api.ingredients.subtypes.UidContext;
 import mezz.jei.api.registration.ISubtypeRegistration;
+import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
@@ -30,6 +31,16 @@ public final class AnotherDynamicsJeiPlugin implements IModPlugin {
     @Override
     public void registerItemSubtypes(ISubtypeRegistration registration) {
         registration.registerSubtypeInterpreter(ModItems.DUCT.get(), DUCT_LOGICAL_ID_INTERPRETER);
+    }
+
+    @Override
+    public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
+        JeiRuntimeState.setRuntime(jeiRuntime);
+    }
+
+    @Override
+    public void onRuntimeUnavailable() {
+        JeiRuntimeState.clearRuntime();
     }
 
     public static final ISubtypeInterpreter<ItemStack> DUCT_LOGICAL_ID_INTERPRETER = new ISubtypeInterpreter<>() {
