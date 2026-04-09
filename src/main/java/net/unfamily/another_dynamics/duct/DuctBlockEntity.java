@@ -29,6 +29,7 @@ import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.logistics.DuctCapHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
+import net.unfamily.another_dynamics.duct.logistics.DuctFluidIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowBuffer;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowRouting;
 import net.unfamily.another_dynamics.duct.logistics.FluidTransitShipment;
@@ -693,6 +694,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         sourceFace,
                         destStorageFace,
                         destDuct));
+        DuctFluidIncomingIndex.register(level, destDuct, plannedFluid);
         setChanged();
         pushTransitSnapshotToClients(level);
     }
@@ -712,11 +714,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             if (s.travelTicks > 0) {
                 if (DuctTransitTopology.firstBrokenFluidPathEdge(level, s.ductPath).isPresent()) {
+                    DuctFluidIncomingIndex.unregister(level, s.destDuct, s.fluid);
                     it.remove();
                     dirty = true;
                     continue;
                 }
                 if (!DuctFluidServerTick.fluidShipmentMidTransitValid(level, this, s)) {
+                    DuctFluidIncomingIndex.unregister(level, s.destDuct, s.fluid);
                     it.remove();
                     dirty = true;
                     continue;
@@ -726,6 +730,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             DuctFluidServerTick.tryExecutePlannedFluidTransfer(level, this, s);
+            DuctFluidIncomingIndex.unregister(level, s.destDuct, s.fluid);
             it.remove();
             dirty = true;
         }
@@ -1308,6 +1313,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
         }
+        boolean singleDuctNetwork = DuctPathfinder.connectedDucts(level, worldPosition, DuctNetworkType.ITEM).size() == 1;
         DuctFaceLanes faceLanes = getFaceLanes(face);
         IItemHandler sourceHandler = DuctCapHelper.getHandlerOnFace(level, worldPosition, face);
         if (sourceHandler == null) {
@@ -1328,6 +1334,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             int[] rrProbe = new int[] {node.roundRobinCursor};
             boolean allowSelf = faceLanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+            boolean allowSelfOrSingle = allowSelf || singleDuctNetwork;
             RoutingMode rm =
                     faceLanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION
                             ? node.routingModeRetriever
@@ -1335,42 +1342,41 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                     ? node.routingModeExtractor
                                     : node.routingMode;
             boolean roundRobinRouting = rm == RoutingMode.ROUND_ROBIN;
-            BlockPos prevDest = null;
-            Direction prevDestFace = null;
             boolean scheduledThisSlot = false;
-            for (int attempt = 0; attempt < EXTRACTION_ROUTE_RETRY_CAP; attempt++) {
-                Optional<DuctTargetSelector.ExtractionRouting> routeOpt =
-                        DuctTargetSelector.selectExtractionDelivery(
-                                level, worldPosition, probe, rm, rrProbe, node.channelLetter, allowSelf, null);
-                if (routeOpt.isEmpty()) {
-                    break;
-                }
-                DuctTargetSelector.ExtractionRouting route = routeOpt.get();
-                List<BlockPos> path = route.path();
-                BlockPos dest = path.get(path.size() - 1);
-                Direction destFace = route.destStorageFace();
-                if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
-                    prevDest = dest;
-                    prevDestFace = destFace;
-                    if (!roundRobinRouting) {
-                        break;
+            List<DuctTargetSelector.ExtractionCandidate> candidates =
+                    DuctTargetSelector.listExtractionDeliveryCandidates(
+                            level,
+                            worldPosition,
+                            probe,
+                            rm,
+                            rrProbe[0],
+                            node.channelLetter,
+                            allowSelfOrSingle,
+                            allowSelfOrSingle ? face : null);
+            if (candidates.isEmpty()) {
+                break;
+            }
+            for (int candIdx = 0; candIdx < candidates.size() && candIdx < EXTRACTION_ROUTE_RETRY_CAP; candIdx++) {
+                DuctTargetSelector.ExtractionCandidate cand = candidates.get(candIdx);
+                BlockPos dest = cand.ductPos();
+                Direction destFace = cand.face();
+                List<BlockPos> path;
+                if (dest.equals(worldPosition)) {
+                    path = List.of(worldPosition);
+                } else {
+                    Optional<List<BlockPos>> p =
+                            DuctPathfinder.shortestPath(level, worldPosition, dest, spec, DuctNetworkType.ITEM);
+                    if (p.isEmpty()) {
+                        continue;
                     }
-                    continue;
+                    path = p.get();
                 }
-                if (!roundRobinRouting
-                        && attempt > 0
-                        && dest.equals(prevDest)
-                        && destFace == prevDestFace) {
-                    break;
+                if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
+                    continue;
                 }
                 NodeMode destMode = destBe.getFaceLanes(destFace).nodeMode;
                 if ((destMode == NodeMode.FILTERING_INSERTION || destMode == NodeMode.EXTRACTION_FILTERING)
                         && !destBe.passesItemFilters(destFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
-                    prevDest = dest;
-                    prevDestFace = destFace;
-                    if (!roundRobinRouting) {
-                        break;
-                    }
                     continue;
                 }
                 int tubeBatch = node.extractBatch > 0 ? node.extractBatch : spec.batchDefault();
@@ -1401,24 +1407,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                         probe,
                                         plannedCount));
                 if (plannedCount <= 0) {
-                    prevDest = dest;
-                    prevDestFace = destFace;
-                    if (!roundRobinRouting) {
-                        break;
-                    }
                     continue;
                 }
                 ItemStack planned = probe.copy();
                 planned.setCount(plannedCount);
-                if (!canScheduleTowardFace(level, dest, destBe, destFace, planned, spec)) {
-                    prevDest = dest;
-                    prevDestFace = destFace;
-                    if (!roundRobinRouting) {
-                        break;
-                    }
+                int destCap = maxSchedulableTowardFace(level, dest, destBe, destFace, planned, plannedCount);
+                if (destCap <= 0) {
                     continue;
                 }
-                node.roundRobinCursor = rrProbe[0];
+                if (destCap < plannedCount) {
+                    plannedCount = destCap;
+                    planned.setCount(plannedCount);
+                }
+                if (roundRobinRouting) {
+                    node.roundRobinCursor = rrProbe[0] + candIdx + 1;
+                }
                 long travel = DuctPathfinder.pathTravelTicks(path, spec);
                 int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
                 OutboundShipment sh =
@@ -1453,40 +1456,40 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         RoutingMode rm =
                 retrieverLanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
         boolean roundRobinRetriever = rm == RoutingMode.ROUND_ROBIN;
-        BlockPos prevDonor = null;
-        Direction prevDonorFace = null;
-        for (int attempt = 0; attempt < EXTRACTION_ROUTE_RETRY_CAP; attempt++) {
-            Optional<DuctTargetSelector.RetrieverRouting> routeOpt =
-                    DuctTargetSelector.selectRetrievingDonorPath(
-                            level, worldPosition, retrieverFace, rm, rr, node.channelLetter);
-            if (routeOpt.isEmpty()) {
-                return;
-            }
-            DuctTargetSelector.RetrieverRouting route = routeOpt.get();
-            List<BlockPos> path = route.path();
-            BlockPos donor = route.donorPos();
-            Direction donorFace = route.donorStorageFace();
-            if (!roundRobinRetriever
-                    && attempt > 0
-                    && donor.equals(prevDonor)
-                    && donorFace == prevDonorFace) {
-                return;
+        boolean singleDuctNetwork = DuctPathfinder.connectedDucts(level, worldPosition, DuctNetworkType.ITEM).size() == 1;
+        List<DuctTargetSelector.DonorCandidate> donors =
+                DuctTargetSelector.listRetrievingDonorCandidates(
+                        level,
+                        worldPosition,
+                        retrieverFace,
+                        rm,
+                        rr[0],
+                        node.channelLetter,
+                        singleDuctNetwork,
+                        singleDuctNetwork ? retrieverFace : null);
+        if (donors.isEmpty()) {
+            return;
+        }
+        for (int donorIdx = 0; donorIdx < donors.size() && donorIdx < EXTRACTION_ROUTE_RETRY_CAP; donorIdx++) {
+            DuctTargetSelector.DonorCandidate donorCand = donors.get(donorIdx);
+            BlockPos donor = donorCand.ductPos();
+            Direction donorFace = donorCand.face();
+            List<BlockPos> path;
+            if (donor.equals(worldPosition)) {
+                path = List.of(worldPosition);
+            } else {
+                Optional<List<BlockPos>> p =
+                        DuctPathfinder.shortestPath(level, donor, worldPosition, spec, DuctNetworkType.ITEM);
+                if (p.isEmpty()) {
+                    continue;
+                }
+                path = p.get();
             }
             if (!(level.getBlockEntity(donor) instanceof DuctBlockEntity donorBe)) {
-                prevDonor = donor;
-                prevDonorFace = donorFace;
-                if (!roundRobinRetriever) {
-                    return;
-                }
                 continue;
             }
             IItemHandler donorHandler = DuctCapHelper.getHandlerOnFace(level, donor, donorFace);
             if (donorHandler == null) {
-                prevDonor = donor;
-                prevDonorFace = donorFace;
-                if (!roundRobinRetriever) {
-                    return;
-                }
                 continue;
             }
             for (int slot = 0; slot < donorHandler.getSlots(); slot++) {
@@ -1527,15 +1530,36 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                         DuctFaceNode.FilterBank.RETRIEVER,
                                         probe,
                                         plannedCount));
+                if (plannedCount > 0) {
+                    ItemStack template = probe.copy();
+                    template.setCount(plannedCount);
+                    List<ItemStack> prior = DuctIncomingIndex.snapshot(level, worldPosition);
+                    int capIn =
+                            DuctCapHelper.maxInsertableAfterPendingOnFace(
+                                    level, worldPosition, retrieverFace, template, plannedCount, prior);
+                    capIn =
+                            capInsertableForRetrieverAllowLimit(
+                                    level, worldPosition, retrieverFace, this, template, capIn, prior);
+                    plannedCount = Math.min(plannedCount, capIn);
+                }
                 if (plannedCount <= 0) {
                     continue;
                 }
                 ItemStack planned = probe.copy();
                 planned.setCount(plannedCount);
-                if (!canScheduleTowardFace(level, worldPosition, this, retrieverFace, planned, spec)) {
+                // Destination checks already done (capacity + retriever allow/limit).
+                if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
                     continue;
                 }
-                node.roundRobinCursor = rr[0];
+                if (getOverflowBuffer().isSchedulingUnavailableForNewPulls()) {
+                    continue;
+                }
+                if (!DuctRedstoneLogic.isFaceTransportActive(level, worldPosition, getFaceLanes(retrieverFace).redstoneMode)) {
+                    continue;
+                }
+                if (roundRobinRetriever) {
+                    node.roundRobinCursor = rr[0] + donorIdx + 1;
+                }
                 long travel = DuctPathfinder.pathTravelTicks(path, spec);
                 int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
                 OutboundShipment sh =
@@ -1552,39 +1576,40 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 pushTransitSnapshotToClients(level);
                 return;
             }
-            prevDonor = donor;
-            prevDonorFace = donorFace;
-            if (!roundRobinRetriever) {
-                return;
-            }
         }
     }
 
-    private boolean canScheduleTowardFace(
+    /**
+     * Returns how many items can be scheduled toward a destination face right now, respecting destination capacity,
+     * inbound redstone, overflow buffers, and FILTER-bank allow-line limits.
+     */
+    private int maxSchedulableTowardFace(
             ServerLevel level,
             BlockPos destDuct,
             DuctBlockEntity destBe,
             Direction destFace,
-            ItemStack addition,
-            DuctItemTransportSpec transportSpec) {
-        if (addition.isEmpty()) {
-            return false;
+            ItemStack template,
+            int want) {
+        if (want <= 0 || template.isEmpty()) {
+            return 0;
         }
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
-            return false;
+            return 0;
         }
         if (destBe.getOverflowBuffer().isSchedulingUnavailableForNewPulls()) {
-            return false;
+            return 0;
         }
         if (!DuctRedstoneLogic.isFaceTransportActive(level, destDuct, destBe.getFaceLanes(destFace).redstoneMode)) {
-            return false;
+            return 0;
         }
+        ItemStack t = template.copy();
+        t.setCount(want);
         List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct);
         int cap =
                 DuctCapHelper.maxInsertableAfterPendingOnFace(
-                        level, destDuct, destFace, addition, addition.getCount(), prior);
-        cap = capInsertableForFilterAllowLimit(level, destDuct, destFace, destBe, addition, cap, prior);
-        return cap >= addition.getCount();
+                        level, destDuct, destFace, t, want, prior);
+        cap = capInsertableForFilterAllowLimit(level, destDuct, destFace, destBe, t, cap, prior);
+        return Math.max(0, Math.min(want, cap));
     }
 
     private int distinctPendingOutboundKinds() {
@@ -1901,6 +1926,40 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         simulated,
                         destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER),
                         destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER),
+                        template,
+                        level.registryAccess());
+        if (maxAdd == Integer.MAX_VALUE) {
+            return maxFromCapacity;
+        }
+        return Math.min(maxFromCapacity, maxAdd);
+    }
+
+    /**
+     * Further caps insert count for RETRIEVER-bank allow-line limits (0 = unlimited) on retrieving faces.
+     * Uses inventory state after simulating in-flight inbound items.
+     */
+    private int capInsertableForRetrieverAllowLimit(
+            Level level,
+            BlockPos destDuctPos,
+            Direction destFace,
+            DuctBlockEntity destBe,
+            ItemStack template,
+            int maxFromCapacity,
+            List<ItemStack> priorIncoming) {
+        if (maxFromCapacity <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        IItemHandler raw = DuctCapHelper.getHandlerOnFace(level, destDuctPos, destFace);
+        if (raw == null) {
+            return maxFromCapacity;
+        }
+        DuctFaceNode destNode = destBe.getFaceNode(destFace);
+        ItemStackHandler simulated = DuctCapHelper.simulateInventoryAfterPending(raw, priorIncoming);
+        int maxAdd =
+                DuctAllowLimitLogic.maxAdditionalInsertForAllowLine(
+                        simulated,
+                        destNode.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER),
+                        destNode.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER),
                         template,
                         level.registryAccess());
         if (maxAdd == Integer.MAX_VALUE) {

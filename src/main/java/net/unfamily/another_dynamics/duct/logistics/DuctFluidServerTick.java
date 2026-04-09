@@ -3,7 +3,7 @@ package net.unfamily.another_dynamics.duct.logistics;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
+import java.util.OptionalLong;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -12,6 +12,7 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctFluidAllowLimitLogic;
@@ -21,6 +22,7 @@ import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.NodeMode;
+import net.unfamily.another_dynamics.duct.RoutingMode;
 
 /**
  * Fluid logistics: plan extract+fill with simulation only, enqueue {@link FluidTransitShipment}; {@link DuctBlockEntity}
@@ -94,98 +96,153 @@ public final class DuctFluidServerTick {
             return;
         }
 
+        // Build candidate insertion faces across the fluid network: priority first, then routing tie-break.
         List<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.FLUID));
-        ducts.remove(srcPos);
-        ducts.sort(Comparator.comparingInt(a -> distManhattan(a, srcPos)));
-        int n = ducts.size();
-        if (n == 0) {
+        if (ducts.size() > 1) {
+            ducts.remove(srcPos);
+        }
+        if (ducts.isEmpty()) {
             return;
         }
-        int start = Math.floorMod(node.roundRobinCursor, n);
-        for (int i = 0; i < n; i++) {
-            BlockPos destPos = ducts.get((start + i) % n);
+        ArrayList<DestCandidate> cands = new ArrayList<>();
+        for (BlockPos destPos : ducts) {
             if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
                 continue;
             }
-            Optional<FillPlan> plan = simulateFillIntoNetworkNeighbor(level, srcCap, destBe, available.copy());
-            if (plan.isPresent()) {
-                node.roundRobinCursor = (start + i + 1) % n;
-                sourceBe.setChanged();
-                FillPlan p = plan.get();
-                FluidStack planned = new FluidStack(available.getFluid(), p.movedMb());
-                List<BlockPos> rawPath =
-                        DuctPathfinder.shortestPath(level, srcPos, destPos, spec, DuctNetworkType.FLUID)
-                                .orElseGet(() -> List.of(srcPos, destPos));
-                List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
-                sourceBe.scheduleFluidTransitPending(
-                        level, planned, pathWire, sourceFace, p.destStorageFace(), destPos, spec);
-                return;
-            }
-        }
-    }
-
-    private record FillPlan(int movedMb, Direction destStorageFace) {}
-
-    /**
-     * Pick first valid destination face; drain/fill are simulated only.
-     */
-    private static Optional<FillPlan> simulateFillIntoNetworkNeighbor(
-            ServerLevel level, IFluidHandler srcCap, DuctBlockEntity destBe, FluidStack toMove) {
-        if (toMove.isEmpty()) {
-            return Optional.empty();
-        }
-        BlockPos destPos = destBe.getBlockPos();
-        int dsm = destBe.getStorageMask();
-        for (Direction df : Direction.values()) {
-            if ((dsm & (1 << df.ordinal())) == 0) {
+            OptionalLong dist =
+                    destPos.equals(srcPos)
+                            ? OptionalLong.of(0L)
+                            : DuctPathfinder.distance(level, srcPos, destPos, spec, DuctNetworkType.FLUID);
+            if (dist.isEmpty()) {
                 continue;
             }
-            DuctFaceLanes destLanes = destBe.getFaceLanes(df);
-            DuctFaceNode destNode = destLanes.fluid;
-            if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
-                continue;
-            }
-            NodeMode dm = destLanes.nodeMode;
-            if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION && dm != NodeMode.EXTRACTION_FILTERING) {
-                continue;
-            }
-            if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
-                    && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                            destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
-                continue;
-            }
-            IFluidHandler destCap =
-                    level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
-            if (destCap == null) {
-                continue;
-            }
-            int simulated = destCap.fill(toMove, IFluidHandler.FluidAction.SIMULATE);
-            if (simulated <= 0) {
-                continue;
-            }
-            // Respect per-allow-line Limit (mB) on the destination FILTER bank.
-            if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
-                int maxAdd =
-                        DuctFluidAllowLimitLogic.maxAdditionalInsertForAllowLineMb(
-                                destCap,
-                                destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER),
-                                destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER),
-                                toMove,
-                                level.registryAccess());
-                if (maxAdd != Integer.MAX_VALUE) {
-                    simulated = Math.min(simulated, maxAdd);
-                    if (simulated <= 0) {
-                        continue;
+            int dsm = destBe.getStorageMask();
+            for (Direction df : Direction.values()) {
+                if ((dsm & (1 << df.ordinal())) == 0) {
+                    continue;
+                }
+                DuctFaceLanes destLanes = destBe.getFaceLanes(df);
+                DuctFaceNode destNode = destLanes.fluid;
+                if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
+                    continue;
+                }
+                NodeMode dm = destLanes.nodeMode;
+                if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION && dm != NodeMode.EXTRACTION_FILTERING) {
+                    continue;
+                }
+                if (destPos.equals(srcPos) && df == sourceFace) {
+                    continue;
+                }
+                if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {
+                    continue;
+                }
+                IFluidHandler destCap =
+                        level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
+                if (destCap == null) {
+                    continue;
+                }
+                FluidStack toMove = available.copy();
+                int simulated = destCap.fill(toMove, IFluidHandler.FluidAction.SIMULATE);
+                if (simulated <= 0) {
+                    continue;
+                }
+                if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
+                        && !DuctFluidFilterLogic.passesFluidFiltersForBank(
+                                destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
+                    continue;
+                }
+                if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
+                    List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
+                    List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
+                    int idx = DuctFluidAllowLimitLogic.firstMatchingAllowLineIndex(allowLines, toMove, level.registryAccess());
+                    if (idx >= 0 && idx < caps.size()) {
+                        int lim = caps.get(idx);
+                        if (lim > 0) {
+                            String line = allowLines.get(idx);
+                            int current = DuctFluidAllowLimitLogic.countMatchingInHandlerMb(destCap, line, level.registryAccess());
+                            int pending =
+                                    DuctFluidAllowLimitLogic.countMatchingInStacksMb(
+                                            DuctFluidIncomingIndex.snapshot(level, destPos), line, level.registryAccess());
+                            int maxAdd = Math.max(0, lim - (current + pending));
+                            simulated = Math.min(simulated, maxAdd);
+                            if (simulated <= 0) {
+                                continue;
+                            }
+                        }
                     }
                 }
+                FluidStack drain = srcCap.drain(new FluidStack(toMove.getFluid(), simulated), IFluidHandler.FluidAction.SIMULATE);
+                if (drain.isEmpty() || drain.getAmount() < simulated) {
+                    continue;
+                }
+                cands.add(new DestCandidate(destPos, df, destNode.insertionPriority, dist.getAsLong(), simulated));
             }
-            FluidStack drain = srcCap.drain(new FluidStack(toMove.getFluid(), simulated), IFluidHandler.FluidAction.SIMULATE);
-            if (drain.isEmpty() || drain.getAmount() < simulated) {
-                continue;
-            }
-            return Optional.of(new FillPlan(simulated, df));
         }
-        return Optional.empty();
+        if (cands.isEmpty()) {
+            return;
+        }
+        cands.sort(Comparator.comparingInt((DestCandidate c) -> c.priority).reversed());
+        int maxP = cands.getFirst().priority;
+        ArrayList<DestCandidate> tier = new ArrayList<>();
+        for (DestCandidate c : cands) {
+            if (c.priority == maxP) {
+                tier.add(c);
+            }
+        }
+        int[] rr = new int[] {node.roundRobinCursor};
+        DestCandidate pick = pickWithinTier(level, tier, node.routingMode, rr);
+        if (pick == null) {
+            return;
+        }
+        node.roundRobinCursor = rr[0];
+        sourceBe.setChanged();
+
+        int movedMb = Math.min(available.getAmount(), pick.movedMb);
+        if (movedMb <= 0) {
+            return;
+        }
+        FluidStack planned = new FluidStack(available.getFluid(), movedMb);
+        List<BlockPos> rawPath =
+                DuctPathfinder.shortestPath(level, srcPos, pick.ductPos, spec, DuctNetworkType.FLUID)
+                        .orElseGet(() -> List.of(srcPos, pick.ductPos));
+        List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
+        sourceBe.scheduleFluidTransitPending(level, planned, pathWire, sourceFace, pick.face, pick.ductPos, spec);
+    }
+
+    private record DestCandidate(BlockPos ductPos, Direction face, int priority, long dist, int movedMb) {}
+
+    private static DestCandidate pickWithinTier(
+            ServerLevel level, List<DestCandidate> tier, RoutingMode routing, int[] roundRobinState) {
+        if (tier.isEmpty()) {
+            return null;
+        }
+        return switch (routing) {
+            case NEAREST_FIRST -> tier.stream().min(Comparator.comparingLong(c -> c.dist)).orElse(null);
+            case FARTHEST_FIRST -> tier.stream().max(Comparator.comparingLong(c -> c.dist)).orElse(null);
+            case MIDDLEST_FIRST -> {
+                double sum = 0;
+                for (DestCandidate c : tier) {
+                    sum += c.dist;
+                }
+                double mean = sum / tier.size();
+                yield tier.stream()
+                        .min(Comparator.comparingDouble((DestCandidate c) -> Math.abs(c.dist - mean))
+                                .thenComparingLong(c -> c.ductPos.asLong())
+                                .thenComparingInt(c -> c.face.ordinal()))
+                        .orElse(null);
+            }
+            case ROUND_ROBIN -> {
+                tier.sort(
+                        Comparator.comparingLong((DestCandidate c) -> c.ductPos.asLong())
+                                .thenComparingInt(c -> c.face.ordinal()));
+                int i = Math.floorMod(roundRobinState[0]++, tier.size());
+                yield tier.get(i);
+            }
+            case RANDOM -> {
+                int i = level.random.nextInt(tier.size());
+                yield tier.get(i);
+            }
+        };
     }
 
     /**
@@ -329,9 +386,5 @@ public final class DuctFluidServerTick {
             }
         }
         return FluidStack.EMPTY;
-    }
-
-    private static int distManhattan(BlockPos a, BlockPos b) {
-        return Math.abs(a.getX() - b.getX()) + Math.abs(a.getY() - b.getY()) + Math.abs(a.getZ() - b.getZ());
     }
 }

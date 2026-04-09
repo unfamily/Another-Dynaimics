@@ -56,6 +56,23 @@ public final class DuctFluidAllowLimitLogic {
         return sum;
     }
 
+    public static int countMatchingInStacksMb(
+            List<FluidStack> stacks, String filterLine, HolderLookup.Provider registries) {
+        if (stacks == null || stacks.isEmpty() || filterLine == null || filterLine.trim().isEmpty()) {
+            return 0;
+        }
+        int sum = 0;
+        for (FluidStack s : stacks) {
+            if (s == null || s.isEmpty()) {
+                continue;
+            }
+            if (DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(s, filterLine, registries)) {
+                sum += s.getAmount();
+            }
+        }
+        return sum;
+    }
+
     /** Max mB that may still be inserted without exceeding the allow-line {@code limit} (first matching line). */
     public static int maxAdditionalInsertForAllowLineMb(
             IFluidHandler handler,
