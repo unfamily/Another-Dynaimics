@@ -147,9 +147,7 @@ public final class DuctGasServerTick {
                 NodeMode dm = destLanes.nodeMode;
                 if (dm != NodeMode.NONE
                         && dm != NodeMode.FILTERING_INSERTION
-                        && dm != NodeMode.EXTRACTION_FILTERING
-                        && dm != NodeMode.RETRIEVING
-                        && dm != NodeMode.RETRIEVING_EXTRACTION) {
+                        && dm != NodeMode.EXTRACTION_FILTERING) {
                     continue;
                 }
                 if (!destNode.eligibilityMode.isInsertable()) {
@@ -182,11 +180,6 @@ public final class DuctGasServerTick {
                     continue;
                 }
 
-                if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
-                        && !DuctGasFilterLogic.passesGasFiltersForBank(destNode, DuctFaceNode.FilterBank.RETRIEVER, available, level)) {
-                    continue;
-                }
-
                 if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
                     List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
                     List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
@@ -206,18 +199,6 @@ public final class DuctGasServerTick {
                                 continue;
                             }
                         }
-                    }
-                    if (!DuctGasAllowGroupLogic.filterDestGroupAllowsExtractionDelivery(
-                            level, destBe, df, tryStack, destHandler, level.registryAccess())) {
-                        continue;
-                    }
-                }
-                if (dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION) {
-                    simulated =
-                            capInsertForRetrieverDestinationLimits(
-                                    level, destBe, df, tryStack, destHandler, simulated);
-                    if (simulated <= 0) {
-                        continue;
                     }
                 }
                 cands.add(new DestCandidate(destPos, df, destNode.insertionPriority, dist.getAsLong(), simulated));
@@ -257,20 +238,8 @@ public final class DuctGasServerTick {
                     .orElseGet(() -> List.of(srcPos, pick.ductPos()));
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
-        int ggrp = 0;
-        if (level.getBlockEntity(pick.ductPos()) instanceof DuctBlockEntity destPick) {
-            NodeMode dmPick = destPick.getFaceLanes(pick.face()).nodeMode;
-            if (dmPick == NodeMode.FILTERING_INSERTION || dmPick == NodeMode.EXTRACTION_FILTERING) {
-                ggrp =
-                        DuctGasAllowGroupLogic.gasAllowLineGroupId(
-                                destPick.getGasFaceNode(pick.face()),
-                                DuctFaceNode.FilterBank.FILTER,
-                                planned,
-                                level.registryAccess());
-            }
-        }
         sourceBe.scheduleGasTransitPending(
-                level, planned, pathWire, sourceFace, pick.face(), pick.ductPos(), spec, ggrp);
+                level, planned, pathWire, sourceFace, pick.face(), pick.ductPos(), spec);
     }
 
     private static void tryRetrievePull(
@@ -394,23 +363,8 @@ public final class DuctGasServerTick {
                 node.roundRobinCursor = rr[0] + donorIdx + 1;
             }
             Object planned = MekanismChemicalCompat.copyWithAmount(available, plannedAmt);
-            if (!DuctGasAllowGroupLogic.retrieverPullGroupSatisfiable(
-                    level,
-                    donorBe,
-                    donorFace,
-                    retrieverBe,
-                    retrieverFace,
-                    planStack,
-                    srcHandler,
-                    destHandler,
-                    level.registryAccess())) {
-                continue;
-            }
-            int ggrp =
-                    DuctGasAllowGroupLogic.gasAllowLineGroupId(
-                            node, DuctFaceNode.FilterBank.RETRIEVER, planStack, level.registryAccess());
             donorBe.scheduleGasTransitPending(
-                    level, planned, OutboundShipment.copyPath(path), donorFace, retrieverFace, retrieverPos, spec, ggrp);
+                    level, planned, OutboundShipment.copyPath(path), donorFace, retrieverFace, retrieverPos, spec);
             retrieverBe.setChanged();
             return;
         }
@@ -573,10 +527,6 @@ public final class DuctGasServerTick {
             return simulatedInsert;
         }
         DuctFaceNode destNode = destBe.getFaceLanes(destFace).gas;
-        if (!DuctGasAllowGroupLogic.retrieverDestGroupAllowsIncoming(
-                level, destBe, destFace, movingProbe, destHandler, level.registryAccess())) {
-            return 0L;
-        }
         List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER);
         List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER);
         return Math.min(

@@ -18,8 +18,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
-import net.unfamily.another_dynamics.duct.FilterGroupIds;
-
 import java.util.Optional;
 
 /**
@@ -63,12 +61,6 @@ public final class OutboundShipment {
     /** Server game time when this leg started (for client smoothing). */
     public long journeyStartGameTime;
 
-    /**
-     * Allow-line group ({@link FilterGroupIds}) active for this shipment when {@code > 0}; used to serialize grouped filter
-     * operations across in-flight tasks.
-     */
-    public int filterAllowGroupId;
-
     public OutboundShipment(
             ItemStack plannedStack,
             BlockPos destDuct,
@@ -89,7 +81,6 @@ public final class OutboundShipment {
         this.legacyOmniFaces = false;
         this.totalTravelTicks = travelTicks;
         this.sourceExtractCommitted = false;
-        this.filterAllowGroupId = 0;
     }
 
     public static List<BlockPos> copyPath(List<BlockPos> path) {
@@ -139,9 +130,6 @@ public final class OutboundShipment {
             t.putString("FbItem", itemKey.toString());
             t.putInt("FbCnt", stack.getCount());
         }
-        if (filterAllowGroupId > 0) {
-            t.putInt("FGrp", filterAllowGroupId);
-        }
         return t;
     }
 
@@ -189,7 +177,6 @@ public final class OutboundShipment {
         }
         sh.registeredIncoming = sh.stack.copy();
         sh.sourceExtractCommitted = t.getBoolean("SrcXfr");
-        sh.filterAllowGroupId = t.contains("FGrp", Tag.TAG_INT) ? FilterGroupIds.normalize(t.getInt("FGrp")) : 0;
         return sh;
     }
 

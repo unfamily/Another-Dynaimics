@@ -6,8 +6,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.neoforged.neoforge.fluids.FluidStack;
 
-import net.unfamily.another_dynamics.duct.FilterGroupIds;
-
 /**
  * Pending fluid move along a duct path: transfer runs when {@code travelTicks} reaches zero (planned-only, like modern
  * item {@link OutboundShipment}). Client receives path + fluid visual only via {@code getUpdateTag}; {@code destDuct} is
@@ -24,9 +22,6 @@ public final class FluidTransitShipment {
     /** Storage attachment face on {@link #destDuct}. */
     public Direction destFace;
     public BlockPos destDuct;
-
-    /** {@link FilterGroupIds} for serialized fluid filter groups when {@code > 0}. */
-    public int filterAllowGroupId;
 
     public FluidTransitShipment(
             FluidStack fluid,
@@ -47,6 +42,5 @@ public final class FluidTransitShipment {
         this.sourceFace = sourceFace;
         this.destFace = destStorageFace;
         this.destDuct = destDuct.immutable();
-        this.filterAllowGroupId = 0;
     }
 }

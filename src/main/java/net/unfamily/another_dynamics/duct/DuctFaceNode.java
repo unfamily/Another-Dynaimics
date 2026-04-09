@@ -95,13 +95,6 @@ public final class DuctFaceNode {
     public final List<Integer> allowAllowCapsFilterLimit = new ArrayList<>();
     public final List<Integer> allowAllowCapsFilterKeep = new ArrayList<>();
 
-    /**
-     * Parallel to FILTER / RETRIEVER allow rows: {@code 0} = no group; {@code 1}–{@link FilterGroupIds#MAX_PALETTE} =
-     * group id (AND semantics on the server).
-     */
-    public final List<Integer> allowGroupIdsFilter = new ArrayList<>();
-    public final List<Integer> allowGroupIdsRetriever = new ArrayList<>();
-
     public final ItemStackHandler guiSlots;
 
     public DuctFaceNode(Runnable onChanged) {
@@ -234,8 +227,6 @@ public final class DuctFaceNode {
         clampList(denyFiltersFilter, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
-        syncAllowGroupIdsToAllowSize(allowGroupIdsFilter, allowFiltersFilter.size());
-        syncAllowGroupIdsToAllowSize(allowGroupIdsRetriever, allowFiltersRetriever.size());
     }
 
     /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode)} using fluid datapack caps. */
@@ -264,8 +255,6 @@ public final class DuctFaceNode {
         clampList(denyFiltersFilter, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
-        syncAllowGroupIdsToAllowSize(allowGroupIdsFilter, allowFiltersFilter.size());
-        syncAllowGroupIdsToAllowSize(allowGroupIdsRetriever, allowFiltersRetriever.size());
     }
 
     /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode)} using gas datapack caps. */
@@ -294,8 +283,6 @@ public final class DuctFaceNode {
         clampList(denyFiltersFilter, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
-        syncAllowGroupIdsToAllowSize(allowGroupIdsFilter, allowFiltersFilter.size());
-        syncAllowGroupIdsToAllowSize(allowGroupIdsRetriever, allowFiltersRetriever.size());
     }
 
     private static void syncAllowCapsToAllowSize(List<Integer> caps, int allowSize) {
@@ -304,15 +291,6 @@ public final class DuctFaceNode {
         }
         while (caps.size() > allowSize) {
             caps.remove(caps.size() - 1);
-        }
-    }
-
-    private static void syncAllowGroupIdsToAllowSize(List<Integer> groupIds, int allowSize) {
-        while (groupIds.size() < allowSize) {
-            groupIds.add(0);
-        }
-        while (groupIds.size() > allowSize) {
-            groupIds.remove(groupIds.size() - 1);
         }
     }
 
@@ -336,7 +314,6 @@ public final class DuctFaceNode {
         re.put("Allow", toStringListTag(allowFiltersRetriever));
         re.put("Deny", toStringListTag(denyFiltersRetriever));
         putAllowCapArray(re, allowAllowCapsRetriever);
-        putAllowGrpArray(re, allowGroupIdsRetriever);
         f.put("Retriever", re);
 
         CompoundTag fi = new CompoundTag();
@@ -347,7 +324,6 @@ public final class DuctFaceNode {
         putAllowCapArray(fi, allowAllowCapsFilterLimit);
         putAllowCapArray(fi, "AllowCapLim", allowAllowCapsFilterLimit);
         putAllowCapArray(fi, "AllowCapKeep", allowAllowCapsFilterKeep);
-        putAllowGrpArray(fi, allowGroupIdsFilter);
         f.put("Filter", fi);
         tag.put("FaceFilters", f);
     }
@@ -369,8 +345,6 @@ public final class DuctFaceNode {
         denyFiltersFilter.clear();
         allowAllowCapsFilterLimit.clear();
         allowAllowCapsFilterKeep.clear();
-        allowGroupIdsFilter.clear();
-        allowGroupIdsRetriever.clear();
         denyOverridesAllowFilter = true;
         if (!tag.contains("FaceFilters", Tag.TAG_COMPOUND)) {
             return;
@@ -397,7 +371,6 @@ public final class DuctFaceNode {
             readStringListInto(re, "Allow", allowFiltersRetriever);
             readStringListInto(re, "Deny", denyFiltersRetriever);
             readAllowCapsInto(re, allowAllowCapsRetriever, allowFiltersRetriever.size());
-            readAllowGrpInto(re, allowGroupIdsRetriever, allowFiltersRetriever.size());
         }
         if (hasFilter) {
             CompoundTag fi = f.getCompound("Filter");
@@ -411,7 +384,6 @@ public final class DuctFaceNode {
                 readAllowCapsInto(fi, allowAllowCapsFilterLimit, allowFiltersFilter.size());
             }
             readAllowCapsInto(fi, "AllowCapKeep", allowAllowCapsFilterKeep, allowFiltersFilter.size());
-            readAllowGrpInto(fi, allowGroupIdsFilter, allowFiltersFilter.size());
         }
         if (!hasExtractor && !hasRetriever && !hasFilter) {
             // Migration: legacy single-bank -> FILTER bank by default.
@@ -420,7 +392,6 @@ public final class DuctFaceNode {
             denyFiltersFilter.addAll(denyFilters);
             allowAllowCapsFilterLimit.addAll(allowAllowCaps);
             syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
-            syncAllowGroupIdsToAllowSize(allowGroupIdsFilter, allowFiltersFilter.size());
         }
     }
 
@@ -466,14 +437,6 @@ public final class DuctFaceNode {
 
     public List<Integer> filterBankKeepCaps() {
         return allowAllowCapsFilterKeep;
-    }
-
-    public List<Integer> bankAllowGroupIds(FilterBank bank) {
-        return switch (bank) {
-            case EXTRACTOR -> List.of();
-            case RETRIEVER -> allowGroupIdsRetriever;
-            case FILTER -> allowGroupIdsFilter;
-        };
     }
 
     private static void clampList(List<String> list, int max) {
@@ -531,23 +494,4 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(out, allowSize);
     }
 
-    private static void putAllowGrpArray(CompoundTag tag, List<Integer> groupIds) {
-        int n = groupIds.size();
-        int[] arr = new int[n];
-        for (int i = 0; i < n; i++) {
-            arr[i] = FilterGroupIds.normalize(groupIds.get(i));
-        }
-        tag.putIntArray("AllowGrp", arr);
-    }
-
-    private static void readAllowGrpInto(CompoundTag tag, List<Integer> out, int allowSize) {
-        out.clear();
-        if (tag.contains("AllowGrp", Tag.TAG_INT_ARRAY)) {
-            int[] arr = tag.getIntArray("AllowGrp");
-            for (int v : arr) {
-                out.add(FilterGroupIds.normalize(v));
-            }
-        }
-        syncAllowGroupIdsToAllowSize(out, allowSize);
-    }
 }

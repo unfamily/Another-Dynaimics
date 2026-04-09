@@ -22,7 +22,6 @@ public record DuctFilterUpdatePayload(
         List<String> deny,
         List<Integer> allowCaps,
         List<Integer> allowCaps2,
-        List<Integer> allowGroupIds,
         boolean denyOverridesAllow)
         implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<DuctFilterUpdatePayload> TYPE =
@@ -40,7 +39,6 @@ public record DuctFilterUpdatePayload(
                         DuctFilterPacketCodecs.STRING_LIST.encode(buf, p.deny());
                         DuctFilterPacketCodecs.INT_LIST.encode(buf, p.allowCaps());
                         DuctFilterPacketCodecs.INT_LIST.encode(buf, p.allowCaps2());
-                        DuctFilterPacketCodecs.INT_LIST.encode(buf, p.allowGroupIds());
                         buf.writeBoolean(p.denyOverridesAllow());
                     },
                     buf -> {
@@ -52,9 +50,8 @@ public record DuctFilterUpdatePayload(
                         List<String> deny = DuctFilterPacketCodecs.STRING_LIST.decode(buf);
                         List<Integer> caps = DuctFilterPacketCodecs.INT_LIST.decode(buf);
                         List<Integer> caps2 = DuctFilterPacketCodecs.INT_LIST.decode(buf);
-                        List<Integer> gr = DuctFilterPacketCodecs.INT_LIST.decode(buf);
                         boolean over = buf.readBoolean();
-                        return new DuctFilterUpdatePayload(pos, face, tk, bank, allow, deny, caps, caps2, gr, over);
+                        return new DuctFilterUpdatePayload(pos, face, tk, bank, allow, deny, caps, caps2, over);
                     });
 
     @Override

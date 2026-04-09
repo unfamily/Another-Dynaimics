@@ -84,9 +84,7 @@ public final class DuctTargetSelector {
                 NodeMode m = be.getFaceLanes(d).nodeMode;
                 if (m != NodeMode.NONE
                         && m != NodeMode.FILTERING_INSERTION
-                        && m != NodeMode.EXTRACTION_FILTERING
-                        && m != NodeMode.RETRIEVING
-                        && m != NodeMode.RETRIEVING_EXTRACTION) {
+                        && m != NodeMode.EXTRACTION_FILTERING) {
                     continue;
                 }
                 if (!node.eligibilityMode.isInsertable()) {
@@ -166,9 +164,7 @@ public final class DuctTargetSelector {
                 NodeMode m = be.getFaceLanes(d).nodeMode;
                 if (m != NodeMode.NONE
                         && m != NodeMode.FILTERING_INSERTION
-                        && m != NodeMode.EXTRACTION_FILTERING
-                        && m != NodeMode.RETRIEVING
-                        && m != NodeMode.RETRIEVING_EXTRACTION) {
+                        && m != NodeMode.EXTRACTION_FILTERING) {
                     continue;
                 }
                 if (!node.eligibilityMode.isInsertable()) {

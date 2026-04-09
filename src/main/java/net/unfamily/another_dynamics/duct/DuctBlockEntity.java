@@ -781,13 +781,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             Direction sourceFace,
             Direction destStorageFace,
             BlockPos destDuct,
-            DuctFluidTransportSpec spec,
-            int filterAllowGroupId) {
+            DuctFluidTransportSpec spec) {
         if (path == null || path.isEmpty() || plannedFluid.isEmpty()) {
-            return;
-        }
-        int g = FilterGroupIds.normalize(filterAllowGroupId);
-        if (g > 0 && fluidTransitGroupLockBlocks(g)) {
             return;
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(path);
@@ -805,7 +800,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         sourceFace,
                         destStorageFace,
                         destDuct);
-        added.filterAllowGroupId = g;
         fluidTransitShipments.add(added);
         DuctFluidIncomingIndex.register(level, destDuct, plannedFluid);
         setChanged();
@@ -860,16 +854,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             Direction sourceFace,
             Direction destStorageFace,
             BlockPos destDuct,
-            DuctGasTransportSpec spec,
-            int filterAllowGroupId) {
+            DuctGasTransportSpec spec) {
         if (!MekanismChemicalCompat.isLoaded()) {
             return;
         }
         if (path == null || path.isEmpty() || plannedStack == null || MekanismChemicalCompat.isEmptyStack(plannedStack)) {
-            return;
-        }
-        int g = FilterGroupIds.normalize(filterAllowGroupId);
-        if (g > 0 && gasTransitGroupLockBlocks(g)) {
             return;
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(path);
@@ -887,7 +876,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         sourceFace,
                         destStorageFace,
                         destDuct);
-        gsh.filterAllowGroupId = g;
         gasTransitShipments.add(gsh);
         if (!MekanismChemicalCompat.isEmptyStack(plannedStack) && MekanismChemicalCompat.getAmount(plannedStack) > 0) {
             DuctGasIncomingIndex.register(level, destDuct, plannedStack);
@@ -1652,42 +1640,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
-    private boolean itemOutboundGroupLockBlocks(int newGroupId) {
-        if (newGroupId <= 0) {
-            return false;
-        }
-        for (OutboundShipment s : outboundShipments) {
-            if (s.filterAllowGroupId > 0 && s.filterAllowGroupId != newGroupId) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean fluidTransitGroupLockBlocks(int newGroupId) {
-        if (newGroupId <= 0) {
-            return false;
-        }
-        for (FluidTransitShipment s : fluidTransitShipments) {
-            if (s.filterAllowGroupId > 0 && s.filterAllowGroupId != newGroupId) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean gasTransitGroupLockBlocks(int newGroupId) {
-        if (newGroupId <= 0) {
-            return false;
-        }
-        for (GasTransitShipment s : gasTransitShipments) {
-            if (s.filterAllowGroupId > 0 && s.filterAllowGroupId != newGroupId) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private void tickExtractionPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction face, DuctFaceNode node) {
         if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
             return;
@@ -1763,10 +1715,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     if (!destBe.passesItemFilters(destFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
                         continue;
                     }
-                    if (!DuctAllowGroupLogic.itemFilterDestGroupAllowsExtractionDelivery(
-                            level, destBe, destFace, probe, level.registryAccess())) {
-                        continue;
-                    }
                 }
                 int tubeBatch = node.extractBatch > 0 ? node.extractBatch : spec.batchDefault();
                 if (tubeBatch <= 0) {
@@ -1808,18 +1756,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     plannedCount = destCap;
                     planned.setCount(plannedCount);
                 }
-                int filterGrp = 0;
-                if (destMode == NodeMode.FILTERING_INSERTION || destMode == NodeMode.EXTRACTION_FILTERING) {
-                    filterGrp =
-                            DuctAllowGroupLogic.itemAllowLineGroupId(
-                                    destBe.getFaceNode(destFace),
-                                    DuctFaceNode.FilterBank.FILTER,
-                                    probe,
-                                    level.registryAccess());
-                    if (itemOutboundGroupLockBlocks(filterGrp)) {
-                        continue;
-                    }
-                }
                 if (roundRobinRouting) {
                     node.roundRobinCursor = rrProbe[0] + candIdx + 1;
                 }
@@ -1827,7 +1763,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
                 OutboundShipment sh =
                         new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
-                sh.filterAllowGroupId = filterGrp;
                 sh.ductPath = OutboundShipment.copyPath(path);
                 sh.totalTravelTicks = travelTicks;
                 sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec));
@@ -1906,16 +1841,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
                     continue;
                 }
-                if (!DuctAllowGroupLogic.itemRetrieverGroupAllowsPull(
-                        level, donorBe, donorFace, this, retrieverFace, probe, level.registryAccess())) {
-                    continue;
-                }
-                int retrieverGrp =
-                        DuctAllowGroupLogic.itemAllowLineGroupId(
-                                node, DuctFaceNode.FilterBank.RETRIEVER, probe, level.registryAccess());
-                if (itemOutboundGroupLockBlocks(retrieverGrp)) {
-                    continue;
-                }
                 int tubeBatch = node.extractBatch > 0 ? node.extractBatch : spec.batchDefault();
                 if (tubeBatch <= 0) {
                     tubeBatch = DuctItemTransportSpec.fallback().batchDefault();
@@ -1972,7 +1897,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 OutboundShipment sh =
                         new OutboundShipment(
                                 planned, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
-                sh.filterAllowGroupId = retrieverGrp;
                 sh.ductPath = OutboundShipment.copyPath(path);
                 sh.totalTravelTicks = travelTicks;
                 sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec));
@@ -2398,11 +2322,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (raw == null) {
             return maxFromCapacity;
         }
-        if (level instanceof ServerLevel serverLevel
-                && !DuctAllowGroupLogic.itemFilterDestGroupAllowsExtractionDelivery(
-                        serverLevel, destBe, destFace, template, level.registryAccess())) {
-            return 0;
-        }
         DuctFaceNode destNode = destBe.getFaceNode(destFace);
         ItemStackHandler simulated = DuctCapHelper.simulateInventoryAfterPending(raw, priorIncoming);
         int maxAdd =
@@ -2436,11 +2355,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         IItemHandler raw = DuctCapHelper.getHandlerOnFace(level, destDuctPos, destFace);
         if (raw == null) {
             return maxFromCapacity;
-        }
-        if (level instanceof ServerLevel serverLevel
-                && !DuctAllowGroupLogic.itemRetrieverDestGroupAllowsIncoming(
-                        serverLevel, destBe, destFace, template, level.registryAccess())) {
-            return 0;
         }
         DuctFaceNode destNode = destBe.getFaceNode(destFace);
         ItemStackHandler simulated = DuctCapHelper.simulateInventoryAfterPending(raw, priorIncoming);
@@ -2552,7 +2466,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             List<String> denyIn,
             List<Integer> allowCapsIn,
             List<Integer> allowCaps2In,
-            List<Integer> allowGroupIdsIn,
             boolean denyOverridesAllow) {
         if (level == null || level.isClientSide) {
             return;
@@ -2574,9 +2487,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         if (allowCaps2In == null) {
             allowCaps2In = List.of();
-        }
-        if (allowGroupIdsIn == null) {
-            allowGroupIdsIn = List.of();
         }
         List<String> a = node.bankAllowFilters(bank);
         List<String> d = node.bankDenyFilters(bank);
@@ -2650,19 +2560,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             String s = i < denyIn.size() ? denyIn.get(i) : "";
             s = s != null ? s : "";
             d.add(clampFilterLine(def, hasUpgrade, s));
-        }
-        if (bank == DuctFaceNode.FilterBank.FILTER) {
-            node.allowGroupIdsFilter.clear();
-            for (int i = 0; i < a.size(); i++) {
-                Integer gv = i < allowGroupIdsIn.size() ? allowGroupIdsIn.get(i) : null;
-                node.allowGroupIdsFilter.add(FilterGroupIds.normalize(gv != null ? gv : 0));
-            }
-        } else if (bank == DuctFaceNode.FilterBank.RETRIEVER) {
-            node.allowGroupIdsRetriever.clear();
-            for (int i = 0; i < a.size(); i++) {
-                Integer gv = i < allowGroupIdsIn.size() ? allowGroupIdsIn.get(i) : null;
-                node.allowGroupIdsRetriever.add(FilterGroupIds.normalize(gv != null ? gv : 0));
-            }
         }
         if (DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.listPrecedenceKey(sharedMode, bank), hasUpgrade)) {
             node.setBankDenyOverridesAllow(bank, denyOverridesAllow);
@@ -3248,9 +3145,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             ft.putInt("DestX", s.destDuct.getX());
             ft.putInt("DestY", s.destDuct.getY());
             ft.putInt("DestZ", s.destDuct.getZ());
-            if (s.filterAllowGroupId > 0) {
-                ft.putInt("FGrp", s.filterAllowGroupId);
-            }
             ListTag path = new ListTag();
             for (BlockPos p : s.ductPath) {
                 CompoundTag pt = new CompoundTag();
@@ -3282,9 +3176,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             gt.putInt("DestX", s.destDuct.getX());
             gt.putInt("DestY", s.destDuct.getY());
             gt.putInt("DestZ", s.destDuct.getZ());
-            if (s.filterAllowGroupId > 0) {
-                gt.putInt("FGrp", s.filterAllowGroupId);
-            }
             ListTag path = new ListTag();
             for (BlockPos p : s.ductPath) {
                 CompoundTag pt = new CompoundTag();
@@ -3395,8 +3286,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 long j0 = ft.getLong("J0");
                 FluidTransitShipment fsh =
                         new FluidTransitShipment(fs, List.copyOf(path), tot, tr, ed, j0, srcFace, dstFace, destDuct);
-                fsh.filterAllowGroupId =
-                        ft.contains("FGrp", Tag.TAG_INT) ? FilterGroupIds.normalize(ft.getInt("FGrp")) : 0;
                 fluidTransitShipments.add(fsh);
             }
         }
@@ -3425,8 +3314,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 GasTransitShipment gsh =
                         new GasTransitShipment(
                                 gStack, List.copyOf(path), tot, tr, ed, j0, srcFace, dstFace, destDuct);
-                gsh.filterAllowGroupId =
-                        gt.contains("FGrp", Tag.TAG_INT) ? FilterGroupIds.normalize(gt.getInt("FGrp")) : 0;
                 gasTransitShipments.add(gsh);
             }
         }
@@ -3534,9 +3421,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 fpath.add(pt);
             }
             ft.put("Path", fpath);
-            if (s.filterAllowGroupId > 0) {
-                ft.putInt("FGrp", s.filterAllowGroupId);
-            }
             fluidTransitList.add(ft);
         }
         t.put("FluidTransitV1", fluidTransitList);
@@ -3567,9 +3451,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 gpath.add(pt);
             }
             gt.put("Path", gpath);
-            if (s.filterAllowGroupId > 0) {
-                gt.putInt("FGrp", s.filterAllowGroupId);
-            }
             gasTransitList.add(gt);
         }
         t.put("GasTransitV1", gasTransitList);

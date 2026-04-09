@@ -14,10 +14,9 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
-import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
 /**
- * Builds a single stack for an allow-line string so cap/limit math can be evaluated per line inside filter groups.
+ * Builds a single stack for an allow-line string so cap/limit math can be evaluated per line.
  * Lines that only match via macros/NBT ({@code &}, {@code ?}) return empty and are treated as satisfiable elsewhere.
  */
 public final class DuctFilterLineProbesRepresentative {
@@ -125,36 +124,5 @@ public final class DuctFilterLineProbesRepresentative {
         } catch (RuntimeException e) {
             return FluidStack.EMPTY;
         }
-    }
-
-    /**
-     * Mekanism chemical stack with amount 1 for cap/group line math, or {@link MekanismChemicalCompat#emptyStack()} when
-     * Mekanism is absent or the line cannot resolve to a concrete type.
-     */
-    public static Object chemicalStackForAllowLine(String raw, HolderLookup.Provider registries) {
-        if (!MekanismChemicalCompat.isLoaded()) {
-            return MekanismChemicalCompat.emptyStack();
-        }
-        if (raw == null) {
-            return MekanismChemicalCompat.emptyStack();
-        }
-        String line = raw.trim();
-        if (line.isEmpty() || line.startsWith("&") || line.startsWith("?")) {
-            return MekanismChemicalCompat.emptyStack();
-        }
-        if (line.startsWith("-")) {
-            line = line.substring(1).trim();
-        }
-        if (line.startsWith("@")) {
-            return MekanismChemicalCompat.firstChemicalInModForDisplay(line.substring(1), 1L, registries);
-        }
-        if (line.startsWith("#")) {
-            return MekanismChemicalCompat.firstChemicalInTagForDisplay(line.substring(1), 1L, registries);
-        }
-        ResourceLocation id = ResourceLocation.tryParse(line);
-        if (id == null) {
-            return MekanismChemicalCompat.emptyStack();
-        }
-        return MekanismChemicalCompat.chemicalStackFromIdForDisplay(id.toString(), 1L, registries);
     }
 }
