@@ -152,9 +152,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private static final int CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT = 4;
     private static final int CHANNEL_WIDGET_Y =
             DuctNodeMenu.SLOT_COPY_Y + 18 + CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT;
+    /** Detail view: transport pickers below channel widget (hub uses {@link #ROW2_Y} instead). */
     private static final int TRANSPORT_KIND_BUTTON_Y = CHANNEL_WIDGET_Y + CHANNEL_WIDGET_H + 4;
-    private static final int TRANSPORT_PICKER_BTN_W = 72;
-    private static final int TRANSPORT_PICKER_GAP = 4;
 
     /** Visible filter rows; scroll when there are more slots. */
     private static final int VISIBLE_FILTER_ENTRIES = 4;
@@ -684,7 +683,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             final int kindOrdinal = k.ordinal();
             Button b =
                     Button.builder(Component.empty(), btn -> handleMenuButton(DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE + kindOrdinal))
-                            .bounds(0, 0, TRANSPORT_PICKER_BTN_W, BTN_H)
+                            .bounds(0, 0, ROW_BTN_W, BTN_H)
                             .tooltip(
                                     Tooltip.create(
                                             Component.translatable("gui.another_dynamics.duct_node.transport_kind.pick.tooltip")))
@@ -695,6 +694,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         rebuildFilterEntryWidgets();
+        layoutMainChromeRowsForHubOrDetail();
         layoutTransportKindPickers();
         layoutHubBackButton();
         applySubViewVisibility();
@@ -713,19 +713,43 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0;
     }
 
+    /** Node mode + opaque: row 1 on transport hub, row 2 on detail (filters use row 1 in detail). */
+    private void layoutMainChromeRowsForHubOrDetail() {
+        if (nodeModeButton == null || opaqueRenderingButton == null) {
+            return;
+        }
+        boolean hubMain =
+                menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
+                        && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0
+                        && subView == SubView.MAIN;
+        int y = this.topPos + (hubMain ? ROW1_Y : ROW2_Y);
+        nodeModeButton.setX(this.leftPos + CENTER_X);
+        nodeModeButton.setY(y);
+        nodeModeButton.setWidth(ROW_BTN_W);
+        nodeModeButton.setHeight(BTN_H);
+        opaqueRenderingButton.setX(this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP);
+        opaqueRenderingButton.setY(y);
+        opaqueRenderingButton.setWidth(ROW_BTN_W);
+        opaqueRenderingButton.setHeight(BTN_H);
+    }
+
     private void layoutTransportKindPickers() {
         int n = transportKindPickerButtons.size();
         if (n == 0) {
             return;
         }
-        int totalW = n * TRANSPORT_PICKER_BTN_W + (n - 1) * TRANSPORT_PICKER_GAP;
+        boolean hubMain =
+                menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
+                        && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0
+                        && subView == SubView.MAIN;
+        int y = this.topPos + (hubMain ? ROW2_Y : TRANSPORT_KIND_BUTTON_Y);
+        int totalW = n * ROW_BTN_W + (n - 1) * ROW_GAP;
         int startX = this.leftPos + CENTER_X + (3 * (ROW_BTN_W + ROW_GAP) - totalW) / 2;
-        int y = this.topPos + TRANSPORT_KIND_BUTTON_Y;
         for (int i = 0; i < n; i++) {
             Button b = transportKindPickerButtons.get(i);
-            b.setX(startX + i * (TRANSPORT_PICKER_BTN_W + TRANSPORT_PICKER_GAP));
+            b.setX(startX + i * (ROW_BTN_W + ROW_GAP));
             b.setY(y);
-            b.setWidth(TRANSPORT_PICKER_BTN_W);
+            b.setWidth(ROW_BTN_W);
             b.setHeight(BTN_H);
         }
     }
@@ -735,10 +759,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return;
         }
         int ox = CENTER_X + ROW_BTN_W + ROW_GAP;
-        int oy = ROW2_Y + BTN_H + 4;
+        int oy = ROW3_Y;
         hubBackButton.setX(this.leftPos + ox);
         hubBackButton.setY(this.topPos + oy);
-        hubBackButton.setWidth(ADVANCED_FILTER_BUTTON_WIDTH);
+        hubBackButton.setWidth(ROW_BTN_W);
         hubBackButton.setHeight(BTN_H);
     }
 
@@ -1127,9 +1151,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         advCap2ApplyButton.visible = filterBoth || filterRetrieveOnly;
         advCap2UndoButton.visible = filterBoth || filterRetrieveOnly;
 
-        nodeModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering && !hubLayer;
+        // Hub layer: same widget positions as detail; only filters/routing/channel stay hidden (see detailMain).
+        nodeModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering;
         selfFeedStub.visible = false;
-        opaqueRenderingButton.visible = detailMain && !howto && !advancedFiltering;
+        opaqueRenderingButton.visible = main && !howto && !advancedFiltering;
 
         closeButton.visible = true;
         channelButton.visible = detailMain && !howto;
@@ -1203,6 +1228,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
 
         layoutFilterNavAndHelpButtons();
+        layoutMainChromeRowsForHubOrDetail();
         layoutTransportKindPickers();
         layoutHubBackButton();
         if ((subView == SubView.ADVANCED_FILTERING || subView == SubView.ALLOW_FILTERS || subView == SubView.DENY_FILTERS)
@@ -2710,6 +2736,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
 
         filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
+
+        // Server can change MENU_VIEW_LAYER / ACTIVE_TRANSPORT_KIND without node-mode layout key changing; keep hub vs detail visibility and positions in sync.
+        applySubViewVisibility();
+        layoutMainChromeRowsForHubOrDetail();
+        layoutTransportKindPickers();
+        layoutHubBackButton();
     }
 
     /**
@@ -3445,11 +3477,25 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 closeFilterSubview();
                 return true;
             }
+            if (routingPriorityBox != null && routingPriorityBox.isFocused()) {
+                return super.keyPressed(keyCode, scanCode, modifiers);
+            }
+            if (advCapEditBox != null && advCapEditBox.isFocused()) {
+                return super.keyPressed(keyCode, scanCode, modifiers);
+            }
+            if (advCap2EditBox != null && advCap2EditBox.isFocused()) {
+                return super.keyPressed(keyCode, scanCode, modifiers);
+            }
             NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
             if (nm.isHybrid() && hybridPanel != HybridPanel.NONE) {
                 playClickSound();
                 hybridPanel = HybridPanel.NONE;
                 applySubViewVisibility();
+                return true;
+            }
+            if (shouldReturnToTransportHubInsteadOfClosing()) {
+                playClickSound();
+                handleMenuButton(DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB);
                 return true;
             }
             onClose();
@@ -3714,15 +3760,20 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
                 return;
             }
-            Component amountLabel =
-                    Component.translatable(
-                            amountFieldEditsPriority()
-                                    ? "gui.another_dynamics.duct_node.amount.label.priority"
-                                    : "gui.another_dynamics.duct_node.amount.label.batch");
-            int lw = this.font.width(amountLabel);
-            int labelX = amountEditBoxGuiLeft + (AMOUNT_EDIT_W - lw) / 2;
-            int labelY = AMOUNT_ROW_Y - this.font.lineHeight - AMOUNT_LABEL_ABOVE_GAP;
-            graphics.drawString(this.font, amountLabel, labelX, labelY, 0x404040, false);
+            boolean hubLayer =
+                    menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
+                            && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
+            if (!hubLayer) {
+                Component amountLabel =
+                        Component.translatable(
+                                amountFieldEditsPriority()
+                                        ? "gui.another_dynamics.duct_node.amount.label.priority"
+                                        : "gui.another_dynamics.duct_node.amount.label.batch");
+                int lw = this.font.width(amountLabel);
+                int labelX = amountEditBoxGuiLeft + (AMOUNT_EDIT_W - lw) / 2;
+                int labelY = AMOUNT_ROW_Y - this.font.lineHeight - AMOUNT_LABEL_ABOVE_GAP;
+                graphics.drawString(this.font, amountLabel, labelX, labelY, 0x404040, false);
+            }
         }
 
         if (subView == SubView.HOW_TO_USE) {

@@ -1,5 +1,6 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -56,6 +57,33 @@ public record DuctDefinition(
     /** Kinds enabled for this duct, in datapack order (then stable enum fill). */
     public EnumSet<DuctTransportKind> enabledTransportKinds() {
         return DuctTransportKind.orderedKindsFromDeclaration(transportKinds);
+    }
+
+    /**
+     * Menu transport order (hub + lanes). Matches {@link DuctBlockEntity#orderedMenuTransportKinds()} for the same
+     * definition (client uses {@link DuctDefinitionRegistry#getByLogicalId(String)} with the open-menu logical id).
+     */
+    public static List<DuctTransportKind> orderedMenuTransportKinds(Optional<DuctDefinition> defOpt) {
+        EnumSet<DuctTransportKind> kinds =
+                defOpt.map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
+        List<DuctTransportKind> out = new ArrayList<>();
+        if (defOpt.isPresent()) {
+            for (String dec : defOpt.get().transportKinds()) {
+                DuctTransportKind k = DuctTransportKind.fromJsonDec(dec);
+                if (k != null && kinds.contains(k) && !out.contains(k)) {
+                    out.add(k);
+                }
+            }
+        }
+        for (DuctTransportKind k : DuctTransportKind.values()) {
+            if (kinds.contains(k) && !out.contains(k)) {
+                out.add(k);
+            }
+        }
+        if (out.isEmpty()) {
+            out.add(DuctTransportKind.ITEM);
+        }
+        return out;
     }
 
     /** Synonym for JSON field {@code connect_with_compatible}. */

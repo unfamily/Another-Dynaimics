@@ -343,27 +343,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public List<DuctTransportKind> orderedMenuTransportKinds() {
-        Optional<DuctDefinition> def = ductDefinition();
-        EnumSet<DuctTransportKind> kinds =
-                def.map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
-        List<DuctTransportKind> out = new ArrayList<>();
-        if (def.isPresent()) {
-            for (String dec : def.get().transportKinds()) {
-                DuctTransportKind k = DuctTransportKind.fromJsonDec(dec);
-                if (k != null && kinds.contains(k) && !out.contains(k)) {
-                    out.add(k);
-                }
-            }
-        }
-        for (DuctTransportKind k : DuctTransportKind.values()) {
-            if (kinds.contains(k) && !out.contains(k)) {
-                out.add(k);
-            }
-        }
-        if (out.isEmpty()) {
-            out.add(DuctTransportKind.ITEM);
-        }
-        return out;
+        return DuctDefinition.orderedMenuTransportKinds(ductDefinition());
     }
 
     public DuctTransportKind menuActiveTransportKind() {

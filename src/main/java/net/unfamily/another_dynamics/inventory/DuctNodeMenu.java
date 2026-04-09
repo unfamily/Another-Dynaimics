@@ -131,6 +131,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         }
         SimpleContainerData clientData = new SimpleContainerData(DuctMenuSync.COUNT);
         clientData.set(DuctMenuSync.MENU_VIEW_LAYER, menuLayer);
+        List<DuctTransportKind> ordKinds =
+                DuctDefinition.orderedMenuTransportKinds(DuctDefinitionRegistry.getByLogicalId(logicalId));
+        clientData.set(DuctMenuSync.TRANSPORT_KIND_COUNT, ordKinds.size());
+        if (!ordKinds.isEmpty()) {
+            clientData.set(DuctMenuSync.ACTIVE_TRANSPORT_KIND, ordKinds.getFirst().ordinal());
+        }
         return new DuctNodeMenu(
                 containerId,
                 playerInventory,
