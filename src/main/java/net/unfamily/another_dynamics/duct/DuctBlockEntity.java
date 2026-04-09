@@ -574,6 +574,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         super.onLoad();
         if (level != null && !level.isClientSide() && level instanceof ServerLevel sl) {
             registerOutboundInIncomingIndex(sl);
+            for (FluidTransitShipment s : fluidTransitShipments) {
+                if (!s.fluid.isEmpty()) {
+                    DuctFluidIncomingIndex.register(sl, s.destDuct, s.fluid);
+                }
+            }
+            if (MekanismChemicalCompat.isLoaded()) {
+                for (GasTransitShipment s : gasTransitShipments) {
+                    if (s.stack != null && !MekanismChemicalCompat.isEmptyStack(s.stack)) {
+                        DuctGasIncomingIndex.register(sl, s.destDuct, s.stack);
+                    }
+                }
+            }
             if (clampAllFacesToDatapackRestrictions()) {
                 syncVisualGeometryToClients();
             }
@@ -738,6 +750,50 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
      * Queues a planned fluid transfer along {@code path}: liquid moves only when {@code travelTicks} elapses, after
      * per-tick revalidation (same idea as item {@link OutboundShipment}).
      */
+    /**
+     * Planned fluid still scheduled to drain from {@code sourceFace} (matches fluid components, sums mB).
+     */
+    public int pendingOutboundFluidMbFromFace(Direction sourceFace, FluidStack kind) {
+        if (kind.isEmpty()) {
+            return 0;
+        }
+        int sum = 0;
+        for (FluidTransitShipment s : fluidTransitShipments) {
+            if (s.sourceFace != sourceFace || s.fluid.isEmpty()) {
+                continue;
+            }
+            if (!FluidStack.isSameFluidSameComponents(s.fluid, kind)) {
+                continue;
+            }
+            sum += s.fluid.getAmount();
+        }
+        return sum;
+    }
+
+    /**
+     * Planned gas amount still scheduled to leave {@code sourceFace} for the same chemical type as {@code probe}.
+     */
+    public long pendingOutboundGasAmountFromFace(Direction sourceFace, Object probe) {
+        if (probe == null || MekanismChemicalCompat.isEmptyStack(probe)) {
+            return 0L;
+        }
+        String id = MekanismChemicalCompat.getTypeRegistryName(probe);
+        if (id == null || id.isEmpty()) {
+            return 0L;
+        }
+        long sum = 0L;
+        for (GasTransitShipment s : gasTransitShipments) {
+            if (s.sourceFace != sourceFace || s.stack == null || MekanismChemicalCompat.isEmptyStack(s.stack)) {
+                continue;
+            }
+            String sid = MekanismChemicalCompat.getTypeRegistryName(s.stack);
+            if (id.equals(sid)) {
+                sum += MekanismChemicalCompat.getAmount(s.stack);
+            }
+        }
+        return sum;
+    }
+
     public void scheduleFluidTransitPending(
             ServerLevel level,
             FluidStack plannedFluid,
@@ -889,6 +945,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     syncGasTransitToClientsNow(level);
                     continue;
                 }
+                if (!DuctGasServerTick.gasShipmentMidTransitValid(level, this, s)) {
+                    DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
+                    it.remove();
+                    syncGasTransitToClientsNow(level);
+                    continue;
+                }
                 s.travelTicks--;
                 progressDirty = true;
                 continue;
@@ -935,7 +997,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         NodeMode dm = destLanes.nodeMode;
-        if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION && dm != NodeMode.EXTRACTION_FILTERING) {
+        if (dm != NodeMode.NONE
+                && dm != NodeMode.FILTERING_INSERTION
+                && dm != NodeMode.EXTRACTION_FILTERING
+                && dm != NodeMode.RETRIEVING
+                && dm != NodeMode.RETRIEVING_EXTRACTION) {
             return;
         }
 
@@ -949,27 +1015,65 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
 
-        // Re-check filter at execution time for FILTER bank.
-        if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
-                && !DuctGasFilterLogic.passesGasFiltersForBank(destLanes.gas, DuctFaceNode.FilterBank.FILTER, s.stack, level)) {
+        DuctFaceNode srcNodeGas = sourceBe.getFaceLanes(s.sourceFace).gas;
+        NodeMode sm = sourceBe.getFaceLanes(s.sourceFace).nodeMode;
+        boolean donorSource = sm == NodeMode.NONE || sm == NodeMode.FILTERING_INSERTION;
+        DuctFaceNode.FilterBank srcCapBank =
+                donorSource ? DuctFaceNode.FilterBank.FILTER : DuctFaceNode.FilterBank.EXTRACTOR;
+        if (!donorSource
+                && !DuctGasFilterLogic.passesGasFiltersForBank(
+                        srcNodeGas, DuctFaceNode.FilterBank.EXTRACTOR, s.stack, level)) {
+            return;
+        }
+        if (donorSource
+                && sm == NodeMode.FILTERING_INSERTION
+                && !DuctGasFilterLogic.passesGasFiltersForBank(
+                        srcNodeGas, DuctFaceNode.FilterBank.FILTER, s.stack, level)) {
             return;
         }
 
         Object toMoveProbe = MekanismChemicalCompat.copyWithAmount(s.stack, want);
-        DuctFaceNode srcNodeGas = sourceBe.getFaceLanes(s.sourceFace).gas;
         long keepCap =
                 DuctGasAllowLimitLogic.maxExtractRespectingKeep(
                         srcHandler,
-                        srcNodeGas.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR),
-                        srcNodeGas.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR),
+                        srcNodeGas.bankAllowFilters(srcCapBank),
+                        srcNodeGas.bankAllowCaps(srcCapBank),
                         toMoveProbe,
                         level.registryAccess());
         if (keepCap != Long.MAX_VALUE && MekanismChemicalCompat.getAmount(toMoveProbe) > keepCap) {
             return;
         }
 
+        if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
+                && !DuctGasFilterLogic.passesGasFiltersForBank(
+                        destLanes.gas, DuctFaceNode.FilterBank.FILTER, s.stack, level)) {
+            return;
+        }
+        if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
+                && !DuctGasFilterLogic.passesGasFiltersForBank(
+                        destLanes.gas, DuctFaceNode.FilterBank.RETRIEVER, s.stack, level)) {
+            return;
+        }
+
         Object toInsertSim = MekanismChemicalCompat.copyWithAmount(s.stack, want);
         long canInsert = MekanismChemicalCompat.simulateInsert(destHandler, toInsertSim);
+        if (canInsert <= 0) {
+            return;
+        }
+        if (dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION) {
+            canInsert =
+                    Math.min(
+                            canInsert,
+                            DuctGasAllowLimitLogic.maxAdditionalInsertForAllowLine(
+                                    destHandler,
+                                    destLanes.gas.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER),
+                                    destLanes.gas.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER),
+                                    toInsertSim,
+                                    level.registryAccess(),
+                                    (line, reg) ->
+                                            DuctGasAllowLimitLogic.countMatchingInStacks(
+                                                    DuctGasIncomingIndex.snapshot(level, destPos), line, reg)));
+        }
         if (canInsert <= 0) {
             return;
         }
@@ -2928,7 +3032,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (lanes.redstoneMode == 1 || lanes.redstoneMode == 2) {
             return true;
         }
-        return laneSuggestsPersistedStorageNode(lanes.item) || laneSuggestsPersistedStorageNode(lanes.fluid);
+        return laneSuggestsPersistedStorageNode(lanes.item)
+                || laneSuggestsPersistedStorageNode(lanes.fluid)
+                || laneSuggestsPersistedStorageNode(lanes.gas);
     }
 
     private static boolean laneSuggestsPersistedStorageNode(DuctFaceNode n) {
@@ -3052,6 +3158,37 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             fOut.add(ft);
         }
         tag.put("DuctFluidTransit", fOut);
+        ListTag gOut = new ListTag();
+        for (GasTransitShipment s : gasTransitShipments) {
+            if (s.stack == null || MekanismChemicalCompat.isEmptyStack(s.stack)) {
+                continue;
+            }
+            CompoundTag gt = new CompoundTag();
+            MekanismChemicalCompat.saveGasStackToTag(s.stack, gt);
+            if (!gt.contains("ChemId")) {
+                continue;
+            }
+            gt.putInt("Tot", s.totalTravelTicks);
+            gt.putInt("Tr", s.travelTicks);
+            gt.putInt("Ed", s.edgeTicks);
+            gt.putLong("J0", s.journeyStartGameTime);
+            gt.putByte("SrcF", (byte) s.sourceFace.ordinal());
+            gt.putByte("DstF", (byte) s.destFace.ordinal());
+            gt.putInt("DestX", s.destDuct.getX());
+            gt.putInt("DestY", s.destDuct.getY());
+            gt.putInt("DestZ", s.destDuct.getZ());
+            ListTag path = new ListTag();
+            for (BlockPos p : s.ductPath) {
+                CompoundTag pt = new CompoundTag();
+                pt.putInt("X", p.getX());
+                pt.putInt("Y", p.getY());
+                pt.putInt("Z", p.getZ());
+                path.add(pt);
+            }
+            gt.put("Path", path);
+            gOut.add(gt);
+        }
+        tag.put("DuctGasTransit", gOut);
         ListTag bl = new ListTag();
         for (ItemStack b : migratedStorageBacklog) {
             CompoundTag bt = new CompoundTag();
@@ -3068,9 +3205,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
 
-        // Placement from dropped item: loot table copies a compact configuration payload under BlockEntityTag.DuctConfig.
-        // When present (and when normal world-save keys are absent), apply it and skip loading runtime-only state.
-        if (tag.contains("DuctConfig", Tag.TAG_COMPOUND) && !tag.contains("PipeMask", Tag.TAG_BYTE)) {
+        // Placement from dropped item: BlockEntityTag carries only DuctConfig (no PipeMask).
+        // Never use this fast path when world-persisted logistics / buffers exist, or if PipeMask exists under any
+        // NBT type — otherwise chunk reload can skip DuctOutbound and wipe in-flight item tasks.
+        boolean tagHasPipeMask = tag.contains("PipeMask");
+        boolean hasPersistedRuntime =
+                tag.contains("DuctOutbound")
+                        || tag.contains("DuctFluidTransit")
+                        || tag.contains("DuctGasTransit")
+                        || tag.contains("DuctBacklog")
+                        || tag.contains("DuctOverflow");
+        if (tag.contains("DuctConfig", Tag.TAG_COMPOUND) && !tagHasPipeMask && !hasPersistedRuntime) {
             CompoundTag cfg = tag.getCompound("DuctConfig");
             if (cfg.contains("DuctLogicalId")) {
                 logicalDuctId = DuctIds.normalize(cfg.getString("DuctLogicalId"));
@@ -3141,6 +3286,33 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 int ed = ft.getInt("Ed");
                 long j0 = ft.getLong("J0");
                 fluidTransitShipments.add(new FluidTransitShipment(fs, List.copyOf(path), tot, tr, ed, j0, srcFace, dstFace, destDuct));
+            }
+        }
+        gasTransitShipments.clear();
+        if (tag.contains("DuctGasTransit", Tag.TAG_LIST)) {
+            ListTag list = tag.getList("DuctGasTransit", Tag.TAG_COMPOUND);
+            for (int i = 0; i < list.size(); i++) {
+                CompoundTag gt = list.getCompound(i);
+                Object gStack = MekanismChemicalCompat.loadGasStackFromTag(gt, registries);
+                if (gStack == null || MekanismChemicalCompat.isEmptyStack(gStack)) {
+                    continue;
+                }
+                ListTag plist = gt.getList("Path", Tag.TAG_COMPOUND);
+                ArrayList<BlockPos> path = new ArrayList<>(plist.size());
+                for (int j = 0; j < plist.size(); j++) {
+                    CompoundTag pt = plist.getCompound(j);
+                    path.add(new BlockPos(pt.getInt("X"), pt.getInt("Y"), pt.getInt("Z")));
+                }
+                Direction srcFace = Direction.values()[gt.getByte("SrcF") & 0xFF];
+                Direction dstFace = Direction.values()[gt.getByte("DstF") & 0xFF];
+                BlockPos destDuct = new BlockPos(gt.getInt("DestX"), gt.getInt("DestY"), gt.getInt("DestZ"));
+                int tot = gt.getInt("Tot");
+                int tr = gt.getInt("Tr");
+                int ed = gt.getInt("Ed");
+                long j0 = gt.getLong("J0");
+                gasTransitShipments.add(
+                        new GasTransitShipment(
+                                gStack, List.copyOf(path), tot, tr, ed, j0, srcFace, dstFace, destDuct));
             }
         }
         migratedStorageBacklog.clear();

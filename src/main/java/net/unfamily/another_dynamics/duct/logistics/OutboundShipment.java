@@ -6,12 +6,20 @@ import java.util.List;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
+
+import java.util.Optional;
 
 /**
  * Pending item move: {@link #stack} is the planned template and count. Items stay in the source storage until
@@ -118,11 +126,16 @@ public final class OutboundShipment {
         }
         t.put("DuctPath", plist);
         t.putBoolean("SrcXfr", sourceExtractCommitted);
+        ResourceLocation itemKey = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        if (itemKey != null) {
+            t.putString("FbItem", itemKey.toString());
+            t.putInt("FbCnt", stack.getCount());
+        }
         return t;
     }
 
     public static OutboundShipment load(HolderLookup.Provider registries, CompoundTag t) {
-        ItemStack s = ItemStack.parse(registries, t.getCompound("Stack")).orElse(ItemStack.EMPTY);
+        ItemStack s = parsePlannedStack(registries, t);
         BlockPos dest = new BlockPos(t.getInt("DestX"), t.getInt("DestY"), t.getInt("DestZ"));
         int travel = t.getInt("Travel");
         BlockPos refund =
@@ -166,6 +179,63 @@ public final class OutboundShipment {
         sh.registeredIncoming = sh.stack.copy();
         sh.sourceExtractCommitted = t.getBoolean("SrcXfr");
         return sh;
+    }
+
+    /**
+     * Restores the template stack for a planned shipment. Primary path is {@link ItemStack#parse}; adds fallbacks so
+     * in-flight tasks are not dropped on world reload when the codec path returns empty (provider/registry edge cases).
+     */
+    private static ItemStack parsePlannedStack(HolderLookup.Provider registries, CompoundTag root) {
+        CompoundTag stackTag = root.getCompound("Stack");
+        if (!stackTag.isEmpty()) {
+            Optional<ItemStack> primary = ItemStack.parse(registries, stackTag);
+            if (primary.isPresent() && !primary.get().isEmpty()) {
+                return primary.get().copy();
+            }
+            ItemStack legacy = tryLegacyIdCountStack(registries, stackTag);
+            if (!legacy.isEmpty()) {
+                return legacy;
+            }
+        }
+        if (root.contains("FbItem", Tag.TAG_STRING)) {
+            return fromRegistryItemId(registries, root.getString("FbItem"), root.getInt("FbCnt"));
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /** Handles compact {@code id} + {@code count}/{@code Count} compounds (older or alternate serialization). */
+    private static ItemStack tryLegacyIdCountStack(HolderLookup.Provider registries, CompoundTag stackTag) {
+        if (!stackTag.contains("id", Tag.TAG_STRING)) {
+            return ItemStack.EMPTY;
+        }
+        String id = stackTag.getString("id");
+        int c = 1;
+        if (stackTag.contains("count", Tag.TAG_INT)) {
+            c = stackTag.getInt("count");
+        } else if (stackTag.contains("Count", Tag.TAG_INT)) {
+            c = stackTag.getInt("Count");
+        }
+        return fromRegistryItemId(registries, id, c);
+    }
+
+    private static ItemStack fromRegistryItemId(HolderLookup.Provider registries, String idStr, int count) {
+        if (idStr == null || idStr.isEmpty() || count <= 0 || registries == null) {
+            return ItemStack.EMPTY;
+        }
+        ResourceLocation rl = ResourceLocation.tryParse(idStr);
+        if (rl == null) {
+            return ItemStack.EMPTY;
+        }
+        try {
+            Optional<Holder.Reference<Item>> holder =
+                    registries.lookupOrThrow(Registries.ITEM).get(ResourceKey.create(Registries.ITEM, rl));
+            if (holder.isEmpty()) {
+                return ItemStack.EMPTY;
+            }
+            return new ItemStack(holder.get(), count);
+        } catch (RuntimeException ex) {
+            return ItemStack.EMPTY;
+        }
     }
 
     private static Direction dirFromSaveByte(byte b) {

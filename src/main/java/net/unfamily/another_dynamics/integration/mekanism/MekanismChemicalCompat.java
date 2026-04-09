@@ -3,6 +3,7 @@ package net.unfamily.another_dynamics.integration.mekanism;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
@@ -197,6 +198,24 @@ public final class MekanismChemicalCompat {
         }
     }
 
+    /** Simulation: at most {@code maxAmount} of one chemical drained from the handler (or EMPTY). */
+    public static Object simulateExtractChemical(Object handler, long maxAmount) {
+        Object empty = emptyStack();
+        if (handler == null || maxAmount <= 0) {
+            return empty;
+        }
+        try {
+            Object actionSim = actionSimulate();
+            Object extracted =
+                    handler.getClass()
+                            .getMethod("extractChemical", long.class, actionSim.getClass())
+                            .invoke(handler, maxAmount, actionSim);
+            return extracted != null ? extracted : empty;
+        } catch (Throwable ignored) {
+            return empty;
+        }
+    }
+
     /** Executes insertion and returns remaining stack (or EMPTY). */
     public static Object insertExecute(Object handler, Object stack) {
         Object empty = emptyStack();
@@ -363,6 +382,26 @@ public final class MekanismChemicalCompat {
         }
     }
 
+    /** When {@link HolderLookup.Provider} lookup fails on the client, use Mekanism's {@code CHEMICAL_REGISTRY}. */
+    private static Object chemicalStackFromBuiltinRegistryHolder(String idStr, long amount) {
+        Object empty = emptyStack();
+        if (!isLoaded() || idStr == null || idStr.isEmpty() || amount <= 0) {
+            return empty;
+        }
+        try {
+            Class<?> api = Class.forName("mekanism.api.MekanismAPI");
+            Object reg = api.getField("CHEMICAL_REGISTRY").get(null);
+            ResourceLocation rl = ResourceLocation.parse(idStr);
+            Object holderOpt = reg.getClass().getMethod("getHolder", ResourceLocation.class).invoke(reg, rl);
+            if (!(holderOpt instanceof Optional<?> ho) || ho.isEmpty()) {
+                return empty;
+            }
+            return chemicalStackHolderAmountForDisplay(ho.get(), amount);
+        } catch (Throwable ignored) {
+            return empty;
+        }
+    }
+
     /**
      * Mekanism {@code ChemicalStack} for GUI previews (tint icon), or {@link #emptyStack()} if the id is unknown.
      */
@@ -441,27 +480,59 @@ public final class MekanismChemicalCompat {
         }
     }
 
+    /**
+     * Persists a chemical stack for world save (registry id + amount). No-op if Mekanism is absent or stack is empty.
+     */
+    public static void saveGasStackToTag(Object stack, CompoundTag tag) {
+        if (!isLoaded() || stack == null || isEmptyStack(stack)) {
+            return;
+        }
+        String id = getTypeRegistryName(stack);
+        long amt = getAmount(stack);
+        if (id == null || id.isEmpty() || amt <= 0) {
+            return;
+        }
+        tag.putString("ChemId", id);
+        tag.putLong("Amt", amt);
+    }
+
+    /** Restores a stack from {@link #saveGasStackToTag}, or {@link #emptyStack()} if invalid / Mek not loaded. */
+    public static Object loadGasStackFromTag(CompoundTag tag, HolderLookup.Provider registries) {
+        if (!isLoaded() || tag == null || !tag.contains("ChemId")) {
+            return emptyStack();
+        }
+        String id = tag.getString("ChemId");
+        long amt = tag.contains("Amt") ? tag.getLong("Amt") : tag.getLong("Amount");
+        return chemicalStackFromIdForDisplay(id, amt, registries);
+    }
+
     public static Object chemicalStackFromIdForDisplay(String idStr, long amount, HolderLookup.Provider registries) {
         Object empty = emptyStack();
-        if (!isLoaded() || registries == null || idStr == null || idStr.isEmpty() || amount <= 0) {
+        if (!isLoaded() || idStr == null || idStr.isEmpty() || amount <= 0) {
             return empty;
         }
-        try {
-            Class<?> api = Class.forName("mekanism.api.MekanismAPI");
-            ResourceKey<?> regName = (ResourceKey<?>) api.getField("CHEMICAL_REGISTRY_NAME").get(null);
-            ResourceLocation rl = ResourceLocation.parse(idStr);
-            @SuppressWarnings({"unchecked", "rawtypes"})
-            ResourceKey<?> chemKey = ResourceKey.create((ResourceKey) regName, rl);
-            Object registry = registries.getClass().getMethod("lookupOrThrow", ResourceKey.class).invoke(registries, regName);
-            Object holderOpt = registry.getClass().getMethod("get", ResourceKey.class).invoke(registry, chemKey);
-            if (!(holderOpt instanceof Optional<?> ho) || ho.isEmpty()) {
-                return empty;
+        if (registries != null) {
+            try {
+                Class<?> api = Class.forName("mekanism.api.MekanismAPI");
+                ResourceKey<?> regName = (ResourceKey<?>) api.getField("CHEMICAL_REGISTRY_NAME").get(null);
+                ResourceLocation rl = ResourceLocation.parse(idStr);
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                ResourceKey<?> chemKey = ResourceKey.create((ResourceKey) regName, rl);
+                Object registry =
+                        registries.getClass().getMethod("lookupOrThrow", ResourceKey.class).invoke(registries, regName);
+                Object holderOpt = registry.getClass().getMethod("get", ResourceKey.class).invoke(registry, chemKey);
+                if (holderOpt instanceof Optional<?> ho && ho.isPresent()) {
+                    Object built = chemicalStackHolderAmountForDisplay(ho.get(), amount);
+                    if (!isEmptyStack(built)) {
+                        return built;
+                    }
+                }
+            } catch (Throwable ignored) {
+                // Use built-in registry below (common on client when sync is late).
             }
-            Object holder = ho.get();
-            return chemicalStackHolderAmountForDisplay(holder, amount);
-        } catch (Throwable ignored) {
-            return empty;
         }
+        Object fromBuiltin = chemicalStackFromBuiltinRegistryHolder(idStr, amount);
+        return !isEmptyStack(fromBuiltin) ? fromBuiltin : empty;
     }
 
     public static Object emptyStack() {

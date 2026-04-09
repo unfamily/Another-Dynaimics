@@ -1,54 +1,84 @@
 package net.unfamily.another_dynamics.duct;
 
-import net.minecraft.server.level.ServerLevel;
-
 import java.util.List;
 
+import net.minecraft.core.HolderLookup;
+import net.minecraft.server.level.ServerLevel;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
+
 /**
- * Gas ("chemical") allow/deny filtering for a node and bank.
+ * Gas allow/deny filtering: same precedence as {@link DuctFilterLogic} (items) and {@link DuctFluidFilterLogic}
+ * ({@link DuctFaceNode#denyOverridesAllow} per bank).
  */
 public final class DuctGasFilterLogic {
     private DuctGasFilterLogic() {}
 
-    public static boolean passesGasFiltersForBank(DuctFaceNode node, DuctFaceNode.FilterBank bank, Object chemicalStack, ServerLevel level) {
-        if (node == null || bank == null) {
+    public static boolean passesGasFilters(DuctFaceNode node, Object chemicalStack, ServerLevel level) {
+        if (chemicalStack == null || MekanismChemicalCompat.isEmptyStack(chemicalStack)) {
             return false;
         }
-        if (chemicalStack == null) {
-            return false;
+        HolderLookup.Provider reg = level.registryAccess();
+        boolean hasA = hasAnyNonEmpty(node.allowFilters);
+        boolean hasD = hasAnyNonEmpty(node.denyFilters);
+        if (!hasA && !hasD) {
+            return true;
         }
 
-        // Deny always blocks.
-        List<String> deny = node.bankDenyFilters(bank);
-        if (deny != null) {
-            for (String line : deny) {
-                if (DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, line, level.registryAccess())) {
-                    return false;
-                }
-            }
-        }
+        boolean A = hasA && matchesAny(node.allowFilters, chemicalStack, reg);
+        boolean D = hasD && matchesAny(node.denyFilters, chemicalStack, reg);
 
-        // If allow list has any non-empty line, require at least one match.
-        List<String> allow = node.bankAllowFilters(bank);
-        boolean hasAllow = false;
-        if (allow != null) {
-            for (String line : allow) {
-                if (line != null && !line.trim().isEmpty()) {
-                    hasAllow = true;
-                    break;
-                }
-            }
-            if (hasAllow) {
-                for (String line : allow) {
-                    if (DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, line, level.registryAccess())) {
-                        return true;
-                    }
-                }
+        if (node.denyOverridesAllow) {
+            if (D) {
                 return false;
             }
+            if (hasA && !A) {
+                return false;
+            }
+            return true;
         }
-
+        if (hasA && A) {
+            return true;
+        }
+        if (D) {
+            return false;
+        }
+        if (hasA && !A) {
+            return false;
+        }
         return true;
     }
-}
 
+    public static boolean passesGasFiltersForBank(
+            DuctFaceNode node, DuctFaceNode.FilterBank bank, Object chemicalStack, ServerLevel level) {
+        if (chemicalStack == null || MekanismChemicalCompat.isEmptyStack(chemicalStack)) {
+            return false;
+        }
+        DuctFaceNode view = new DuctFaceNode(() -> {});
+        view.denyOverridesAllow = node.bankDenyOverridesAllow(bank);
+        view.allowFilters.addAll(node.bankAllowFilters(bank));
+        view.denyFilters.addAll(node.bankDenyFilters(bank));
+        return passesGasFilters(view, chemicalStack, level);
+    }
+
+    private static boolean hasAnyNonEmpty(List<String> list) {
+        for (String s : list) {
+            if (s != null && !s.trim().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean matchesAny(
+            List<String> entries, Object chemicalStack, HolderLookup.Provider registries) {
+        for (String raw : entries) {
+            if (raw == null || raw.trim().isEmpty()) {
+                continue;
+            }
+            if (DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, raw.trim(), registries)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
