@@ -42,6 +42,26 @@ public final class MekanismChemicalCompat {
         }
     }
 
+    /**
+     * Capability lookup on a specific block/side (no offset).
+     *
+     * <p>Use this for probing external blocks during attachment discovery.</p>
+     */
+    @Nullable
+    public static Object getChemicalHandlerAt(Level level, BlockPos pos, @Nullable Direction side) {
+        if (level == null || pos == null || !isLoaded()) {
+            return null;
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            BlockCapability<Object, @Nullable Direction> cap =
+                    (BlockCapability<Object, @Nullable Direction>) chemicalCapability();
+            return level.getCapability(cap, pos, side);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     private static Object chemicalCapability() throws ReflectiveOperationException {
         // mekanism.common.capabilities.Capabilities.CHEMICAL.block()
         Class<?> c = Class.forName("mekanism.common.capabilities.Capabilities");

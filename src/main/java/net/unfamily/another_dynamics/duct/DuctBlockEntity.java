@@ -477,10 +477,24 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     @Override
     protected EnumSet<DuctNetworkType> ductNetworkTypesForGeometry() {
-        if (getBlockState().getBlock() instanceof DuctConnectable dc) {
-            return EnumSet.copyOf(dc.ductNetworkTypes());
+        // Geometry + attachment discovery must follow the logical duct definition (not the physical block id),
+        // otherwise a universal block would attach to item/fluid/gas storage simultaneously.
+        EnumSet<DuctNetworkType> out = EnumSet.noneOf(DuctNetworkType.class);
+        EnumSet<DuctTransportKind> kinds =
+                ductDefinition().map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
+        if (kinds.contains(DuctTransportKind.ITEM)) {
+            out.add(DuctNetworkType.ITEM);
         }
-        return EnumSet.of(DuctNetworkType.ITEM);
+        if (kinds.contains(DuctTransportKind.FLUID)) {
+            out.add(DuctNetworkType.FLUID);
+        }
+        if (kinds.contains(DuctTransportKind.GAS) && MekanismChemicalCompat.isLoaded()) {
+            out.add(DuctNetworkType.GAS);
+        }
+        if (out.isEmpty()) {
+            out.add(DuctNetworkType.ITEM);
+        }
+        return out;
     }
 
     /**
@@ -516,6 +530,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         } else if (net == DuctNetworkType.FLUID) {
             var fh = level.getCapability(Capabilities.FluidHandler.BLOCK, neighborPos, dir.getOpposite());
             if (fh != null) {
+                return 1 << dir.ordinal();
+            }
+        } else if (net == DuctNetworkType.GAS) {
+            if (!MekanismChemicalCompat.isLoaded()) {
+                return 0;
+            }
+            Object ch = MekanismChemicalCompat.getChemicalHandlerAt(level, neighborPos, dir.getOpposite());
+            if (ch != null) {
                 return 1 << dir.ordinal();
             }
         }
