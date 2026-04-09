@@ -56,9 +56,14 @@ public final class DuctGasTransitVisual {
                 DuctTransitPathGeometry.buildOrthogonalTransitPath(ductPath, ownerDuct, sourceAttachFace, destAttachFace);
     }
 
+    /**
+     * @return {@code null} if the tag does not carry gas transit data (do not clear client state — avoids wiping
+     *     visuals on unrelated/partial block updates).
+     */
+    @Nullable
     public static List<DuctGasTransitVisual> listFromUpdateTag(BlockPos ownerDuct, CompoundTag root, long clientWorldGameTime) {
         if (!root.contains("GasTransitV1", Tag.TAG_LIST)) {
-            return List.of();
+            return null;
         }
         ListTag list = root.getList("GasTransitV1", Tag.TAG_COMPOUND);
         ArrayList<DuctGasTransitVisual> out = new ArrayList<>(list.size());

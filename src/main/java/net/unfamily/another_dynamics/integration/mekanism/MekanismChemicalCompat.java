@@ -346,6 +346,24 @@ public final class MekanismChemicalCompat {
     }
 
     /**
+     * {@code new ChemicalStack(Holder, long)} via reflection. Uses {@link net.minecraft.core.Holder}, not {@code
+     * holder.getClass()}, because the public ctor takes {@code Holder<Chemical>} while lookups return {@code Reference}.
+     */
+    private static Object chemicalStackHolderAmountForDisplay(Object chemicalHolder, long amount) {
+        Object empty = emptyStack();
+        if (chemicalHolder == null || amount <= 0) {
+            return empty;
+        }
+        try {
+            Class<?> cs = Class.forName("mekanism.api.chemical.ChemicalStack");
+            Class<?> holderIface = Class.forName("net.minecraft.core.Holder");
+            return cs.getConstructor(holderIface, long.class).newInstance(chemicalHolder, amount);
+        } catch (Throwable ignored) {
+            return empty;
+        }
+    }
+
+    /**
      * Mekanism {@code ChemicalStack} for GUI previews (tint icon), or {@link #emptyStack()} if the id is unknown.
      */
     public static Object firstChemicalInTagForDisplay(String tagId, long amount, HolderLookup.Provider registries) {
@@ -373,8 +391,7 @@ public final class MekanismChemicalCompat {
                     return empty;
                 }
                 Object holder = first.get();
-                Class<?> cs = Class.forName("mekanism.api.chemical.ChemicalStack");
-                return cs.getConstructor(holder.getClass(), long.class).newInstance(holder, amount);
+                return chemicalStackHolderAmountForDisplay(holder, amount);
             }
         } catch (Throwable ignored) {
             return empty;
@@ -417,8 +434,7 @@ public final class MekanismChemicalCompat {
                     return empty;
                 }
                 Object holder = ho.get();
-                Class<?> cs = Class.forName("mekanism.api.chemical.ChemicalStack");
-                return cs.getConstructor(holder.getClass(), long.class).newInstance(holder, amount);
+                return chemicalStackHolderAmountForDisplay(holder, amount);
             }
         } catch (Throwable ignored) {
             return empty;
@@ -442,8 +458,7 @@ public final class MekanismChemicalCompat {
                 return empty;
             }
             Object holder = ho.get();
-            Class<?> cs = Class.forName("mekanism.api.chemical.ChemicalStack");
-            return cs.getConstructor(holder.getClass(), long.class).newInstance(holder, amount);
+            return chemicalStackHolderAmountForDisplay(holder, amount);
         } catch (Throwable ignored) {
             return empty;
         }

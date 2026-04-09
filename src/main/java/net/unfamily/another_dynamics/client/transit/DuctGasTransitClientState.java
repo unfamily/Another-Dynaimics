@@ -23,6 +23,9 @@ public final class DuctGasTransitClientState {
             BlockPos ductPos, CompoundTag tag, HolderLookup.Provider registries, long clientWorldGameTime) {
         List<DuctGasTransitVisual> visuals =
                 DuctGasTransitVisual.listFromUpdateTag(ductPos, tag, clientWorldGameTime);
+        if (visuals == null) {
+            return;
+        }
         BlockPos key = ductPos.immutable();
         if (visuals.isEmpty()) {
             BY_DUCT.remove(key);

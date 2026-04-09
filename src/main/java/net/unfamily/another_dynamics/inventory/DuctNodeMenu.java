@@ -21,6 +21,7 @@ import net.neoforged.neoforge.items.SlotItemHandler;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
+import net.unfamily.another_dynamics.duct.DuctGasTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
@@ -219,6 +220,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 .orElseGet(DuctDefinitionRegistry::fluidDuctTransportSpec);
     }
 
+    private DuctGasTransportSpec clientGasTransportSpec() {
+        return DuctDefinitionRegistry.getByLogicalId(clientDuctLogicalId)
+                .map(DuctDefinition::gasTransportOrFallback)
+                .orElseGet(DuctGasTransportSpec::fallback);
+    }
+
     private boolean clientEditingFluidLane() {
         if (linkedBlockEntity != null
                 && linkedBlockEntity.getLevel() != null
@@ -226,6 +233,15 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             return linkedBlockEntity.menuActiveTransportKind() == DuctTransportKind.FLUID;
         }
         return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal();
+    }
+
+    private boolean clientEditingGasLane() {
+        if (linkedBlockEntity != null
+                && linkedBlockEntity.getLevel() != null
+                && !linkedBlockEntity.getLevel().isClientSide()) {
+            return linkedBlockEntity.menuActiveTransportKind() == DuctTransportKind.GAS;
+        }
+        return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.GAS.ordinal();
     }
 
     private int menuTransportKindOrdinalForPackets() {
@@ -260,6 +276,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             var s = clientFluidTransportSpec();
             return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
         }
+        if (clientEditingGasLane()) {
+            var s = clientGasTransportSpec();
+            return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
+        }
         var s = clientItemTransportSpec();
         return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
     }
@@ -267,6 +287,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public int filterDenyCap(boolean hybridFilterContext) {
         if (clientEditingFluidLane()) {
             var s = clientFluidTransportSpec();
+            return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
+        }
+        if (clientEditingGasLane()) {
+            var s = clientGasTransportSpec();
             return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
         }
         var s = clientItemTransportSpec();
@@ -456,9 +480,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             if (fp != lastUpgradeSlotsFingerprint) {
                 lastUpgradeSlotsFingerprint = fp;
                 int cap =
-                        linkedBlockEntity.menuActiveTransportKind() == DuctTransportKind.FLUID
-                                ? linkedBlockEntity.computeFluidExtractBatchSettingCap(accessFace)
-                                : linkedBlockEntity.computeExtractBatchSettingCap(accessFace);
+                        switch (linkedBlockEntity.menuActiveTransportKind()) {
+                            case FLUID -> linkedBlockEntity.computeFluidExtractBatchSettingCap(accessFace);
+                            case GAS -> linkedBlockEntity.computeGasExtractBatchSettingCap(accessFace);
+                            case ITEM -> linkedBlockEntity.computeExtractBatchSettingCap(accessFace);
+                        };
                 linkedBlockEntity.getMenuData().set(DuctMenuSync.EXTRACT_BATCH_CAP, cap);
             }
         }
@@ -468,7 +494,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public boolean stillValid(Player player) {
         return stillValid(access, player, ModBlocks.DUCT.get())
                 || stillValid(access, player, ModBlocks.FLUID_DUCT.get())
-                || stillValid(access, player, ModBlocks.ITEM_FLUID_DUCT.get());
+                || stillValid(access, player, ModBlocks.ITEM_FLUID_DUCT.get())
+                || (ModBlocks.GAS_DUCT != null && stillValid(access, player, ModBlocks.GAS_DUCT.get()));
     }
 
     @Override

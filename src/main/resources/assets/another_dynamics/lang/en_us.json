@@ -151,6 +151,8 @@
   "block.another_dynamics.duct": "Duct",
   "item.another_dynamics.duct": "Duct",
   "duct.another_dynamics.item_duct": "Item Duct",
+  "duct.another_dynamics.fluid_duct": "Fluid Duct",
+  "duct.another_dynamics.gas_duct": "Gas Duct",
   "itemGroup.another_dynamics.ducts": "Another Dynamics Ducts",
   "gui.another_dynamics.duct_node.allow_cap.label.limit": "Insert Limit",
   "gui.another_dynamics.duct_node.allow_cap.label.keep": "Keep in Storage",
@@ -171,10 +173,11 @@
   "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip": "Edit Limit (filter bank) or Keep (extractor/retriever) for this allow line: max items in storage or minimum to leave when extracting.",
   "gui.another_dynamics.duct_node.transport.item": "Items",
   "gui.another_dynamics.duct_node.transport.fluid": "Fluids",
+  "gui.another_dynamics.duct_node.transport.gas": "Gases",
   "gui.another_dynamics.duct_node.transport_kind.pick.tooltip": "Open this transport lane’s node settings. Grayed out if this duct does not support that lane.",
   "gui.another_dynamics.duct_node.hub_back": "Transport hub",
   "gui.another_dynamics.duct_node.hub_back.tooltip": "Back to transport type selection",
   "another_dynamics.item_duct.node": "Item Duct Node",
   "another_dynamics.fluid_duct.node": "Fluid Duct Node",
-  "another_dynamics.item_fluid_duct.node": "Item & Fluid Duct Node"
+  "another_dynamics.gas_duct.node": "Gas Duct Node"
 }
