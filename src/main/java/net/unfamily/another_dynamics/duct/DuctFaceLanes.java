@@ -21,10 +21,12 @@ public final class DuctFaceLanes {
 
     public final DuctFaceNode item;
     public final DuctFaceNode fluid;
+    public final DuctFaceNode gas;
 
     public DuctFaceLanes(Runnable onChanged) {
         this.item = new DuctFaceNode(onChanged);
         this.fluid = new DuctFaceNode(onChanged);
+        this.gas = new DuctFaceNode(onChanged);
     }
 
     public void save(HolderLookup.Provider registries, CompoundTag tag) {
@@ -40,6 +42,9 @@ public final class DuctFaceLanes {
         CompoundTag fluidTag = new CompoundTag();
         fluid.save(registries, fluidTag);
         tag.put("Fluid", fluidTag);
+        CompoundTag gasTag = new CompoundTag();
+        gas.save(registries, gasTag);
+        tag.put("Gas", gasTag);
     }
 
     public void load(HolderLookup.Provider registries, CompoundTag tag) {
@@ -57,6 +62,11 @@ public final class DuctFaceLanes {
             fluid.load(registries, stripSharedKeys(rawFluid));
             applyLegacyAmountField(fluid, rawFluid, nodeMode);
         }
+        if (tag.contains("Gas", Tag.TAG_COMPOUND)) {
+            CompoundTag rawGas = tag.getCompound("Gas");
+            gas.load(registries, stripSharedKeys(rawGas));
+            applyLegacyAmountField(gas, rawGas, nodeMode);
+        }
     }
 
     public void loadFromLegacyRootTag(HolderLookup.Provider registries, CompoundTag root) {
@@ -72,11 +82,13 @@ public final class DuctFaceLanes {
         redstoneMode = 3;
         item.resetPipeSegmentDefaults();
         fluid.resetPipeSegmentDefaults();
+        gas.resetPipeSegmentDefaults();
     }
 
-    public void clampFilterSizes(DuctItemTransportSpec itemSpec, DuctFluidTransportSpec fluidSpec) {
+    public void clampFilterSizes(DuctItemTransportSpec itemSpec, DuctFluidTransportSpec fluidSpec, DuctGasTransportSpec gasSpec) {
         item.clampFilterSizes(itemSpec, nodeMode);
         fluid.clampFilterSizes(fluidSpec, nodeMode);
+        gas.clampFilterSizes(gasSpec, nodeMode);
     }
 
     private void loadShared(CompoundTag tag) {

@@ -33,8 +33,8 @@ public final class DuctPipeAdjacency {
         BlockState sb = level.getBlockState(b);
         Block ba = sa.getBlock();
         Block bb = sb.getBlock();
-        if (!DuctConnectable.isSameNetwork(ba, DuctNetworkType.ITEM)
-                || !DuctConnectable.isSameNetwork(bb, DuctNetworkType.ITEM)) {
+        if (!DuctConnectable.isSameNetwork(level, a, DuctNetworkType.ITEM)
+                || !DuctConnectable.isSameNetwork(level, b, DuctNetworkType.ITEM)) {
             return false;
         }
         String idA = logicalIdOf(level, a, ba);
@@ -71,8 +71,46 @@ public final class DuctPipeAdjacency {
         BlockState sb = level.getBlockState(b);
         Block ba = sa.getBlock();
         Block bb = sb.getBlock();
-        if (!DuctConnectable.isSameNetwork(ba, DuctNetworkType.FLUID)
-                || !DuctConnectable.isSameNetwork(bb, DuctNetworkType.FLUID)) {
+        if (!DuctConnectable.isSameNetwork(level, a, DuctNetworkType.FLUID)
+                || !DuctConnectable.isSameNetwork(level, b, DuctNetworkType.FLUID)) {
+            return false;
+        }
+        String idA = logicalIdOf(level, a, ba);
+        String idB = logicalIdOf(level, b, bb);
+        boolean compatA =
+                DuctDefinitionRegistry.getByLogicalId(idA).map(DuctDefinition::connectWithCompatible).orElse(true);
+        boolean compatB =
+                DuctDefinitionRegistry.getByLogicalId(idB).map(DuctDefinition::connectWithCompatible).orElse(true);
+        if (compatA && compatB) {
+            return true;
+        }
+        return idA.equals(idB);
+    }
+
+    /** Same rules as {@link #areItemPipeNeighbors} for {@link DuctNetworkType#GAS}. */
+    public static boolean areGasPipeNeighbors(Level level, BlockPos a, BlockPos b) {
+        if (level == null) {
+            return false;
+        }
+        int dx = Math.abs(a.getX() - b.getX());
+        int dy = Math.abs(a.getY() - b.getY());
+        int dz = Math.abs(a.getZ() - b.getZ());
+        if (dx + dy + dz != 1) {
+            return false;
+        }
+        Direction fromA = directionFromAToB(a, b);
+        if (fromA == null) {
+            return false;
+        }
+        if (faceDisconnected(level, a, fromA) || faceDisconnected(level, b, fromA.getOpposite())) {
+            return false;
+        }
+        BlockState sa = level.getBlockState(a);
+        BlockState sb = level.getBlockState(b);
+        Block ba = sa.getBlock();
+        Block bb = sb.getBlock();
+        if (!DuctConnectable.isSameNetwork(level, a, DuctNetworkType.GAS)
+                || !DuctConnectable.isSameNetwork(level, b, DuctNetworkType.GAS)) {
             return false;
         }
         String idA = logicalIdOf(level, a, ba);

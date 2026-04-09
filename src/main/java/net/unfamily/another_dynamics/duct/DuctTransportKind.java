@@ -9,7 +9,8 @@ import java.util.List;
  */
 public enum DuctTransportKind {
     ITEM("item"),
-    FLUID("fluid");
+    FLUID("fluid"),
+    GAS("gas");
 
     private final String jsonDec;
 

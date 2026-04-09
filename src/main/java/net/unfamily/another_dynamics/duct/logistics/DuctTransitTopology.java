@@ -74,4 +74,25 @@ public final class DuctTransitTopology {
         }
         return OptionalInt.empty();
     }
+
+    /**
+     * Same contract as {@link #firstBrokenPathEdge} but for {@link net.unfamily.another_dynamics.duct.DuctNetworkType#GAS}
+     * pipe adjacency.
+     */
+    public static OptionalInt firstBrokenGasPathEdge(Level level, List<BlockPos> path) {
+        if (path == null || path.size() < 2) {
+            return OptionalInt.empty();
+        }
+        for (int k = 0; k < path.size() - 1; k++) {
+            BlockPos a = path.get(k);
+            BlockPos b = path.get(k + 1);
+            if (!level.isLoaded(a) || !level.isLoaded(b)) {
+                continue;
+            }
+            if (!DuctPipeAdjacency.areGasPipeNeighbors(level, a, b)) {
+                return OptionalInt.of(k);
+            }
+        }
+        return OptionalInt.empty();
+    }
 }

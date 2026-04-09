@@ -1,12 +1,18 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    }
+  ],
   "type": "another_dynamics:declare_duct",
-  "id": "another_dynamics:fluid_duct",
-  "name": "duct.another_dynamics.fluid_duct",
+  "id": "another_dynamics:gas_duct",
+  "name": "duct.another_dynamics.gas_duct",
   "put_in_creative_menu": true,
-  "sound": "copper",
+  "sound": "metallic",
   "can_transport": [
     {
-      "dec": "fluid",
+      "dec": "gas",
       "batch": {
         "default": 1000,
         "max": -1
@@ -32,7 +38,7 @@
   "upgrade_features":[],
   "rendering": {
     "always_opaque": false,
-    "default_texture": "another_dynamics:block/duct/fluid/fluid_duct_0_copper",
+    "default_texture": "another_dynamics:block/duct/gas/gas_duct_0_bronze",
     "model_default": "another_dynamics:block/simple_duct_default",
     "model_line": "another_dynamics:block/simple_duct_line"
   },

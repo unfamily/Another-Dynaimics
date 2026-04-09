@@ -7,5 +7,6 @@ package net.unfamily.another_dynamics.duct;
  */
 public enum DuctNetworkType {
     ITEM,
-    FLUID
+    FLUID,
+    GAS
 }

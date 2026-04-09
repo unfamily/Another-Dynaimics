@@ -257,6 +257,34 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
     }
 
+    /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode)} using gas datapack caps. */
+    public void clampFilterSizes(DuctGasTransportSpec spec, NodeMode sharedNodeMode) {
+        int legacyA = Math.max(0, spec.filterAllowSlots());
+        int legacyD = Math.max(0, spec.filterDenySlots());
+        clampList(allowFilters, legacyA);
+        clampList(denyFilters, legacyD);
+        syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
+
+        int bankA =
+                sharedNodeMode.isHybrid()
+                        ? Math.max(0, spec.filterAllowHybridSlots())
+                        : Math.max(0, spec.filterAllowSlots());
+        int bankD =
+                sharedNodeMode.isHybrid()
+                        ? Math.max(0, spec.filterDenyHybridSlots())
+                        : Math.max(0, spec.filterDenySlots());
+        clampList(allowFiltersExtractor, bankA);
+        clampList(denyFiltersExtractor, bankD);
+        syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
+        clampList(allowFiltersRetriever, bankA);
+        clampList(denyFiltersRetriever, bankD);
+        syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
+        clampList(allowFiltersFilter, bankA);
+        clampList(denyFiltersFilter, bankD);
+        syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
+        syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
+    }
+
     private static void syncAllowCapsToAllowSize(List<Integer> caps, int allowSize) {
         while (caps.size() < allowSize) {
             caps.add(0);

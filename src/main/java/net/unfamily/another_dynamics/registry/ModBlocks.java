@@ -6,13 +6,16 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import net.neoforged.fml.ModList;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlock;
 import net.unfamily.another_dynamics.duct.FluidDuctBlock;
+import net.unfamily.another_dynamics.duct.GasDuctBlock;
 import net.unfamily.another_dynamics.duct.HybridItemFluidDuctBlock;
 
 public final class ModBlocks {
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(AnotherDynamicsMod.MOD_ID);
+    private static final boolean MEKANISM_LOADED = ModList.get().isLoaded("mekanism");
 
     private static BlockBehaviour.Properties ductProperties() {
         return BlockBehaviour.Properties.of()
@@ -30,8 +33,15 @@ public final class ModBlocks {
     public static final DeferredBlock<Block> ITEM_FLUID_DUCT =
             BLOCKS.register("item_fluid_duct", () -> new HybridItemFluidDuctBlock(ductProperties()));
 
+    /** Only registered when Mekanism is present. */
+    public static final DeferredBlock<Block> GAS_DUCT =
+            MEKANISM_LOADED ? BLOCKS.register("gas_duct", () -> new GasDuctBlock(ductProperties())) : null;
+
     public static boolean isDuctBlock(Block block) {
-        return block == DUCT.get() || block == FLUID_DUCT.get() || block == ITEM_FLUID_DUCT.get();
+        if (block == DUCT.get() || block == FLUID_DUCT.get() || block == ITEM_FLUID_DUCT.get()) {
+            return true;
+        }
+        return GAS_DUCT != null && block == GAS_DUCT.get();
     }
 
     private ModBlocks() {}

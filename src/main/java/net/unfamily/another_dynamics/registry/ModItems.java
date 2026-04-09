@@ -4,16 +4,16 @@ import java.util.Optional;
 
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlockItem;
-import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
-import net.unfamily.another_dynamics.duct.DuctTransportKind;
 
 public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(AnotherDynamicsMod.MOD_ID);
+    private static final boolean MEKANISM_LOADED = ModList.get().isLoaded("mekanism");
 
     public static final DeferredItem<DuctBlockItem> DUCT =
             ITEMS.register(
@@ -41,6 +41,18 @@ public final class ModItems {
                                     new Item.Properties(),
                                     "another_dynamics:item_fluid_duct"));
 
+    /** Only registered when Mekanism is present. */
+    public static final DeferredItem<DuctBlockItem> GAS_DUCT =
+            MEKANISM_LOADED && ModBlocks.GAS_DUCT != null
+                    ? ITEMS.register(
+                            "gas_duct",
+                            () ->
+                                    new DuctBlockItem(
+                                            ModBlocks.GAS_DUCT.get(),
+                                            new Item.Properties(),
+                                            "another_dynamics:gas_duct"))
+                    : null;
+
     private ModItems() {}
 
     /** Creative / recipe-friendly stack: block item matches enabled transport kinds; logical id in component. */
@@ -60,15 +72,8 @@ public final class ModItems {
         return DuctDefinitionRegistry.getByLogicalId(logicalId)
                 .map(
                         d -> {
-                            var kinds = d.enabledTransportKinds();
-                            boolean hasItem = kinds.contains(DuctTransportKind.ITEM);
-                            boolean hasFluid = kinds.contains(DuctTransportKind.FLUID);
-                            if (hasItem && hasFluid) {
-                                return ITEM_FLUID_DUCT.get();
-                            }
-                            if (hasFluid && !hasItem) {
-                                return FLUID_DUCT.get();
-                            }
+                            // Single physical item/block for all duct definitions.
+                            // The logical id drives enabled transport kinds and visuals.
                             return DUCT.get();
                         });
     }

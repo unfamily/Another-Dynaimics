@@ -15,12 +15,20 @@ public final class ModBlockEntities {
             TYPES.register(
                     "duct",
                     () ->
-                            BlockEntityType.Builder.of(
-                                            DuctBlockEntity::new,
-                                            ModBlocks.DUCT.get(),
-                                            ModBlocks.FLUID_DUCT.get(),
-                                            ModBlocks.ITEM_FLUID_DUCT.get())
-                                    .build(null));
+                            (ModBlocks.GAS_DUCT != null)
+                                    ? BlockEntityType.Builder.of(
+                                                    DuctBlockEntity::new,
+                                                    ModBlocks.DUCT.get(),
+                                                    ModBlocks.FLUID_DUCT.get(),
+                                                    ModBlocks.ITEM_FLUID_DUCT.get(),
+                                                    ModBlocks.GAS_DUCT.get())
+                                            .build(null)
+                                    : BlockEntityType.Builder.of(
+                                                    DuctBlockEntity::new,
+                                                    ModBlocks.DUCT.get(),
+                                                    ModBlocks.FLUID_DUCT.get(),
+                                                    ModBlocks.ITEM_FLUID_DUCT.get())
+                                            .build(null));
 
     private ModBlockEntities() {}
 }

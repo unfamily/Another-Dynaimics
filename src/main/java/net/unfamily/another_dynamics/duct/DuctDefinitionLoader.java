@@ -140,6 +140,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             List<String> kinds = new ArrayList<>();
             Optional<DuctItemTransportSpec> itemTransport = Optional.empty();
             Optional<DuctFluidTransportSpec> fluidTransport = Optional.empty();
+            Optional<DuctGasTransportSpec> gasTransport = Optional.empty();
             if (o.has("can_transport") && o.get("can_transport").isJsonArray()) {
                 for (JsonElement t : o.getAsJsonArray("can_transport")) {
                     if (!t.isJsonObject()) {
@@ -157,6 +158,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             switch (kind) {
                                 case ITEM -> itemTransport = Optional.of(parseItemTransport(to));
                                 case FLUID -> fluidTransport = Optional.of(parseFluidTransport(to));
+                                case GAS -> gasTransport = Optional.of(parseGasTransport(to));
                             }
                         }
                     }
@@ -211,6 +213,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             List.copyOf(kinds),
                             itemTransport,
                             fluidTransport,
+                            gasTransport,
                             defaultTexture,
                             modelDefault,
                             modelLine,
@@ -303,6 +306,65 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 Math.max(0, deny),
                 Math.max(0, allowHybrid),
                 Math.max(0, denyHybrid));
+    }
+
+    private static DuctGasTransportSpec parseGasTransport(JsonObject to) {
+        long batchDefault = 1000;
+        long batchMax = DuctGasTransportSpec.UNLIMITED_BATCH;
+        int rateDefault = 30;
+        int rateMin = 1;
+        int speedDefault = 20;
+        int speedMin = 0;
+        int denySlots = 4;
+        int allowSlots = 4;
+        int denyHybrid = 2;
+        int allowHybrid = 2;
+
+        if (to.has("batch") && to.get("batch").isJsonObject()) {
+            JsonObject b = to.getAsJsonObject("batch");
+            if (b.has("default")) {
+                batchDefault = b.get("default").getAsLong();
+            }
+            if (b.has("max")) {
+                long m = b.get("max").getAsLong();
+                batchMax = m < 0 ? DuctGasTransportSpec.UNLIMITED_BATCH : m;
+            }
+        }
+        if (to.has("rate") && to.get("rate").isJsonObject()) {
+            JsonObject r = to.getAsJsonObject("rate");
+            if (r.has("default")) {
+                rateDefault = r.get("default").getAsInt();
+            }
+            if (r.has("min")) {
+                rateMin = r.get("min").getAsInt();
+            }
+        }
+        if (to.has("speed") && to.get("speed").isJsonObject()) {
+            JsonObject s = to.getAsJsonObject("speed");
+            if (s.has("default")) {
+                speedDefault = s.get("default").getAsInt();
+            }
+            if (s.has("min")) {
+                speedMin = s.get("min").getAsInt();
+            }
+        }
+        if (to.has("filter") && to.get("filter").isJsonObject()) {
+            JsonObject f = to.getAsJsonObject("filter");
+            if (f.has("deny")) {
+                denySlots = f.get("deny").getAsInt();
+            }
+            if (f.has("allow")) {
+                allowSlots = f.get("allow").getAsInt();
+            }
+            if (f.has("deny_hybrid")) {
+                denyHybrid = f.get("deny_hybrid").getAsInt();
+            }
+            if (f.has("allow_hybrid")) {
+                allowHybrid = f.get("allow_hybrid").getAsInt();
+            }
+        }
+        return new DuctGasTransportSpec(
+                batchDefault, batchMax, rateDefault, rateMin, speedDefault, speedMin, allowSlots, denySlots, allowHybrid, denyHybrid);
     }
 
     private static DuctFluidTransportSpec parseFluidTransport(JsonObject to) {

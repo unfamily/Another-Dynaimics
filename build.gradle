@@ -34,6 +34,10 @@ repositories {
             includeGroup('mezz.jei')
         }
     }
+    maven {
+        name = 'CurseMaven'
+        url = 'https://cursemaven.com'
+    }
 }
 
 base {
@@ -127,6 +131,10 @@ dependencies {
     // JEI: subtype registration so all logical ducts appear in the ingredient index (same item + different components).
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
     localRuntime "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
+
+    // Mekanism (optional): required for gas duct transport. Keep core only unless additional modules become necessary.
+    compileOnly "curse.maven:mekanism-268560:7621971"
+    localRuntime "curse.maven:mekanism-268560:7621971"
 
     // Example mod dependency using a mod jar from ./libs with a flat dir repository
     // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar
