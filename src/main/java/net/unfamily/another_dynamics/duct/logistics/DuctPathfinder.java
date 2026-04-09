@@ -10,15 +10,20 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.function.BiPredicate;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctConnectable;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctGasTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctPipeAdjacency;
+
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Shortest paths on the duct-only subgraph. Pathfinding uses one edge cost per adjacent duct pair; billed travel time
@@ -65,6 +70,41 @@ public final class DuctPathfinder {
         return out;
     }
 
+    /**
+     * Gas ducts reachable from {@code start} using only edges where both adjacent blocks allow radioactive gas
+     * transport ({@link DuctGasTransportSpec#moveRadioactive()}). Normal gas ducts that do not allow radioactive act
+     * as barriers: radioactive logistics only "see" others within the same connected radioactive-capable subgraph.
+     */
+    public static Set<BlockPos> connectedRadioactiveGasDucts(Level level, BlockPos start) {
+        Set<BlockPos> out = new HashSet<>();
+        if (!DuctConnectable.isSameNetwork(level, start, DuctNetworkType.GAS)) {
+            return out;
+        }
+        if (!gasDuctPositionAllowsRadioactive(level, start)) {
+            return out;
+        }
+        ArrayList<BlockPos> q = new ArrayList<>();
+        q.add(start);
+        out.add(start);
+        while (!q.isEmpty()) {
+            BlockPos p = q.remove(q.size() - 1);
+            for (BlockPos n : neighbors6(p)) {
+                if (out.contains(n)) {
+                    continue;
+                }
+                if (!isPipeNeighbor(level, p, n, DuctNetworkType.GAS)) {
+                    continue;
+                }
+                if (!gasHopAllowsRadioactive(level, p, n)) {
+                    continue;
+                }
+                out.add(n);
+                q.add(n);
+            }
+        }
+        return out;
+    }
+
     private static List<BlockPos> neighbors6(BlockPos p) {
         return List.of(
                 p.north(),
@@ -90,11 +130,76 @@ public final class DuctPathfinder {
 
     public static Optional<List<BlockPos>> shortestPath(
             Level level, BlockPos from, BlockPos to, DuctGasTransportSpec spec, DuctNetworkType network) {
-        return shortestPath(level, from, to, edgeTravelTicks(spec), network);
+        return shortestPath(level, from, to, spec, network, false);
+    }
+
+    /**
+     * When {@code radioactivePayload} is true, every duct on the path must allow radioactive gas
+     * ({@link DuctGasTransportSpec#moveRadioactive()} on each block's definition).
+     */
+    public static Optional<List<BlockPos>> shortestPath(
+            Level level,
+            BlockPos from,
+            BlockPos to,
+            DuctGasTransportSpec spec,
+            DuctNetworkType network,
+            boolean radioactivePayload) {
+        if (network != DuctNetworkType.GAS) {
+            return shortestPath(level, from, to, edgeTravelTicks(spec), network, null);
+        }
+        BiPredicate<BlockPos, BlockPos> hop =
+                radioactivePayload
+                        ? (fromPos, toPos) -> gasHopAllowsRadioactive(level, fromPos, toPos)
+                        : null;
+        return shortestPath(level, from, to, edgeTravelTicks(spec), network, hop);
+    }
+
+    /** {@code true} if every loaded position on the path is a gas duct that allows radioactive transport. */
+    public static boolean gasPathAllowsRadioactive(Level level, List<BlockPos> path) {
+        if (path == null || path.isEmpty()) {
+            return true;
+        }
+        for (BlockPos p : path) {
+            if (!level.isLoaded(p)) {
+                continue;
+            }
+            if (!gasDuctPositionAllowsRadioactive(level, p)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean gasHopAllowsRadioactive(Level level, BlockPos from, BlockPos to) {
+        return gasDuctPositionAllowsRadioactive(level, from) && gasDuctPositionAllowsRadioactive(level, to);
+    }
+
+    private static boolean gasDuctPositionAllowsRadioactive(Level level, BlockPos pos) {
+        if (!level.isLoaded(pos)) {
+            return true;
+        }
+        BlockEntity be = level.getBlockEntity(pos);
+        if (!(be instanceof DuctBlockEntity duct)) {
+            return false;
+        }
+        return duct.ductDefinition()
+                .flatMap(d -> d.gasTransport())
+                .map(DuctGasTransportSpec::moveRadioactive)
+                .orElse(true);
     }
 
     private static Optional<List<BlockPos>> shortestPath(
             Level level, BlockPos from, BlockPos to, long edgeWeightPerHop, DuctNetworkType network) {
+        return shortestPath(level, from, to, edgeWeightPerHop, network, null);
+    }
+
+    private static Optional<List<BlockPos>> shortestPath(
+            Level level,
+            BlockPos from,
+            BlockPos to,
+            long edgeWeightPerHop,
+            DuctNetworkType network,
+            @Nullable BiPredicate<BlockPos, BlockPos> gasHopValidator) {
         if (!from.equals(to) && !DuctConnectable.isSameNetwork(level, from, network)) {
             return Optional.empty();
         }
@@ -117,6 +222,11 @@ public final class DuctPathfinder {
             }
             for (BlockPos n : neighbors6(cur.p)) {
                 if (!isPipeNeighbor(level, cur.p, n, network)) {
+                    continue;
+                }
+                if (gasHopValidator != null
+                        && network == DuctNetworkType.GAS
+                        && !gasHopValidator.test(cur.p, n)) {
                     continue;
                 }
                 long nd = cur.d + edgeWeightPerHop;
@@ -264,7 +374,12 @@ public final class DuctPathfinder {
     }
 
     public static OptionalLong distance(Level level, BlockPos from, BlockPos to, DuctGasTransportSpec spec, DuctNetworkType network) {
-        Optional<List<BlockPos>> path = shortestPath(level, from, to, spec, network);
+        return distance(level, from, to, spec, network, false);
+    }
+
+    public static OptionalLong distance(
+            Level level, BlockPos from, BlockPos to, DuctGasTransportSpec spec, DuctNetworkType network, boolean radioactivePayload) {
+        Optional<List<BlockPos>> path = shortestPath(level, from, to, spec, network, radioactivePayload);
         if (path.isEmpty()) {
             return OptionalLong.empty();
         }

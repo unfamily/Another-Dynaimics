@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -107,8 +108,17 @@ public final class DuctGasServerTick {
             return;
         }
 
-        // Build candidate insertion faces across the gas network: priority first, then routing tie-break.
-        List<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.GAS));
+        boolean radioactivePayload = MekanismChemicalCompat.isRadioactive(available);
+        if (radioactivePayload && !DuctPathfinder.gasPathAllowsRadioactive(level, List.of(srcPos))) {
+            return;
+        }
+
+        // Build candidate insertion faces: full gas network, or only the radioactive-capable subgraph for radioactive cargo.
+        List<BlockPos> ducts =
+                new ArrayList<>(
+                        radioactivePayload
+                                ? DuctPathfinder.connectedRadioactiveGasDucts(level, srcPos)
+                                : DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.GAS));
         boolean allowSelf = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         if (ducts.size() > 1 && !allowSelf) {
             ducts.remove(srcPos);
@@ -130,7 +140,8 @@ public final class DuctGasServerTick {
             OptionalLong dist =
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
-                            : DuctPathfinder.distance(level, srcPos, destPos, spec, DuctNetworkType.GAS);
+                            : DuctPathfinder.distance(
+                                    level, srcPos, destPos, spec, DuctNetworkType.GAS, radioactivePayload);
             if (dist.isEmpty()) {
                 continue;
             }
@@ -234,8 +245,16 @@ public final class DuctGasServerTick {
         if (pick.ductPos().equals(srcPos)) {
             rawPath = List.of(srcPos);
         } else {
-            rawPath = DuctPathfinder.shortestPath(level, srcPos, pick.ductPos(), spec, DuctNetworkType.GAS)
-                    .orElseGet(() -> List.of(srcPos, pick.ductPos()));
+            Optional<List<BlockPos>> pathOpt =
+                    DuctPathfinder.shortestPath(
+                            level, srcPos, pick.ductPos(), spec, DuctNetworkType.GAS, radioactivePayload);
+            if (pathOpt.isPresent()) {
+                rawPath = pathOpt.get();
+            } else if (radioactivePayload) {
+                return;
+            } else {
+                rawPath = List.of(srcPos, pick.ductPos());
+            }
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
         sourceBe.scheduleGasTransitPending(
@@ -259,6 +278,8 @@ public final class DuctGasServerTick {
         int[] rr = new int[] {node.roundRobinCursor};
         boolean singleDuctNetwork =
                 DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.GAS).size() == 1;
+        Set<BlockPos> radioactiveGasSubnet = DuctPathfinder.connectedRadioactiveGasDucts(level, retrieverPos);
+        boolean singleRadioactiveGasNetwork = radioactiveGasSubnet.size() == 1;
         List<DuctTargetSelector.DonorCandidate> donors =
                 listGasRetrievingDonorCandidates(
                         level,
@@ -269,8 +290,9 @@ public final class DuctGasServerTick {
                         rr[0],
                         node.channelLetter,
                         singleDuctNetwork,
-                        singleDuctNetwork ? retrieverFace : null,
-                        spec);
+                        (singleDuctNetwork || singleRadioactiveGasNetwork) ? retrieverFace : null,
+                        spec,
+                        radioactiveGasSubnet);
         if (donors.isEmpty()) {
             return;
         }
@@ -278,17 +300,6 @@ public final class DuctGasServerTick {
             DuctTargetSelector.DonorCandidate donorCand = donors.get(donorIdx);
             BlockPos donor = donorCand.ductPos();
             Direction donorFace = donorCand.face();
-            List<BlockPos> path;
-            if (donor.equals(retrieverPos)) {
-                path = List.of(retrieverPos);
-            } else {
-                Optional<List<BlockPos>> p =
-                        DuctPathfinder.shortestPath(level, donor, retrieverPos, spec, DuctNetworkType.GAS);
-                if (p.isEmpty()) {
-                    continue;
-                }
-                path = p.get();
-            }
             if (!(level.getBlockEntity(donor) instanceof DuctBlockEntity donorBe)) {
                 continue;
             }
@@ -301,6 +312,27 @@ public final class DuctGasServerTick {
             Object available = MekanismChemicalCompat.drainProbe(srcHandler, want);
             if (MekanismChemicalCompat.isEmptyStack(available)) {
                 continue;
+            }
+            boolean radioactivePayload = MekanismChemicalCompat.isRadioactive(available);
+            if (radioactivePayload && !radioactiveGasSubnet.contains(donor)) {
+                continue;
+            }
+            if (radioactivePayload
+                    && (!DuctPathfinder.gasPathAllowsRadioactive(level, List.of(donor))
+                            || !DuctPathfinder.gasPathAllowsRadioactive(level, List.of(retrieverPos)))) {
+                continue;
+            }
+            List<BlockPos> path;
+            if (donor.equals(retrieverPos)) {
+                path = List.of(retrieverPos);
+            } else {
+                Optional<List<BlockPos>> p =
+                        DuctPathfinder.shortestPath(
+                                level, donor, retrieverPos, spec, DuctNetworkType.GAS, radioactivePayload);
+                if (p.isEmpty()) {
+                    continue;
+                }
+                path = p.get();
             }
             DuctFaceLanes donorLanes = donorBe.getFaceLanes(donorFace);
             DuctFaceNode donorGas = donorLanes.gas;
@@ -380,7 +412,8 @@ public final class DuctGasServerTick {
             int retrieverGasChannel,
             boolean allowSelfDonor,
             @Nullable Direction forbidSelfDonorFace,
-            DuctGasTransportSpec spec) {
+            DuctGasTransportSpec spec,
+            Set<BlockPos> radioactiveGasSubnet) {
         ArrayList<DuctTargetSelector.DonorCandidate> cands = new ArrayList<>();
         for (BlockPos p : DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.GAS)) {
             if (!allowSelfDonor && p.equals(retrieverPos)) {
@@ -429,10 +462,15 @@ public final class DuctGasServerTick {
                 if (MekanismChemicalCompat.simulateInsert(retrieverDestHandler, sample) <= 0) {
                     continue;
                 }
+                boolean radioactiveSample = MekanismChemicalCompat.isRadioactive(sample);
+                if (radioactiveSample && !radioactiveGasSubnet.contains(p)) {
+                    continue;
+                }
                 OptionalLong dist =
                         p.equals(retrieverPos)
                                 ? OptionalLong.of(0L)
-                                : DuctPathfinder.distance(level, retrieverPos, p, spec, DuctNetworkType.GAS);
+                                : DuctPathfinder.distance(
+                                        level, retrieverPos, p, spec, DuctNetworkType.GAS, radioactiveSample);
                 if (dist.isEmpty()) {
                     continue;
                 }

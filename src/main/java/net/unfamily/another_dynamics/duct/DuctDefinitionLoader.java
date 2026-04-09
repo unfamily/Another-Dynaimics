@@ -363,8 +363,25 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 allowHybrid = f.get("allow_hybrid").getAsInt();
             }
         }
+        boolean moveRadioactive = true;
+        if (to.has("move_radioactive") && to.get("move_radioactive").isJsonPrimitive()) {
+            moveRadioactive = to.get("move_radioactive").getAsBoolean();
+        } else if (to.has("mode_radioactive") && to.get("mode_radioactive").isJsonPrimitive()) {
+            // Legacy typo in early datapacks
+            moveRadioactive = to.get("mode_radioactive").getAsBoolean();
+        }
         return new DuctGasTransportSpec(
-                batchDefault, batchMax, rateDefault, rateMin, speedDefault, speedMin, allowSlots, denySlots, allowHybrid, denyHybrid);
+                batchDefault,
+                batchMax,
+                rateDefault,
+                rateMin,
+                speedDefault,
+                speedMin,
+                allowSlots,
+                denySlots,
+                allowHybrid,
+                denyHybrid,
+                moveRadioactive);
     }
 
     private static DuctFluidTransportSpec parseFluidTransport(JsonObject to) {

@@ -16,11 +16,18 @@ public record DuctGasTransportSpec(
         int filterAllowSlots,
         int filterDenySlots,
         int filterAllowHybridSlots,
-        int filterDenyHybridSlots) {
+        int filterDenyHybridSlots,
+        /**
+         * When {@code false}, this duct type blocks radioactive gas: it cannot appear on radioactive routes, and it
+         * splits the {@linkplain net.unfamily.another_dynamics.duct.logistics.DuctPathfinder#connectedRadioactiveGasDucts
+         * radioactive-capable gas subgraph} (only ducts linked through {@code true} edges "see" each other for
+         * radioactive logistics).
+         */
+        boolean moveRadioactive) {
     public static final long UNLIMITED_BATCH = Long.MAX_VALUE;
 
     public static DuctGasTransportSpec fallback() {
-        return new DuctGasTransportSpec(1000, UNLIMITED_BATCH, 30, 1, 20, 0, 4, 4, 2, 2);
+        return new DuctGasTransportSpec(1000, UNLIMITED_BATCH, 30, 1, 20, 0, 4, 4, 2, 2, true);
     }
 
     public int effectiveSpeed(int configured) {
