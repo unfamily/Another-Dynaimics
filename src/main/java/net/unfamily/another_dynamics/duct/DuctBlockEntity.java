@@ -1352,7 +1352,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                             rrProbe[0],
                             node.channelLetter,
                             allowSelfOrSingle,
-                            allowSelfOrSingle ? face : null);
+                            // In self-feed mode we must allow delivering back into the same neighbor face, because many
+                            // machines expose input+output via the same sided capability.
+                            allowSelf ? null : (allowSelfOrSingle ? face : null));
             if (candidates.isEmpty()) {
                 break;
             }

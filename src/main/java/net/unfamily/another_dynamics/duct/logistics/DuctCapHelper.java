@@ -62,8 +62,7 @@ public final class DuctCapHelper {
         if (h == null) {
             return false;
         }
-        ItemStack sim = ItemHandlerHelper.insertItemStacked(copyHandlerForSimulation(h), probe.copy(), true);
-        return sim.isEmpty();
+        return simulateInsertIntoHandler(h, probe.copy()).isEmpty();
     }
 
     public static int countExtractableMatchingOnFace(
@@ -150,38 +149,27 @@ public final class DuctCapHelper {
         if (h == null) {
             return 0;
         }
-        ItemStackHandler v = copyHandlerForSimulation(h);
-        for (ItemStack p : priorPending) {
-            if (p.isEmpty()) {
-                continue;
-            }
-            ItemStack rem = p.copy();
-            rem = ItemHandlerHelper.insertItemStacked(v, rem, false);
-            if (!rem.isEmpty()) {
-                return 0;
-            }
+        int cap = simulateMaxInsertableIntoHandler(h, template, limit);
+        if (cap <= 0) {
+            return 0;
         }
-        int cap = Math.min(limit, template.getMaxStackSize());
-        int lo = 0;
-        int hi = cap;
-        while (lo < hi) {
-            int mid = (lo + hi + 1) / 2;
-            ItemStackHandler trial = copyHandlerForSimulation(h);
+        // Conservative pending reservation: subtract only same-item stacks, since slot filtering is item-dependent and
+        // we cannot "apply" multiple simulated inserts without mutating handler state.
+        int pendingSame = 0;
+        if (priorPending != null) {
             for (ItemStack p : priorPending) {
-                if (!p.isEmpty()) {
-                    ItemHandlerHelper.insertItemStacked(trial, p.copy(), false);
+                if (p.isEmpty()) {
+                    continue;
+                }
+                if (ItemStack.isSameItemSameComponents(p, template)) {
+                    pendingSame += p.getCount();
+                    if (pendingSame >= cap) {
+                        return 0;
+                    }
                 }
             }
-            ItemStack test = template.copy();
-            test.setCount(mid);
-            ItemStack left = ItemHandlerHelper.insertItemStacked(trial, test, false);
-            if (left.isEmpty()) {
-                lo = mid;
-            } else {
-                hi = mid - 1;
-            }
         }
-        return lo;
+        return Math.max(0, cap - pendingSame);
     }
 
     public static ItemStack insertIntoStorageFaces(Level level, BlockPos ductPos, DuctBlockEntity duct, ItemStack stack) {
@@ -469,5 +457,39 @@ public final class DuctCapHelper {
             c.setStackInSlot(i, h.getStackInSlot(i).copy());
         }
         return c;
+    }
+
+    /**
+     * Simulate insertion into a real handler (respects slot validity/filters) without mutating it.
+     */
+    private static ItemStack simulateInsertIntoHandler(IItemHandler h, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack remaining = stack.copy();
+        for (int i = 0; i < h.getSlots() && !remaining.isEmpty(); i++) {
+            remaining = h.insertItem(i, remaining, true);
+        }
+        return remaining;
+    }
+
+    private static int simulateMaxInsertableIntoHandler(IItemHandler h, ItemStack template, int limit) {
+        if (limit <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        int cap = Math.min(limit, template.getMaxStackSize());
+        int lo = 0;
+        int hi = cap;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) / 2;
+            ItemStack test = template.copy();
+            test.setCount(mid);
+            if (simulateInsertIntoHandler(h, test).isEmpty()) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return lo;
     }
 }

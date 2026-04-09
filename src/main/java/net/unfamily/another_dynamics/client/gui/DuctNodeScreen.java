@@ -2451,7 +2451,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                                         ? "gui.another_dynamics.duct_node.hybrid.self_feed.on"
                                         : "gui.another_dynamics.duct_node.hybrid.self_feed.off"));
                 denyNavButton.active = true;
-                listLogicButton.active = true;
+                // Self-feed is only meaningful for the Extractor/Filtering hybrid mode.
+                // In Retriever/Extractor, keep it visible but disabled and forced OFF.
+                listLogicButton.active = nm == NodeMode.EXTRACTION_FILTERING;
+                if (nm != NodeMode.EXTRACTION_FILTERING) {
+                    listLogicButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.hybrid.self_feed.off"));
+                }
                 allowNavButton.active = true;
                 if (nm == NodeMode.EXTRACTION_FILTERING) {
                     denyNavButton.setTooltip(

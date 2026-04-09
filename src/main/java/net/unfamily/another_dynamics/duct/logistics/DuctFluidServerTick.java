@@ -56,13 +56,18 @@ public final class DuctFluidServerTick {
             if (lanes.nodeMode == NodeMode.EXTRACTION
                     || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING
                     || lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
-                tryExtractPush(level, be, dir, node, spec);
+                tryExtractPush(level, be, dir, lanes.nodeMode, node, spec);
             }
         }
     }
 
     private static void tryExtractPush(
-            ServerLevel level, DuctBlockEntity sourceBe, Direction sourceFace, DuctFaceNode node, DuctFluidTransportSpec spec) {
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            NodeMode sourceMode,
+            DuctFaceNode node,
+            DuctFluidTransportSpec spec) {
         BlockPos srcPos = sourceBe.getBlockPos();
         IFluidHandler srcCap =
                 level.getCapability(Capabilities.FluidHandler.BLOCK, srcPos.relative(sourceFace), sourceFace.getOpposite());
@@ -98,7 +103,8 @@ public final class DuctFluidServerTick {
 
         // Build candidate insertion faces across the fluid network: priority first, then routing tie-break.
         List<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.FLUID));
-        if (ducts.size() > 1) {
+        boolean allowSelf = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+        if (ducts.size() > 1 && !allowSelf) {
             ducts.remove(srcPos);
         }
         if (ducts.isEmpty()) {
@@ -133,7 +139,7 @@ public final class DuctFluidServerTick {
                 if (!destNode.eligibilityMode.isInsertable()) {
                     continue;
                 }
-                if (destPos.equals(srcPos) && df == sourceFace) {
+                if (!allowSelf && destPos.equals(srcPos) && df == sourceFace) {
                     continue;
                 }
                 if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {
@@ -205,9 +211,14 @@ public final class DuctFluidServerTick {
             return;
         }
         FluidStack planned = new FluidStack(available.getFluid(), movedMb);
-        List<BlockPos> rawPath =
-                DuctPathfinder.shortestPath(level, srcPos, pick.ductPos, spec, DuctNetworkType.FLUID)
-                        .orElseGet(() -> List.of(srcPos, pick.ductPos));
+        List<BlockPos> rawPath;
+        if (pick.ductPos.equals(srcPos)) {
+            rawPath = List.of(srcPos);
+        } else {
+            rawPath =
+                    DuctPathfinder.shortestPath(level, srcPos, pick.ductPos, spec, DuctNetworkType.FLUID)
+                            .orElseGet(() -> List.of(srcPos, pick.ductPos));
+        }
         List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
         sourceBe.scheduleFluidTransitPending(level, planned, pathWire, sourceFace, pick.face, pick.ductPos, spec);
     }
