@@ -1,6 +1,7 @@
 package net.unfamily.another_dynamics.client.gui;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 
 import com.mojang.blaze3d.platform.InputConstants;
@@ -33,8 +34,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
@@ -138,6 +141,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private static final int CHANNEL_WIDGET_Y =
             DuctNodeMenu.SLOT_COPY_Y + 18 + CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT;
     private static final int TRANSPORT_KIND_BUTTON_Y = CHANNEL_WIDGET_Y + CHANNEL_WIDGET_H + 4;
+    private static final int TRANSPORT_PICKER_BTN_W = 72;
+    private static final int TRANSPORT_PICKER_GAP = 4;
 
     /** Visible filter rows; scroll when there are more slots. */
     private static final int VISIBLE_FILTER_ENTRIES = 4;
@@ -186,7 +191,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private Button amountMaxButton;
     private Button amountDiscardButton;
     private ChannelLetterButton channelButton;
-    private Button transportKindButton;
+    private final List<Button> transportKindPickerButtons = new ArrayList<>();
+    private Button hubBackButton;
     private EditBox routingPriorityBox;
 
     private Button denyNavButton;
@@ -525,6 +531,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         .build();
         addRenderableWidget(opaqueRenderingButton);
 
+        hubBackButton =
+                Button.builder(Component.translatable("gui.another_dynamics.duct_node.hub_back"), b -> {
+                            playClickSound();
+                            handleMenuButton(DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB);
+                        })
+                        .bounds(0, 0, ROW_BTN_W, BTN_H)
+                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hub_back.tooltip")))
+                        .build();
+        addRenderableWidget(hubBackButton);
+
         backButton = Button.builder(Component.translatable("gui.another_dynamics.duct_node.filters.back"), b -> {
                     playClickSound();
                     if (subView == SubView.ADVANCED_FILTERING) {
@@ -571,23 +587,59 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 });
         addRenderableWidget(channelButton);
 
-        transportKindButton =
-                Button.builder(Component.literal(""), b -> handleMenuButton(30))
-                        .bounds(
-                                this.leftPos + channelX,
-                                this.topPos + TRANSPORT_KIND_BUTTON_Y,
-                                CHANNEL_WIDGET_W + 48,
-                                14)
-                        .tooltip(
-                                Tooltip.create(
-                                        Component.translatable(
-                                                "gui.another_dynamics.duct_node.transport_kind.tooltip")))
-                        .build();
-        addRenderableWidget(transportKindButton);
+        transportKindPickerButtons.clear();
+        for (DuctTransportKind k : DuctTransportKind.values()) {
+            final int kindOrdinal = k.ordinal();
+            Button b =
+                    Button.builder(Component.empty(), btn -> handleMenuButton(DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE + kindOrdinal))
+                            .bounds(0, 0, TRANSPORT_PICKER_BTN_W, BTN_H)
+                            .tooltip(
+                                    Tooltip.create(
+                                            Component.translatable("gui.another_dynamics.duct_node.transport_kind.pick.tooltip")))
+                            .build();
+            transportKindPickerButtons.add(b);
+            addRenderableWidget(b);
+        }
 
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         rebuildFilterEntryWidgets();
+        layoutTransportKindPickers();
+        layoutHubBackButton();
         applySubViewVisibility();
+    }
+
+    private boolean shouldReturnToTransportHubInsteadOfClosing() {
+        return menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
+                && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0;
+    }
+
+    private void layoutTransportKindPickers() {
+        int n = transportKindPickerButtons.size();
+        if (n == 0) {
+            return;
+        }
+        int totalW = n * TRANSPORT_PICKER_BTN_W + (n - 1) * TRANSPORT_PICKER_GAP;
+        int startX = this.leftPos + CENTER_X + (3 * (ROW_BTN_W + ROW_GAP) - totalW) / 2;
+        int y = this.topPos + TRANSPORT_KIND_BUTTON_Y;
+        for (int i = 0; i < n; i++) {
+            Button b = transportKindPickerButtons.get(i);
+            b.setX(startX + i * (TRANSPORT_PICKER_BTN_W + TRANSPORT_PICKER_GAP));
+            b.setY(y);
+            b.setWidth(TRANSPORT_PICKER_BTN_W);
+            b.setHeight(BTN_H);
+        }
+    }
+
+    private void layoutHubBackButton() {
+        if (hubBackButton == null) {
+            return;
+        }
+        int ox = CENTER_X + ROW_BTN_W + ROW_GAP;
+        int oy = ROW2_Y + BTN_H + 4;
+        hubBackButton.setX(this.leftPos + ox);
+        hubBackButton.setY(this.topPos + oy);
+        hubBackButton.setWidth(ROW_BTN_W);
+        hubBackButton.setHeight(BTN_H);
     }
 
     private void openFilterSubview(SubView v) {
@@ -623,6 +675,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (hybridPanel != HybridPanel.NONE) {
                 hybridPanel = HybridPanel.NONE;
                 applySubViewVisibility();
+                return;
+            }
+            if (shouldReturnToTransportHubInsteadOfClosing()) {
+                playClickSound();
+                handleMenuButton(DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB);
                 return;
             }
             onClose();
@@ -834,13 +891,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
         boolean inHybridSelector = nm.isHybrid() && hybridPanel == HybridPanel.NONE;
         boolean showMainStyleChrome = main || advancedFiltering;
+        boolean multiTransport = menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1;
+        boolean hubLayer = multiTransport && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
+        boolean detailMain = main && !hubLayer;
 
-        denyNavButton.visible = main;
-        listLogicButton.visible = main;
-        allowNavButton.visible = main;
-        routingModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering;
+        denyNavButton.visible = detailMain;
+        listLogicButton.visible = detailMain;
+        allowNavButton.visible = detailMain;
+        routingModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering && !hubLayer;
 
-        boolean showAmountBlock = (main && !howto && !inHybridSelector);
+        boolean showAmountBlock = (detailMain && !howto && !inHybridSelector);
         routingMinusButton.visible = showAmountBlock;
         routingPlusButton.visible = showAmountBlock;
         routingPriorityBox.visible = showAmountBlock;
@@ -859,14 +919,19 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         advCapApplyButton.visible = showAdvCapBlock;
         advCapUndoButton.visible = showAdvCapBlock;
 
-        nodeModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering;
+        nodeModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering && !hubLayer;
         selfFeedStub.visible = false;
-        opaqueRenderingButton.visible = showMainStyleChrome && !howto && !advancedFiltering;
+        opaqueRenderingButton.visible = detailMain && !howto && !advancedFiltering;
 
         closeButton.visible = true;
-        channelButton.visible = !howto;
-        transportKindButton.visible =
-                !howto && menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1;
+        channelButton.visible = detailMain && !howto;
+        boolean showTransportPickers = main && hubLayer && !howto;
+        for (Button b : transportKindPickerButtons) {
+            b.visible = showTransportPickers;
+        }
+        if (hubBackButton != null) {
+            hubBackButton.visible = detailMain && multiTransport && !howto && !advancedFiltering;
+        }
 
         backButton.visible = howto || advancedFiltering || (filterList && !edit);
         validKeysButton.visible = filterList && !edit && !howto && !advancedFiltering;
@@ -927,6 +992,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
 
         layoutFilterNavAndHelpButtons();
+        layoutTransportKindPickers();
+        layoutHubBackButton();
         if (subView == SubView.ADVANCED_FILTERING && editModeTextBox != null) {
             layoutEditModeWidgets();
         }
@@ -1943,14 +2010,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         redstoneModeStub = menu.getSyncData().get(DuctMenuSync.REDSTONE_MODE);
         channelButton.setLetterValue(menu.getSyncData().get(DuctMenuSync.CHANNEL));
 
+        EnumSet<DuctTransportKind> enabledKinds =
+                DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
+                        .map(DuctDefinition::enabledTransportKinds)
+                        .orElse(EnumSet.of(DuctTransportKind.ITEM));
         DuctTransportKind[] kinds = DuctTransportKind.values();
-        int ko = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
-        if (ko >= 0 && ko < kinds.length) {
-            transportKindButton.setMessage(
-                    Component.translatable(
-                            "gui.another_dynamics.duct_node.transport." + kinds[ko].name().toLowerCase()));
-        } else {
-            transportKindButton.setMessage(Component.literal("?"));
+        for (int i = 0; i < transportKindPickerButtons.size() && i < kinds.length; i++) {
+            DuctTransportKind k = kinds[i];
+            Button b = transportKindPickerButtons.get(i);
+            b.setMessage(Component.translatable("gui.another_dynamics.duct_node.transport." + k.name().toLowerCase()));
+            b.active = enabledKinds.contains(k);
         }
 
         int layoutKey = amountBlockLayoutKey(nm, hybridPanel);
@@ -2750,10 +2819,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                                         case EXTRACTOR -> "gui.another_dynamics.duct_node.hybrid.title.extractor";
                                         case FILTERING -> "gui.another_dynamics.duct_node.hybrid.title.filter";
                                         case RETRIEVER -> "gui.another_dynamics.duct_node.hybrid.title.retriever";
-                                        default -> "container.another_dynamics.duct_node";
+                                        default -> DuctIds.nodeScreenTranslationKey(menu.getClientDuctLogicalId());
                                     });
                         }
-                        yield this.title;
+                        yield Component.translatable(DuctIds.nodeScreenTranslationKey(menu.getClientDuctLogicalId()));
                     }
                 };
         int titleWidth = this.font.width(titleComponent);

@@ -37,7 +37,11 @@ public final class DuctMenuSync {
     public static final int ACTIVE_TRANSPORT_KIND = 18;
     /** Number of enabled transport kinds (1 = hide lane switcher). */
     public static final int TRANSPORT_KIND_COUNT = 19;
-    public static final int COUNT = 20;
+    /**
+     * 0 = hub (transport-kind picker only), 1 = detail (full node UI). Only used when {@link #TRANSPORT_KIND_COUNT} &gt; 1.
+     */
+    public static final int MENU_VIEW_LAYER = 20;
+    public static final int COUNT = 21;
 
     /** FLAGS bit: routing row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesRouting()}). */
     public static final int FLAG_ROUTING_ACTIVE = 1;

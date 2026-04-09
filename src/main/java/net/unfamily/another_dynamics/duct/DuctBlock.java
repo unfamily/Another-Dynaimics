@@ -209,6 +209,7 @@ public class DuctBlock extends AbstractDuctBlock {
     }
 
     private static void openDuctMenu(ServerPlayer player, DuctBlockEntity duct, Direction clickedFace) {
+        duct.prepareMenuOpenState();
         player.openMenu(
                 new MenuProvider() {
                     @Override
@@ -226,6 +227,7 @@ public class DuctBlock extends AbstractDuctBlock {
                     buf.writeByte(clickedFace.ordinal());
                     buf.writeBoolean(duct.ductAlwaysOpaqueRendering());
                     buf.writeUtf(duct.getLogicalDuctId());
+                    buf.writeByte(duct.menuUiLayer());
                 });
     }
 }

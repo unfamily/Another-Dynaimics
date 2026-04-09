@@ -21,4 +21,13 @@ public final class DuctIds {
         ResourceLocation rl = ResourceLocation.parse(rawId.trim());
         return rl.toString();
     }
+
+    /**
+     * Translation key for the duct node screen title: {@code {namespace}.{path_with_slashes_as_dots}.node}, e.g.
+     * {@code custom:universal_duct} → {@code custom.universal_duct.node}.
+     */
+    public static String nodeScreenTranslationKey(String logicalId) {
+        ResourceLocation rl = ResourceLocation.parse(normalize(logicalId));
+        return rl.getNamespace() + "." + rl.getPath().replace('/', '.') + ".node";
+    }
 }

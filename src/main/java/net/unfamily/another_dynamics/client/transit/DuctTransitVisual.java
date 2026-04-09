@@ -45,7 +45,7 @@ public final class DuctTransitVisual {
      */
     public final long progressAnchorGameTime;
 
-    private final Vec3[] pathPoints;
+    private final DuctTransitPathGeometry.OrthogonalTransitPath orthogonalPath;
 
     public DuctTransitVisual(
             BlockPos ownerDuct,
@@ -69,7 +69,8 @@ public final class DuctTransitVisual {
         this.progressAnchorGameTime = progressAnchorGameTime;
         Direction pathStartFace = sourceAttachFace;
         Direction pathEndFace = destAttachFace;
-        this.pathPoints = DuctTransitPathGeometry.buildPathPoints(ductPath, ownerDuct, pathStartFace, pathEndFace);
+        this.orthogonalPath =
+                DuctTransitPathGeometry.buildOrthogonalTransitPath(ductPath, ownerDuct, pathStartFace, pathEndFace);
     }
 
     private static ItemStack validateGhost(ItemStack stack) {
@@ -186,18 +187,10 @@ public final class DuctTransitVisual {
     }
 
     public Vec3 positionAt(float progress01) {
-        Vec3[] pts = pathPoints;
+        Vec3[] pts = orthogonalPath.points();
         if (pts.length == 0) {
             return Vec3.atCenterOf(ownerDuct);
         }
-        if (pts.length == 1) {
-            return pts[0];
-        }
-        float p = Math.clamp(progress01, 0f, 1f);
-        float scaled = p * (pts.length - 1);
-        int i0 = (int) Math.floor(scaled);
-        int i1 = Math.min(pts.length - 1, i0 + 1);
-        float frac = scaled - i0;
-        return pts[i0].lerp(pts[i1], frac);
+        return orthogonalPath.positionAt(progress01);
     }
 }

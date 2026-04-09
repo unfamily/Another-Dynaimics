@@ -101,11 +101,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 be.getBlockPos(),
                 be.ductAlwaysOpaqueRendering(),
                 be.getLogicalDuctId());
-        be.resetMenuTransportKindForOpen();
         be.clampFaceFiltersToSpec();
         be.refreshMenuData(accessFace);
         if (!be.getLevel().isClientSide() && playerInventory.player instanceof ServerPlayer sp) {
-            ModNetwork.sendFilterSyncToPlayer(sp, be, accessFace);
+            if (!be.isMenuHubLayer()) {
+                ModNetwork.sendFilterSyncToPlayer(sp, be, accessFace);
+            }
         }
     }
 
@@ -122,12 +123,18 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         if (logicalId.isEmpty()) {
             logicalId = DuctIds.DEFAULT_LOGICAL_ID;
         }
+        int menuLayer = extraData.readByte() & 0xFF;
+        if (menuLayer > 1) {
+            menuLayer = 1;
+        }
+        SimpleContainerData clientData = new SimpleContainerData(DuctMenuSync.COUNT);
+        clientData.set(DuctMenuSync.MENU_VIEW_LAYER, menuLayer);
         return new DuctNodeMenu(
                 containerId,
                 playerInventory,
                 new ItemStackHandler(MACHINE_SLOTS),
                 ContainerLevelAccess.NULL,
-                new SimpleContainerData(DuctMenuSync.COUNT),
+                clientData,
                 null,
                 face,
                 pos,
@@ -157,9 +164,21 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
         for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
             int y = SLOT_UPGRADE_Y0 + i * 18;
-            addSlot(new SlotItemHandler(nodeSlots, i, SLOT_UPGRADE_X, y));
+            addSlot(
+                    new SlotItemHandler(nodeSlots, i, SLOT_UPGRADE_X, y) {
+                        @Override
+                        public boolean isActive() {
+                            return super.isActive() && machineSlotsInteractive();
+                        }
+                    });
         }
-        addSlot(new SlotItemHandler(nodeSlots, COPY_SETTINGS_SLOT, SLOT_COPY_X, SLOT_COPY_Y));
+        addSlot(
+                new SlotItemHandler(nodeSlots, COPY_SETTINGS_SLOT, SLOT_COPY_X, SLOT_COPY_Y) {
+                    @Override
+                    public boolean isActive() {
+                        return super.isActive() && machineSlotsInteractive();
+                    }
+                });
 
         addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
         addDataSlots(syncData);
@@ -219,6 +238,16 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     public ContainerData getSyncData() {
         return syncData;
+    }
+
+    /** When false (hub layer), machine slots are inactive and shift-clicks stay in the player inventory. */
+    public boolean machineSlotsInteractive() {
+        if (linkedBlockEntity != null
+                && linkedBlockEntity.getLevel() != null
+                && !linkedBlockEntity.getLevel().isClientSide()) {
+            return !linkedBlockEntity.isMenuHubLayer();
+        }
+        return syncData.get(DuctMenuSync.MENU_VIEW_LAYER) != 0;
     }
 
     /**
@@ -437,6 +466,37 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public ItemStack quickMoveStack(Player player, int index) {
         int playerFirst = playerSlotStart();
         int playerLast = this.slots.size();
+
+        if (!machineSlotsInteractive()) {
+            Slot slot = this.slots.get(index);
+            if (slot == null || !slot.hasItem()) {
+                return ItemStack.EMPTY;
+            }
+            if (index < MACHINE_SLOTS) {
+                return ItemStack.EMPTY;
+            }
+            ItemStack stack = slot.getItem();
+            ItemStack result = stack.copy();
+            if (index < playerFirst + 27) {
+                if (!moveItemStackTo(stack, playerFirst + 27, playerLast, true)) {
+                    return ItemStack.EMPTY;
+                }
+            } else {
+                if (!moveItemStackTo(stack, playerFirst, playerFirst + 27, false)) {
+                    return ItemStack.EMPTY;
+                }
+            }
+            if (stack.isEmpty()) {
+                slot.setByPlayer(ItemStack.EMPTY);
+            } else {
+                slot.setChanged();
+            }
+            if (stack.getCount() == result.getCount()) {
+                return ItemStack.EMPTY;
+            }
+            slot.onTake(player, stack);
+            return result;
+        }
 
         ItemStack result = ItemStack.EMPTY;
         Slot slot = this.slots.get(index);
