@@ -87,7 +87,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     private final List<Integer> clientAllowCapsExtractor = new ArrayList<>();
     private final List<Integer> clientAllowCapsRetriever = new ArrayList<>();
-    private final List<Integer> clientAllowCapsFilter = new ArrayList<>();
+    private final List<Integer> clientAllowCapsFilter = new ArrayList<>(); // FILTER.limit
+    private final List<Integer> clientAllowCapsFilter2 = new ArrayList<>(); // FILTER.keep
 
     public DuctNodeMenu(int containerId, Inventory playerInventory, DuctBlockEntity be, Direction accessFace) {
         this(
@@ -304,6 +305,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         };
     }
 
+    public List<Integer> getClientFilterKeepCaps() {
+        return clientAllowCapsFilter2;
+    }
+
     public void receiveFilterSync(
             BlockPos pos,
             Direction face,
@@ -312,6 +317,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             List<String> allow,
             List<String> deny,
             List<Integer> allowCaps,
+            List<Integer> allowCaps2,
             boolean denyOverridesAllow) {
         if (!ductBlockPos.equals(pos) || accessFace != face) {
             return;
@@ -336,6 +342,14 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         if (allowCaps != null) {
             for (Integer v : allowCaps) {
                 caps.add(Math.max(0, v != null ? v : 0));
+            }
+        }
+        if (bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.FILTER) {
+            clientAllowCapsFilter2.clear();
+            if (allowCaps2 != null) {
+                for (Integer v : allowCaps2) {
+                    clientAllowCapsFilter2.add(Math.max(0, v != null ? v : 0));
+                }
             }
         }
         switch (bank) {
@@ -365,6 +379,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         clampClientIntList(clientAllowCapsExtractor, maxA);
         clampClientIntList(clientAllowCapsRetriever, maxA);
         clampClientIntList(clientAllowCapsFilter, maxA);
+        clampClientIntList(clientAllowCapsFilter2, maxA);
     }
 
     public void pushFilterConfigToServer(
@@ -372,6 +387,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             List<String> allow,
             List<String> deny,
             List<Integer> allowCaps,
+            List<Integer> allowCaps2,
             boolean denyOverridesAllow) {
         ModNetwork.sendFilterUpdate(
                 ductBlockPos,
@@ -381,6 +397,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 allow,
                 deny,
                 allowCaps,
+                allowCaps2,
                 denyOverridesAllow);
     }
 

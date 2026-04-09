@@ -16,6 +16,28 @@ import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
  * Node mode, redstone gating, and action tick cadence live on {@link DuctFaceLanes} (shared per face).
  */
 public final class DuctFaceNode {
+    public enum EligibilityMode {
+        BOTH,
+        INSERT_ONLY,
+        RETRIEVE_ONLY;
+
+        public boolean isInsertable() {
+            return this == BOTH || this == INSERT_ONLY;
+        }
+
+        public boolean isRetrievable() {
+            return this == BOTH || this == RETRIEVE_ONLY;
+        }
+
+        public static EligibilityMode fromOrdinal(int ord) {
+            EligibilityMode[] v = values();
+            if (ord < 0 || ord >= v.length) {
+                return BOTH;
+            }
+            return v[ord];
+        }
+    }
+
     public enum FilterBank {
         /** Filters that govern what this face will extract (inv -> network). */
         EXTRACTOR,
@@ -53,6 +75,9 @@ public final class DuctFaceNode {
     /** Hybrid: allow this face to consider itself as a destination (only used by Extr/Filt). */
     public boolean selfFeed;
 
+    /** Controls whether this face may be a network insertion destination and/or a retrieving donor. */
+    public EligibilityMode eligibilityMode = EligibilityMode.BOTH;
+
     public boolean denyOverridesAllowExtractor = true;
     public final List<String> allowFiltersExtractor = new ArrayList<>();
     public final List<String> denyFiltersExtractor = new ArrayList<>();
@@ -66,7 +91,9 @@ public final class DuctFaceNode {
     public boolean denyOverridesAllowFilter = true;
     public final List<String> allowFiltersFilter = new ArrayList<>();
     public final List<String> denyFiltersFilter = new ArrayList<>();
-    public final List<Integer> allowAllowCapsFilter = new ArrayList<>();
+    /** FILTER bank caps split: Limit is used for insertion destinations, Keep is used when a Retrieving node pulls from this donor. */
+    public final List<Integer> allowAllowCapsFilterLimit = new ArrayList<>();
+    public final List<Integer> allowAllowCapsFilterKeep = new ArrayList<>();
 
     public final ItemStackHandler guiSlots;
 
@@ -98,6 +125,7 @@ public final class DuctFaceNode {
         tag.putInt("RrCursor", roundRobinCursor);
         tag.putInt("TicksAct", ticksUntilAction);
         tag.putBoolean("SelfFeed", selfFeed);
+        tag.putByte("EligMode", (byte) eligibilityMode.ordinal());
         tag.put("NodeGui", guiSlots.serializeNBT(registries));
         saveFilters(tag);
     }
@@ -126,6 +154,8 @@ public final class DuctFaceNode {
         roundRobinCursor = tag.getInt("RrCursor");
         ticksUntilAction = tag.contains("TicksAct") ? tag.getInt("TicksAct") : 0;
         selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
+        eligibilityMode =
+                tag.contains("EligMode") ? EligibilityMode.fromOrdinal(tag.getByte("EligMode")) : EligibilityMode.BOTH;
         if (tag.contains("NodeGui", Tag.TAG_COMPOUND)) {
             guiSlots.deserializeNBT(registries, tag.getCompound("NodeGui"));
         }
@@ -168,6 +198,8 @@ public final class DuctFaceNode {
         roundRobinCursor = root.getInt("RrCursor");
         ticksUntilAction = root.contains("TicksAct") ? root.getInt("TicksAct") : 0;
         loadFilters(root);
+        eligibilityMode =
+                root.contains("EligMode") ? EligibilityMode.fromOrdinal(root.getByte("EligMode")) : EligibilityMode.BOTH;
     }
 
     public void clampFilterSizes(DuctItemTransportSpec spec, NodeMode sharedNodeMode) {
@@ -193,7 +225,8 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
         clampList(allowFiltersFilter, bankA);
         clampList(denyFiltersFilter, bankD);
-        syncAllowCapsToAllowSize(allowAllowCapsFilter, allowFiltersFilter.size());
+        syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
+        syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
     }
 
     /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode)} using fluid datapack caps. */
@@ -220,7 +253,8 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
         clampList(allowFiltersFilter, bankA);
         clampList(denyFiltersFilter, bankD);
-        syncAllowCapsToAllowSize(allowAllowCapsFilter, allowFiltersFilter.size());
+        syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
+        syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
     }
 
     private static void syncAllowCapsToAllowSize(List<Integer> caps, int allowSize) {
@@ -258,7 +292,10 @@ public final class DuctFaceNode {
         fi.putBoolean("DenyOver", denyOverridesAllowFilter);
         fi.put("Allow", toStringListTag(allowFiltersFilter));
         fi.put("Deny", toStringListTag(denyFiltersFilter));
-        putAllowCapArray(fi, allowAllowCapsFilter);
+        // Backward-compatible: keep writing AllowCap as Limit.
+        putAllowCapArray(fi, allowAllowCapsFilterLimit);
+        putAllowCapArray(fi, "AllowCapLim", allowAllowCapsFilterLimit);
+        putAllowCapArray(fi, "AllowCapKeep", allowAllowCapsFilterKeep);
         f.put("Filter", fi);
         tag.put("FaceFilters", f);
     }
@@ -278,7 +315,8 @@ public final class DuctFaceNode {
         denyOverridesAllowRetriever = true;
         allowFiltersFilter.clear();
         denyFiltersFilter.clear();
-        allowAllowCapsFilter.clear();
+        allowAllowCapsFilterLimit.clear();
+        allowAllowCapsFilterKeep.clear();
         denyOverridesAllowFilter = true;
         if (!tag.contains("FaceFilters", Tag.TAG_COMPOUND)) {
             return;
@@ -311,14 +349,21 @@ public final class DuctFaceNode {
             denyOverridesAllowFilter = !fi.contains("DenyOver") || fi.getBoolean("DenyOver");
             readStringListInto(fi, "Allow", allowFiltersFilter);
             readStringListInto(fi, "Deny", denyFiltersFilter);
-            readAllowCapsInto(fi, allowAllowCapsFilter, allowFiltersFilter.size());
+            // Migration: old single AllowCap is treated as Limit; Keep defaults to 0.
+            readAllowCapsInto(fi, "AllowCapLim", allowAllowCapsFilterLimit, allowFiltersFilter.size());
+            if (allowAllowCapsFilterLimit.stream().allMatch(v -> v == 0) && fi.contains("AllowCap", Tag.TAG_INT_ARRAY)) {
+                allowAllowCapsFilterLimit.clear();
+                readAllowCapsInto(fi, allowAllowCapsFilterLimit, allowFiltersFilter.size());
+            }
+            readAllowCapsInto(fi, "AllowCapKeep", allowAllowCapsFilterKeep, allowFiltersFilter.size());
         }
         if (!hasExtractor && !hasRetriever && !hasFilter) {
             // Migration: legacy single-bank -> FILTER bank by default.
             denyOverridesAllowFilter = denyOverridesAllow;
             allowFiltersFilter.addAll(allowFilters);
             denyFiltersFilter.addAll(denyFilters);
-            allowAllowCapsFilter.addAll(allowAllowCaps);
+            allowAllowCapsFilterLimit.addAll(allowAllowCaps);
+            syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
         }
     }
 
@@ -358,8 +403,12 @@ public final class DuctFaceNode {
         return switch (bank) {
             case EXTRACTOR -> allowAllowCapsExtractor;
             case RETRIEVER -> allowAllowCapsRetriever;
-            case FILTER -> allowAllowCapsFilter;
+            case FILTER -> allowAllowCapsFilterLimit;
         };
+    }
+
+    public List<Integer> filterBankKeepCaps() {
+        return allowAllowCapsFilterKeep;
     }
 
     private static void clampList(List<String> list, int max) {
@@ -390,18 +439,26 @@ public final class DuctFaceNode {
     }
 
     private static void putAllowCapArray(CompoundTag tag, List<Integer> caps) {
+        putAllowCapArray(tag, "AllowCap", caps);
+    }
+
+    private static void putAllowCapArray(CompoundTag tag, String key, List<Integer> caps) {
         int n = caps.size();
         int[] arr = new int[n];
         for (int i = 0; i < n; i++) {
             arr[i] = Math.max(0, caps.get(i));
         }
-        tag.putIntArray("AllowCap", arr);
+        tag.putIntArray(key, arr);
     }
 
     private static void readAllowCapsInto(CompoundTag tag, List<Integer> out, int allowSize) {
+        readAllowCapsInto(tag, "AllowCap", out, allowSize);
+    }
+
+    private static void readAllowCapsInto(CompoundTag tag, String key, List<Integer> out, int allowSize) {
         out.clear();
-        if (tag.contains("AllowCap", Tag.TAG_INT_ARRAY)) {
-            int[] arr = tag.getIntArray("AllowCap");
+        if (tag.contains(key, Tag.TAG_INT_ARRAY)) {
+            int[] arr = tag.getIntArray(key);
             for (int v : arr) {
                 out.add(Math.max(0, v));
             }

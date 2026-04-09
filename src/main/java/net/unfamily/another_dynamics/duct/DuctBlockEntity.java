@@ -1500,7 +1500,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 if (!passesItemFilters(retrieverFace, probe, level, DuctFaceNode.FilterBank.RETRIEVER)) {
                     continue;
                 }
-                if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.RETRIEVER)) {
+                // In RETRIEVING, the destination is governed by RETRIEVER filters, while the donor is governed by FILTER caps/filters.
+                if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
                     continue;
                 }
                 int tubeBatch = node.extractBatch > 0 ? node.extractBatch : spec.batchDefault();
@@ -1522,14 +1523,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 plannedCount =
                         Math.min(
                                 plannedCount,
-                                capExtractableForAllowKeep(
-                                        level,
-                                        donor,
-                                        donorFace,
-                                        donorBe,
-                                        DuctFaceNode.FilterBank.RETRIEVER,
-                                        probe,
-                                        plannedCount));
+                                capExtractableForFilterKeep(
+                                        level, donor, donorFace, donorBe, probe, plannedCount));
                 if (plannedCount > 0) {
                     ItemStack template = probe.copy();
                     template.setCount(plannedCount);
@@ -1860,6 +1855,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         : computeExtractBatchSettingCap(accessFace));
         menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
         menuData.set(DuctMenuSync.REDSTONE_MODE, faceLanes.redstoneMode);
+        menuData.set(DuctMenuSync.ELIGIBILITY_MODE, n.eligibilityMode.ordinal());
         int denyOverSync =
                 switch (faceLanes.nodeMode) {
                     case FILTERING_INSERTION -> n.denyOverridesAllowFilter ? 1 : 0;
@@ -1998,6 +1994,35 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return Math.min(maxWant, cap);
     }
 
+    /** Same as {@link #capExtractableForAllowKeep} but uses FILTER.keep caps on the source node. */
+    private int capExtractableForFilterKeep(
+            Level level,
+            BlockPos sourceDuctPos,
+            Direction sourceFace,
+            DuctBlockEntity sourceBe,
+            ItemStack template,
+            int maxWant) {
+        if (maxWant <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        IItemHandler h = DuctCapHelper.getHandlerOnFace(level, sourceDuctPos, sourceFace);
+        if (h == null) {
+            return maxWant;
+        }
+        DuctFaceNode srcNode = sourceBe.getFaceNode(sourceFace);
+        int cap =
+                DuctAllowLimitLogic.maxExtractRespectingKeep(
+                        h,
+                        srcNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER),
+                        srcNode.filterBankKeepCaps(),
+                        template,
+                        level.registryAccess());
+        if (cap == Integer.MAX_VALUE) {
+            return maxWant;
+        }
+        return Math.min(maxWant, cap);
+    }
+
     public boolean passesItemFilters(Direction face, ItemStack stack, Level level, DuctFaceNode.FilterBank bank) {
         if (stack.isEmpty()) {
             return false;
@@ -2032,6 +2057,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             List<String> allowIn,
             List<String> denyIn,
             List<Integer> allowCapsIn,
+            List<Integer> allowCaps2In,
             boolean denyOverridesAllow) {
         if (level == null || level.isClientSide) {
             return;
@@ -2050,12 +2076,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (allowCapsIn == null) {
             allowCapsIn = List.of();
         }
+        if (allowCaps2In == null) {
+            allowCaps2In = List.of();
+        }
         List<String> a = node.bankAllowFilters(bank);
         List<String> d = node.bankDenyFilters(bank);
         List<Integer> caps = node.bankAllowCaps(bank);
+        List<Integer> caps2 = bank == DuctFaceNode.FilterBank.FILTER ? node.filterBankKeepCaps() : null;
         a.clear();
         d.clear();
         caps.clear();
+        if (caps2 != null) {
+            caps2.clear();
+        }
         int maxA;
         int maxD;
         if (laneKind == DuctTransportKind.FLUID) {
@@ -2091,6 +2124,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             Integer capObj = i < allowCapsIn.size() ? allowCapsIn.get(i) : null;
             int cap = capObj != null ? capObj : 0;
             caps.add(Math.max(0, cap));
+            if (caps2 != null) {
+                Integer capObj2 = i < allowCaps2In.size() ? allowCaps2In.get(i) : null;
+                int cap2 = capObj2 != null ? capObj2 : 0;
+                caps2.add(Math.max(0, cap2));
+            }
         }
         for (int i = 0; i < maxD; i++) {
             String s = i < denyIn.size() ? denyIn.get(i) : "";
@@ -2408,7 +2446,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public void applyClientFieldUpdate(
-            Direction accessFace, int transportKindOrdinal, int insertionPriority, int extractBatch) {
+            Direction accessFace,
+            int transportKindOrdinal,
+            int insertionPriority,
+            int extractBatch,
+            int eligibilityModeOrdinal) {
         if (level == null || level.isClientSide) {
             return;
         }
@@ -2421,6 +2463,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctFaceNode node = kind == DuctTransportKind.FLUID ? getFluidFaceNode(accessFace) : getFaceNode(accessFace);
         node.insertionPriority = insertionPriority;
         node.extractBatch = Math.max(0, extractBatch);
+        node.eligibilityMode = DuctFaceNode.EligibilityMode.fromOrdinal(eligibilityModeOrdinal);
         if (kind == DuctTransportKind.FLUID) {
             clampFluidExtractAmount(node, accessFace);
         } else {

@@ -292,6 +292,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             List<String> allow,
             List<String> deny,
             List<Integer> allowCaps,
+            List<Integer> allowCaps2,
             boolean denyOverridesAllow) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
@@ -301,7 +302,15 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return;
         }
         menu.receiveFilterSync(
-                pos, face, transportKindOrdinal, filterBankOrdinal, allow, deny, allowCaps, denyOverridesAllow);
+                pos,
+                face,
+                transportKindOrdinal,
+                filterBankOrdinal,
+                allow,
+                deny,
+                allowCaps,
+                allowCaps2,
+                denyOverridesAllow);
         if (mc.screen instanceof DuctNodeScreen screen && screen.getMenu() == menu) {
             screen.menu.ensureClientFilterBufferSizes(screen.useHybridFilterCaps());
             screen.rebuildFilterEntryWidgets();
@@ -476,7 +485,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         .build();
         addRenderableWidget(advCapPlusButton);
         advCapInfinityButton =
-                Button.builder(Component.literal("\u221e"), b -> {
+                Button.builder(Component.literal("0"), b -> {
                             playClickSound();
                             editModeAllowCapValue = 0;
                             syncAllowCapEditBoxDisplay();
@@ -484,7 +493,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
                         .tooltip(
                                 Tooltip.create(
-                                        Component.translatable("gui.another_dynamics.duct_node.allow_cap.infinity")))
+                                        Component.translatable("gui.another_dynamics.duct_node.allow_cap.set_to_zero")))
                         .build();
         addRenderableWidget(advCapInfinityButton);
         advCapApplyButton =
@@ -1891,11 +1900,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     private void pushFiltersToServer() {
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+        List<Integer> caps2 =
+                activeFilterBank == DuctFaceNode.FilterBank.FILTER
+                        ? new ArrayList<>(menu.getClientFilterKeepCaps())
+                        : List.of();
         menu.pushFilterConfigToServer(
                 activeFilterBank,
                 new ArrayList<>(menu.getClientAllowFilters(activeFilterBank)),
                 new ArrayList<>(menu.getClientDenyFilters(activeFilterBank)),
                 new ArrayList<>(menu.getClientAllowCaps(activeFilterBank)),
+                caps2,
                 menu.getClientDenyOverridesAllow(activeFilterBank));
     }
 
@@ -1906,8 +1920,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (advCapEditBox.isFocused()) {
             return;
         }
+        boolean limitCtx;
+        if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
+            int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
+            DuctFaceNode.EligibilityMode em = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
+            limitCtx = em.isInsertable();
+        } else {
+            limitCtx = activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
+        }
         if (editModeAllowCapValue <= 0) {
-            advCapEditBox.setValue("\u221e");
+            advCapEditBox.setValue(limitCtx ? "\u221e" : "0");
         } else {
             advCapEditBox.setValue(Integer.toString(editModeAllowCapValue));
         }
@@ -1977,6 +1999,30 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private void handleMenuButton(int id) {
+        if (id == 1) {
+            NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+            boolean inHybridPanel = nm.isHybrid() && hybridPanel != HybridPanel.NONE;
+            boolean eligibilityCtx =
+                    nm == NodeMode.NONE
+                            || nm == NodeMode.FILTERING_INSERTION
+                            || (nm == NodeMode.EXTRACTION_FILTERING && inHybridPanel);
+            if (eligibilityCtx) {
+                playClickSound();
+                int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
+                var cur = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
+                var next =
+                        switch (cur) {
+                            case BOTH -> DuctFaceNode.EligibilityMode.INSERT_ONLY;
+                            case INSERT_ONLY -> DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
+                            case RETRIEVE_ONLY -> DuctFaceNode.EligibilityMode.BOTH;
+                        };
+                pushAmountFields(
+                        menu.getSyncData().get(DuctMenuSync.PRIORITY),
+                        menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD),
+                        next.ordinal());
+                return;
+            }
+        }
         playClickSound();
         if (minecraft != null && minecraft.gameMode != null) {
             minecraft.gameMode.handleInventoryButtonClick(menu.containerId, id);
@@ -1998,7 +2044,15 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     advCapEditBox.setValue("");
                 }
             }
-            boolean limitCtx = activeFilterBank == DuctFaceNode.FilterBank.FILTER;
+            boolean limitCtx;
+            if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
+                // FILTER bank cap is interpreted as Limit when the face is insertable, and as Keep when it is retriever-only.
+                int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
+                DuctFaceNode.EligibilityMode em = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
+                limitCtx = em.isInsertable();
+            } else {
+                limitCtx = activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
+            }
             advCapMinusButton.setTooltip(
                     Tooltip.create(
                             Component.translatable(
@@ -2021,6 +2075,14 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                                             : (isFluidFilterTransport()
                                                     ? "gui.another_dynamics.duct_node.allow_cap.field.keep_mb"
                                                     : "gui.another_dynamics.duct_node.allow_cap.field.keep"))));
+            // Infinity/zero convenience button is contextual: Limit uses ∞, Keep uses 0.
+            advCapInfinityButton.setMessage(Component.literal(limitCtx ? "\u221e" : "0"));
+            advCapInfinityButton.setTooltip(
+                    Tooltip.create(
+                            Component.translatable(
+                                    limitCtx
+                                            ? "gui.another_dynamics.duct_node.allow_cap.set_unlimited"
+                                            : "gui.another_dynamics.duct_node.allow_cap.set_to_zero")));
         }
         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
         syncActiveFilterBankToNodeMode(nm);
@@ -2047,14 +2109,30 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                                         || hybridPanel == HybridPanel.FILTERING))
                         || (nm == NodeMode.RETRIEVING_EXTRACTION && hybridPanel == HybridPanel.RETRIEVER);
         boolean routingMovedUi =
-                nm == NodeMode.RETRIEVING_EXTRACTION && hybridPanel != HybridPanel.RETRIEVER;
+                (nm == NodeMode.RETRIEVING_EXTRACTION && hybridPanel != HybridPanel.RETRIEVER)
+                        || (nm == NodeMode.EXTRACTION_FILTERING && hybridPanel == HybridPanel.NONE);
         boolean routingActive = routingUsable && hybridAllowsRoutingUi;
+
+        boolean eligibilityCtx =
+                nm == NodeMode.NONE
+                        || nm == NodeMode.FILTERING_INSERTION
+                        || (nm == NodeMode.EXTRACTION_FILTERING && inHybridPanel);
 
         if (routingMovedUi) {
             routingModeButton.active = false;
             routingModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.routing_moved"));
             routingModeButton.setTooltip(
                     Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.routing.tooltip.moved")));
+        } else if (eligibilityCtx) {
+            int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
+            DuctFaceNode.EligibilityMode em = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
+            routingModeButton.active = true;
+            routingModeButton.setMessage(
+                    Component.translatable("gui.another_dynamics.duct_node.eligibility." + em.name().toLowerCase()));
+            routingModeButton.setTooltip(
+                    Tooltip.create(
+                            Component.translatable(
+                                    "gui.another_dynamics.duct_node.eligibility.tooltip." + em.name().toLowerCase())));
         } else if (!routingActive) {
             routingModeButton.active = false;
             routingModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.routing_unroutable"));
@@ -2285,12 +2363,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private void pushAmountFields(int insertionPriority, int extractBatch) {
+        pushAmountFields(insertionPriority, extractBatch, menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE));
+    }
+
+    private void pushAmountFields(int insertionPriority, int extractBatch, int eligibilityModeOrdinal) {
         ModNetwork.sendFieldUpdate(
                 menuSyncedPos(),
                 menuSyncedFace(),
                 menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
                 insertionPriority,
-                extractBatch);
+                extractBatch,
+                eligibilityModeOrdinal);
     }
 
     private int stepForPriorityAdjust() {
@@ -3063,9 +3146,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         graphics.drawString(this.font, titleComponent, titleX, 7, 0x404040, false);
 
         if (subView == SubView.ADVANCED_FILTERING) {
+            boolean limitCtx;
+            if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
+                int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
+                DuctFaceNode.EligibilityMode em = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
+                limitCtx = em.isInsertable();
+            } else {
+                limitCtx = activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
+            }
             Component capLabel =
                     Component.translatable(
-                            activeFilterBank == DuctFaceNode.FilterBank.FILTER
+                            limitCtx
                                     ? "gui.another_dynamics.duct_node.allow_cap.label.limit"
                                     : "gui.another_dynamics.duct_node.allow_cap.label.keep");
             int lw = this.font.width(capLabel);

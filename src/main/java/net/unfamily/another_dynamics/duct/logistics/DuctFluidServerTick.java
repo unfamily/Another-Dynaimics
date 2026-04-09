@@ -130,6 +130,9 @@ public final class DuctFluidServerTick {
                 if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION && dm != NodeMode.EXTRACTION_FILTERING) {
                     continue;
                 }
+                if (!destNode.eligibilityMode.isInsertable()) {
+                    continue;
+                }
                 if (destPos.equals(srcPos) && df == sourceFace) {
                     continue;
                 }
@@ -273,6 +276,17 @@ public final class DuctFluidServerTick {
         if (srcCap == null) {
             return false;
         }
+        // Re-validate source Keep (EXTRACTOR bank caps) before delivery.
+        int keepCap =
+                DuctFluidAllowLimitLogic.maxExtractRespectingKeepMb(
+                        srcCap,
+                        srcNode.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR),
+                        srcNode.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR),
+                        s.fluid,
+                        level.registryAccess());
+        if (keepCap != Integer.MAX_VALUE && s.fluid.getAmount() > keepCap) {
+            return false;
+        }
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
             return false;
         }
@@ -340,6 +354,18 @@ public final class DuctFluidServerTick {
             return;
         }
         FluidStack toMove = s.fluid.copy();
+        // Respect source Keep at execution time too (EXTRACTOR bank).
+        DuctFaceNode srcNode = sourceBe.getFaceLanes(s.sourceFace).fluid;
+        int keepCap =
+                DuctFluidAllowLimitLogic.maxExtractRespectingKeepMb(
+                        srcCap,
+                        srcNode.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR),
+                        srcNode.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR),
+                        toMove,
+                        level.registryAccess());
+        if (keepCap != Integer.MAX_VALUE && toMove.getAmount() > keepCap) {
+            return;
+        }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
                         destLanes.fluid, DuctFaceNode.FilterBank.FILTER, toMove, level)) {

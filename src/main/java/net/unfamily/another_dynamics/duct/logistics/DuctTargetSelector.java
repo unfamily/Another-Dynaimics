@@ -89,6 +89,9 @@ public final class DuctTargetSelector {
                         && m != NodeMode.RETRIEVING_EXTRACTION) {
                     continue;
                 }
+                if (!node.eligibilityMode.isInsertable()) {
+                    continue;
+                }
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, extractorFaceChannel)) {
                     continue;
                 }
@@ -166,6 +169,9 @@ public final class DuctTargetSelector {
                         && m != NodeMode.EXTRACTION_FILTERING
                         && m != NodeMode.RETRIEVING
                         && m != NodeMode.RETRIEVING_EXTRACTION) {
+                    continue;
+                }
+                if (!node.eligibilityMode.isInsertable()) {
                     continue;
                 }
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, extractorFaceChannel)) {
@@ -253,6 +259,9 @@ public final class DuctTargetSelector {
                 if (donorMode != NodeMode.NONE && donorMode != NodeMode.FILTERING_INSERTION) {
                     continue;
                 }
+                if (!node.eligibilityMode.isRetrievable()) {
+                    continue;
+                }
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, retrieverFaceChannel)) {
                     continue;
                 }
@@ -326,6 +335,9 @@ public final class DuctTargetSelector {
                 }
                 NodeMode donorMode = be.getFaceLanes(d).nodeMode;
                 if (donorMode != NodeMode.NONE && donorMode != NodeMode.FILTERING_INSERTION) {
+                    continue;
+                }
+                if (!node.eligibilityMode.isRetrievable()) {
                     continue;
                 }
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, retrieverFaceChannel)) {

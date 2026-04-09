@@ -39,6 +39,8 @@ public final class ModNetwork {
             DuctFieldPayload::insertionPriority,
             ByteBufCodecs.INT,
             DuctFieldPayload::extractBatch,
+            ByteBufCodecs.VAR_INT,
+            DuctFieldPayload::eligibilityModeOrdinal,
             DuctFieldPayload::new);
 
     private ModNetwork() {}
@@ -65,7 +67,8 @@ public final class ModNetwork {
                         Direction.values()[fo],
                         payload.transportKindOrdinal(),
                         payload.insertionPriority(),
-                        payload.extractBatch());
+                        payload.extractBatch(),
+                        payload.eligibilityModeOrdinal());
             });
         });
 
@@ -97,6 +100,7 @@ public final class ModNetwork {
                         payload.allow(),
                         payload.deny(),
                         payload.allowCaps(),
+                        payload.allowCaps2(),
                         payload.denyOverridesAllow());
             });
         });
@@ -165,6 +169,7 @@ public final class ModNetwork {
                                 payload.allow(),
                                 payload.deny(),
                                 payload.allowCaps(),
+                                payload.allowCaps2(),
                                 payload.denyOverridesAllow());
                     });
         });
@@ -176,9 +181,15 @@ public final class ModNetwork {
     }
 
     public static void sendFieldUpdate(
-            BlockPos pos, Direction face, int transportKindOrdinal, int insertionPriority, int extractBatch) {
+            BlockPos pos,
+            Direction face,
+            int transportKindOrdinal,
+            int insertionPriority,
+            int extractBatch,
+            int eligibilityModeOrdinal) {
         PacketDistributor.sendToServer(
-                new DuctFieldPayload(pos, face.ordinal(), transportKindOrdinal, insertionPriority, extractBatch));
+                new DuctFieldPayload(
+                        pos, face.ordinal(), transportKindOrdinal, insertionPriority, extractBatch, eligibilityModeOrdinal));
     }
 
     public static void sendFilterUpdate(
@@ -189,6 +200,7 @@ public final class ModNetwork {
             java.util.List<String> allow,
             java.util.List<String> deny,
             java.util.List<Integer> allowCaps,
+            java.util.List<Integer> allowCaps2,
             boolean denyOverridesAllow) {
         PacketDistributor.sendToServer(
                 new DuctFilterUpdatePayload(
@@ -199,6 +211,7 @@ public final class ModNetwork {
                         allow,
                         deny,
                         allowCaps,
+                        allowCaps2,
                         denyOverridesAllow));
     }
 
@@ -242,6 +255,10 @@ public final class ModNetwork {
         var node = duct.activeMenuFaceNode(face);
         int tk = duct.menuActiveTransportKind().ordinal();
         for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
+            java.util.List<Integer> caps2 =
+                    bank == DuctFaceNode.FilterBank.FILTER
+                            ? java.util.List.copyOf(node.filterBankKeepCaps())
+                            : java.util.List.of();
             PacketDistributor.sendToPlayer(
                     player,
                     new DuctFilterSyncPayload(
@@ -252,12 +269,18 @@ public final class ModNetwork {
                             java.util.List.copyOf(node.bankAllowFilters(bank)),
                             java.util.List.copyOf(node.bankDenyFilters(bank)),
                             java.util.List.copyOf(node.bankAllowCaps(bank)),
+                            caps2,
                             node.bankDenyOverridesAllow(bank)));
         }
     }
 
     public record DuctFieldPayload(
-            BlockPos pos, int faceOrdinal, int transportKindOrdinal, int insertionPriority, int extractBatch)
+            BlockPos pos,
+            int faceOrdinal,
+            int transportKindOrdinal,
+            int insertionPriority,
+            int extractBatch,
+            int eligibilityModeOrdinal)
             implements CustomPacketPayload {
         @Override
         public Type<? extends CustomPacketPayload> type() {
