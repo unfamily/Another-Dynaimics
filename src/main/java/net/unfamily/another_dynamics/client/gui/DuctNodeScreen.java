@@ -1842,15 +1842,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         variants.add("-" + itemId);
         String namespace = itemId.getNamespace();
-        if (!"minecraft".equals(namespace)) {
-            variants.add("@" + namespace);
-        }
-        if (stack.isEnchanted()) {
-            variants.add("&enchanted");
-        }
-        if (stack.isDamaged()) {
-            variants.add("&damaged");
-        }
+        variants.add("@" + namespace);
         Item item = stack.getItem();
         var holder = BuiltInRegistries.ITEM.wrapAsHolder(item);
         List<String> itemTags =
@@ -1865,6 +1857,14 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         .toList();
         for (String tagId : itemTags) {
             variants.add("#" + tagId);
+        }
+        boolean enchantedMacro = stack.isEnchanted() || stack.is(Items.ENCHANTED_BOOK);
+        if (enchantedMacro) {
+            variants.add("&enchanted");
+        }
+        // Show macro only when it makes sense: "damaged" requires a damageable item.
+        if (stack.isDamageableItem()) {
+            variants.add("&damaged");
         }
         if (minecraft != null && minecraft.level != null) {
             try {
@@ -1900,9 +1900,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         variants.add("-" + fluidId);
         String namespace = fluidId.getNamespace();
-        if (!"minecraft".equals(namespace)) {
-            variants.add("@" + namespace);
-        }
+        variants.add("@" + namespace);
         var holder = BuiltInRegistries.FLUID.wrapAsHolder(fluid);
         List<String> fluidTags =
                 BuiltInRegistries.FLUID.getTagNames()
@@ -1917,6 +1915,23 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         for (String tagId : fluidTags) {
             variants.add("#" + tagId);
         }
+        // Fluid predefined filters: always offer macros with the current fluid's values (fallback to 0 if unknown).
+        var ft = fluid.getFluidType();
+        int temperature = 0;
+        int light = 0;
+        int density = 0;
+        int viscosity = 0;
+        try {
+            temperature = ft.getTemperature(stack);
+            light = ft.getLightLevel(stack);
+            density = ft.getDensity(stack);
+            viscosity = ft.getViscosity(stack);
+        } catch (Exception ignored) {
+        }
+        variants.add("&temperature=" + temperature);
+        variants.add("&light=" + light);
+        variants.add("&density=" + density);
+        variants.add("&viscosity=" + viscosity);
         try {
             Tag saved = stack.save(registries);
             if (saved instanceof CompoundTag compound) {
@@ -1970,6 +1985,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 }
                 default -> ItemStack.EMPTY;
             };
+        }
+        // Support command-style bracket filters for display only (e.g. minecraft:enchanted_book[...]).
+        if (filter.startsWith("minecraft:enchanted_book[")) {
+            return new ItemStack(Items.ENCHANTED_BOOK);
         }
         try {
             ResourceLocation id = ResourceLocation.parse(filter);
@@ -3497,14 +3516,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                             : "gui.another_dynamics.general_filter_text.";
             renderHelpLineWithExample(graphics, p + "id", p + "id.example", p + "id.after", HELP_TEXT_X, helpY, mouseX, mouseY);
             helpY += helpLineStep;
-            renderHelpLineWithExample(graphics, p + "tag", p + "tag.example", p + "tag.after", HELP_TEXT_X, helpY, mouseX, mouseY);
-            helpY += helpLineStep;
             renderHelpLineWithExample(graphics, p + "modid", p + "modid.example", p + "modid.after", HELP_TEXT_X, helpY, mouseX, mouseY);
             helpY += helpLineStep;
-            graphics.drawString(this.font, Component.translatable(p + "nbt"), HELP_TEXT_X, helpY, 0x404040, false);
-            helpY += helpLineStep;
-            renderHelpLineWithExample(
-                    graphics, p + "nbt.example", p + "nbt.example.text", p + "nbt.after", HELP_TEXT_X, helpY, mouseX, mouseY);
+            renderHelpLineWithExample(graphics, p + "tag", p + "tag.example", p + "tag.after", HELP_TEXT_X, helpY, mouseX, mouseY);
             helpY += helpLineStep;
             if (p.endsWith("general_filter_text.")) {
                 renderHelpLineWithTwoExamples(
@@ -3519,8 +3533,37 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         mouseX,
                         mouseY);
             } else {
-                renderHelpLineWithExample(graphics, p + "macro", p + "macro.example1", p + "macro.after", HELP_TEXT_X, helpY, mouseX, mouseY);
+                renderHelpLineWithTwoExamples(
+                        graphics,
+                        p + "macro",
+                        p + "macro.example1",
+                        p + "macro.middle",
+                        p + "macro.example2",
+                        p + "macro.after",
+                        HELP_TEXT_X,
+                        helpY,
+                        mouseX,
+                        mouseY);
+                helpY += helpLineStep;
+                renderHelpLineWithTwoExamples(
+                        graphics,
+                        p + "macro2",
+                        p + "macro2.example1",
+                        p + "macro2.middle",
+                        p + "macro2.example2",
+                        p + "macro2.after",
+                        HELP_TEXT_X,
+                        helpY,
+                        mouseX,
+                        mouseY);
+                helpY += helpLineStep;
+                graphics.drawString(this.font, Component.translatable(p + "operators"), HELP_TEXT_X, helpY, 0x404040, false);
             }
+            helpY += helpLineStep;
+            graphics.drawString(this.font, Component.translatable(p + "nbt"), HELP_TEXT_X, helpY, 0x404040, false);
+            helpY += helpLineStep;
+            renderHelpLineWithExample(
+                    graphics, p + "nbt.example", p + "nbt.example.text", p + "nbt.after", HELP_TEXT_X, helpY, mouseX, mouseY);
         }
     }
 

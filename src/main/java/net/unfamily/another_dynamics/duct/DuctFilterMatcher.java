@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 
 /**
@@ -41,7 +42,16 @@ public final class DuctFilterMatcher {
         if (filter.startsWith("&")) {
             String macroFilter = filter.substring(1).toLowerCase();
             return switch (macroFilter) {
-                case "enchanted" -> stack.isEnchanted();
+                case "enchanted" -> {
+                    if (stack.isEnchanted()) {
+                        yield true;
+                    }
+                    if (stack.is(Items.ENCHANTED_BOOK)) {
+                        // Treat enchanted books as enchanted for filters (even if the book stores enchants via components).
+                        yield true;
+                    }
+                    yield false;
+                }
                 case "damaged" -> stack.isDamaged();
                 default -> false;
             };
