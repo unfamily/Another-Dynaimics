@@ -149,27 +149,12 @@ public final class DuctCapHelper {
         if (h == null) {
             return 0;
         }
-        int cap = simulateMaxInsertableIntoHandler(h, template, limit);
-        if (cap <= 0) {
-            return 0;
-        }
-        // Conservative pending reservation: subtract only same-item stacks, since slot filtering is item-dependent and
-        // we cannot "apply" multiple simulated inserts without mutating handler state.
-        int pendingSame = 0;
-        if (priorPending != null) {
-            for (ItemStack p : priorPending) {
-                if (p.isEmpty()) {
-                    continue;
-                }
-                if (ItemStack.isSameItemSameComponents(p, template)) {
-                    pendingSame += p.getCount();
-                    if (pendingSame >= cap) {
-                        return 0;
-                    }
-                }
-            }
-        }
-        return Math.max(0, cap - pendingSame);
+        // Apply all in-flight pending into a virtual copy of the destination handler, then measure how many more
+        // `template` fit (up to `limit`). Avoids subtracting pending from a single-stack probe capped at maxStackSize,
+        // which wrongly returned 0 when many batches were in transit (e.g. 8×8 pending vs physicalCap≤64).
+        ItemStackHandler virtual = simulateInventoryAfterPending(h, priorPending);
+        int physicalCap = simulateMaxInsertableIntoHandler(virtual, template, limit);
+        return Math.max(0, Math.min(limit, physicalCap));
     }
 
     public static ItemStack insertIntoStorageFaces(Level level, BlockPos ductPos, DuctBlockEntity duct, ItemStack stack) {

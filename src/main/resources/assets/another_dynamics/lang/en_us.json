@@ -151,6 +151,7 @@
   "block.another_dynamics.duct": "Duct",
   "item.another_dynamics.duct": "Duct",
   "duct.another_dynamics.item_duct": "Item Duct",
+  "duct.another_dynamics.item_duct_imp": "Improved Item Duct",
   "duct.another_dynamics.fluid_duct": "Fluid Duct",
   "duct.another_dynamics.gas_duct": "Gas Duct",
   "itemGroup.another_dynamics.ducts": "Another Dynamics Ducts",
@@ -178,6 +179,7 @@
   "gui.another_dynamics.duct_node.hub_back": "Back",
   "gui.another_dynamics.duct_node.hub_back.tooltip": "Return to transport selection",
   "another_dynamics.item_duct.node": "Item Duct Node",
+  "another_dynamics.item_duct_imp.node": "Improved Item Duct Node",
   "another_dynamics.fluid_duct.node": "Fluid Duct Node",
   "another_dynamics.gas_duct.node": "Gas Duct Node"
 }

@@ -2,6 +2,8 @@ package net.unfamily.another_dynamics.duct;
 
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -14,6 +16,44 @@ import net.neoforged.neoforge.items.IItemHandler;
  */
 public final class DuctAllowLimitLogic {
     private DuctAllowLimitLogic() {}
+
+    /**
+     * True when at least one non-empty allow line has a positive limit. If none, destination allow-limit logic should not
+     * constrain inserts (cap 0 = unlimited per row).
+     */
+    public static boolean hasAnyPositiveAllowCapOnNonEmptyLine(List<String> allowLines, List<Integer> caps) {
+        if (allowLines == null || caps == null) {
+            return false;
+        }
+        for (int i = 0; i < allowLines.size(); i++) {
+            String line = allowLines.get(i);
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            int lim = i < caps.size() ? caps.get(i) : 0;
+            if (lim > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int countPendingMatchingFilterLine(
+            @Nullable List<ItemStack> priorPending, String filterLine, HolderLookup.Provider registries) {
+        if (priorPending == null || filterLine == null || filterLine.trim().isEmpty()) {
+            return 0;
+        }
+        int sum = 0;
+        for (ItemStack p : priorPending) {
+            if (p.isEmpty()) {
+                continue;
+            }
+            if (DuctFilterMatcher.matchesAnyNonEmptyEntry(p, filterLine, registries)) {
+                sum += p.getCount();
+            }
+        }
+        return sum;
+    }
 
     public static int firstMatchingAllowLineIndex(
             List<String> allowLines, ItemStack template, HolderLookup.Provider registries) {
@@ -41,13 +81,14 @@ public final class DuctAllowLimitLogic {
      * Per-line limit check: uses cap at {@code lineIndex} and counts only that line's pattern (not first matching row).
      */
     public static int maxAdditionalInsertForAllowLineAtIndex(
-            IItemHandler handlerAfterPending,
+            IItemHandler handler,
             List<String> allowLines,
             List<Integer> caps,
             ItemStack template,
             int lineIndex,
+            @Nullable List<ItemStack> priorPending,
             HolderLookup.Provider registries) {
-        if (template.isEmpty() || handlerAfterPending == null) {
+        if (template.isEmpty() || handler == null) {
             return Integer.MAX_VALUE;
         }
         if (lineIndex < 0 || lineIndex >= allowLines.size()) {
@@ -64,7 +105,9 @@ public final class DuctAllowLimitLogic {
         if (lim <= 0) {
             return Integer.MAX_VALUE;
         }
-        int current = countMatchingInHandler(handlerAfterPending, line, registries);
+        int current =
+                countMatchingInHandler(handler, line, registries)
+                        + countPendingMatchingFilterLine(priorPending, line, registries);
         return Math.max(0, lim - current);
     }
 
@@ -116,15 +159,17 @@ public final class DuctAllowLimitLogic {
 
     /**
      * Max items that may still be inserted for {@code template} without exceeding the allow-line {@code limit}
-     * (first matching line). Uses inventory state in {@code handlerAfterPending} (e.g. after simulating in-flight).
+     * (first matching line). Uses the real attached inventory {@code handler} plus only in-flight stacks in
+     * {@code priorPending} that match that same filter line (not other item types).
      */
     public static int maxAdditionalInsertForAllowLine(
-            IItemHandler handlerAfterPending,
+            IItemHandler handler,
             List<String> allowLines,
             List<Integer> caps,
             ItemStack template,
+            @Nullable List<ItemStack> priorPending,
             HolderLookup.Provider registries) {
-        if (template.isEmpty() || handlerAfterPending == null) {
+        if (template.isEmpty() || handler == null) {
             return Integer.MAX_VALUE;
         }
         int idx = firstMatchingAllowLineIndex(allowLines, template, registries);
@@ -136,7 +181,9 @@ public final class DuctAllowLimitLogic {
             return Integer.MAX_VALUE;
         }
         String line = allowLines.get(idx);
-        int current = countMatchingInHandler(handlerAfterPending, line, registries);
+        int current =
+                countMatchingInHandler(handler, line, registries)
+                        + countPendingMatchingFilterLine(priorPending, line, registries);
         return Math.max(0, lim - current);
     }
 
