@@ -74,10 +74,10 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 DuctFaceNode node = be.getFaceNode(d);
-                if (!DuctRedstoneLogic.isItemNodeActive(level, p, node)) {
+                if (!DuctRedstoneLogic.isFaceTransportActive(level, p, be.getFaceLanes(d).redstoneMode)) {
                     continue;
                 }
-                NodeMode m = node.nodeMode;
+                NodeMode m = be.getFaceLanes(d).nodeMode;
                 if (m != NodeMode.NONE
                         && m != NodeMode.FILTERING_INSERTION
                         && m != NodeMode.EXTRACTION_FILTERING
@@ -114,7 +114,7 @@ public final class DuctTargetSelector {
         boolean anyFilter = false;
         for (Candidate c : tier) {
             if (level.getBlockEntity(c.ductPos) instanceof DuctBlockEntity be) {
-                NodeMode m = be.getFaceNode(c.face).nodeMode;
+                NodeMode m = be.getFaceLanes(c.face).nodeMode;
                 if (m == NodeMode.FILTERING_INSERTION || m == NodeMode.EXTRACTION_FILTERING) {
                     anyFilter = true;
                     break;
@@ -127,7 +127,7 @@ public final class DuctTargetSelector {
                         if (!(level.getBlockEntity(c.ductPos) instanceof DuctBlockEntity be)) {
                             return true;
                         }
-                        NodeMode m = be.getFaceNode(c.face).nodeMode;
+                        NodeMode m = be.getFaceLanes(c.face).nodeMode;
                         return !(m == NodeMode.FILTERING_INSERTION || m == NodeMode.EXTRACTION_FILTERING);
                     });
         }
@@ -179,10 +179,10 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 DuctFaceNode node = be.getFaceNode(d);
-                if (!DuctRedstoneLogic.isItemNodeActive(level, p, node)) {
+                if (!DuctRedstoneLogic.isFaceTransportActive(level, p, be.getFaceLanes(d).redstoneMode)) {
                     continue;
                 }
-                NodeMode donorMode = node.nodeMode;
+                NodeMode donorMode = be.getFaceLanes(d).nodeMode;
                 if (donorMode != NodeMode.NONE && donorMode != NodeMode.FILTERING_INSERTION) {
                     continue;
                 }

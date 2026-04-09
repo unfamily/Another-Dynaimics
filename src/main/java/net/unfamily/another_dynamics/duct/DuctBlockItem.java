@@ -14,8 +14,18 @@ import java.util.function.Consumer;
  * Single physical item representing multiple logical duct types (via {@link ModDataComponents#DUCT_LOGICAL_ID}).
  */
 public final class DuctBlockItem extends BlockItem {
+    private final String defaultLogicalId;
+
     public DuctBlockItem(Block block, Properties properties) {
+        this(block, properties, DuctIds.DEFAULT_LOGICAL_ID);
+    }
+
+    public DuctBlockItem(Block block, Properties properties, String defaultLogicalId) {
         super(block, properties);
+        this.defaultLogicalId =
+                defaultLogicalId != null && !defaultLogicalId.isEmpty()
+                        ? DuctIds.normalize(defaultLogicalId)
+                        : DuctIds.DEFAULT_LOGICAL_ID;
     }
 
     /**
@@ -42,8 +52,7 @@ public final class DuctBlockItem extends BlockItem {
     @Override
     public ItemStack getDefaultInstance() {
         ItemStack stack = new ItemStack(this);
-        // Must be explicit so the stack always serializes with a component payload (visible in /give, JEI, etc.).
-        stack.set(ModDataComponents.DUCT_LOGICAL_ID.get(), DuctIds.DEFAULT_LOGICAL_ID);
+        stack.set(ModDataComponents.DUCT_LOGICAL_ID.get(), defaultLogicalId);
         return stack;
     }
 

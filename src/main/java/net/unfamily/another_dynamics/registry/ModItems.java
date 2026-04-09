@@ -10,6 +10,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlockItem;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctTransportKind;
 
 public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(AnotherDynamicsMod.MOD_ID);
@@ -22,25 +23,53 @@ public final class ModItems {
                                     ModBlocks.DUCT.get(),
                                     new Item.Properties()));
 
+    public static final DeferredItem<DuctBlockItem> FLUID_DUCT =
+            ITEMS.register(
+                    "fluid_duct",
+                    () ->
+                            new DuctBlockItem(
+                                    ModBlocks.FLUID_DUCT.get(),
+                                    new Item.Properties(),
+                                    "another_dynamics:fluid_duct"));
+
+    public static final DeferredItem<DuctBlockItem> ITEM_FLUID_DUCT =
+            ITEMS.register(
+                    "item_fluid_duct",
+                    () ->
+                            new DuctBlockItem(
+                                    ModBlocks.ITEM_FLUID_DUCT.get(),
+                                    new Item.Properties(),
+                                    "another_dynamics:item_fluid_duct"));
+
     private ModItems() {}
 
-    /** Creative / recipe-friendly stack: one physical item, logical type in {@link ModDataComponents#DUCT_LOGICAL_ID}. */
+    /** Creative / recipe-friendly stack: block item matches enabled transport kinds; logical id in component. */
     public static ItemStack createDuctStack(String logicalId) {
-        ItemStack stack = new ItemStack(DUCT.get());
+        ItemStack stack = new ItemStack(itemForDuctLogicalId(logicalId).orElse(DUCT.get()));
         stack.set(ModDataComponents.DUCT_LOGICAL_ID.get(), logicalId);
         return stack;
     }
 
     /**
-     * Resolves the {@link Item} for a duct {@link DuctDefinition#logicalId()} that declares item transport in the
-     * datapack. All such ducts share {@link #DUCT} with a per-stack data component.
+     * Block item to place for this duct definition: item-only, fluid-only, or hybrid block.
      */
     public static Optional<Item> itemForDuctLogicalId(String logicalId) {
         if (logicalId == null || logicalId.isEmpty()) {
             return Optional.empty();
         }
         return DuctDefinitionRegistry.getByLogicalId(logicalId)
-                .filter(d -> d.itemTransport().isPresent())
-                .map(d -> DUCT.get());
+                .map(
+                        d -> {
+                            var kinds = d.enabledTransportKinds();
+                            boolean hasItem = kinds.contains(DuctTransportKind.ITEM);
+                            boolean hasFluid = kinds.contains(DuctTransportKind.FLUID);
+                            if (hasItem && hasFluid) {
+                                return ITEM_FLUID_DUCT.get();
+                            }
+                            if (hasFluid && !hasItem) {
+                                return FLUID_DUCT.get();
+                            }
+                            return DUCT.get();
+                        });
     }
 }

@@ -12,8 +12,8 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 
 /**
- * Per-face attachment state on a {@link DuctBlockEntity}. A hybrid duct may eventually host several transport lanes
- * per direction (e.g. item + fluid); today this holds the <strong>item</strong> node only (modes, GUI slots, tick cadence).
+ * Per-transport-kind lane on a duct face (item or fluid): filters, routing, channel, GUI slots, amounts.
+ * Node mode, redstone gating, and action tick cadence live on {@link DuctFaceLanes} (shared per face).
  */
 public final class DuctFaceNode {
     public enum FilterBank {
@@ -25,7 +25,6 @@ public final class DuctFaceNode {
         FILTER
     }
 
-    public NodeMode nodeMode = NodeMode.NONE;
     public RoutingMode routingMode = RoutingMode.NEAREST_FIRST;
     /** Hybrid: independent routing mode for the Extractor sub-node. */
     public RoutingMode routingModeExtractor = RoutingMode.NEAREST_FIRST;
@@ -36,15 +35,8 @@ public final class DuctFaceNode {
     /** Extract / retrieve modes: items moved per operation (0 = use duct default). */
     public int extractBatch;
     public int channelLetter = 1;
-    /**
-     * 0 = ignored (always enabled), 1 = low (enabled when NOT powered), 2 = high (enabled when powered), 3 = disabled.
-     * New faces default to {@code 3} until loaded from NBT or the player changes the GUI.
-     */
-    public int redstoneMode = 3;
-
-    /** Persisted with {@link #save}/{@link #load} so legacy worlds (mode 3 = pulse) migrate only when RsFmt is absent. */
-    private static final byte REDSTONE_FMT_V1 = 1;
     public int roundRobinCursor;
+    /** Per transport kind; not shared with the sibling lane (item vs fluid may use different duct rates). */
     public int ticksUntilAction;
 
     /**
@@ -89,24 +81,20 @@ public final class DuctFaceNode {
     }
 
     public void resetPipeSegmentDefaults() {
-        nodeMode = NodeMode.NONE;
         insertionPriority = 0;
         extractBatch = 0;
         roundRobinCursor = 0;
         selfFeed = false;
-        redstoneMode = 3;
+        ticksUntilAction = 0;
     }
 
     public void save(HolderLookup.Provider registries, CompoundTag tag) {
-        tag.putByte("NodeMode", (byte) nodeMode.ordinal());
         tag.putByte("RoutingMode", (byte) routingMode.ordinal());
         tag.putByte("RoutingModeEx", (byte) routingModeExtractor.ordinal());
         tag.putByte("RoutingModeRe", (byte) routingModeRetriever.ordinal());
         tag.putInt("InsertionPriority", insertionPriority);
         tag.putInt("ExtractBatch", extractBatch);
         tag.putByte("Channel", (byte) channelLetter);
-        tag.putByte("RedstoneMode", (byte) redstoneMode);
-        tag.putByte("RsFmt", REDSTONE_FMT_V1);
         tag.putInt("RrCursor", roundRobinCursor);
         tag.putInt("TicksAct", ticksUntilAction);
         tag.putBoolean("SelfFeed", selfFeed);
@@ -115,7 +103,6 @@ public final class DuctFaceNode {
     }
 
     public void load(HolderLookup.Provider registries, CompoundTag tag) {
-        nodeMode = NodeMode.fromOrdinal(tag.getByte("NodeMode"));
         routingMode = RoutingMode.fromOrdinal(tag.getByte("RoutingMode"));
         routingModeExtractor =
                 tag.contains("RoutingModeEx")
@@ -135,32 +122,7 @@ public final class DuctFaceNode {
         if (tag.contains("ExtractBatch")) {
             extractBatch = tag.getInt("ExtractBatch");
         }
-        if (!tag.contains("InsertionPriority")
-                && !tag.contains("InsPriority")
-                && !tag.contains("ExtractBatch")
-                && tag.contains("AmountField")) {
-            int legacy = tag.getInt("AmountField");
-            if (nodeMode.usesInsertionPriorityField()) {
-                insertionPriority = legacy;
-            } else if (nodeMode.usesExtractBatchField()) {
-                extractBatch = legacy;
-            } else {
-                insertionPriority = legacy;
-            }
-        }
         channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
-        redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
-        int rsFmt = tag.contains("RsFmt") ? tag.getByte("RsFmt") & 0xFF : 0;
-        if (rsFmt < REDSTONE_FMT_V1) {
-            // Pre–RsFmt: 3 meant pulse (removed) -> ignored; 4+ meant disabled -> 3.
-            if (redstoneMode == 3) {
-                redstoneMode = 0;
-            } else if (redstoneMode >= 4) {
-                redstoneMode = 3;
-            }
-        } else if (redstoneMode >= 4) {
-            redstoneMode = 3;
-        }
         roundRobinCursor = tag.getInt("RrCursor");
         ticksUntilAction = tag.contains("TicksAct") ? tag.getInt("TicksAct") : 0;
         selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
@@ -170,12 +132,14 @@ public final class DuctFaceNode {
         loadFilters(tag);
     }
 
-    /** Copy legacy single-node NBT into this face (world upgrade). */
-    public void loadFromLegacyRootTag(HolderLookup.Provider registries, CompoundTag root) {
+    /**
+     * Copy legacy single-lane NBT (world upgrade). {@code sharedNodeMode} comes from {@link DuctFaceLanes} (already loaded
+     * from the same root).
+     */
+    public void loadFromLegacyRootTag(HolderLookup.Provider registries, CompoundTag root, NodeMode sharedNodeMode) {
         if (root.contains("NodeGui", Tag.TAG_COMPOUND)) {
             guiSlots.deserializeNBT(registries, root.getCompound("NodeGui"));
         }
-        nodeMode = NodeMode.fromOrdinal(root.getByte("NodeMode"));
         routingMode = RoutingMode.fromOrdinal(root.getByte("RoutingMode"));
         insertionPriority = 0;
         extractBatch = 0;
@@ -192,32 +156,21 @@ public final class DuctFaceNode {
                 && !root.contains("ExtractBatch")
                 && root.contains("AmountField")) {
             int legacy = root.getInt("AmountField");
-            if (nodeMode.usesInsertionPriorityField()) {
+            if (sharedNodeMode.usesInsertionPriorityField()) {
                 insertionPriority = legacy;
-            } else if (nodeMode.usesExtractBatchField()) {
+            } else if (sharedNodeMode.usesExtractBatchField()) {
                 extractBatch = legacy;
             } else {
                 insertionPriority = legacy;
             }
         }
         channelLetter = root.contains("Channel") ? root.getByte("Channel") & 0xFF : 1;
-        redstoneMode = root.getByte("RedstoneMode") & 0xFF;
-        int rsFmt = root.contains("RsFmt") ? root.getByte("RsFmt") & 0xFF : 0;
-        if (rsFmt < REDSTONE_FMT_V1) {
-            if (redstoneMode == 3) {
-                redstoneMode = 0;
-            } else if (redstoneMode >= 4) {
-                redstoneMode = 3;
-            }
-        } else if (redstoneMode >= 4) {
-            redstoneMode = 3;
-        }
         roundRobinCursor = root.getInt("RrCursor");
-        ticksUntilAction = 0;
+        ticksUntilAction = root.contains("TicksAct") ? root.getInt("TicksAct") : 0;
         loadFilters(root);
     }
 
-    public void clampFilterSizes(DuctItemTransportSpec spec) {
+    public void clampFilterSizes(DuctItemTransportSpec spec, NodeMode sharedNodeMode) {
         int legacyA = Math.max(0, spec.filterAllowSlots());
         int legacyD = Math.max(0, spec.filterDenySlots());
         clampList(allowFilters, legacyA);
@@ -225,11 +178,38 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
 
         int bankA =
-                nodeMode.isHybrid()
+                sharedNodeMode.isHybrid()
                         ? Math.max(0, spec.filterAllowHybridSlots())
                         : Math.max(0, spec.filterAllowSlots());
         int bankD =
-                nodeMode.isHybrid()
+                sharedNodeMode.isHybrid()
+                        ? Math.max(0, spec.filterDenyHybridSlots())
+                        : Math.max(0, spec.filterDenySlots());
+        clampList(allowFiltersExtractor, bankA);
+        clampList(denyFiltersExtractor, bankD);
+        syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
+        clampList(allowFiltersRetriever, bankA);
+        clampList(denyFiltersRetriever, bankD);
+        syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
+        clampList(allowFiltersFilter, bankA);
+        clampList(denyFiltersFilter, bankD);
+        syncAllowCapsToAllowSize(allowAllowCapsFilter, allowFiltersFilter.size());
+    }
+
+    /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode)} using fluid datapack caps. */
+    public void clampFilterSizes(DuctFluidTransportSpec spec, NodeMode sharedNodeMode) {
+        int legacyA = Math.max(0, spec.filterAllowSlots());
+        int legacyD = Math.max(0, spec.filterDenySlots());
+        clampList(allowFilters, legacyA);
+        clampList(denyFilters, legacyD);
+        syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
+
+        int bankA =
+                sharedNodeMode.isHybrid()
+                        ? Math.max(0, spec.filterAllowHybridSlots())
+                        : Math.max(0, spec.filterAllowSlots());
+        int bankD =
+                sharedNodeMode.isHybrid()
                         ? Math.max(0, spec.filterDenyHybridSlots())
                         : Math.max(0, spec.filterDenySlots());
         clampList(allowFiltersExtractor, bankA);

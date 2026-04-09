@@ -33,7 +33,11 @@ public final class DuctMenuSync {
     public static final int EXTRACT_BATCH_CAP = 16;
     /** 1 if {@link net.unfamily.another_dynamics.duct.DuctFaceNode#selfFeed} (only used by hybrid Extr/Filt). */
     public static final int SELF_FEED = 17;
-    public static final int COUNT = 18;
+    /** Ordinal into {@link DuctDefinition#transportKinds()} order for GUI lane (item vs fluid). */
+    public static final int ACTIVE_TRANSPORT_KIND = 18;
+    /** Number of enabled transport kinds (1 = hide lane switcher). */
+    public static final int TRANSPORT_KIND_COUNT = 19;
+    public static final int COUNT = 20;
 
     /** FLAGS bit: routing row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesRouting()}). */
     public static final int FLAG_ROUTING_ACTIVE = 1;

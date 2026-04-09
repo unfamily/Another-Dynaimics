@@ -1,5 +1,6 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -28,6 +29,7 @@ public record DuctDefinition(
         Optional<String> translationKey,
         List<String> transportKinds,
         Optional<DuctItemTransportSpec> itemTransport,
+        Optional<DuctFluidTransportSpec> fluidTransport,
         ResourceLocation defaultTexture,
         Optional<ResourceLocation> compositeModelDefault,
         Optional<ResourceLocation> compositeModelLine,
@@ -40,6 +42,15 @@ public record DuctDefinition(
 ) {
     public DuctItemTransportSpec itemTransportOrFallback() {
         return itemTransport.orElseGet(DuctItemTransportSpec::fallback);
+    }
+
+    public DuctFluidTransportSpec fluidTransportOrFallback() {
+        return fluidTransport.orElseGet(DuctFluidTransportSpec::fallback);
+    }
+
+    /** Kinds enabled for this duct, in datapack order (then stable enum fill). */
+    public EnumSet<DuctTransportKind> enabledTransportKinds() {
+        return DuctTransportKind.orderedKindsFromDeclaration(transportKinds);
     }
 
     /** Synonym for JSON field {@code connect_with_compatible}. */

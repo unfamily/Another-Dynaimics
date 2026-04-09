@@ -139,6 +139,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             }
             List<String> kinds = new ArrayList<>();
             Optional<DuctItemTransportSpec> itemTransport = Optional.empty();
+            Optional<DuctFluidTransportSpec> fluidTransport = Optional.empty();
             if (o.has("can_transport") && o.get("can_transport").isJsonArray()) {
                 for (JsonElement t : o.getAsJsonArray("can_transport")) {
                     if (!t.isJsonObject()) {
@@ -146,10 +147,18 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                     }
                     JsonObject to = t.getAsJsonObject();
                     if (to.has("dec")) {
-                        kinds.add(to.get("dec").getAsString());
-                    }
-                    if (to.has("dec") && "item".equals(to.get("dec").getAsString())) {
-                        itemTransport = Optional.of(parseItemTransport(to));
+                        String dec = to.get("dec").getAsString();
+                        kinds.add(dec);
+                        DuctTransportKind kind = DuctTransportKind.fromJsonDec(dec);
+                        if (kind == null) {
+                            AnotherDynamicsMod.LOGGER.warn(
+                                    "Duct '{}' ({}): unknown can_transport dec '{}'", logicalId, e.getKey(), dec);
+                        } else {
+                            switch (kind) {
+                                case ITEM -> itemTransport = Optional.of(parseItemTransport(to));
+                                case FLUID -> fluidTransport = Optional.of(parseFluidTransport(to));
+                            }
+                        }
                     }
                 }
             }
@@ -201,6 +210,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             translationKey,
                             List.copyOf(kinds),
                             itemTransport,
+                            fluidTransport,
                             defaultTexture,
                             modelDefault,
                             modelLine,
@@ -283,6 +293,76 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             }
         }
         return new DuctItemTransportSpec(
+                Math.max(0, batchDefault),
+                batchMax,
+                Math.max(1, rateDefault),
+                Math.max(1, rateMin),
+                Math.max(0, speedDefault),
+                Math.max(0, speedMin),
+                Math.max(0, allow),
+                Math.max(0, deny),
+                Math.max(0, allowHybrid),
+                Math.max(0, denyHybrid));
+    }
+
+    private static DuctFluidTransportSpec parseFluidTransport(JsonObject to) {
+        int batchDefault = 1000;
+        int batchMax = DuctFluidTransportSpec.UNLIMITED_BATCH_MB;
+        if (to.has("batch") && to.get("batch").isJsonObject()) {
+            JsonObject b = to.getAsJsonObject("batch");
+            if (b.has("default")) {
+                batchDefault = b.get("default").getAsInt();
+            } else if (b.has("deafault")) {
+                batchDefault = b.get("deafault").getAsInt();
+            }
+            if (b.has("max")) {
+                batchMax = b.get("max").getAsInt();
+            }
+        }
+        int rateDefault = 30;
+        int rateMin = 1;
+        if (to.has("rate") && to.get("rate").isJsonObject()) {
+            JsonObject r = to.getAsJsonObject("rate");
+            if (r.has("default")) {
+                rateDefault = r.get("default").getAsInt();
+            }
+            if (r.has("min")) {
+                rateMin = r.get("min").getAsInt();
+            }
+        }
+        int speedDefault = 20;
+        int speedMin = 0;
+        if (to.has("speed") && to.get("speed").isJsonObject()) {
+            JsonObject s = to.getAsJsonObject("speed");
+            if (s.has("default")) {
+                speedDefault = s.get("default").getAsInt();
+            }
+            if (s.has("min")) {
+                speedMin = s.get("min").getAsInt();
+            }
+        }
+        int allow = 4;
+        int deny = 4;
+        int allowHybrid = allow;
+        int denyHybrid = deny;
+        if (to.has("filter") && to.get("filter").isJsonObject()) {
+            JsonObject f = to.getAsJsonObject("filter");
+            if (f.has("allow")) {
+                allow = f.get("allow").getAsInt();
+            }
+            if (f.has("deny")) {
+                deny = f.get("deny").getAsInt();
+            }
+            allowHybrid = allow;
+            denyHybrid = deny;
+            if (f.has("allow_hybrid")) {
+                allowHybrid = f.get("allow_hybrid").getAsInt();
+            }
+            if (f.has("deny_hybrid")) {
+                denyHybrid = f.get("deny_hybrid").getAsInt();
+            }
+        }
+        return new DuctFluidTransportSpec(
                 Math.max(0, batchDefault),
                 batchMax,
                 Math.max(1, rateDefault),

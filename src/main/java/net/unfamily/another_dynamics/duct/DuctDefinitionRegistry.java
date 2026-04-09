@@ -57,4 +57,11 @@ public final class DuctDefinitionRegistry {
                 .map(DuctDefinition::itemTransportOrFallback)
                 .orElseGet(DuctItemTransportSpec::fallback);
     }
+
+    /** Fluid duct transport spec from datapack or built-in defaults. */
+    public static DuctFluidTransportSpec fluidDuctTransportSpec() {
+        return getByLogicalId(DuctIds.DEFAULT_LOGICAL_ID)
+                .map(DuctDefinition::fluidTransportOrFallback)
+                .orElseGet(DuctFluidTransportSpec::fallback);
+    }
 }

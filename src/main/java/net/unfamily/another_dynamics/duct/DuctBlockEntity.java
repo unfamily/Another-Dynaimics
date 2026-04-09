@@ -15,6 +15,7 @@ import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -30,18 +31,23 @@ import net.unfamily.another_dynamics.duct.logistics.DuctCapHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowBuffer;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowRouting;
+import net.unfamily.another_dynamics.duct.logistics.FluidTransitShipment;
+import net.unfamily.another_dynamics.duct.logistics.DuctFluidServerTick;
 import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
 import net.unfamily.another_dynamics.duct.logistics.DuctTargetSelector;
 import net.unfamily.another_dynamics.duct.logistics.DuctTransitTopology;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
 import net.unfamily.another_dynamics.duct.logistics.TransitPhase;
+import net.unfamily.another_dynamics.client.transit.DuctFluidTransitClientState;
 import net.unfamily.another_dynamics.client.transit.DuctTransitClientState;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.neoforged.neoforge.fluids.FluidStack;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
@@ -112,16 +118,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         setChanged();
     }
 
-    private final DuctFaceNode[] faceNodes = new DuctFaceNode[FACE_COUNT];
+    private final DuctFaceLanes[] faceLanes = new DuctFaceLanes[FACE_COUNT];
 
     /** {@link DuctDefinition#logicalId()} for this placed block (item component + NBT). */
     private String logicalDuctId = DuctIds.DEFAULT_LOGICAL_ID;
 
     private final List<OutboundShipment> outboundShipments = new ArrayList<>();
+    /** Visual-only fluid packets along a path; owned by the extracting duct (same sync model as {@link #outboundShipments}). */
+    private final List<FluidTransitShipment> fluidTransitShipments = new ArrayList<>();
     private final List<ItemStack> migratedStorageBacklog = new ArrayList<>();
     private final DuctOverflowBuffer overflowBuffer = new DuctOverflowBuffer();
 
     private final SimpleContainerData menuData = new SimpleContainerData(DuctMenuSync.COUNT);
+
+    /** GUI: index into {@link #orderedMenuTransportKinds()} for the open duct node menu. */
+    private int menuTransportKindIndex;
 
     /**
      * Faces that have ever had a live item-storage neighbor while loaded; preserves per-face settings in NBT when the
@@ -156,9 +167,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if ((sm & bit) == 0) {
                 continue;
             }
-            DuctFaceNode n = getFaceNode(d);
+            DuctFaceLanes lanes = getFaceLanes(d);
             int col =
-                    switch (n.nodeMode) {
+                    switch (lanes.nodeMode) {
                         case EXTRACTION -> 0;
                         case FILTERING_INSERTION -> 1;
                         case RETRIEVING -> 2;
@@ -167,11 +178,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         case RETRIEVING_EXTRACTION -> 1;
                     };
             int rowBase =
-                    switch (n.nodeMode) {
+                    switch (lanes.nodeMode) {
                         case EXTRACTION, FILTERING_INSERTION, RETRIEVING, NONE -> 0;
                         case EXTRACTION_FILTERING, RETRIEVING_EXTRACTION -> 2;
                     };
-            boolean off = !isNodeEnabledByRedstone(n);
+            boolean off = !isFaceTransportEnabled(d);
             int row = rowBase + (off ? 1 : 0);
             int idx = row * 4 + col; // 0..15
             packed |= (idx & 0xF) << (d.ordinal() * 4);
@@ -179,8 +190,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return packed;
     }
 
-    private boolean isNodeEnabledByRedstone(DuctFaceNode n) {
-        return DuctRedstoneLogic.isItemNodeActive(level, worldPosition, n);
+    private boolean isFaceTransportEnabled(Direction face) {
+        return DuctRedstoneLogic.isFaceTransportActive(level, worldPosition, getFaceLanes(face).redstoneMode);
     }
 
     /**
@@ -192,7 +203,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if ((sm & (1 << d.ordinal())) == 0) {
                 continue;
             }
-            int rm = getFaceNode(d).redstoneMode;
+            int rm = getFaceLanes(d).redstoneMode;
             if (rm == 1 || rm == 2) {
                 return true;
             }
@@ -220,7 +231,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public DuctBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.DUCT.get(), pos, state);
         for (int i = 0; i < FACE_COUNT; i++) {
-            faceNodes[i] = new DuctFaceNode(this::setChanged);
+            faceLanes[i] = new DuctFaceLanes(this::setChanged);
         }
     }
 
@@ -242,6 +253,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return DuctDefinitionRegistry.getByLogicalId(logicalDuctId)
                 .map(DuctDefinition::itemTransportOrFallback)
                 .orElseGet(DuctDefinitionRegistry::itemDuctTransportSpec);
+    }
+
+    public DuctFluidTransportSpec fluidTransportSpec() {
+        return DuctDefinitionRegistry.getByLogicalId(logicalDuctId)
+                .map(DuctDefinition::fluidTransportOrFallback)
+                .orElseGet(DuctDefinitionRegistry::fluidDuctTransportSpec);
     }
 
     public Optional<DuctDefinition> ductDefinition() {
@@ -276,8 +293,100 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
+    public DuctFaceLanes getFaceLanes(Direction dir) {
+        return faceLanes[dir.ordinal()];
+    }
+
     public DuctFaceNode getFaceNode(Direction dir) {
-        return faceNodes[dir.ordinal()];
+        return faceLanes[dir.ordinal()].item;
+    }
+
+    public DuctFaceNode getFluidFaceNode(Direction dir) {
+        return faceLanes[dir.ordinal()].fluid;
+    }
+
+    public List<DuctTransportKind> orderedMenuTransportKinds() {
+        Optional<DuctDefinition> def = ductDefinition();
+        EnumSet<DuctTransportKind> kinds =
+                def.map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
+        List<DuctTransportKind> out = new ArrayList<>();
+        if (def.isPresent()) {
+            for (String dec : def.get().transportKinds()) {
+                DuctTransportKind k = DuctTransportKind.fromJsonDec(dec);
+                if (k != null && kinds.contains(k) && !out.contains(k)) {
+                    out.add(k);
+                }
+            }
+        }
+        for (DuctTransportKind k : DuctTransportKind.values()) {
+            if (kinds.contains(k) && !out.contains(k)) {
+                out.add(k);
+            }
+        }
+        if (out.isEmpty()) {
+            out.add(DuctTransportKind.ITEM);
+        }
+        return out;
+    }
+
+    public DuctTransportKind menuActiveTransportKind() {
+        List<DuctTransportKind> ord = orderedMenuTransportKinds();
+        if (ord.size() == 1) {
+            return ord.getFirst();
+        }
+        int i = Math.floorMod(menuTransportKindIndex, ord.size());
+        return ord.get(i);
+    }
+
+    public DuctFaceNode activeMenuFaceNode(Direction face) {
+        return menuActiveTransportKind() == DuctTransportKind.FLUID ? getFluidFaceNode(face) : getFaceNode(face);
+    }
+
+    public void resetMenuTransportKindForOpen() {
+        menuTransportKindIndex = 0;
+    }
+
+    public boolean cycleMenuTransportKind(ServerPlayer player, Direction accessFace) {
+        List<DuctTransportKind> ord = orderedMenuTransportKinds();
+        if (ord.size() <= 1) {
+            return false;
+        }
+        menuTransportKindIndex = (menuTransportKindIndex + 1) % ord.size();
+        setChanged();
+        refreshMenuData(accessFace);
+        ModNetwork.sendFilterSyncToPlayer(player, this, accessFace);
+        return true;
+    }
+
+    public int computeFluidExtractBatchSettingCap(Direction face) {
+        return fluidTransportSpec().extractBatchSettingCapMb(getFluidExtractBatchUpgradeBonus(face));
+    }
+
+    private int getFluidExtractBatchUpgradeBonus(Direction face) {
+        if (!DuctFeaturePolicy.isUsable(
+                ductDefinition().orElse(null),
+                DuctFeatureKeys.SPECIAL_UPGRADES,
+                faceHasFluidUpgradeSlots(face))) {
+            return 0;
+        }
+        DuctFaceNode node = getFluidFaceNode(face);
+        int bonus = 0;
+        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
+            if (!node.guiSlots.getStackInSlot(i).isEmpty()) {
+                // Future: fluid upgrade items
+            }
+        }
+        return bonus;
+    }
+
+    private boolean faceHasFluidUpgradeSlots(Direction face) {
+        DuctFaceNode node = getFluidFaceNode(face);
+        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
+            if (!node.guiSlots.getStackInSlot(i).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public DuctOverflowBuffer getOverflowBuffer() {
@@ -293,8 +402,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     @Override
-    protected DuctNetworkType networkType() {
-        return DuctNetworkType.ITEM;
+    protected EnumSet<DuctNetworkType> ductNetworkTypesForGeometry() {
+        if (getBlockState().getBlock() instanceof DuctConnectable dc) {
+            return EnumSet.copyOf(dc.ductNetworkTypes());
+        }
+        return EnumSet.of(DuctNetworkType.ITEM);
     }
 
     /**
@@ -317,13 +429,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     @Override
-    protected int attachmentMaskForNeighbor(Direction dir, BlockState neighborState, BlockPos neighborPos) {
+    protected int attachmentMaskForNeighbor(
+            DuctNetworkType net, Direction dir, BlockState neighborState, BlockPos neighborPos) {
         if (level == null || neighborState.isAir()) {
             return 0;
         }
-        IItemHandler cap = level.getCapability(Capabilities.ItemHandler.BLOCK, neighborPos, dir.getOpposite());
-        if (cap != null && cap.getSlots() > 0) {
-            return 1 << dir.ordinal();
+        if (net == DuctNetworkType.ITEM) {
+            IItemHandler cap = level.getCapability(Capabilities.ItemHandler.BLOCK, neighborPos, dir.getOpposite());
+            if (cap != null && cap.getSlots() > 0) {
+                return 1 << dir.ordinal();
+            }
+        } else if (net == DuctNetworkType.FLUID) {
+            var fh = level.getCapability(Capabilities.FluidHandler.BLOCK, neighborPos, dir.getOpposite());
+            if (fh != null) {
+                return 1 << dir.ordinal();
+            }
         }
         return 0;
     }
@@ -377,38 +497,42 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         refreshFromWorld();
         tickRedstoneVisualSync(serverLevel);
         tickOutboundShipments(serverLevel);
+        tickFluidTransitShipments(serverLevel);
         tickOverflowBufferDrain(serverLevel);
         tickMigratedBacklogFlush(serverLevel);
-        if (!isStorageAttachmentNode()) {
-            return;
+        boolean wantsItem =
+                ductDefinition().map(d -> d.enabledTransportKinds().contains(DuctTransportKind.ITEM)).orElse(true);
+        if (wantsItem && isStorageAttachmentNode()) {
+            DuctItemTransportSpec spec = itemTransportSpec();
+            int rate = spec.clampedRateTicks(spec.rateDefaultTicks());
+            int sm = getStorageMask();
+            for (Direction dir : Direction.values()) {
+                if ((sm & (1 << dir.ordinal())) == 0) {
+                    continue;
+                }
+                DuctFaceLanes lanes = getFaceLanes(dir);
+                DuctFaceNode node = getFaceNode(dir);
+                if (!isFaceTransportEnabled(dir)) {
+                    continue;
+                }
+                if (node.ticksUntilAction > 0) {
+                    node.ticksUntilAction--;
+                    setChanged();
+                    continue;
+                }
+                node.ticksUntilAction = rate - 1;
+                if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
+                    tickExtractionPullForFace(serverLevel, spec, dir, node);
+                } else if (lanes.nodeMode == NodeMode.RETRIEVING) {
+                    tickRetrieverPullForFace(serverLevel, spec, dir, node);
+                } else if (lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
+                    tickRetrieverPullForFace(serverLevel, spec, dir, node);
+                    tickExtractionPullForFace(serverLevel, spec, dir, node);
+                }
+            }
         }
 
-        DuctItemTransportSpec spec = itemTransportSpec();
-        int rate = spec.clampedRateTicks(spec.rateDefaultTicks());
-        int sm = getStorageMask();
-        for (Direction dir : Direction.values()) {
-            if ((sm & (1 << dir.ordinal())) == 0) {
-                continue;
-            }
-            DuctFaceNode node = getFaceNode(dir);
-            if (!isNodeEnabledByRedstone(node)) {
-                continue;
-            }
-            if (node.ticksUntilAction > 0) {
-                node.ticksUntilAction--;
-                setChanged();
-                continue;
-            }
-            node.ticksUntilAction = rate - 1;
-            if (node.nodeMode == NodeMode.EXTRACTION || node.nodeMode == NodeMode.EXTRACTION_FILTERING) {
-                tickExtractionPullForFace(serverLevel, spec, dir, node);
-            } else if (node.nodeMode == NodeMode.RETRIEVING) {
-                tickRetrieverPullForFace(serverLevel, spec, dir, node);
-            } else if (node.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
-                tickRetrieverPullForFace(serverLevel, spec, dir, node);
-                tickExtractionPullForFace(serverLevel, spec, dir, node);
-            }
-        }
+        DuctFluidServerTick.tick(this, serverLevel);
     }
 
     private void resolveNegativeTravelShipments(ServerLevel level) {
@@ -488,6 +612,70 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
+    /**
+     * Schedules a client-side fluid blob moving along {@code path} (logic already applied). Path must be the duct
+     * polyline from this block toward the destination duct, same as item transit.
+     */
+    public void scheduleFluidTransitVisual(
+            ServerLevel level,
+            FluidStack movedVisual,
+            List<BlockPos> path,
+            Direction sourceFace,
+            Direction destStorageFace,
+            DuctFluidTransportSpec spec) {
+        if (path == null || path.isEmpty() || movedVisual.isEmpty()) {
+            return;
+        }
+        List<BlockPos> pathWire = OutboundShipment.copyPath(path);
+        long travel = DuctPathfinder.pathTravelTicks(pathWire, spec);
+        int tot = (int) Math.min(Math.max(1L, travel), Integer.MAX_VALUE);
+        int edge = (int) Math.min(Math.max(1L, DuctPathfinder.edgeTravelTicks(spec)), Integer.MAX_VALUE);
+        FluidStack viz = movedVisual.copy();
+        if (viz.getAmount() > 1000) {
+            viz.setAmount(1000);
+        }
+        fluidTransitShipments.add(
+                new FluidTransitShipment(
+                        viz,
+                        pathWire,
+                        tot,
+                        tot,
+                        edge,
+                        level.getGameTime(),
+                        sourceFace,
+                        destStorageFace));
+        setChanged();
+        pushTransitSnapshotToClients(level);
+    }
+
+    private void tickFluidTransitShipments(ServerLevel level) {
+        if (fluidTransitShipments.isEmpty()) {
+            return;
+        }
+        Iterator<FluidTransitShipment> it = fluidTransitShipments.iterator();
+        boolean dirty = false;
+        while (it.hasNext()) {
+            FluidTransitShipment s = it.next();
+            if (s.fluid.isEmpty()) {
+                it.remove();
+                dirty = true;
+                continue;
+            }
+            if (s.travelTicks > 0) {
+                s.travelTicks--;
+                dirty = true;
+            }
+            if (s.travelTicks <= 0) {
+                it.remove();
+                dirty = true;
+            }
+        }
+        if (dirty) {
+            setChanged();
+            pushTransitSnapshotToClients(level);
+        }
+    }
+
     private void pushTransitSnapshotToClients(ServerLevel level) {
         level.blockEntityChanged(getBlockPos());
         level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
@@ -526,7 +714,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             cancelOutboundShipment(level, s, it);
             return false;
         }
-        if (!DuctRedstoneLogic.isItemNodeActive(level, s.destDuct, destBe.getFaceNode(s.destFace))) {
+        if (!DuctRedstoneLogic.isFaceTransportActive(level, s.destDuct, destBe.getFaceLanes(s.destFace).redstoneMode)) {
             cancelOutboundShipment(level, s, it);
             return false;
         }
@@ -655,7 +843,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             cancelOutboundShipment(level, s, it);
             return false;
         }
-        if (!DuctRedstoneLogic.isItemNodeActive(level, s.destDuct, destBe.getFaceNode(s.destFace))) {
+        if (!DuctRedstoneLogic.isFaceTransportActive(level, s.destDuct, destBe.getFaceLanes(s.destFace).redstoneMode)) {
             cancelOutboundShipment(level, s, it);
             return false;
         }
@@ -691,7 +879,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 chunk.setCount(take);
             }
             DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-            NodeMode dm = destBe.getFaceNode(s.destFace).nodeMode;
+            NodeMode dm = destBe.getFaceLanes(s.destFace).nodeMode;
             if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                     && !destBe.passesItemFilters(s.destFace, chunk, level, DuctFaceNode.FilterBank.FILTER)) {
                 cancelOutboundShipment(level, s, it);
@@ -793,7 +981,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             setChanged();
             return false;
         }
-        NodeMode dm2 = destBe.getFaceNode(s.destFace).nodeMode;
+        NodeMode dm2 = destBe.getFaceLanes(s.destFace).nodeMode;
         if ((dm2 == NodeMode.FILTERING_INSERTION || dm2 == NodeMode.EXTRACTION_FILTERING)
                 && !destBe.passesItemFilters(s.destFace, extracted, level, DuctFaceNode.FilterBank.FILTER)) {
             DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, extracted, worldPosition);
@@ -827,7 +1015,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
      * @return {@code true} if arrival handling was deferred (world/block entity not ready); {@code false} if resolved.
      */
     private boolean finishRetrieverArrival(ServerLevel level, OutboundShipment s, Iterator<OutboundShipment> it) {
-        if (!DuctRedstoneLogic.isItemNodeActive(level, worldPosition, getFaceNode(s.destFace))) {
+        if (!DuctRedstoneLogic.isFaceTransportActive(level, worldPosition, getFaceLanes(s.destFace).redstoneMode)) {
             cancelOutboundShipment(level, s, it);
             return false;
         }
@@ -873,7 +1061,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 chunk.setCount(take);
             }
             DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
-            NodeMode sm = getFaceNode(s.destFace).nodeMode;
+            NodeMode sm = getFaceLanes(s.destFace).nodeMode;
             if ((sm == NodeMode.FILTERING_INSERTION || sm == NodeMode.EXTRACTION_FILTERING)
                     && !passesItemFilters(s.destFace, chunk, level, DuctFaceNode.FilterBank.FILTER)) {
                 cancelOutboundShipment(level, s, it);
@@ -959,7 +1147,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             setChanged();
             return false;
         }
-        NodeMode sm2 = getFaceNode(s.destFace).nodeMode;
+        NodeMode sm2 = getFaceLanes(s.destFace).nodeMode;
         if ((sm2 == NodeMode.FILTERING_INSERTION || sm2 == NodeMode.EXTRACTION_FILTERING)
                 && !passesItemFilters(s.destFace, extracted, level, DuctFaceNode.FilterBank.FILTER)) {
             DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, extracted, worldPosition);
@@ -1013,9 +1201,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if ((mask & (1 << dir.ordinal())) == 0) {
                 continue;
             }
-            DuctFaceNode n = getFaceNode(dir);
-            if (DuctTargetSelector.isNetworkInboundDeliveryMode(n.nodeMode)
-                    && !DuctRedstoneLogic.isItemNodeActive(level, worldPosition, n)) {
+            DuctFaceLanes lanes = getFaceLanes(dir);
+            if (DuctTargetSelector.isNetworkInboundDeliveryMode(lanes.nodeMode)
+                    && !isFaceTransportEnabled(dir)) {
                 continue;
             }
             BlockPos adj = worldPosition.relative(dir);
@@ -1061,6 +1249,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
         }
+        DuctFaceLanes faceLanes = getFaceLanes(face);
         IItemHandler sourceHandler = DuctCapHelper.getHandlerOnFace(level, worldPosition, face);
         if (sourceHandler == null) {
             return;
@@ -1079,11 +1268,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             int[] rrProbe = new int[] {node.roundRobinCursor};
-            boolean allowSelf = node.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+            boolean allowSelf = faceLanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
             RoutingMode rm =
-                    node.nodeMode == NodeMode.RETRIEVING_EXTRACTION
+                    faceLanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION
                             ? node.routingModeRetriever
-                            : node.nodeMode.isHybrid()
+                            : faceLanes.nodeMode.isHybrid()
                                     ? node.routingModeExtractor
                                     : node.routingMode;
             Optional<DuctTargetSelector.ExtractionRouting> routeOpt =
@@ -1099,7 +1288,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             Direction destFace = route.destStorageFace();
-            NodeMode destMode = destBe.getFaceNode(destFace).nodeMode;
+            NodeMode destMode = destBe.getFaceLanes(destFace).nodeMode;
             if ((destMode == NodeMode.FILTERING_INSERTION || destMode == NodeMode.EXTRACTION_FILTERING)
                     && !destBe.passesItemFilters(destFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
                 continue;
@@ -1171,8 +1360,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
         }
+        DuctFaceLanes retrieverLanes = getFaceLanes(retrieverFace);
         int[] rr = new int[] {node.roundRobinCursor};
-        RoutingMode rm = node.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
+        RoutingMode rm =
+                retrieverLanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
         Optional<DuctTargetSelector.RetrieverRouting> routeOpt =
                 DuctTargetSelector.selectRetrievingDonorPath(
                         level, worldPosition, retrieverFace, rm, rr, node.channelLetter);
@@ -1277,7 +1468,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (destBe.getOverflowBuffer().isSchedulingUnavailableForNewPulls()) {
             return false;
         }
-        if (!DuctRedstoneLogic.isItemNodeActive(level, destDuct, destBe.getFaceNode(destFace))) {
+        if (!DuctRedstoneLogic.isFaceTransportActive(level, destDuct, destBe.getFaceLanes(destFace).redstoneMode)) {
             return false;
         }
         List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct);
@@ -1384,6 +1575,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private void scrubFilterListsForPolicy(Direction face, Optional<DuctDefinition> def, boolean hasUpgrade) {
         DuctFaceNode n = getFaceNode(face);
+        scrubFilterListsForNode(def, hasUpgrade, n);
+    }
+
+    private void scrubFilterListsForPolicyFluid(Direction face, Optional<DuctDefinition> def, boolean hasUpgrade) {
+        scrubFilterListsForNode(def, hasUpgrade, getFluidFaceNode(face));
+    }
+
+    private static void scrubFilterListsForNode(Optional<DuctDefinition> def, boolean hasUpgrade, DuctFaceNode n) {
         scrubList(def, hasUpgrade, n.allowFilters);
         scrubList(def, hasUpgrade, n.denyFilters);
         scrubList(def, hasUpgrade, n.allowFiltersExtractor);
@@ -1408,47 +1607,80 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         Optional<DuctDefinition> def = ductDefinition();
         boolean any = false;
         for (Direction d : Direction.values()) {
-            boolean hasUpgrade = faceHasUpgradeSlots(d);
-            DuctFaceNode n = getFaceNode(d);
-            if (!DuctFeaturePolicy.isModeUsable(def.orElse(null), n.nodeMode, hasUpgrade)) {
-                n.nodeMode = NodeMode.NONE;
+            DuctFaceLanes L = getFaceLanes(d);
+            boolean hasItemUp = faceHasUpgradeSlots(d);
+            boolean hasFluidUp = faceHasFluidUpgradeSlots(d);
+            boolean modeUnlock = hasItemUp || hasFluidUp;
+            if (!DuctFeaturePolicy.isModeUsable(def.orElse(null), L.nodeMode, modeUnlock)) {
+                L.nodeMode = NodeMode.NONE;
                 any = true;
             }
-            if (n.nodeMode.usesRouting()) {
-                if (!DuctFeaturePolicy.isRoutingUsable(def.orElse(null), n.routingMode, hasUpgrade)) {
+            DuctFaceNode n = L.item;
+            if (L.nodeMode.usesRouting()) {
+                if (!DuctFeaturePolicy.isRoutingUsable(def.orElse(null), n.routingMode, hasItemUp)) {
                     n.routingMode = RoutingMode.NEAREST_FIRST;
                     any = true;
                 }
-                if (!DuctFeaturePolicy.isRoutingUsable(def.orElse(null), n.routingModeExtractor, hasUpgrade)) {
+                if (!DuctFeaturePolicy.isRoutingUsable(def.orElse(null), n.routingModeExtractor, hasItemUp)) {
                     n.routingModeExtractor = RoutingMode.NEAREST_FIRST;
                     any = true;
                 }
-                if (!DuctFeaturePolicy.isRoutingUsable(def.orElse(null), n.routingModeRetriever, hasUpgrade)) {
+                if (!DuctFeaturePolicy.isRoutingUsable(def.orElse(null), n.routingModeRetriever, hasItemUp)) {
                     n.routingModeRetriever = RoutingMode.NEAREST_FIRST;
                     any = true;
                 }
-                if (n.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
+                if (L.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
                     n.routingMode = n.routingModeExtractor;
                 }
             }
-            if (!DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.SPECIAL_CHANNEL, hasUpgrade)) {
+            if (!DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.SPECIAL_CHANNEL, hasItemUp)) {
                 if (n.channelLetter != 1) {
                     n.channelLetter = 1;
                     any = true;
                 }
             }
             int nonEmptyBefore = countNonEmptyLines(n);
-            scrubFilterListsForPolicy(d, def, hasUpgrade);
+            scrubFilterListsForPolicy(d, def, hasItemUp);
             if (countNonEmptyLines(n) != nonEmptyBefore) {
+                any = true;
+            }
+
+            DuctFaceNode fn = L.fluid;
+            if (L.nodeMode.usesRouting()) {
+                if (!DuctFeaturePolicy.isRoutingUsable(def.orElse(null), fn.routingMode, hasFluidUp)) {
+                    fn.routingMode = RoutingMode.NEAREST_FIRST;
+                    any = true;
+                }
+                if (!DuctFeaturePolicy.isRoutingUsable(def.orElse(null), fn.routingModeExtractor, hasFluidUp)) {
+                    fn.routingModeExtractor = RoutingMode.NEAREST_FIRST;
+                    any = true;
+                }
+                if (!DuctFeaturePolicy.isRoutingUsable(def.orElse(null), fn.routingModeRetriever, hasFluidUp)) {
+                    fn.routingModeRetriever = RoutingMode.NEAREST_FIRST;
+                    any = true;
+                }
+                if (L.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
+                    fn.routingMode = fn.routingModeExtractor;
+                }
+            }
+            if (!DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.SPECIAL_CHANNEL, hasFluidUp)) {
+                if (fn.channelLetter != 1) {
+                    fn.channelLetter = 1;
+                    any = true;
+                }
+            }
+            int nonEmptyFluid = countNonEmptyLines(fn);
+            scrubFilterListsForPolicyFluid(d, def, hasFluidUp);
+            if (countNonEmptyLines(fn) != nonEmptyFluid) {
                 any = true;
             }
         }
         if (any) {
             clampFaceFiltersToSpec();
             for (Direction d : Direction.values()) {
-                DuctFaceNode n = getFaceNode(d);
-                if (n.nodeMode.usesExtractBatchField()) {
-                    clampExtractAmount(n, d);
+                if (getFaceLanes(d).nodeMode.usesExtractBatchField()) {
+                    clampExtractAmount(getFaceNode(d), d);
+                    clampFluidExtractAmount(getFluidFaceNode(d), d);
                 }
             }
             setChanged();
@@ -1480,18 +1712,23 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public void refreshMenuData(Direction accessFace) {
-        DuctFaceNode n = getFaceNode(accessFace);
-        menuData.set(DuctMenuSync.NODE_MODE, n.nodeMode.ordinal());
+        DuctFaceLanes faceLanes = getFaceLanes(accessFace);
+        DuctFaceNode n = activeMenuFaceNode(accessFace);
+        menuData.set(DuctMenuSync.NODE_MODE, faceLanes.nodeMode.ordinal());
         menuData.set(DuctMenuSync.ROUTING_MODE, n.routingMode.ordinal());
         menuData.set(DuctMenuSync.ROUTING_MODE_EXTRACTOR, n.routingModeExtractor.ordinal());
         menuData.set(DuctMenuSync.ROUTING_MODE_RETRIEVER, n.routingModeRetriever.ordinal());
         menuData.set(DuctMenuSync.PRIORITY, n.insertionPriority);
         menuData.set(DuctMenuSync.AMOUNT_FIELD, n.extractBatch);
-        menuData.set(DuctMenuSync.EXTRACT_BATCH_CAP, computeExtractBatchSettingCap(accessFace));
+        menuData.set(
+                DuctMenuSync.EXTRACT_BATCH_CAP,
+                menuActiveTransportKind() == DuctTransportKind.FLUID
+                        ? computeFluidExtractBatchSettingCap(accessFace)
+                        : computeExtractBatchSettingCap(accessFace));
         menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
-        menuData.set(DuctMenuSync.REDSTONE_MODE, n.redstoneMode);
+        menuData.set(DuctMenuSync.REDSTONE_MODE, faceLanes.redstoneMode);
         int denyOverSync =
-                switch (n.nodeMode) {
+                switch (faceLanes.nodeMode) {
                     case FILTERING_INSERTION -> n.denyOverridesAllowFilter ? 1 : 0;
                     case EXTRACTION -> n.denyOverridesAllowExtractor ? 1 : 0;
                     case RETRIEVING -> n.denyOverridesAllowRetriever ? 1 : 0;
@@ -1499,10 +1736,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 };
         menuData.set(DuctMenuSync.DENY_OVERRIDES_ALLOW, denyOverSync);
         int flags = 0;
-        if (n.nodeMode.usesRouting()) {
+        if (faceLanes.nodeMode.usesRouting()) {
             flags |= DuctMenuSync.FLAG_ROUTING_ACTIVE;
         }
-        if (n.nodeMode.usesItemFilterConfig()) {
+        if (faceLanes.nodeMode.usesItemFilterConfig()) {
             flags |= DuctMenuSync.FLAG_FILTERS_ACTIVE;
         }
         menuData.set(DuctMenuSync.FLAGS, flags);
@@ -1514,6 +1751,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         menuData.set(DuctMenuSync.FILTER_HASH_ALLOW, DuctFilterLogic.listHash(n.allowFilters));
         menuData.set(DuctMenuSync.FILTER_HASH_DENY, DuctFilterLogic.listHash(n.denyFilters));
         menuData.set(DuctMenuSync.SELF_FEED, n.selfFeed ? 1 : 0);
+        menuData.set(DuctMenuSync.ACTIVE_TRANSPORT_KIND, menuActiveTransportKind().ordinal());
+        menuData.set(DuctMenuSync.TRANSPORT_KIND_COUNT, orderedMenuTransportKinds().size());
     }
 
     public boolean passesItemFilters(Direction face, ItemStack stack, Level level) {
@@ -1538,7 +1777,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (maxFromCapacity <= 0 || template.isEmpty()) {
             return 0;
         }
-        NodeMode dm = destBe.getFaceNode(destFace).nodeMode;
+        NodeMode dm = destBe.getFaceLanes(destFace).nodeMode;
         if (!destFaceUsesFilterAllowLimit(dm)) {
             return maxFromCapacity;
         }
@@ -1595,10 +1834,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (stack.isEmpty()) {
             return false;
         }
-        DuctFaceNode node = getFaceNode(face);
-        if (node.nodeMode == NodeMode.NONE) {
+        if (getFaceLanes(face).nodeMode == NodeMode.NONE) {
             return true;
         }
+        DuctFaceNode node = getFaceNode(face);
         // Build a lightweight view using the selected bank, so existing matching logic stays unchanged.
         DuctFaceNode view = new DuctFaceNode(() -> {});
         view.denyOverridesAllow = node.bankDenyOverridesAllow(bank);
@@ -1610,15 +1849,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public void clampFaceFiltersToSpec() {
-        DuctItemTransportSpec spec = itemTransportSpec();
+        DuctItemTransportSpec itemSpec = itemTransportSpec();
+        DuctFluidTransportSpec fluidSpec = fluidTransportSpec();
         for (Direction d : Direction.values()) {
-            getFaceNode(d).clampFilterSizes(spec);
+            getFaceLanes(d).clampFilterSizes(itemSpec, fluidSpec);
         }
     }
 
     public void applyServerFilterConfig(
             ServerPlayer player,
             Direction face,
+            DuctTransportKind laneKind,
             DuctFaceNode.FilterBank bank,
             List<String> allowIn,
             List<String> denyIn,
@@ -1630,11 +1871,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if ((getSettingsFaceMask() & (1 << face.ordinal())) == 0) {
             return;
         }
-        DuctItemTransportSpec spec = itemTransportSpec();
-        DuctFaceNode node = getFaceNode(face);
-        if (!node.nodeMode.usesItemFilterConfig()) {
+        DuctItemTransportSpec itemSpec = itemTransportSpec();
+        DuctFluidTransportSpec fluidSpec = fluidTransportSpec();
+        DuctFaceLanes faceLanes = getFaceLanes(face);
+        DuctFaceNode node = laneKind == DuctTransportKind.FLUID ? getFluidFaceNode(face) : getFaceNode(face);
+        if (!faceLanes.nodeMode.usesItemFilterConfig()) {
             return;
         }
+        NodeMode sharedMode = faceLanes.nodeMode;
         if (allowCapsIn == null) {
             allowCapsIn = List.of();
         }
@@ -1644,16 +1888,34 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         a.clear();
         d.clear();
         caps.clear();
-        int maxA =
-                Math.max(
-                        0,
-                        node.nodeMode.isHybrid() ? spec.filterAllowHybridSlots() : spec.filterAllowSlots());
-        int maxD =
-                Math.max(
-                        0,
-                        node.nodeMode.isHybrid() ? spec.filterDenyHybridSlots() : spec.filterDenySlots());
+        int maxA;
+        int maxD;
+        if (laneKind == DuctTransportKind.FLUID) {
+            maxA =
+                    Math.max(
+                            0,
+                            sharedMode.isHybrid()
+                                    ? fluidSpec.filterAllowHybridSlots()
+                                    : fluidSpec.filterAllowSlots());
+            maxD =
+                    Math.max(
+                            0,
+                            sharedMode.isHybrid()
+                                    ? fluidSpec.filterDenyHybridSlots()
+                                    : fluidSpec.filterDenySlots());
+        } else {
+            maxA =
+                    Math.max(
+                            0,
+                            sharedMode.isHybrid() ? itemSpec.filterAllowHybridSlots() : itemSpec.filterAllowSlots());
+            maxD =
+                    Math.max(
+                            0,
+                            sharedMode.isHybrid() ? itemSpec.filterDenyHybridSlots() : itemSpec.filterDenySlots());
+        }
         Optional<DuctDefinition> def = ductDefinition();
-        boolean hasUpgrade = faceHasUpgradeSlots(face);
+        boolean hasUpgrade =
+                laneKind == DuctTransportKind.FLUID ? faceHasFluidUpgradeSlots(face) : faceHasUpgradeSlots(face);
         for (int i = 0; i < maxA; i++) {
             String s = i < allowIn.size() ? allowIn.get(i) : "";
             s = s != null ? s : "";
@@ -1667,31 +1929,39 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             s = s != null ? s : "";
             d.add(clampFilterLine(def, hasUpgrade, s));
         }
-        if (DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.listPrecedenceKey(node.nodeMode, bank), hasUpgrade)) {
+        if (DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.listPrecedenceKey(sharedMode, bank), hasUpgrade)) {
             node.setBankDenyOverridesAllow(bank, denyOverridesAllow);
         }
-        node.clampFilterSizes(spec);
+        if (laneKind == DuctTransportKind.FLUID) {
+            node.clampFilterSizes(fluidSpec, sharedMode);
+        } else {
+            node.clampFilterSizes(itemSpec, sharedMode);
+        }
         setChanged();
         refreshMenuData(face);
         ModNetwork.sendFilterSyncToPlayer(player, this, face);
         syncVisualGeometryToClients();
     }
 
-    public void toggleListLogicFromClient(ServerPlayer player, Direction face, DuctFaceNode.FilterBank bank) {
+    public void toggleListLogicFromClient(
+            ServerPlayer player, Direction face, DuctTransportKind laneKind, DuctFaceNode.FilterBank bank) {
         if (level == null || level.isClientSide) {
             return;
         }
         if ((getSettingsFaceMask() & (1 << face.ordinal())) == 0) {
             return;
         }
-        DuctFaceNode node = getFaceNode(face);
-        if (!node.nodeMode.usesItemFilterConfig()) {
+        DuctFaceLanes faceLanes = getFaceLanes(face);
+        DuctFaceNode node = laneKind == DuctTransportKind.FLUID ? getFluidFaceNode(face) : getFaceNode(face);
+        if (!faceLanes.nodeMode.usesItemFilterConfig()) {
             return;
         }
+        boolean hasUpgrade =
+                laneKind == DuctTransportKind.FLUID ? faceHasFluidUpgradeSlots(face) : faceHasUpgradeSlots(face);
         if (!DuctFeaturePolicy.isUsable(
                 ductDefinition().orElse(null),
-                DuctFeatureKeys.listPrecedenceKey(node.nodeMode, bank),
-                faceHasUpgradeSlots(face))) {
+                DuctFeatureKeys.listPrecedenceKey(faceLanes.nodeMode, bank),
+                hasUpgrade)) {
             return;
         }
         node.setBankDenyOverridesAllow(bank, !node.bankDenyOverridesAllow(bank));
@@ -1707,11 +1977,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if ((getSettingsFaceMask() & (1 << face.ordinal())) == 0) {
             return;
         }
-        DuctFaceNode node = getFaceNode(face);
-        if (node.nodeMode != NodeMode.EXTRACTION_FILTERING && node.nodeMode != NodeMode.RETRIEVING_EXTRACTION) {
+        NodeMode shared = getFaceLanes(face).nodeMode;
+        if (shared != NodeMode.EXTRACTION_FILTERING && shared != NodeMode.RETRIEVING_EXTRACTION) {
             return;
         }
-        node.selfFeed = enabled;
+        getFaceNode(face).selfFeed = enabled;
         setChanged();
         refreshMenuData(face);
     }
@@ -1723,51 +1993,62 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if ((getSettingsFaceMask() & (1 << accessFace.ordinal())) == 0) {
             return false;
         }
-        DuctFaceNode node = getFaceNode(accessFace);
+        DuctFaceNode node = activeMenuFaceNode(accessFace);
+        DuctFaceLanes menuFaceLanes = getFaceLanes(accessFace);
         boolean changed =
                 switch (buttonId) {
-                    case 0 -> cycleNodeMode(node, accessFace);
-                    case 10 -> cycleNodeModeBackward(node, accessFace);
+                    case 0 -> cycleNodeMode(menuFaceLanes, accessFace);
+                    case 10 -> cycleNodeModeBackward(menuFaceLanes, accessFace);
                     case 1 -> {
-                        if (!node.nodeMode.usesRouting()) {
+                        if (!menuFaceLanes.nodeMode.usesRouting()) {
                             yield false;
                         }
                         yield cycleRoutingMode(node, accessFace);
                     }
                     case 2 -> {
-                        node.redstoneMode = (node.redstoneMode + 1) % 4;
+                        menuFaceLanes.redstoneMode = (menuFaceLanes.redstoneMode + 1) % 4;
                         yield true;
                     }
                     case 11 -> {
-                        if (!node.nodeMode.usesRouting()) {
+                        if (!menuFaceLanes.nodeMode.usesRouting()) {
                             yield false;
                         }
                         yield cycleRoutingModeBackward(node, accessFace);
                     }
                     case 12 -> {
-                        node.redstoneMode = Math.floorMod(node.redstoneMode - 1, 4);
+                        menuFaceLanes.redstoneMode = Math.floorMod(menuFaceLanes.redstoneMode - 1, 4);
                         yield true;
                     }
                     case 4 -> {
+                        boolean up =
+                                menuActiveTransportKind() == DuctTransportKind.FLUID
+                                        ? faceHasFluidUpgradeSlots(accessFace)
+                                        : faceHasUpgradeSlots(accessFace);
                         if (!DuctFeaturePolicy.isUsable(
                                 ductDefinition().orElse(null),
                                 DuctFeatureKeys.SPECIAL_CHANNEL,
-                                faceHasUpgradeSlots(accessFace))) {
+                                up)) {
                             yield false;
                         }
                         node.channelLetter = node.channelLetter >= 26 ? 1 : node.channelLetter + 1;
                         yield true;
                     }
                     case 5 -> {
+                        boolean up =
+                                menuActiveTransportKind() == DuctTransportKind.FLUID
+                                        ? faceHasFluidUpgradeSlots(accessFace)
+                                        : faceHasUpgradeSlots(accessFace);
                         if (!DuctFeaturePolicy.isUsable(
                                 ductDefinition().orElse(null),
                                 DuctFeatureKeys.SPECIAL_CHANNEL,
-                                faceHasUpgradeSlots(accessFace))) {
+                                up)) {
                             yield false;
                         }
                         node.channelLetter = node.channelLetter <= 1 ? 26 : node.channelLetter - 1;
                         yield true;
                     }
+                    case 30 ->
+                            player instanceof ServerPlayer sp && cycleMenuTransportKind(sp, accessFace);
                     default -> false;
                 };
         if (changed) {
@@ -1778,7 +2059,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return changed;
     }
 
-    private boolean cycleNodeMode(DuctFaceNode node, Direction accessFace) {
+    private boolean cycleNodeMode(DuctFaceLanes lanes, Direction accessFace) {
         NodeMode[] order =
                 new NodeMode[] {
                     NodeMode.NONE,
@@ -1789,10 +2070,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     NodeMode.RETRIEVING_EXTRACTION
                 };
         Optional<DuctDefinition> def = ductDefinition();
-        boolean hasUpgrade = faceHasUpgradeSlots(accessFace);
+        boolean hasUpgrade =
+                faceHasUpgradeSlots(accessFace) || faceHasFluidUpgradeSlots(accessFace);
         int idx = 0;
         for (int i = 0; i < order.length; i++) {
-            if (order[i] == node.nodeMode) {
+            if (order[i] == lanes.nodeMode) {
                 idx = i;
                 break;
             }
@@ -1800,9 +2082,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         for (int off = 1; off <= order.length; off++) {
             NodeMode cand = order[(idx + off) % order.length];
             if (DuctFeaturePolicy.isModeUsable(def.orElse(null), cand, hasUpgrade)) {
-                if (cand != node.nodeMode) {
-                    node.nodeMode = cand;
-                    onModeChanged(node, accessFace);
+                if (cand != lanes.nodeMode) {
+                    lanes.nodeMode = cand;
+                    onSharedModeChanged(lanes, accessFace);
                     return true;
                 }
                 return false;
@@ -1811,7 +2093,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return false;
     }
 
-    private boolean cycleNodeModeBackward(DuctFaceNode node, Direction accessFace) {
+    private boolean cycleNodeModeBackward(DuctFaceLanes lanes, Direction accessFace) {
         NodeMode[] order =
                 new NodeMode[] {
                     NodeMode.NONE,
@@ -1822,10 +2104,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     NodeMode.RETRIEVING_EXTRACTION
                 };
         Optional<DuctDefinition> def = ductDefinition();
-        boolean hasUpgrade = faceHasUpgradeSlots(accessFace);
+        boolean hasUpgrade =
+                faceHasUpgradeSlots(accessFace) || faceHasFluidUpgradeSlots(accessFace);
         int idx = 0;
         for (int i = 0; i < order.length; i++) {
-            if (order[i] == node.nodeMode) {
+            if (order[i] == lanes.nodeMode) {
                 idx = i;
                 break;
             }
@@ -1833,9 +2116,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         for (int off = 1; off <= order.length; off++) {
             NodeMode cand = order[Math.floorMod(idx - off, order.length)];
             if (DuctFeaturePolicy.isModeUsable(def.orElse(null), cand, hasUpgrade)) {
-                if (cand != node.nodeMode) {
-                    node.nodeMode = cand;
-                    onModeChanged(node, accessFace);
+                if (cand != lanes.nodeMode) {
+                    lanes.nodeMode = cand;
+                    onSharedModeChanged(lanes, accessFace);
                     return true;
                 }
                 return false;
@@ -1873,13 +2156,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
      * Cycles the routing field that applies to the current node mode (including hybrid extract vs retrieve).
      */
     private boolean stepRouting(DuctFaceNode node, int delta, Direction accessFace) {
-        if (!node.nodeMode.usesRouting()) {
+        NodeMode shared = getFaceLanes(accessFace).nodeMode;
+        if (!shared.usesRouting()) {
             return false;
         }
         Optional<DuctDefinition> def = ductDefinition();
-        boolean hasUpgrade = faceHasUpgradeSlots(accessFace);
+        boolean hasUpgrade =
+                isFluidLaneNode(node) ? faceHasFluidUpgradeSlots(accessFace) : faceHasUpgradeSlots(accessFace);
         RoutingMode[] v = RoutingMode.values();
-        return switch (node.nodeMode) {
+        return switch (shared) {
             case EXTRACTION_FILTERING -> {
                 RoutingMode cur = node.routingModeExtractor;
                 RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasUpgrade);
@@ -1911,33 +2196,66 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         };
     }
 
-    private void onModeChanged(DuctFaceNode node, Direction face) {
-        if (node.nodeMode.usesExtractBatchField()) {
-            DuctItemTransportSpec spec = itemTransportSpec();
-            if (node.extractBatch <= 0) {
-                node.extractBatch = spec.batchDefault();
+    private void onSharedModeChanged(DuctFaceLanes lanes, Direction face) {
+        if (!lanes.nodeMode.usesExtractBatchField()) {
+            return;
+        }
+        Optional<DuctDefinition> def = ductDefinition();
+        if (def.map(d -> d.enabledTransportKinds().contains(DuctTransportKind.ITEM)).orElse(true)) {
+            DuctFaceNode itemNode = lanes.item;
+            if (itemNode.extractBatch <= 0) {
+                itemNode.extractBatch = itemTransportSpec().batchDefault();
             }
-            clampExtractAmount(node, face);
+            clampExtractAmount(itemNode, face);
+        }
+        if (def.map(d -> d.enabledTransportKinds().contains(DuctTransportKind.FLUID)).orElse(false)) {
+            DuctFaceNode fluidNode = lanes.fluid;
+            if (fluidNode.extractBatch <= 0) {
+                fluidNode.extractBatch = fluidTransportSpec().batchDefaultMb();
+            }
+            clampFluidExtractAmount(fluidNode, face);
         }
     }
 
-    public void applyClientFieldUpdate(Direction accessFace, int insertionPriority, int extractBatch) {
+    private boolean isFluidLaneNode(DuctFaceNode node) {
+        for (Direction d : Direction.values()) {
+            if (getFluidFaceNode(d) == node) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void applyClientFieldUpdate(
+            Direction accessFace, int transportKindOrdinal, int insertionPriority, int extractBatch) {
         if (level == null || level.isClientSide) {
             return;
         }
         if ((getSettingsFaceMask() & (1 << accessFace.ordinal())) == 0) {
             return;
         }
-        DuctFaceNode node = getFaceNode(accessFace);
+        DuctTransportKind[] vals = DuctTransportKind.values();
+        DuctTransportKind kind =
+                vals[Mth.clamp(transportKindOrdinal, 0, vals.length - 1)];
+        DuctFaceNode node = kind == DuctTransportKind.FLUID ? getFluidFaceNode(accessFace) : getFaceNode(accessFace);
         node.insertionPriority = insertionPriority;
         node.extractBatch = Math.max(0, extractBatch);
-        clampExtractAmount(node, accessFace);
+        if (kind == DuctTransportKind.FLUID) {
+            clampFluidExtractAmount(node, accessFace);
+        } else {
+            clampExtractAmount(node, accessFace);
+        }
         setChanged();
         refreshMenuData(accessFace);
     }
 
     private void clampExtractAmount(DuctFaceNode node, Direction face) {
         int cap = computeExtractBatchSettingCap(face);
+        node.extractBatch = Math.min(Math.max(0, node.extractBatch), cap);
+    }
+
+    private void clampFluidExtractAmount(DuctFaceNode node, Direction face) {
+        int cap = computeFluidExtractBatchSettingCap(face);
         node.extractBatch = Math.min(Math.max(0, node.extractBatch), cap);
     }
 
@@ -1952,20 +2270,30 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if ((latchedStorageFaceMask & bit) != 0) {
                 continue;
             }
-            DuctFaceNode n = getFaceNode(dir);
-            if (n.nodeMode == NodeMode.NONE
-                    && n.insertionPriority == 0
-                    && n.extractBatch == 0
-                    && n.roundRobinCursor == 0) {
-                continue;
+            DuctFaceLanes L = getFaceLanes(dir);
+            if (!pipeSegmentInteriorFaceIsDefault(L)) {
+                L.resetPipeSegmentDefaults();
+                any = true;
             }
-            n.resetPipeSegmentDefaults();
-            any = true;
         }
         if (any) {
             setChanged();
             syncVisualGeometryToClients();
         }
+    }
+
+    private static boolean pipeSegmentInteriorFaceIsDefault(DuctFaceLanes L) {
+        if (L.nodeMode != NodeMode.NONE) {
+            return false;
+        }
+        DuctFaceNode n = L.item;
+        DuctFaceNode fn = L.fluid;
+        return n.insertionPriority == 0
+                && n.extractBatch == 0
+                && n.roundRobinCursor == 0
+                && fn.insertionPriority == 0
+                && fn.extractBatch == 0
+                && fn.roundRobinCursor == 0;
     }
 
     private void syncVisualGeometryToClients() {
@@ -1981,25 +2309,28 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private int inferLatchBitsFromLoadedFaceNodes() {
         int m = 0;
         for (Direction d : Direction.values()) {
-            if (faceSuggestsPersistedStorageNode(getFaceNode(d))) {
+            if (faceSuggestsPersistedStorageNode(getFaceLanes(d))) {
                 m |= 1 << d.ordinal();
             }
         }
         return m;
     }
 
-    private static boolean faceSuggestsPersistedStorageNode(DuctFaceNode n) {
-        if (n.nodeMode != NodeMode.NONE) {
+    private static boolean faceSuggestsPersistedStorageNode(DuctFaceLanes lanes) {
+        if (lanes.nodeMode != NodeMode.NONE) {
             return true;
         }
+        if (lanes.redstoneMode == 1 || lanes.redstoneMode == 2) {
+            return true;
+        }
+        return laneSuggestsPersistedStorageNode(lanes.item) || laneSuggestsPersistedStorageNode(lanes.fluid);
+    }
+
+    private static boolean laneSuggestsPersistedStorageNode(DuctFaceNode n) {
         if (n.insertionPriority != 0
                 || n.extractBatch != 0
                 || n.roundRobinCursor != 0
                 || n.ticksUntilAction != 0) {
-            return true;
-        }
-        // Low/high are always intentional; 0 (ignore) and 3 (disabled) are defaults and must not alone infer latch bits.
-        if (n.redstoneMode == 1 || n.redstoneMode == 2) {
             return true;
         }
         if (n.channelLetter != 1) {
@@ -2078,7 +2409,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         ListTag faces = new ListTag();
         for (Direction d : Direction.values()) {
             CompoundTag ft = new CompoundTag();
-            getFaceNode(d).save(registries, ft);
+            getFaceLanes(d).save(registries, ft);
             faces.add(ft);
         }
         tag.put("FaceNodes", faces);
@@ -2107,11 +2438,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (tag.contains("FaceNodes", Tag.TAG_LIST)) {
             ListTag list = tag.getList("FaceNodes", Tag.TAG_COMPOUND);
             for (int i = 0; i < FACE_COUNT && i < list.size(); i++) {
-                getFaceNode(Direction.values()[i]).load(registries, list.getCompound(i));
+                getFaceLanes(Direction.values()[i]).load(registries, list.getCompound(i));
             }
         } else {
             for (Direction d : Direction.values()) {
-                getFaceNode(d).loadFromLegacyRootTag(registries, tag);
+                getFaceLanes(d).loadFromLegacyRootTag(registries, tag);
             }
         }
         if (tag.contains("LatchedFaces", Tag.TAG_BYTE)) {
@@ -2143,12 +2474,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         requestModelDataUpdate();
         clampFaceFiltersToSpec();
         for (Direction d : Direction.values()) {
-            DuctFaceNode n = getFaceNode(d);
-            if (n.nodeMode.usesExtractBatchField()) {
-                clampExtractAmount(n, d);
+            if (getFaceLanes(d).nodeMode.usesExtractBatchField()) {
+                clampExtractAmount(getFaceNode(d), d);
+                clampFluidExtractAmount(getFluidFaceNode(d), d);
             }
         }
-        if (level != null && level.isClientSide) {
+        if (level != null && level.isClientSide()) {
             // Chunk NBT has DuctOutbound but not TransitV1; BER reads DuctTransitClientState only.
             DuctTransitClientState.syncFromOutboundShipments(worldPosition, outboundShipments, level);
         }
@@ -2203,6 +2534,31 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         // Always send (possibly empty) so clients clear visuals when the last shipment completes.
         t.put("TransitV1", transitList);
+        ListTag fluidTransitList = new ListTag();
+        for (FluidTransitShipment s : fluidTransitShipments) {
+            if (s.fluid.isEmpty()) {
+                continue;
+            }
+            CompoundTag ft = new CompoundTag();
+            ft.put("Fluid", s.fluid.save(registries));
+            ft.putInt("Tot", s.totalTravelTicks);
+            ft.putInt("Tr", s.travelTicks);
+            ft.putInt("Ed", s.edgeTicks);
+            ft.putLong("J0", s.journeyStartGameTime);
+            ft.putByte("SrcF", (byte) s.sourceFace.ordinal());
+            ft.putByte("DstF", (byte) s.destFace.ordinal());
+            ListTag fpath = new ListTag();
+            for (BlockPos p : s.ductPath) {
+                CompoundTag pt = new CompoundTag();
+                pt.putInt("X", p.getX());
+                pt.putInt("Y", p.getY());
+                pt.putInt("Z", p.getZ());
+                fpath.add(pt);
+            }
+            ft.put("Path", fpath);
+            fluidTransitList.add(ft);
+        }
+        t.put("FluidTransitV1", fluidTransitList);
         t.putString("DuctLogicalId", logicalDuctId);
         return t;
     }
@@ -2241,6 +2597,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level != null && level.isClientSide) {
             // ItemStack components need the live client world registry; packet Provider often yields empty parse.
             DuctTransitClientState.onDuctUpdateTag(
+                    worldPosition, tag, level.registryAccess(), level.getGameTime());
+            DuctFluidTransitClientState.applyDuctUpdateTag(
                     worldPosition, tag, level.registryAccess(), level.getGameTime());
         }
     }

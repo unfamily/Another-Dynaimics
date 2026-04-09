@@ -1,5 +1,7 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.util.EnumSet;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
@@ -9,7 +11,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Shared connection geometry: pipe faces (same {@link DuctNetworkType}) vs external attachment faces.
- * Subclasses define how non-pipe neighbors count as attachments (items, fluids, etc.).
+ * Subclasses define which network types this block participates in and how non-pipe neighbors attach.
  */
 public abstract class AbstractDuctBlockEntity extends BlockEntity {
     private int pipeMask;
@@ -21,13 +23,21 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
         super(type, pos, state);
     }
 
-    protected abstract DuctNetworkType networkType();
+    /** Network types this block entity joins for pipe adjacency and attachment discovery. */
+    protected abstract EnumSet<DuctNetworkType> ductNetworkTypesForGeometry();
 
     /**
-     * Bitmask for {@code dir} if the neighbor should count as an external attachment (not a duct pipe).
-     * Item ducts use {@link net.neoforged.neoforge.capabilities.Capabilities.ItemHandler}.
+     * Bitmask for {@code dir} if the neighbor should count as an external attachment for {@code net} (not a duct pipe).
      */
-    protected abstract int attachmentMaskForNeighbor(Direction dir, BlockState neighborState, BlockPos neighborPos);
+    protected abstract int attachmentMaskForNeighbor(
+            DuctNetworkType net, Direction dir, BlockState neighborState, BlockPos neighborPos);
+
+    protected static boolean isPipeNeighborForNetwork(Level level, BlockPos a, BlockPos b, DuctNetworkType net) {
+        return switch (net) {
+            case ITEM -> DuctPipeAdjacency.areItemPipeNeighbors(level, a, b);
+            case FLUID -> DuctPipeAdjacency.areFluidPipeNeighbors(level, a, b);
+        };
+    }
 
     /**
      * Invoked after {@link #refreshFromWorld()} updates masks (e.g. item node resets when geometry is pipe-only).
@@ -45,7 +55,7 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
         if (level == null) {
             return;
         }
-        DuctNetworkType net = networkType();
+        EnumSet<DuctNetworkType> nets = ductNetworkTypesForGeometry();
         int pipe = 0;
         int storageBits = 0;
         for (Direction dir : Direction.values()) {
@@ -54,16 +64,19 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
             }
             BlockPos n = worldPosition.relative(dir);
             BlockState ns = level.getBlockState(n);
-            if (net == DuctNetworkType.ITEM) {
-                if (DuctPipeAdjacency.areItemPipeNeighbors(level, worldPosition, n)) {
-                    pipe |= 1 << dir.ordinal();
-                } else {
-                    storageBits |= attachmentMaskForNeighbor(dir, ns, n);
+            boolean pipeHere = false;
+            for (DuctNetworkType net : nets) {
+                if (isPipeNeighborForNetwork(level, worldPosition, n, net)) {
+                    pipeHere = true;
+                    break;
                 }
-            } else if (DuctConnectable.isSameNetwork(ns.getBlock(), net)) {
+            }
+            if (pipeHere) {
                 pipe |= 1 << dir.ordinal();
             } else {
-                storageBits |= attachmentMaskForNeighbor(dir, ns, n);
+                for (DuctNetworkType net : nets) {
+                    storageBits |= attachmentMaskForNeighbor(net, dir, ns, n);
+                }
             }
         }
         int storage = storageBits & ~pipe;

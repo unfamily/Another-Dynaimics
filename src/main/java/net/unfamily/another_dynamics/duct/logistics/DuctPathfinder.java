@@ -14,6 +14,7 @@ import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.unfamily.another_dynamics.duct.DuctConnectable;
+import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctPipeAdjacency;
@@ -30,6 +31,10 @@ public final class DuctPathfinder {
     public static long edgeTravelTicks(DuctItemTransportSpec spec) {
         int ticks = spec.effectiveSpeed(spec.speedDefault());
         return Math.max(0L, ticks);
+    }
+
+    public static long edgeTravelTicks(DuctFluidTransportSpec spec) {
+        return spec.edgeTravelTicks();
     }
 
     public static Set<BlockPos> connectedDucts(Level level, BlockPos start, DuctNetworkType network) {
@@ -70,13 +75,22 @@ public final class DuctPathfinder {
      */
     public static Optional<List<BlockPos>> shortestPath(
             Level level, BlockPos from, BlockPos to, DuctItemTransportSpec spec, DuctNetworkType network) {
+        return shortestPath(level, from, to, edgeTravelTicks(spec), network);
+    }
+
+    public static Optional<List<BlockPos>> shortestPath(
+            Level level, BlockPos from, BlockPos to, DuctFluidTransportSpec spec, DuctNetworkType network) {
+        return shortestPath(level, from, to, edgeTravelTicks(spec), network);
+    }
+
+    private static Optional<List<BlockPos>> shortestPath(
+            Level level, BlockPos from, BlockPos to, long edgeWeightPerHop, DuctNetworkType network) {
         if (!from.equals(to) && !DuctConnectable.isSameNetwork(level.getBlockState(from).getBlock(), network)) {
             return Optional.empty();
         }
         if (!DuctConnectable.isSameNetwork(level.getBlockState(to).getBlock(), network)) {
             return Optional.empty();
         }
-        long w = edgeTravelTicks(spec);
         record Node(BlockPos p, long d) {}
         PriorityQueue<Node> pq = new PriorityQueue<>(Comparator.comparingLong(Node::d));
         Map<BlockPos, Long> best = new HashMap<>();
@@ -95,7 +109,7 @@ public final class DuctPathfinder {
                 if (!isPipeNeighbor(level, cur.p, n, network)) {
                     continue;
                 }
-                long nd = cur.d + w;
+                long nd = cur.d + edgeWeightPerHop;
                 if (nd < best.getOrDefault(n, Long.MAX_VALUE)) {
                     best.put(n, nd);
                     prev.put(n, cur.p);
@@ -206,8 +220,24 @@ public final class DuctPathfinder {
         return w * path.size();
     }
 
+    public static long pathTravelTicks(List<BlockPos> path, DuctFluidTransportSpec spec) {
+        if (path == null || path.isEmpty()) {
+            return 0L;
+        }
+        long w = edgeTravelTicks(spec);
+        return w * path.size();
+    }
+
     /** Same ticks as {@link #pathTravelTicks} on the shortest path, or empty if unreachable. */
     public static OptionalLong distance(Level level, BlockPos from, BlockPos to, DuctItemTransportSpec spec, DuctNetworkType network) {
+        Optional<List<BlockPos>> path = shortestPath(level, from, to, spec, network);
+        if (path.isEmpty()) {
+            return OptionalLong.empty();
+        }
+        return OptionalLong.of(pathTravelTicks(path.get(), spec));
+    }
+
+    public static OptionalLong distance(Level level, BlockPos from, BlockPos to, DuctFluidTransportSpec spec, DuctNetworkType network) {
         Optional<List<BlockPos>> path = shortestPath(level, from, to, spec, network);
         if (path.isEmpty()) {
             return OptionalLong.empty();
@@ -218,6 +248,9 @@ public final class DuctPathfinder {
     private static boolean isPipeNeighbor(Level level, BlockPos from, BlockPos to, DuctNetworkType network) {
         if (network == DuctNetworkType.ITEM) {
             return DuctPipeAdjacency.areItemPipeNeighbors(level, from, to);
+        }
+        if (network == DuctNetworkType.FLUID) {
+            return DuctPipeAdjacency.areFluidPipeNeighbors(level, from, to);
         }
         return DuctConnectable.isSameNetwork(level.getBlockState(from).getBlock(), network)
                 && DuctConnectable.isSameNetwork(level.getBlockState(to).getBlock(), network);

@@ -20,9 +20,11 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
+import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlocks;
@@ -91,7 +93,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         this(
                 containerId,
                 playerInventory,
-                be.getFaceNode(accessFace).guiSlots,
+                new DuctMenuActiveLaneSlots(be, accessFace),
                 ContainerLevelAccess.create(be.getLevel(), be.getBlockPos()),
                 be.getMenuData(),
                 be,
@@ -99,6 +101,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 be.getBlockPos(),
                 be.ductAlwaysOpaqueRendering(),
                 be.getLogicalDuctId());
+        be.resetMenuTransportKindForOpen();
         be.clampFaceFiltersToSpec();
         be.refreshMenuData(accessFace);
         if (!be.getLevel().isClientSide() && playerInventory.player instanceof ServerPlayer sp) {
@@ -190,6 +193,30 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 .orElseGet(DuctDefinitionRegistry::itemDuctTransportSpec);
     }
 
+    private DuctFluidTransportSpec clientFluidTransportSpec() {
+        return DuctDefinitionRegistry.getByLogicalId(clientDuctLogicalId)
+                .map(DuctDefinition::fluidTransportOrFallback)
+                .orElseGet(DuctDefinitionRegistry::fluidDuctTransportSpec);
+    }
+
+    private boolean clientEditingFluidLane() {
+        if (linkedBlockEntity != null
+                && linkedBlockEntity.getLevel() != null
+                && !linkedBlockEntity.getLevel().isClientSide()) {
+            return linkedBlockEntity.menuActiveTransportKind() == DuctTransportKind.FLUID;
+        }
+        return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal();
+    }
+
+    private int menuTransportKindOrdinalForPackets() {
+        if (linkedBlockEntity != null
+                && linkedBlockEntity.getLevel() != null
+                && !linkedBlockEntity.getLevel().isClientSide()) {
+            return linkedBlockEntity.menuActiveTransportKind().ordinal();
+        }
+        return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
+    }
+
     public ContainerData getSyncData() {
         return syncData;
     }
@@ -199,11 +226,19 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
      *     ({@code Extr/Filt} or {@code Retr/Extr}); uses datapack {@code filter.allow_hybrid}/{@code deny_hybrid}.
      */
     public int filterAllowCap(boolean hybridFilterContext) {
+        if (clientEditingFluidLane()) {
+            var s = clientFluidTransportSpec();
+            return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
+        }
         var s = clientItemTransportSpec();
         return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
     }
 
     public int filterDenyCap(boolean hybridFilterContext) {
+        if (clientEditingFluidLane()) {
+            var s = clientFluidTransportSpec();
+            return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
+        }
         var s = clientItemTransportSpec();
         return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
     }
@@ -243,12 +278,16 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public void receiveFilterSync(
             BlockPos pos,
             Direction face,
+            int transportKindOrdinal,
             int filterBankOrdinal,
             List<String> allow,
             List<String> deny,
             List<Integer> allowCaps,
             boolean denyOverridesAllow) {
         if (!ductBlockPos.equals(pos) || accessFace != face) {
+            return;
+        }
+        if (transportKindOrdinal != syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND)) {
             return;
         }
         net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank =
@@ -305,7 +344,15 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             List<String> deny,
             List<Integer> allowCaps,
             boolean denyOverridesAllow) {
-        ModNetwork.sendFilterUpdate(ductBlockPos, accessFace, bank.ordinal(), allow, deny, allowCaps, denyOverridesAllow);
+        ModNetwork.sendFilterUpdate(
+                ductBlockPos,
+                accessFace,
+                menuTransportKindOrdinalForPackets(),
+                bank.ordinal(),
+                allow,
+                deny,
+                allowCaps,
+                denyOverridesAllow);
     }
 
     private static void clampClientList(List<String> list, int max) {
@@ -348,7 +395,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             return 0;
         }
         int fp = 1;
-        var stacks = linkedBlockEntity.getFaceNode(accessFace).guiSlots;
+        var stacks = linkedBlockEntity.activeMenuFaceNode(accessFace).guiSlots;
         for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
             fp = 31 * fp + stacks.getStackInSlot(i).hashCode();
         }
@@ -362,16 +409,20 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             int fp = upgradeSlotsFingerprint();
             if (fp != lastUpgradeSlotsFingerprint) {
                 lastUpgradeSlotsFingerprint = fp;
-                linkedBlockEntity
-                        .getMenuData()
-                        .set(DuctMenuSync.EXTRACT_BATCH_CAP, linkedBlockEntity.computeExtractBatchSettingCap(accessFace));
+                int cap =
+                        linkedBlockEntity.menuActiveTransportKind() == DuctTransportKind.FLUID
+                                ? linkedBlockEntity.computeFluidExtractBatchSettingCap(accessFace)
+                                : linkedBlockEntity.computeExtractBatchSettingCap(accessFace);
+                linkedBlockEntity.getMenuData().set(DuctMenuSync.EXTRACT_BATCH_CAP, cap);
             }
         }
     }
 
     @Override
     public boolean stillValid(Player player) {
-        return stillValid(access, player, ModBlocks.DUCT.get());
+        return stillValid(access, player, ModBlocks.DUCT.get())
+                || stillValid(access, player, ModBlocks.FLUID_DUCT.get())
+                || stillValid(access, player, ModBlocks.ITEM_FLUID_DUCT.get());
     }
 
     @Override

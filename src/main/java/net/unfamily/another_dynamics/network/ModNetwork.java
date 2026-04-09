@@ -19,6 +19,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.registry.ModAttachments;
 
@@ -32,6 +33,8 @@ public final class ModNetwork {
             DuctFieldPayload::pos,
             ByteBufCodecs.VAR_INT,
             DuctFieldPayload::faceOrdinal,
+            ByteBufCodecs.VAR_INT,
+            DuctFieldPayload::transportKindOrdinal,
             ByteBufCodecs.INT,
             DuctFieldPayload::insertionPriority,
             ByteBufCodecs.INT,
@@ -59,7 +62,10 @@ public final class ModNetwork {
                     return;
                 }
                 duct.applyClientFieldUpdate(
-                        Direction.values()[fo], payload.insertionPriority(), payload.extractBatch());
+                        Direction.values()[fo],
+                        payload.transportKindOrdinal(),
+                        payload.insertionPriority(),
+                        payload.extractBatch());
             });
         });
 
@@ -78,11 +84,15 @@ public final class ModNetwork {
                     return;
                 }
                 Direction face = Direction.values()[fo];
+                DuctTransportKind[] kinds = DuctTransportKind.values();
+                DuctTransportKind laneKind =
+                        kinds[Mth.clamp(payload.transportKindOrdinal(), 0, kinds.length - 1)];
                 DuctFaceNode.FilterBank bank = DuctFaceNode.FilterBank.values()[
                         Mth.clamp(payload.filterBankOrdinal(), 0, DuctFaceNode.FilterBank.values().length - 1)];
                 duct.applyServerFilterConfig(
                         player,
                         face,
+                        laneKind,
                         bank,
                         payload.allow(),
                         payload.deny(),
@@ -105,9 +115,12 @@ public final class ModNetwork {
                 if (fo < 0 || fo >= Direction.values().length) {
                     return;
                 }
+                DuctTransportKind[] kinds = DuctTransportKind.values();
+                DuctTransportKind laneKind =
+                        kinds[Mth.clamp(payload.transportKindOrdinal(), 0, kinds.length - 1)];
                 DuctFaceNode.FilterBank bank = DuctFaceNode.FilterBank.values()[
                         Mth.clamp(payload.filterBankOrdinal(), 0, DuctFaceNode.FilterBank.values().length - 1)];
-                duct.toggleListLogicFromClient(player, Direction.values()[fo], bank);
+                duct.toggleListLogicFromClient(player, Direction.values()[fo], laneKind, bank);
             });
         });
 
@@ -147,6 +160,7 @@ public final class ModNetwork {
                         DuctNodeScreen.applyClientFilterSync(
                                 payload.pos(),
                                 face,
+                                payload.transportKindOrdinal(),
                                 payload.filterBankOrdinal(),
                                 payload.allow(),
                                 payload.deny(),
@@ -154,19 +168,23 @@ public final class ModNetwork {
                                 payload.denyOverridesAllow());
                     });
         });
+
     }
 
     private static boolean validateDuctGuiDistance(ServerPlayer player, BlockPos pos) {
         return player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 8 * 8;
     }
 
-    public static void sendFieldUpdate(BlockPos pos, Direction face, int insertionPriority, int extractBatch) {
-        PacketDistributor.sendToServer(new DuctFieldPayload(pos, face.ordinal(), insertionPriority, extractBatch));
+    public static void sendFieldUpdate(
+            BlockPos pos, Direction face, int transportKindOrdinal, int insertionPriority, int extractBatch) {
+        PacketDistributor.sendToServer(
+                new DuctFieldPayload(pos, face.ordinal(), transportKindOrdinal, insertionPriority, extractBatch));
     }
 
     public static void sendFilterUpdate(
             BlockPos pos,
             Direction face,
+            int transportKindOrdinal,
             int filterBankOrdinal,
             java.util.List<String> allow,
             java.util.List<String> deny,
@@ -174,11 +192,19 @@ public final class ModNetwork {
             boolean denyOverridesAllow) {
         PacketDistributor.sendToServer(
                 new DuctFilterUpdatePayload(
-                        pos, face.ordinal(), filterBankOrdinal, allow, deny, allowCaps, denyOverridesAllow));
+                        pos,
+                        face.ordinal(),
+                        transportKindOrdinal,
+                        filterBankOrdinal,
+                        allow,
+                        deny,
+                        allowCaps,
+                        denyOverridesAllow));
     }
 
-    public static void sendListLogicToggle(BlockPos pos, Direction face, int filterBankOrdinal) {
-        PacketDistributor.sendToServer(new DuctListLogicPayload(pos, face.ordinal(), filterBankOrdinal));
+    public static void sendListLogicToggle(BlockPos pos, Direction face, int transportKindOrdinal, int filterBankOrdinal) {
+        PacketDistributor.sendToServer(
+                new DuctListLogicPayload(pos, face.ordinal(), transportKindOrdinal, filterBankOrdinal));
     }
 
     public static void sendSelfFeedSet(BlockPos pos, Direction face, boolean enabled) {
@@ -213,13 +239,15 @@ public final class ModNetwork {
     }
 
     private static void sendFilterSyncToPlayerNow(ServerPlayer player, DuctBlockEntity duct, Direction face) {
-        var node = duct.getFaceNode(face);
+        var node = duct.activeMenuFaceNode(face);
+        int tk = duct.menuActiveTransportKind().ordinal();
         for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
             PacketDistributor.sendToPlayer(
                     player,
                     new DuctFilterSyncPayload(
                             duct.getBlockPos(),
                             face.ordinal(),
+                            tk,
                             bank.ordinal(),
                             java.util.List.copyOf(node.bankAllowFilters(bank)),
                             java.util.List.copyOf(node.bankDenyFilters(bank)),
@@ -228,7 +256,8 @@ public final class ModNetwork {
         }
     }
 
-    public record DuctFieldPayload(BlockPos pos, int faceOrdinal, int insertionPriority, int extractBatch)
+    public record DuctFieldPayload(
+            BlockPos pos, int faceOrdinal, int transportKindOrdinal, int insertionPriority, int extractBatch)
             implements CustomPacketPayload {
         @Override
         public Type<? extends CustomPacketPayload> type() {

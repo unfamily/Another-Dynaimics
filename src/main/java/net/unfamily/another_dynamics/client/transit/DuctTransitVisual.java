@@ -30,11 +30,6 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class DuctTransitVisual {
 
-    /** How far (blocks) from duct center toward the attached inventory along {@link #sourceAttachFace}. */
-    private static final double NODE_ATTACH_PULL = 0.34;
-
-    private static final double INFER_ATTACH_PULL = 0.28;
-
     public final BlockPos ownerDuct;
     public final ItemStack stack;
     public final List<BlockPos> ductPath;
@@ -74,64 +69,13 @@ public final class DuctTransitVisual {
         this.progressAnchorGameTime = progressAnchorGameTime;
         Direction pathStartFace = sourceAttachFace;
         Direction pathEndFace = destAttachFace;
-        this.pathPoints = buildPathPoints(ductPath, ownerDuct, pathStartFace, pathEndFace);
+        this.pathPoints = DuctTransitPathGeometry.buildPathPoints(ductPath, ownerDuct, pathStartFace, pathEndFace);
     }
 
     private static ItemStack validateGhost(ItemStack stack) {
         ItemStack s = stack.copy();
         s.setCount(1);
         return s;
-    }
-
-    private static Vec3[] buildPathPoints(
-            List<BlockPos> pathList,
-            BlockPos ownerFallback,
-            @Nullable Direction sourceAttachFace,
-            @Nullable Direction destAttachFace) {
-        if (pathList == null || pathList.isEmpty()) {
-            return new Vec3[] {Vec3.atCenterOf(ownerFallback)};
-        }
-        int n = pathList.size();
-        Vec3[] w = new Vec3[n];
-        for (int i = 0; i < n; i++) {
-            Vec3 c = Vec3.atCenterOf(pathList.get(i));
-            if (i == 0) {
-                if (sourceAttachFace != null) {
-                    c = outwardTowardStorage(c, sourceAttachFace);
-                } else if (n >= 2) {
-                    c = inferStartFromPipeDirection(pathList, c, n);
-                }
-            } else if (i == n - 1) {
-                if (destAttachFace != null) {
-                    c = outwardTowardStorage(c, destAttachFace);
-                } else if (n >= 2) {
-                    c = inferEndFromPipeDirection(pathList, c, n);
-                }
-            }
-            w[i] = c;
-        }
-        return w;
-    }
-
-    private static Vec3 outwardTowardStorage(Vec3 ductCenter, Direction storageFaceOnDuct) {
-        Vec3 step = new Vec3(storageFaceOnDuct.getStepX(), storageFaceOnDuct.getStepY(), storageFaceOnDuct.getStepZ());
-        return ductCenter.add(step.scale(NODE_ATTACH_PULL));
-    }
-
-    private static Vec3 inferStartFromPipeDirection(List<BlockPos> pathList, Vec3 firstCenter, int n) {
-        Vec3 toNext = Vec3.atCenterOf(pathList.get(1)).subtract(firstCenter);
-        if (toNext.lengthSqr() < 1.0e-8) {
-            return firstCenter;
-        }
-        return firstCenter.subtract(toNext.normalize().scale(INFER_ATTACH_PULL));
-    }
-
-    private static Vec3 inferEndFromPipeDirection(List<BlockPos> pathList, Vec3 lastCenter, int n) {
-        Vec3 fromPrev = lastCenter.subtract(Vec3.atCenterOf(pathList.get(n - 2)));
-        if (fromPrev.lengthSqr() < 1.0e-8) {
-            return lastCenter;
-        }
-        return lastCenter.add(fromPrev.normalize().scale(INFER_ATTACH_PULL));
     }
 
     /**

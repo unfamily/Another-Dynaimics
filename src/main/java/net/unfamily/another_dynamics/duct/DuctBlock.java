@@ -39,7 +39,7 @@ import java.util.Optional;
  * this build registers {@link DuctNetworkType#ITEM} only—add further types to {@link #ductNetworkTypes()} when implemented.
  * Block id in saves is {@code duct} ({@link net.unfamily.another_dynamics.registry.ModBlocks#DUCT}).
  */
-public final class DuctBlock extends AbstractDuctBlock {
+public class DuctBlock extends AbstractDuctBlock {
 
     public DuctBlock(Properties properties) {
         super(properties);

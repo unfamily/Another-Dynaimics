@@ -49,6 +49,44 @@ public final class DuctPipeAdjacency {
         return idA.equals(idB);
     }
 
+    /** Same rules as {@link #areItemPipeNeighbors} for {@link DuctNetworkType#FLUID}. */
+    public static boolean areFluidPipeNeighbors(Level level, BlockPos a, BlockPos b) {
+        if (level == null) {
+            return false;
+        }
+        int dx = Math.abs(a.getX() - b.getX());
+        int dy = Math.abs(a.getY() - b.getY());
+        int dz = Math.abs(a.getZ() - b.getZ());
+        if (dx + dy + dz != 1) {
+            return false;
+        }
+        Direction fromA = directionFromAToB(a, b);
+        if (fromA == null) {
+            return false;
+        }
+        if (faceDisconnected(level, a, fromA) || faceDisconnected(level, b, fromA.getOpposite())) {
+            return false;
+        }
+        BlockState sa = level.getBlockState(a);
+        BlockState sb = level.getBlockState(b);
+        Block ba = sa.getBlock();
+        Block bb = sb.getBlock();
+        if (!DuctConnectable.isSameNetwork(ba, DuctNetworkType.FLUID)
+                || !DuctConnectable.isSameNetwork(bb, DuctNetworkType.FLUID)) {
+            return false;
+        }
+        String idA = logicalIdOf(level, a, ba);
+        String idB = logicalIdOf(level, b, bb);
+        boolean compatA =
+                DuctDefinitionRegistry.getByLogicalId(idA).map(DuctDefinition::connectWithCompatible).orElse(true);
+        boolean compatB =
+                DuctDefinitionRegistry.getByLogicalId(idB).map(DuctDefinition::connectWithCompatible).orElse(true);
+        if (compatA && compatB) {
+            return true;
+        }
+        return idA.equals(idB);
+    }
+
     private static Direction directionFromAToB(BlockPos a, BlockPos b) {
         int dx = b.getX() - a.getX();
         int dy = b.getY() - a.getY();

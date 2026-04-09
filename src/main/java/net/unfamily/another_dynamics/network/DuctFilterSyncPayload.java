@@ -16,6 +16,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 public record DuctFilterSyncPayload(
         BlockPos pos,
         int faceOrdinal,
+        int transportKindOrdinal,
         int filterBankOrdinal,
         List<String> allow,
         List<String> deny,
@@ -31,6 +32,7 @@ public record DuctFilterSyncPayload(
                     (buf, p) -> {
                         BlockPos.STREAM_CODEC.encode(buf, p.pos());
                         ByteBufCodecs.VAR_INT.encode(buf, p.faceOrdinal());
+                        ByteBufCodecs.VAR_INT.encode(buf, p.transportKindOrdinal());
                         ByteBufCodecs.VAR_INT.encode(buf, p.filterBankOrdinal());
                         DuctFilterPacketCodecs.STRING_LIST.encode(buf, p.allow());
                         DuctFilterPacketCodecs.STRING_LIST.encode(buf, p.deny());
@@ -40,12 +42,13 @@ public record DuctFilterSyncPayload(
                     buf -> {
                         BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
                         int face = ByteBufCodecs.VAR_INT.decode(buf);
+                        int tk = ByteBufCodecs.VAR_INT.decode(buf);
                         int bank = ByteBufCodecs.VAR_INT.decode(buf);
                         List<String> allow = DuctFilterPacketCodecs.STRING_LIST.decode(buf);
                         List<String> deny = DuctFilterPacketCodecs.STRING_LIST.decode(buf);
                         List<Integer> caps = DuctFilterPacketCodecs.INT_LIST.decode(buf);
                         boolean over = buf.readBoolean();
-                        return new DuctFilterSyncPayload(pos, face, bank, allow, deny, caps, over);
+                        return new DuctFilterSyncPayload(pos, face, tk, bank, allow, deny, caps, over);
                     });
 
     @Override

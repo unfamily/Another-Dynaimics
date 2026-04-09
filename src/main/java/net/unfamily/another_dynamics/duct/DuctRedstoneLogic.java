@@ -24,16 +24,19 @@ public final class DuctRedstoneLogic {
     }
 
     /**
-     * Whether the item node on a duct face participates in transport for the current redstone seen by the duct block.
+     * Whether transport on a duct face is allowed for the current world redstone (shared by all kinds on that face).
      *
-     * <p>{@link DuctFaceNode#redstoneMode}: 0 = ignore, 1 = active when unpowered, 2 = active when powered, 3 = always off.
+     * <p>{@code redstoneMode}: 0 = ignore, 1 = active when unpowered, 2 = active when powered, 3 = always off.
+     *
+     * <p>Legacy saves without {@code RsFmt} on the face: stored value 3 used to mean a removed "pulse" mode and is migrated
+     * to 0 (ignore); values {@code >= 4} map to 3 (disabled). See {@link DuctFaceLanes} shared NBT.
      */
-    public static boolean isItemNodeActive(Level level, BlockPos ductBlockPos, DuctFaceNode node) {
+    public static boolean isFaceTransportActive(Level level, BlockPos ductBlockPos, int redstoneMode) {
         if (level == null) {
             return true;
         }
         boolean powered = isDuctPowered(level, ductBlockPos);
-        return switch (node.redstoneMode) {
+        return switch (redstoneMode) {
             case 0 -> true;
             case 1 -> !powered;
             case 2 -> powered;

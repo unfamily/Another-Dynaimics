@@ -36,6 +36,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
+import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
@@ -136,6 +137,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private static final int CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT = 4;
     private static final int CHANNEL_WIDGET_Y =
             DuctNodeMenu.SLOT_COPY_Y + 18 + CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT;
+    private static final int TRANSPORT_KIND_BUTTON_Y = CHANNEL_WIDGET_Y + CHANNEL_WIDGET_H + 4;
 
     /** Visible filter rows; scroll when there are more slots. */
     private static final int VISIBLE_FILTER_ENTRIES = 4;
@@ -184,6 +186,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private Button amountMaxButton;
     private Button amountDiscardButton;
     private ChannelLetterButton channelButton;
+    private Button transportKindButton;
     private EditBox routingPriorityBox;
 
     private Button denyNavButton;
@@ -268,6 +271,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     public static void applyClientFilterSync(
             BlockPos pos,
             Direction face,
+            int transportKindOrdinal,
             int filterBankOrdinal,
             List<String> allow,
             List<String> deny,
@@ -280,7 +284,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (!(mc.player.containerMenu instanceof DuctNodeMenu menu)) {
             return;
         }
-        menu.receiveFilterSync(pos, face, filterBankOrdinal, allow, deny, allowCaps, denyOverridesAllow);
+        menu.receiveFilterSync(
+                pos, face, transportKindOrdinal, filterBankOrdinal, allow, deny, allowCaps, denyOverridesAllow);
         if (mc.screen instanceof DuctNodeScreen screen && screen.getMenu() == menu) {
             screen.menu.ensureClientFilterBufferSizes(screen.useHybridFilterCaps());
             screen.rebuildFilterEntryWidgets();
@@ -328,7 +333,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         ModNetwork.sendSelfFeedSet(menuSyncedPos(), menuSyncedFace(), !on);
                         return;
                     }
-                    ModNetwork.sendListLogicToggle(menuSyncedPos(), menuSyncedFace(), activeFilterBank.ordinal());
+                    ModNetwork.sendListLogicToggle(
+                            menuSyncedPos(),
+                            menuSyncedFace(),
+                            menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
+                            activeFilterBank.ordinal());
                 })
                 .bounds(
                         this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
@@ -561,6 +570,20 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     }
                 });
         addRenderableWidget(channelButton);
+
+        transportKindButton =
+                Button.builder(Component.literal(""), b -> handleMenuButton(30))
+                        .bounds(
+                                this.leftPos + channelX,
+                                this.topPos + TRANSPORT_KIND_BUTTON_Y,
+                                CHANNEL_WIDGET_W + 48,
+                                14)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.duct_node.transport_kind.tooltip")))
+                        .build();
+        addRenderableWidget(transportKindButton);
 
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         rebuildFilterEntryWidgets();
@@ -842,6 +865,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         closeButton.visible = true;
         channelButton.visible = !howto;
+        transportKindButton.visible =
+                !howto && menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1;
 
         backButton.visible = howto || advancedFiltering || (filterList && !edit);
         validKeysButton.visible = filterList && !edit && !howto && !advancedFiltering;
@@ -1918,6 +1943,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         redstoneModeStub = menu.getSyncData().get(DuctMenuSync.REDSTONE_MODE);
         channelButton.setLetterValue(menu.getSyncData().get(DuctMenuSync.CHANNEL));
 
+        DuctTransportKind[] kinds = DuctTransportKind.values();
+        int ko = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
+        if (ko >= 0 && ko < kinds.length) {
+            transportKindButton.setMessage(
+                    Component.translatable(
+                            "gui.another_dynamics.duct_node.transport." + kinds[ko].name().toLowerCase()));
+        } else {
+            transportKindButton.setMessage(Component.literal("?"));
+        }
+
         int layoutKey = amountBlockLayoutKey(nm, hybridPanel);
         if (amountBlockLayoutCache != layoutKey) {
             amountBlockLayoutCache = layoutKey;
@@ -2001,6 +2036,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 // Future: parse upgrade item stats (keep in sync with DuctBlockEntity#getExtractBatchUpgradeBonus).
             }
         }
+        if (menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal()) {
+            return DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
+                    .map(DuctDefinition::fluidTransportOrFallback)
+                    .orElseGet(DuctDefinitionRegistry::fluidDuctTransportSpec)
+                    .extractBatchSettingCapMb(bonus);
+        }
         return DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
                 .map(DuctDefinition::itemTransportOrFallback)
                 .orElseGet(DuctDefinitionRegistry::itemDuctTransportSpec)
@@ -2008,7 +2049,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private void pushAmountFields(int insertionPriority, int extractBatch) {
-        ModNetwork.sendFieldUpdate(menuSyncedPos(), menuSyncedFace(), insertionPriority, extractBatch);
+        ModNetwork.sendFieldUpdate(
+                menuSyncedPos(),
+                menuSyncedFace(),
+                menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
+                insertionPriority,
+                extractBatch);
     }
 
     private int stepForPriorityAdjust() {

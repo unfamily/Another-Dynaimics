@@ -6,5 +6,6 @@ package net.unfamily.another_dynamics.duct;
  * Item logistics use {@link #ITEM}; add further constants when implementing other duct kinds.
  */
 public enum DuctNetworkType {
-    ITEM
+    ITEM,
+    FLUID
 }
