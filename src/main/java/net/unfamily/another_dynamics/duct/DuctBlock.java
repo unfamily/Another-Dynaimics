@@ -47,7 +47,9 @@ public class DuctBlock extends AbstractDuctBlock {
 
     @Override
     public EnumSet<DuctNetworkType> ductNetworkTypes() {
-        return EnumSet.of(DuctNetworkType.ITEM);
+        // Physical block is universal; actual network membership is resolved from the BlockEntity's logical id
+        // via DuctConnectable.isSameNetwork(level, pos, type).
+        return EnumSet.allOf(DuctNetworkType.class);
     }
 
     @Override
