@@ -46,6 +46,7 @@ import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.FilterGroupIds;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
@@ -134,6 +135,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
      * the filter entry editor (same anchor as non-advanced: {@link #FIRST_FILTER_ROW_Y} + visible rows) without overlapping it.
      */
     private static final int ADVANCED_CAP_NUMERIC_ROW_GUI_Y = 88;
+    private static final int ADVANCED_GROUP_ROW_ABOVE_GAP = 4;
     /** ARGB; filter entry {@link EditBox} uses the same white in allow edit and advanced (always readable on field). */
     private static final int FILTER_ENTRY_EDIT_TEXT_COLOR = 0xFFFFFFFF;
     /** Width of "Advanced filtering" button beside the filter edit line (allow list edit mode). */
@@ -279,6 +281,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private Button advCap2InfinityButton;
     private Button advCap2ApplyButton;
     private Button advCap2UndoButton;
+    private FilterGroupColorWidget filterGroupColorWidget;
     private boolean advCapEditHadFocus;
     private ItemStack ghostSlotItem = ItemStack.EMPTY;
     /** When editing fluid filters, preview still sprite from {@link FluidUtil#getFluidContained} on the ghost item. */
@@ -314,6 +317,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowGroupIds,
             boolean denyOverridesAllow) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
@@ -331,6 +335,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 deny,
                 allowCaps,
                 allowCaps2,
+                allowGroupIds,
                 denyOverridesAllow);
         if (mc.screen instanceof DuctNodeScreen screen && screen.getMenu() == menu) {
             screen.menu.ensureClientFilterBufferSizes(screen.useHybridFilterCaps());
@@ -582,6 +587,44 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.undo.tooltip")))
                         .build();
         addRenderableWidget(advCap2UndoButton);
+
+        filterGroupColorWidget =
+                new FilterGroupColorWidget(
+                        0,
+                        0,
+                        () -> {
+                            if (editModeFilterIndex < 0
+                                    || (activeFilterBank != DuctFaceNode.FilterBank.FILTER
+                                            && activeFilterBank != DuctFaceNode.FilterBank.RETRIEVER)) {
+                                return 0;
+                            }
+                            menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+                            List<Integer> g = menu.getClientAllowGroupIds(activeFilterBank);
+                            return editModeFilterIndex < g.size()
+                                    ? g.get(editModeFilterIndex)
+                                    : 0;
+                        },
+                        v -> {
+                            if (subView != SubView.ADVANCED_FILTERING || editModeFilterIndex < 0) {
+                                return;
+                            }
+                            if (activeFilterBank != DuctFaceNode.FilterBank.FILTER
+                                    && activeFilterBank != DuctFaceNode.FilterBank.RETRIEVER) {
+                                return;
+                            }
+                            playClickSound();
+                            menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+                            List<Integer> g = menu.getClientAllowGroupIds(activeFilterBank);
+                            while (g.size() <= editModeFilterIndex) {
+                                g.add(0);
+                            }
+                            g.set(editModeFilterIndex, FilterGroupIds.normalize(v));
+                            pushFiltersToServer();
+                        });
+        filterGroupColorWidget.setTooltip(
+                Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filter_group.tooltip")));
+        addRenderableWidget(filterGroupColorWidget);
+
         layoutAdvancedCapBlock();
 
         nodeModeButton = Button.builder(Component.empty(), b -> {
@@ -672,10 +715,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 CHANNEL_WIDGET_H,
                 dir -> {
                     if (minecraft != null && minecraft.gameMode != null) {
-                        int id = dir > 0 ? 4 : 5;
+                        int id = dir == 0 ? 13 : (dir > 0 ? 4 : 5);
                         minecraft.gameMode.handleInventoryButtonClick(menu.containerId, id);
                     }
                 });
+        channelButton.setTooltip(
+                Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.channel_letter.tooltip")));
         addRenderableWidget(channelButton);
 
         transportKindPickerButtons.clear();
@@ -1008,6 +1053,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             // For non-both cases, keep widgets are hidden by visibility logic; still reset widths.
             advCap2EditBox.setWidth(AMOUNT_EDIT_W);
         }
+
+        boolean showGroup =
+                advanced
+                        && (activeFilterBank == DuctFaceNode.FilterBank.FILTER
+                                || activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER);
+        filterGroupColorWidget.visible = showGroup;
+        if (showGroup) {
+            int groupY = this.topPos + capRowGuiY - 18 - ADVANCED_GROUP_ROW_ABOVE_GAP;
+            int cx = this.leftPos + blockGuiX + blockW / 2 - 9;
+            filterGroupColorWidget.setPosition(cx, groupY);
+        }
     }
 
     private void applyFilterEntryEditBoxTextStyle() {
@@ -1047,6 +1103,15 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return;
         }
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+        if (editModeTextBox != null) {
+            String value = editModeTextBox.getValue();
+            List<String> list = getEditingList();
+            while (list.size() <= editModeFilterIndex) {
+                list.add("");
+            }
+            list.set(editModeFilterIndex, value);
+            originalFilterValue = value;
+        }
         List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
         while (caps.size() <= editModeFilterIndex) {
             caps.add(0);
@@ -1284,6 +1349,14 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                                         caps.add(0);
                                     }
                                     caps.set(idx, 0);
+                                    if (activeFilterBank == DuctFaceNode.FilterBank.FILTER
+                                            || activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER) {
+                                        List<Integer> gr = menu.getClientAllowGroupIds(activeFilterBank);
+                                        while (gr.size() <= idx) {
+                                            gr.add(0);
+                                        }
+                                        gr.set(idx, 0);
+                                    }
                                 }
                                 pushFiltersToServer();
                             })
@@ -2274,12 +2347,28 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 activeFilterBank == DuctFaceNode.FilterBank.FILTER
                         ? new ArrayList<>(menu.getClientFilterKeepCaps())
                         : List.of();
+        int n = menu.getClientAllowFilters(activeFilterBank).size();
+        List<Integer> groups = new ArrayList<>(n);
+        if (activeFilterBank == DuctFaceNode.FilterBank.EXTRACTOR) {
+            for (int i = 0; i < n; i++) {
+                groups.add(0);
+            }
+        } else {
+            List<Integer> g = menu.getClientAllowGroupIds(activeFilterBank);
+            for (int i = 0; i < n; i++) {
+                groups.add(
+                        i < g.size()
+                                ? FilterGroupIds.normalize(g.get(i))
+                                : 0);
+            }
+        }
         menu.pushFilterConfigToServer(
                 activeFilterBank,
                 new ArrayList<>(menu.getClientAllowFilters(activeFilterBank)),
                 new ArrayList<>(menu.getClientDenyFilters(activeFilterBank)),
                 new ArrayList<>(menu.getClientAllowCaps(activeFilterBank)),
                 caps2,
+                groups,
                 menu.getClientDenyOverridesAllow(activeFilterBank));
     }
 

@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.function.IntConsumer;
@@ -13,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Channel selector: cycles A–Z with colored background (Pattern Crafter letter style).
  * No empty/neutral state: value is always {@code 1..26} (A red by default).
+ * Left click: previous letter; right click: next; Shift+click: jump to A (red).
  */
 public final class ChannelLetterButton extends AbstractWidget {
     private static final int MIN = 1;
@@ -58,12 +60,20 @@ public final class ChannelLetterButton extends AbstractWidget {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (active && visible && isValidClickButton(button) && clicked(mouseX, mouseY)) {
             playDownSound(Minecraft.getInstance().getSoundManager());
+            if (Screen.hasShiftDown()) {
+                value = MIN;
+                if (onClickNotifyServer != null) {
+                    onClickNotifyServer.accept(0);
+                }
+                return true;
+            }
             if (onClickNotifyServer != null) {
-                onClickNotifyServer.accept(button == 0 ? 1 : -1);
+                // Left = backward (previous letter), right = forward (next letter)
+                onClickNotifyServer.accept(button == 0 ? -1 : 1);
             } else if (button == 0) {
-                cycleForward();
-            } else {
                 cycleBackward();
+            } else {
+                cycleForward();
             }
             return true;
         }

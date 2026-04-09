@@ -117,6 +117,35 @@ public final class DuctGasAllowLimitLogic {
         return Math.max(0L, current - (long) keep);
     }
 
+    /** Keep cap for a specific allow row index (used by grouped retriever + donor checks). */
+    public static long maxExtractRespectingKeepAtIndex(
+            Object handler,
+            List<String> allowLines,
+            List<Integer> keepCaps,
+            Object template,
+            int lineIndex,
+            HolderLookup.Provider registries) {
+        if (template == null || MekanismChemicalCompat.isEmptyStack(template) || handler == null) {
+            return Long.MAX_VALUE;
+        }
+        if (lineIndex < 0 || lineIndex >= allowLines.size()) {
+            return Long.MAX_VALUE;
+        }
+        String line = allowLines.get(lineIndex);
+        if (line == null || line.trim().isEmpty()) {
+            return Long.MAX_VALUE;
+        }
+        if (!DuctGasFilterMatcher.matchesAnyNonEmptyEntry(template, line, registries)) {
+            return 0L;
+        }
+        int keep = lineIndex < keepCaps.size() ? keepCaps.get(lineIndex) : 0;
+        if (keep <= 0) {
+            return Long.MAX_VALUE;
+        }
+        long current = countMatchingInHandler(handler, line, registries);
+        return Math.max(0L, current - (long) keep);
+    }
+
     /** Pending gas toward a destination, for limit math (implements {@link #countMatchingInStacks} without copying lists). */
     @FunctionalInterface
     public interface ServerPending {

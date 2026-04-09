@@ -5,6 +5,8 @@ import net.minecraft.core.Direction;
 
 import java.util.List;
 
+import net.unfamily.another_dynamics.duct.FilterGroupIds;
+
 /**
  * Pending gas ("chemical") move along a duct path: transfer runs when {@code travelTicks} reaches zero.
  *
@@ -22,6 +24,9 @@ public final class GasTransitShipment {
     /** Storage attachment face on {@link #destDuct}. */
     public Direction destFace;
     public BlockPos destDuct;
+
+    /** {@link FilterGroupIds} when {@code > 0} (parity with fluid/item grouped filter execution). */
+    public int filterAllowGroupId;
 
     public GasTransitShipment(
             Object stack,
@@ -42,6 +47,7 @@ public final class GasTransitShipment {
         this.sourceFace = sourceFace;
         this.destFace = destStorageFace;
         this.destDuct = destDuct.immutable();
+        this.filterAllowGroupId = 0;
     }
 }
 

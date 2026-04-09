@@ -4,9 +4,10 @@ package net.unfamily.another_dynamics.client.gui;
  * ARGB colors for channel letters A–Z (same palette idea as Pattern Crafter).
  */
 final class LetterPalette {
+    /** Index 0 = neutral/dark; indices 1–26 = channel letters A–Z and filter-group letters A–Z (same colors). */
     private static final int[] BACKGROUNDS = {
-            0xFF404040, // unused (no empty channel)
-            0xFFFF4040, // A red
+            0xFF404040,
+            0xFFFF4040, // A
             0xFF40FF40,
             0xFF4080FF,
             0xFFFFFF40,
@@ -23,7 +24,15 @@ final class LetterPalette {
             0xFF208040,
             0xFFC02020,
             0xFF2020A0,
-            0xFFFFC040,
+            0xFFFFC040, // R
+            0xFF40A080, // S
+            0xFFC08040, // T
+            0xFF6040C0, // U
+            0xFFA0A040, // V
+            0xFF406080, // W
+            0xFFD0D0D0, // X
+            0xFF904060, // Y
+            0xFF509050, // Z
     };
 
     private LetterPalette() {}

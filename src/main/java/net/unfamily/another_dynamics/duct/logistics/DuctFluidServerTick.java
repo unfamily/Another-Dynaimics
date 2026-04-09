@@ -16,6 +16,7 @@ import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctFluidAllowGroupLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidAllowLimitLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidFilterLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
@@ -197,6 +198,10 @@ public final class DuctFluidServerTick {
                             }
                         }
                     }
+                    if (!DuctFluidAllowGroupLogic.filterDestGroupAllowsExtractionDelivery(
+                            level, destBe, df, toMove, destCap, level.registryAccess())) {
+                        continue;
+                    }
                 }
                 if (dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION) {
                     simulated =
@@ -246,7 +251,20 @@ public final class DuctFluidServerTick {
                             .orElseGet(() -> List.of(srcPos, pick.ductPos()));
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
-        sourceBe.scheduleFluidTransitPending(level, planned, pathWire, sourceFace, pick.face(), pick.ductPos(), spec);
+        int fgrp = 0;
+        if (level.getBlockEntity(pick.ductPos()) instanceof DuctBlockEntity destPick) {
+            NodeMode dmPick = destPick.getFaceLanes(pick.face()).nodeMode;
+            if (dmPick == NodeMode.FILTERING_INSERTION || dmPick == NodeMode.EXTRACTION_FILTERING) {
+                fgrp =
+                        DuctFluidAllowGroupLogic.fluidAllowLineGroupId(
+                                destPick.getFluidFaceNode(pick.face()),
+                                DuctFaceNode.FilterBank.FILTER,
+                                planned,
+                                level.registryAccess());
+            }
+        }
+        sourceBe.scheduleFluidTransitPending(
+                level, planned, pathWire, sourceFace, pick.face(), pick.ductPos(), spec, fgrp);
     }
 
     private static void tryRetrievePull(
@@ -377,8 +395,30 @@ public final class DuctFluidServerTick {
                 node.roundRobinCursor = rr[0] + donorIdx + 1;
             }
             FluidStack planned = new FluidStack(available.getFluid(), plannedMb);
+            if (!DuctFluidAllowGroupLogic.retrieverPullGroupSatisfiable(
+                    level,
+                    donorBe,
+                    donorFace,
+                    retrieverBe,
+                    retrieverFace,
+                    planStack,
+                    srcCap,
+                    destCap,
+                    level.registryAccess())) {
+                continue;
+            }
+            int fgrp =
+                    DuctFluidAllowGroupLogic.fluidAllowLineGroupId(
+                            node, DuctFaceNode.FilterBank.RETRIEVER, planStack, level.registryAccess());
             donorBe.scheduleFluidTransitPending(
-                    level, planned, OutboundShipment.copyPath(path), donorFace, retrieverFace, retrieverPos, spec);
+                    level,
+                    planned,
+                    OutboundShipment.copyPath(path),
+                    donorFace,
+                    retrieverFace,
+                    retrieverPos,
+                    spec,
+                    fgrp);
             retrieverBe.setChanged();
             return;
         }
@@ -543,6 +583,10 @@ public final class DuctFluidServerTick {
             return simulatedFillMb;
         }
         DuctFaceNode destNode = destBe.getFaceLanes(destFace).fluid;
+        if (!DuctFluidAllowGroupLogic.retrieverDestGroupAllowsIncomingMb(
+                level, destBe, destFace, movingProbe, destCap, level.registryAccess())) {
+            return 0;
+        }
         List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER);
         List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER);
         int idx = DuctFluidAllowLimitLogic.firstMatchingAllowLineIndex(allowLines, movingProbe, level.registryAccess());

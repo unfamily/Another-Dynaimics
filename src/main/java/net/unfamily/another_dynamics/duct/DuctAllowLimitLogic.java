@@ -37,6 +37,65 @@ public final class DuctAllowLimitLogic {
         return -1;
     }
 
+    /**
+     * Per-line limit check: uses cap at {@code lineIndex} and counts only that line's pattern (not first matching row).
+     */
+    public static int maxAdditionalInsertForAllowLineAtIndex(
+            IItemHandler handlerAfterPending,
+            List<String> allowLines,
+            List<Integer> caps,
+            ItemStack template,
+            int lineIndex,
+            HolderLookup.Provider registries) {
+        if (template.isEmpty() || handlerAfterPending == null) {
+            return Integer.MAX_VALUE;
+        }
+        if (lineIndex < 0 || lineIndex >= allowLines.size()) {
+            return Integer.MAX_VALUE;
+        }
+        String line = allowLines.get(lineIndex);
+        if (line == null || line.trim().isEmpty()) {
+            return Integer.MAX_VALUE;
+        }
+        if (!DuctFilterMatcher.matchesAnyNonEmptyEntry(template, line, registries)) {
+            return 0;
+        }
+        int lim = lineIndex < caps.size() ? caps.get(lineIndex) : 0;
+        if (lim <= 0) {
+            return Integer.MAX_VALUE;
+        }
+        int current = countMatchingInHandler(handlerAfterPending, line, registries);
+        return Math.max(0, lim - current);
+    }
+
+    public static int maxExtractRespectingKeepAtIndex(
+            IItemHandler handler,
+            List<String> allowLines,
+            List<Integer> keepCaps,
+            ItemStack template,
+            int lineIndex,
+            HolderLookup.Provider registries) {
+        if (template.isEmpty() || handler == null) {
+            return Integer.MAX_VALUE;
+        }
+        if (lineIndex < 0 || lineIndex >= allowLines.size()) {
+            return Integer.MAX_VALUE;
+        }
+        String line = allowLines.get(lineIndex);
+        if (line == null || line.trim().isEmpty()) {
+            return Integer.MAX_VALUE;
+        }
+        if (!DuctFilterMatcher.matchesAnyNonEmptyEntry(template, line, registries)) {
+            return 0;
+        }
+        int keep = lineIndex < keepCaps.size() ? keepCaps.get(lineIndex) : 0;
+        if (keep <= 0) {
+            return Integer.MAX_VALUE;
+        }
+        int current = countMatchingInHandler(handler, line, registries);
+        return Math.max(0, current - keep);
+    }
+
     public static int countMatchingInHandler(
             IItemHandler handler, String filterLine, HolderLookup.Provider registries) {
         if (handler == null || filterLine == null || filterLine.trim().isEmpty()) {

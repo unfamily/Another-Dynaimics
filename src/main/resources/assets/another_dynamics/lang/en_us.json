@@ -171,6 +171,8 @@
   "gui.another_dynamics.duct_node.advanced_filtering.title": "Advanced",
   "gui.another_dynamics.duct_node.advanced_filtering.button": "Advanced",
   "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip": "Edit Limit (filter bank) or Keep (extractor/retriever) for this allow line: max items in storage or minimum to leave when extracting.",
+  "gui.another_dynamics.duct_node.filter_group.tooltip": "Left click: previous group (A–Z)\nRight click: next group\nShift+click: clear group",
+  "gui.another_dynamics.duct_node.channel_letter.tooltip": "Left click: previous channel\nRight click: next channel\nShift+click: channel A (red)",
   "gui.another_dynamics.duct_node.transport.item": "Items",
   "gui.another_dynamics.duct_node.transport.fluid": "Fluids",
   "gui.another_dynamics.duct_node.transport.gas": "Gases",

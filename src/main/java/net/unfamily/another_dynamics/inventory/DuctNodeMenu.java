@@ -47,7 +47,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private static final int HOTBAR_GAP = 4;
 
     /** Fine alignment vs {@code node.png} slot art (right and down). */
-    private static final int SLOT_GEOMETRY_NUDGE = 1;
+    private static final int SLOT_GEOMETRY_NUDGE = 2;
 
     public static final int SLOT_UPGRADE_X = 14 + SLOT_GEOMETRY_NUDGE;
     public static final int SLOT_UPGRADE_Y0 = 32 + SLOT_GEOMETRY_NUDGE;
@@ -93,6 +93,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private final List<Integer> clientAllowCapsRetriever = new ArrayList<>();
     private final List<Integer> clientAllowCapsFilter = new ArrayList<>(); // FILTER.limit
     private final List<Integer> clientAllowCapsFilter2 = new ArrayList<>(); // FILTER.keep
+
+    private final List<Integer> clientAllowGroupIdsFilter = new ArrayList<>();
+    private final List<Integer> clientAllowGroupIdsRetriever = new ArrayList<>();
 
     public DuctNodeMenu(int containerId, Inventory playerInventory, DuctBlockEntity be, Direction accessFace) {
         this(
@@ -344,6 +347,14 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return clientAllowCapsFilter2;
     }
 
+    public List<Integer> getClientAllowGroupIds(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> List.of();
+            case RETRIEVER -> clientAllowGroupIdsRetriever;
+            case FILTER -> clientAllowGroupIdsFilter;
+        };
+    }
+
     public void receiveFilterSync(
             BlockPos pos,
             Direction face,
@@ -353,6 +364,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowGroupIds,
             boolean denyOverridesAllow) {
         if (!ductBlockPos.equals(pos) || accessFace != face) {
             return;
@@ -387,6 +399,23 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 }
             }
         }
+        if (bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.FILTER) {
+            clientAllowGroupIdsFilter.clear();
+            if (allowGroupIds != null) {
+                for (Integer v : allowGroupIds) {
+                    clientAllowGroupIdsFilter.add(
+                            net.unfamily.another_dynamics.duct.FilterGroupIds.normalize(v != null ? v : 0));
+                }
+            }
+        } else if (bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.RETRIEVER) {
+            clientAllowGroupIdsRetriever.clear();
+            if (allowGroupIds != null) {
+                for (Integer v : allowGroupIds) {
+                    clientAllowGroupIdsRetriever.add(
+                            net.unfamily.another_dynamics.duct.FilterGroupIds.normalize(v != null ? v : 0));
+                }
+            }
+        }
         switch (bank) {
             case EXTRACTOR -> clientDenyOverridesAllowExtractor = denyOverridesAllow;
             case RETRIEVER -> clientDenyOverridesAllowRetriever = denyOverridesAllow;
@@ -415,6 +444,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         clampClientIntList(clientAllowCapsRetriever, maxA);
         clampClientIntList(clientAllowCapsFilter, maxA);
         clampClientIntList(clientAllowCapsFilter2, maxA);
+        clampClientIntList(clientAllowGroupIdsFilter, maxA);
+        clampClientIntList(clientAllowGroupIdsRetriever, maxA);
     }
 
     public void pushFilterConfigToServer(
@@ -423,6 +454,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowGroupIds,
             boolean denyOverridesAllow) {
         ModNetwork.sendFilterUpdate(
                 ductBlockPos,
@@ -433,6 +465,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 deny,
                 allowCaps,
                 allowCaps2,
+                allowGroupIds,
                 denyOverridesAllow);
     }
 

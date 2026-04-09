@@ -38,6 +38,62 @@ public final class DuctFluidAllowLimitLogic {
         return -1;
     }
 
+    public static int maxAdditionalInsertForAllowLineMbAtIndex(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            FluidStack template,
+            int lineIndex,
+            HolderLookup.Provider registries) {
+        if (template.isEmpty() || handler == null) {
+            return Integer.MAX_VALUE;
+        }
+        if (lineIndex < 0 || lineIndex >= allowLines.size()) {
+            return Integer.MAX_VALUE;
+        }
+        String line = allowLines.get(lineIndex);
+        if (line == null || line.trim().isEmpty()) {
+            return Integer.MAX_VALUE;
+        }
+        if (!DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(template, line, registries)) {
+            return 0;
+        }
+        int lim = lineIndex < caps.size() ? caps.get(lineIndex) : 0;
+        if (lim <= 0) {
+            return Integer.MAX_VALUE;
+        }
+        int current = countMatchingInHandlerMb(handler, line, registries);
+        return Math.max(0, lim - current);
+    }
+
+    public static int maxExtractRespectingKeepMbAtIndex(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> keepCaps,
+            FluidStack template,
+            int lineIndex,
+            HolderLookup.Provider registries) {
+        if (template.isEmpty() || handler == null) {
+            return Integer.MAX_VALUE;
+        }
+        if (lineIndex < 0 || lineIndex >= allowLines.size()) {
+            return Integer.MAX_VALUE;
+        }
+        String line = allowLines.get(lineIndex);
+        if (line == null || line.trim().isEmpty()) {
+            return Integer.MAX_VALUE;
+        }
+        if (!DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(template, line, registries)) {
+            return 0;
+        }
+        int keep = lineIndex < keepCaps.size() ? keepCaps.get(lineIndex) : 0;
+        if (keep <= 0) {
+            return Integer.MAX_VALUE;
+        }
+        int current = countMatchingInHandlerMb(handler, line, registries);
+        return Math.max(0, current - keep);
+    }
+
     public static int countMatchingInHandlerMb(
             IFluidHandler handler, String filterLine, HolderLookup.Provider registries) {
         if (handler == null || filterLine == null || filterLine.trim().isEmpty()) {
