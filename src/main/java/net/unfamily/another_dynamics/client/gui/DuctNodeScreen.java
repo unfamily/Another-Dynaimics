@@ -15,6 +15,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -47,6 +48,7 @@ import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModAttachments;
@@ -54,6 +56,7 @@ import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.FluidUtil;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Duct node GUI: upgrades, center controls, filter sub-screens (Deep Drawer Extractor parity), right column, inventory.
@@ -183,6 +186,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     /** Left inset for Valid keys body text (inside panel border). */
     private static final int HELP_TEXT_X = 14;
+    /** "How to use" macro chained examples: first line fits two, the next up to three (then repeat that cap). */
+    private static final int MACRO_HELP_FIRST_LINE_EXAMPLES = 2;
+    private static final int MACRO_HELP_NEXT_LINE_EXAMPLES = 3;
     private static final int HELP_BACK_BUTTON_X = 8;
     private static final int HELP_BACK_BUTTON_Y = TEXTURE_HEIGHT - 25;
 
@@ -278,6 +284,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private ItemStack ghostSlotItem = ItemStack.EMPTY;
     /** When editing fluid filters, preview still sprite from {@link FluidUtil#getFluidContained} on the ghost item. */
     private FluidStack ghostSlotFluid = FluidStack.EMPTY;
+    /** When editing gas (Mekanism chemical) filters: sample from cursor item capability, or {@code null} when empty. */
+    @Nullable
+    private Object ghostSlotGas = null;
     private List<String> filterVariants = new ArrayList<>();
     private int currentFilterVariantIndex = 0;
 
@@ -1636,6 +1645,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         ghostSlotItem = ItemStack.EMPTY;
         ghostSlotFluid = FluidStack.EMPTY;
+        ghostSlotGas = null;
         filterVariants.clear();
         currentFilterVariantIndex = 0;
     }
@@ -1738,6 +1748,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         editGhostSlotScreenY = 0;
         ghostSlotItem = ItemStack.EMPTY;
         ghostSlotFluid = FluidStack.EMPTY;
+        ghostSlotGas = null;
         filterVariants.clear();
         currentFilterVariantIndex = 0;
     }
@@ -1746,12 +1757,49 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal();
     }
 
+    private boolean isGasFilterTransport() {
+        return menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.GAS.ordinal();
+    }
+
+    private String filterHelpTextPrefix() {
+        int k = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
+        if (k == DuctTransportKind.FLUID.ordinal()) {
+            return "gui.another_dynamics.fluid_filter_text.";
+        }
+        if (k == DuctTransportKind.GAS.ordinal()) {
+            return "gui.another_dynamics.gas_filter_text.";
+        }
+        return "gui.another_dynamics.general_filter_text.";
+    }
+
+    private String allowCapLimitTooltipKey() {
+        if (isFluidFilterTransport()) {
+            return "gui.another_dynamics.duct_node.allow_cap.field.limit_mb";
+        }
+        if (isGasFilterTransport()) {
+            return "gui.another_dynamics.duct_node.allow_cap.field.limit_gas";
+        }
+        return "gui.another_dynamics.duct_node.allow_cap.field.limit";
+    }
+
+    private String allowCapKeepTooltipKey() {
+        if (isFluidFilterTransport()) {
+            return "gui.another_dynamics.duct_node.allow_cap.field.keep_mb";
+        }
+        if (isGasFilterTransport()) {
+            return "gui.another_dynamics.duct_node.allow_cap.field.keep_gas";
+        }
+        return "gui.another_dynamics.duct_node.allow_cap.field.keep";
+    }
+
     private void renderEditModeSlot(GuiGraphics guiGraphics) {
         int slotSize = 18;
         int slotX = editModeSlotX();
         int slotY = editModeSlotY();
         guiGraphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, slotSize, slotSize, slotSize, slotSize);
-        if (!ghostSlotFluid.isEmpty()) {
+        if (ghostSlotGas != null && !MekanismChemicalCompat.isEmptyStack(ghostSlotGas)) {
+            GuiChemicalStillBlit.blit16(guiGraphics, ghostSlotGas, slotX + 1, slotY + 1);
+        } else if (!ghostSlotFluid.isEmpty()) {
             GuiFluidStillBlit.blit16(guiGraphics, ghostSlotFluid, slotX + 1, slotY + 1);
         } else if (!ghostSlotItem.isEmpty()) {
             guiGraphics.renderItem(ghostSlotItem, slotX + 1, slotY + 1);
@@ -1767,6 +1815,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (cursorItem.isEmpty()) {
             ghostSlotItem = ItemStack.EMPTY;
             ghostSlotFluid = FluidStack.EMPTY;
+            ghostSlotGas = null;
             filterVariants.clear();
             currentFilterVariantIndex = 0;
             if (editModeTextBox != null) {
@@ -1776,6 +1825,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
             playClickSound();
         } else if (isFluidFilterTransport()) {
+            ghostSlotGas = null;
             Optional<FluidStack> contained = FluidUtil.getFluidContained(cursorItem);
             if (contained.isPresent() && !contained.get().isEmpty()) {
                 ghostSlotItem = ItemStack.EMPTY;
@@ -1795,7 +1845,27 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 editModeTextBox.setHighlightPos(0);
             }
             playClickSound();
+        } else if (isGasFilterTransport() && MekanismChemicalCompat.isLoaded()) {
+            ghostSlotFluid = FluidStack.EMPTY;
+            ghostSlotItem = ItemStack.EMPTY;
+            Object sample = MekanismChemicalCompat.sampleFromItemStack(cursorItem);
+            if (!MekanismChemicalCompat.isEmptyStack(sample)) {
+                ghostSlotGas = sample;
+                filterVariants = generateGasFilterVariants(sample);
+            } else {
+                ghostSlotGas = null;
+                filterVariants = List.of();
+            }
+            currentFilterVariantIndex = 0;
+            if (editModeTextBox != null) {
+                String v = filterVariants.isEmpty() ? "" : filterVariants.getFirst();
+                editModeTextBox.setValue(v);
+                editModeTextBox.setCursorPosition(0);
+                editModeTextBox.setHighlightPos(0);
+            }
+            playClickSound();
         } else {
+            ghostSlotGas = null;
             ghostSlotFluid = FluidStack.EMPTY;
             ghostSlotItem = cursorItem.copy();
             filterVariants = generateAllFilterVariants(cursorItem);
@@ -1945,6 +2015,37 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return variants;
     }
 
+    /** Filter presets from a Mekanism chemical sample (ghost slot), mirroring {@link #generateFluidFilterVariants}. */
+    private List<String> generateGasFilterVariants(Object chemicalStack) {
+        List<String> variants = new ArrayList<>();
+        if (chemicalStack == null
+                || !MekanismChemicalCompat.isLoaded()
+                || MekanismChemicalCompat.isEmptyStack(chemicalStack)
+                || minecraft == null
+                || minecraft.level == null) {
+            return variants;
+        }
+        String idStr = MekanismChemicalCompat.getTypeRegistryName(chemicalStack);
+        if (idStr == null || idStr.isEmpty()) {
+            return variants;
+        }
+        variants.add("-" + idStr);
+        try {
+            ResourceLocation id = ResourceLocation.parse(idStr);
+            variants.add("@" + id.getNamespace());
+        } catch (Exception ignored) {
+        }
+        for (String tagId : MekanismChemicalCompat.getTagIds(chemicalStack)) {
+            variants.add("#" + tagId);
+        }
+        if (MekanismChemicalCompat.isRadioactive(chemicalStack)) {
+            variants.add("&radioactive");
+        }
+        variants.add("&tint=" + MekanismChemicalCompat.getTint(chemicalStack));
+        variants.add("&radioactivity=" + MekanismChemicalCompat.getRadioactivityPerUnit(chemicalStack));
+        return variants;
+    }
+
     private static ItemStack getDisplayItemForFilter(String filter) {
         if (filter == null || filter.trim().isEmpty()) {
             return ItemStack.EMPTY;
@@ -2062,6 +2163,32 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
         }
         return FluidStack.EMPTY;
+    }
+
+    /** Sample chemical for filter row icon when the duct is in gas (Mekanism) filter mode. */
+    private Object getDisplayGasForFilter(String filter) {
+        if (filter == null
+                || filter.trim().isEmpty()
+                || !MekanismChemicalCompat.isLoaded()
+                || minecraft == null
+                || minecraft.level == null) {
+            return MekanismChemicalCompat.emptyStack();
+        }
+        String f = filter.trim();
+        if (f.startsWith("?") || f.startsWith("&")) {
+            return MekanismChemicalCompat.emptyStack();
+        }
+        var reg = minecraft.level.registryAccess();
+        if (f.startsWith("-")) {
+            return MekanismChemicalCompat.chemicalStackFromIdForDisplay(f.substring(1), 1024L, reg);
+        }
+        if (f.startsWith("#")) {
+            return MekanismChemicalCompat.firstChemicalInTagForDisplay(f.substring(1), 1024L, reg);
+        }
+        if (f.startsWith("@")) {
+            return MekanismChemicalCompat.firstChemicalInModForDisplay(f.substring(1), 1024L, reg);
+        }
+        return MekanismChemicalCompat.chemicalStackFromIdForDisplay(f, 1024L, reg);
     }
 
     private static ItemStack parseItemStackFromSNBT(String snbtString) {
@@ -2345,13 +2472,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             advCapEditBox.setTooltip(
                     Tooltip.create(
                             Component.translatable(
-                                    limitCtx
-                                            ? (isFluidFilterTransport()
-                                                    ? "gui.another_dynamics.duct_node.allow_cap.field.limit_mb"
-                                                    : "gui.another_dynamics.duct_node.allow_cap.field.limit")
-                                            : (isFluidFilterTransport()
-                                                    ? "gui.another_dynamics.duct_node.allow_cap.field.keep_mb"
-                                                    : "gui.another_dynamics.duct_node.allow_cap.field.keep"))));
+                                    limitCtx ? allowCapLimitTooltipKey() : allowCapKeepTooltipKey())));
             // Infinity/zero convenience button is contextual: Limit uses ∞, Keep uses 0.
             advCapInfinityButton.setMessage(Component.literal(limitCtx ? "\u221e" : "0"));
             advCapInfinityButton.setTooltip(
@@ -2367,11 +2488,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 advCap2PlusButton.setTooltip(
                         Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.plus.keep")));
                 advCap2EditBox.setTooltip(
-                        Tooltip.create(
-                                Component.translatable(
-                                        isFluidFilterTransport()
-                                                ? "gui.another_dynamics.duct_node.allow_cap.field.keep_mb"
-                                                : "gui.another_dynamics.duct_node.allow_cap.field.keep")));
+                        Tooltip.create(Component.translatable(allowCapKeepTooltipKey())));
             }
         }
         NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
@@ -2810,6 +2927,50 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
     }
 
+    /**
+     * "Valid keys" is an overlay: do not use {@link AbstractContainerScreen}'s menu background (player inventory grid under
+     * the texture). Use the same dim/blur as a normal in-world {@link net.minecraft.client.gui.screens.Screen} only.
+     */
+    @Override
+    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        if (subView == SubView.HOW_TO_USE) {
+            if (minecraft != null && minecraft.level != null) {
+                renderTransparentBackground(guiGraphics);
+                renderBlurredBackground(partialTick);
+            } else {
+                super.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+            }
+            return;
+        }
+        super.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+    }
+
+    private boolean routeHowToUseInputToWidgetsOnly(
+            HowToUseInput op, double mouseX, double mouseY, int button, double dragX, double dragY, int keyCode, int scanCode, int modifiers, char codePoint) {
+        for (GuiEventListener child : children()) {
+            boolean handled =
+                    switch (op) {
+                        case MOUSE_CLICK -> child.mouseClicked(mouseX, mouseY, button);
+                        case MOUSE_RELEASE -> child.mouseReleased(mouseX, mouseY, button);
+                        case MOUSE_DRAG -> child.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+                        case KEY -> child.keyPressed(keyCode, scanCode, modifiers);
+                        case CHAR -> child.charTyped(codePoint, modifiers);
+                    };
+            if (handled) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private enum HowToUseInput {
+        MOUSE_CLICK,
+        MOUSE_RELEASE,
+        MOUSE_DRAG,
+        KEY,
+        CHAR
+    }
+
     @Override
     protected void renderBg(@NotNull GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         if (subView == SubView.HOW_TO_USE) {
@@ -2925,6 +3086,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 FluidStack displayFluid = getDisplayFluidForFilter(filter);
                 if (!displayFluid.isEmpty()) {
                     GuiFluidStillBlit.blit16(graphics, displayFluid, slotX + 1, slotY + 1);
+                } else {
+                    ItemStack displayItem = getDisplayItemForFilter(filter);
+                    if (!displayItem.isEmpty()) {
+                        graphics.renderItem(displayItem, slotX + 1, slotY + 1);
+                        graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+                    }
+                }
+            } else if (isGasFilterTransport() && minecraft != null && minecraft.level != null) {
+                Object displayGas = getDisplayGasForFilter(filter);
+                if (!MekanismChemicalCompat.isEmptyStack(displayGas)) {
+                    GuiChemicalStillBlit.blit16(graphics, displayGas, slotX + 1, slotY + 1);
                 } else {
                     ItemStack displayItem = getDisplayItemForFilter(filter);
                     if (!displayItem.isEmpty()) {
@@ -3118,7 +3290,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
         }
         if (subView == SubView.HOW_TO_USE) {
-            return super.mouseClicked(mouseX, mouseY, button);
+            routeHowToUseInputToWidgetsOnly(
+                    HowToUseInput.MOUSE_CLICK, mouseX, mouseY, button, 0.0, 0.0, 0, 0, 0, '\0');
+            return true;
         }
         if (inEditMode() && button == 0) {
             int slotX = editModeSlotX();
@@ -3165,11 +3339,19 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 }
             }
         }
+        if (subView == SubView.HOW_TO_USE) {
+            return false;
+        }
         return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY);
     }
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (subView == SubView.HOW_TO_USE) {
+            routeHowToUseInputToWidgetsOnly(
+                    HowToUseInput.MOUSE_DRAG, mouseX, mouseY, button, dragX, dragY, 0, 0, 0, '\0');
+            return true;
+        }
         if (button == 0
                 && isDraggingHandle
                 && (subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS)
@@ -3190,6 +3372,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0 && isDraggingHandle) {
             isDraggingHandle = false;
+            return true;
+        }
+        if (subView == SubView.HOW_TO_USE) {
+            routeHowToUseInputToWidgetsOnly(
+                    HowToUseInput.MOUSE_RELEASE, mouseX, mouseY, button, 0.0, 0.0, 0, 0, 0, '\0');
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
@@ -3269,6 +3456,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return true;
         }
 
+        if (subView == SubView.HOW_TO_USE) {
+            routeHowToUseInputToWidgetsOnly(
+                    HowToUseInput.KEY, 0.0, 0.0, 0, 0.0, 0.0, keyCode, scanCode, modifiers, '\0');
+            return true;
+        }
+
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
@@ -3283,6 +3476,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (advCapEditBox.charTyped(codePoint, modifiers)) {
                 return true;
             }
+        }
+        if (subView == SubView.HOW_TO_USE) {
+            routeHowToUseInputToWidgetsOnly(
+                    HowToUseInput.CHAR, 0.0, 0.0, 0, 0.0, 0.0, 0, 0, modifiers, codePoint);
+            return true;
         }
         return super.charTyped(codePoint, modifiers);
     }
@@ -3325,63 +3523,86 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
     }
 
-    private void renderHelpLineWithTwoExamples(
+    /**
+     * One opening/closing pair; comma-separated clickable examples, wrapped: {@value #MACRO_HELP_FIRST_LINE_EXAMPLES}
+     * on the first row, up to {@value #MACRO_HELP_NEXT_LINE_EXAMPLES} on further rows (fluid/gas: four examples → 2+2).
+     */
+    private int renderHelpLineWithChainedExamples(
             GuiGraphics guiGraphics,
             String beforeKey,
-            String example1Key,
             String middleKey,
-            String example2Key,
             String afterKey,
+            List<String> exampleKeys,
+            int maxExamplesFirstLine,
+            int maxExamplesNextLines,
             int x,
             int y,
             int mouseX,
             int mouseY) {
-        Component beforeComponent = Component.translatable(beforeKey);
-        Component example1Component = Component.translatable(example1Key);
-        Component middleComponent = Component.translatable(middleKey);
-        Component example2Component = Component.translatable(example2Key);
-        Component afterComponent = Component.translatable(afterKey);
-        String beforeText = beforeComponent.getString();
-        String example1Text = example1Component.getString();
-        String middleText = middleComponent.getString();
-        String example2Text = example2Component.getString();
-        String afterText = afterComponent.getString();
-        int rowX = x;
+        if (exampleKeys.isEmpty()) {
+            return 0;
+        }
+        List<List<String>> rows = new ArrayList<>();
+        int idx = 0;
+        boolean firstChunk = true;
+        while (idx < exampleKeys.size()) {
+            int cap = firstChunk ? maxExamplesFirstLine : maxExamplesNextLines;
+            int end = Math.min(idx + cap, exampleKeys.size());
+            rows.add(new ArrayList<>(exampleKeys.subList(idx, end)));
+            idx = end;
+            firstChunk = false;
+        }
+        Component beforeC = Component.translatable(beforeKey);
+        Component middleC = Component.translatable(middleKey);
+        Component afterC = Component.translatable(afterKey);
+        String beforeText = beforeC.getString();
+        String middleText = middleC.getString();
+        String afterText = afterC.getString();
+        int lineStep = this.font.lineHeight + 4;
         int rowY = y;
-        int beforeWidth = this.font.width(beforeText);
-        guiGraphics.drawString(this.font, beforeComponent, rowX, rowY, 0x404040, false);
-        int example1X = rowX + beforeWidth;
-        int example1Width = this.font.width(example1Text);
-        int s1x = this.leftPos + example1X;
-        int s1y = this.topPos + rowY;
-        boolean isHovered1 =
-                mouseX >= s1x && mouseX <= s1x + example1Width && mouseY >= s1y && mouseY <= s1y + this.font.lineHeight;
-        int example1Color = isHovered1 ? 0x0066FF : 0x0066CC;
-        guiGraphics.drawString(this.font, example1Text, example1X, rowY, example1Color, false);
-        if (isHovered1) {
-            int underlineY = rowY + this.font.lineHeight;
-            guiGraphics.fill(example1X, underlineY, example1X + example1Width, underlineY + 1, example1Color);
+        for (int r = 0; r < rows.size(); r++) {
+            List<String> rowKeys = rows.get(r);
+            boolean isFirstRow = r == 0;
+            boolean isLastRow = r == rows.size() - 1;
+            int cursorX = x;
+            if (isFirstRow) {
+                guiGraphics.drawString(this.font, beforeC, cursorX, rowY, 0x404040, false);
+                cursorX += this.font.width(beforeText);
+            }
+            for (int i = 0; i < rowKeys.size(); i++) {
+                Component exC = Component.translatable(rowKeys.get(i));
+                String exText = exC.getString();
+                int exW = this.font.width(exText);
+                int sx = this.leftPos + cursorX;
+                int sy = this.topPos + rowY;
+                boolean hovered =
+                        mouseX >= sx && mouseX <= sx + exW && mouseY >= sy && mouseY <= sy + this.font.lineHeight;
+                int color = hovered ? 0x0066FF : 0x0066CC;
+                guiGraphics.drawString(this.font, exText, cursorX, rowY, color, false);
+                if (hovered) {
+                    int uy = rowY + this.font.lineHeight;
+                    guiGraphics.fill(cursorX, uy, cursorX + exW, uy + 1, color);
+                }
+                exampleDataList.add(new ExampleData(exText, cursorX, rowY, exW));
+                cursorX += exW;
+                boolean moreInThisRow = i < rowKeys.size() - 1;
+                if (moreInThisRow) {
+                    guiGraphics.drawString(this.font, middleC, cursorX, rowY, 0x404040, false);
+                    cursorX += this.font.width(middleText);
+                } else {
+                    if (!isLastRow) {
+                        guiGraphics.drawString(this.font, middleC, cursorX, rowY, 0x404040, false);
+                        cursorX += this.font.width(middleText);
+                    } else if (!afterText.isEmpty()) {
+                        guiGraphics.drawString(this.font, afterC, cursorX, rowY, 0x404040, false);
+                    }
+                }
+            }
+            if (r < rows.size() - 1) {
+                rowY += lineStep;
+            }
         }
-        exampleDataList.add(new ExampleData(example1Text, x + beforeWidth, y, example1Width));
-        int middleX = example1X + example1Width;
-        guiGraphics.drawString(this.font, middleComponent, middleX, rowY, 0x404040, false);
-        int middleWidth = this.font.width(middleText);
-        int example2X = middleX + middleWidth;
-        int example2Width = this.font.width(example2Text);
-        int s2x = this.leftPos + example2X;
-        boolean isHovered2 =
-                mouseX >= s2x && mouseX <= s2x + example2Width && mouseY >= s1y && mouseY <= s1y + this.font.lineHeight;
-        int example2Color = isHovered2 ? 0x0066FF : 0x0066CC;
-        guiGraphics.drawString(this.font, example2Text, example2X, rowY, example2Color, false);
-        if (isHovered2) {
-            int underlineY = rowY + this.font.lineHeight;
-            guiGraphics.fill(example2X, underlineY, example2X + example2Width, underlineY + 1, example2Color);
-        }
-        exampleDataList.add(new ExampleData(example2Text, x + beforeWidth + example1Width + middleWidth, y, example2Width));
-        if (!afterText.isEmpty()) {
-            int afterX = example2X + example2Width;
-            guiGraphics.drawString(this.font, afterComponent, afterX, rowY, 0x404040, false);
-        }
+        return rows.size();
     }
 
     private void renderExampleTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -3510,60 +3731,54 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int gapBelowTitle = 10;
             int helpLineStep = this.font.lineHeight + 4;
             int helpY = titleBaseline + this.font.lineHeight + gapBelowTitle;
-            String p =
-                    menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal()
-                            ? "gui.another_dynamics.fluid_filter_text."
-                            : "gui.another_dynamics.general_filter_text.";
+            String p = filterHelpTextPrefix();
             renderHelpLineWithExample(graphics, p + "id", p + "id.example", p + "id.after", HELP_TEXT_X, helpY, mouseX, mouseY);
             helpY += helpLineStep;
             renderHelpLineWithExample(graphics, p + "modid", p + "modid.example", p + "modid.after", HELP_TEXT_X, helpY, mouseX, mouseY);
             helpY += helpLineStep;
             renderHelpLineWithExample(graphics, p + "tag", p + "tag.example", p + "tag.after", HELP_TEXT_X, helpY, mouseX, mouseY);
             helpY += helpLineStep;
-            if (p.endsWith("general_filter_text.")) {
-                renderHelpLineWithTwoExamples(
-                        graphics,
-                        p + "macro",
-                        p + "macro.example1",
-                        p + "macro.middle",
-                        p + "macro.example2",
-                        p + "macro.after",
-                        HELP_TEXT_X,
-                        helpY,
-                        mouseX,
-                        mouseY);
-            } else {
-                renderHelpLineWithTwoExamples(
-                        graphics,
-                        p + "macro",
-                        p + "macro.example1",
-                        p + "macro.middle",
-                        p + "macro.example2",
-                        p + "macro.after",
-                        HELP_TEXT_X,
-                        helpY,
-                        mouseX,
-                        mouseY);
-                helpY += helpLineStep;
-                renderHelpLineWithTwoExamples(
-                        graphics,
-                        p + "macro2",
-                        p + "macro2.example1",
-                        p + "macro2.middle",
-                        p + "macro2.example2",
-                        p + "macro2.after",
-                        HELP_TEXT_X,
-                        helpY,
-                        mouseX,
-                        mouseY);
-                helpY += helpLineStep;
+            int macroRows =
+                    p.endsWith("general_filter_text.")
+                            ? renderHelpLineWithChainedExamples(
+                                    graphics,
+                                    p + "macro",
+                                    p + "macro.middle",
+                                    p + "macro.after",
+                                    List.of(p + "macro.example1", p + "macro.example2"),
+                                    MACRO_HELP_FIRST_LINE_EXAMPLES,
+                                    MACRO_HELP_NEXT_LINE_EXAMPLES,
+                                    HELP_TEXT_X,
+                                    helpY,
+                                    mouseX,
+                                    mouseY)
+                            : renderHelpLineWithChainedExamples(
+                                    graphics,
+                                    p + "macro",
+                                    p + "macro.middle",
+                                    p + "macro.after",
+                                    List.of(
+                                            p + "macro.example1",
+                                            p + "macro.example2",
+                                            p + "macro.example3",
+                                            p + "macro.example4"),
+                                    MACRO_HELP_FIRST_LINE_EXAMPLES,
+                                    MACRO_HELP_NEXT_LINE_EXAMPLES,
+                                    HELP_TEXT_X,
+                                    helpY,
+                                    mouseX,
+                                    mouseY);
+            helpY += macroRows * helpLineStep;
+            if (!p.endsWith("general_filter_text.")) {
                 graphics.drawString(this.font, Component.translatable(p + "operators"), HELP_TEXT_X, helpY, 0x404040, false);
+                helpY += helpLineStep;
             }
-            helpY += helpLineStep;
-            graphics.drawString(this.font, Component.translatable(p + "nbt"), HELP_TEXT_X, helpY, 0x404040, false);
-            helpY += helpLineStep;
-            renderHelpLineWithExample(
-                    graphics, p + "nbt.example", p + "nbt.example.text", p + "nbt.after", HELP_TEXT_X, helpY, mouseX, mouseY);
+            if (!isGasFilterTransport()) {
+                graphics.drawString(this.font, Component.translatable(p + "nbt"), HELP_TEXT_X, helpY, 0x404040, false);
+                helpY += helpLineStep;
+                renderHelpLineWithExample(
+                        graphics, p + "nbt.example", p + "nbt.example.text", p + "nbt.after", HELP_TEXT_X, helpY, mouseX, mouseY);
+            }
         }
     }
 
@@ -3572,6 +3787,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         lastMouseX = mouseX;
         lastMouseY = mouseY;
         if (subView == SubView.HOW_TO_USE) {
+            hoveredSlot = null;
             renderBackground(graphics, mouseX, mouseY, partialTick);
             // renderBg blits at absolute (leftPos, topPos); do not pre-translate or the panel draws twice (shifted).
             renderBg(graphics, partialTick, mouseX, mouseY);

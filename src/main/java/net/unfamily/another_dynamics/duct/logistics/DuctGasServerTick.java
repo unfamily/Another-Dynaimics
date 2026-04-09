@@ -78,6 +78,22 @@ public final class DuctGasServerTick {
         if (MekanismChemicalCompat.isEmptyStack(available)) {
             return;
         }
+        long keepCap =
+                DuctGasAllowLimitLogic.maxExtractRespectingKeep(
+                        srcHandler,
+                        node.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR),
+                        node.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR),
+                        available,
+                        level.registryAccess());
+        if (keepCap != Long.MAX_VALUE) {
+            long capped = Math.min(MekanismChemicalCompat.getAmount(available), keepCap);
+            if (capped <= 0) {
+                return;
+            }
+            if (capped < MekanismChemicalCompat.getAmount(available)) {
+                available = MekanismChemicalCompat.copyWithAmount(available, capped);
+            }
+        }
         if (!DuctGasFilterLogic.passesGasFiltersForBank(node, DuctFaceNode.FilterBank.EXTRACTOR, available, level)) {
             return;
         }
@@ -153,7 +169,27 @@ public final class DuctGasServerTick {
                     continue;
                 }
 
-                // TODO gas limit/keep semantics for FILTER bank (pending-aware) - after basic transport works.
+                if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
+                    List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
+                    List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
+                    int idx = DuctGasAllowLimitLogic.firstMatchingAllowLineIndex(allowLines, tryStack, level.registryAccess());
+                    if (idx >= 0 && idx < caps.size()) {
+                        int lim = caps.get(idx);
+                        if (lim > 0) {
+                            String line = allowLines.get(idx);
+                            long current =
+                                    DuctGasAllowLimitLogic.countMatchingInHandler(destHandler, line, level.registryAccess());
+                            long pending =
+                                    DuctGasAllowLimitLogic.countMatchingInStacks(
+                                            DuctGasIncomingIndex.snapshot(level, destPos), line, level.registryAccess());
+                            long maxAdd = Math.max(0L, (long) lim - (current + pending));
+                            simulated = Math.min(simulated, maxAdd);
+                            if (simulated <= 0) {
+                                continue;
+                            }
+                        }
+                    }
+                }
                 cands.add(new DestCandidate(destPos, df, destNode.insertionPriority, dist.getAsLong(), simulated));
             }
         }

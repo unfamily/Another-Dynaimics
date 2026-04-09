@@ -8,7 +8,7 @@
     {
       "dec": "fluid",
       "batch": {
-        "default": 1000,
+        "default": 4000,
         "max": -1
       },
       "rate": {

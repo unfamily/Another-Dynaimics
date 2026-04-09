@@ -13,8 +13,9 @@
   "can_transport": [
     {
       "dec": "gas",
+      "radioactive": true,
       "batch": {
-        "default": 1000,
+        "default": 4000,
         "max": -1
       },
       "rate": {

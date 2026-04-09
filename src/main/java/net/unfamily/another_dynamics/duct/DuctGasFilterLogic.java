@@ -22,7 +22,7 @@ public final class DuctGasFilterLogic {
         List<String> deny = node.bankDenyFilters(bank);
         if (deny != null) {
             for (String line : deny) {
-                if (DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, line)) {
+                if (DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, line, level.registryAccess())) {
                     return false;
                 }
             }
@@ -40,7 +40,7 @@ public final class DuctGasFilterLogic {
             }
             if (hasAllow) {
                 for (String line : allow) {
-                    if (DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, line)) {
+                    if (DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, line, level.registryAccess())) {
                         return true;
                     }
                 }

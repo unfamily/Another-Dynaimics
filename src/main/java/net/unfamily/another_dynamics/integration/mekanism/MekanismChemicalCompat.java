@@ -2,6 +2,11 @@ package net.unfamily.another_dynamics.integration.mekanism;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.capabilities.BlockCapability;
@@ -10,6 +15,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
@@ -67,6 +73,62 @@ public final class MekanismChemicalCompat {
         Class<?> c = Class.forName("mekanism.common.capabilities.Capabilities");
         Object chemicalCap = c.getField("CHEMICAL").get(null);
         return chemicalCap.getClass().getMethod("block").invoke(chemicalCap);
+    }
+
+    private static Object chemicalItemCapability() throws ReflectiveOperationException {
+        Class<?> c = Class.forName("mekanism.common.capabilities.Capabilities");
+        Object chemicalCap = c.getField("CHEMICAL").get(null);
+        return chemicalCap.getClass().getMethod("item").invoke(chemicalCap);
+    }
+
+    /** Mekanism {@link ItemStack} chemical handler, or {@code null}. */
+    @Nullable
+    public static Object getChemicalHandlerItem(ItemStack stack) {
+        if (stack == null || stack.isEmpty() || !isLoaded()) {
+            return null;
+        }
+        try {
+            Object itemCap = chemicalItemCapability();
+            return stack.getClass().getMethod("getCapability", itemCap.getClass()).invoke(stack, itemCap);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * Non-destructive sample of the first non-empty chemical stored in an item (tanks, cells, etc.).
+     * Returns a Mek {@code ChemicalStack} copy with amount 1, or {@link #emptyStack()}.
+     */
+    public static Object sampleFromItemStack(ItemStack stack) {
+        Object empty = emptyStack();
+        Object handler = getChemicalHandlerItem(stack);
+        if (handler == null) {
+            return empty;
+        }
+        try {
+            int tanks = (int) handler.getClass().getMethod("getChemicalTanks").invoke(handler);
+            Object actionSim = actionSimulate();
+            for (int i = 0; i < tanks; i++) {
+                Object inTank = handler.getClass().getMethod("getChemicalInTank", int.class).invoke(handler, i);
+                if (isEmptyStack(inTank)) {
+                    continue;
+                }
+                long amt = getAmount(inTank);
+                if (amt <= 0) {
+                    continue;
+                }
+                long drainAmt = Math.min(amt, 1L);
+                Object extracted =
+                        handler.getClass()
+                                .getMethod("extractChemical", int.class, long.class, actionSim.getClass())
+                                .invoke(handler, i, drainAmt, actionSim);
+                if (!isEmptyStack(extracted) && getAmount(extracted) > 0) {
+                    return copyWithAmount(extracted, getAmount(extracted));
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return empty;
     }
 
     /** Returns a Mekanism ChemicalStack instance (or EMPTY) for a probe drain. */
@@ -239,6 +301,151 @@ public final class MekanismChemicalCompat {
             return (int) stack.getClass().getMethod("getChemicalTint").invoke(stack);
         } catch (Throwable ignored) {
             return 0;
+        }
+    }
+
+    public static boolean isRadioactive(Object stack) {
+        if (stack == null || isEmptyStack(stack)) {
+            return false;
+        }
+        try {
+            return (boolean) stack.getClass().getMethod("isRadioactive").invoke(stack);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * {@link mekanism.api.chemical.Chemical#getRadioactivity()} for the stack's chemical type (not scaled by amount).
+     */
+    public static double getRadioactivityPerUnit(Object stack) {
+        if (stack == null || isEmptyStack(stack)) {
+            return 0.0;
+        }
+        try {
+            Object chemical = stack.getClass().getMethod("getChemical").invoke(stack);
+            if (chemical == null) {
+                return 0.0;
+            }
+            return (double) chemical.getClass().getMethod("getRadioactivity").invoke(chemical);
+        } catch (Throwable ignored) {
+            return 0.0;
+        }
+    }
+
+    /** Total radiation {@code getRadioactivity() * amount} on the stack, or 0. */
+    public static double getRadioactivityTotal(Object stack) {
+        if (stack == null || isEmptyStack(stack)) {
+            return 0.0;
+        }
+        try {
+            return (double) stack.getClass().getMethod("getRadioactivity").invoke(stack);
+        } catch (Throwable ignored) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * Mekanism {@code ChemicalStack} for GUI previews (tint icon), or {@link #emptyStack()} if the id is unknown.
+     */
+    public static Object firstChemicalInTagForDisplay(String tagId, long amount, HolderLookup.Provider registries) {
+        Object empty = emptyStack();
+        if (!isLoaded() || registries == null || tagId == null || tagId.isEmpty() || amount <= 0) {
+            return empty;
+        }
+        try {
+            Class<?> api = Class.forName("mekanism.api.MekanismAPI");
+            ResourceKey<?> regName = (ResourceKey<?>) api.getField("CHEMICAL_REGISTRY_NAME").get(null);
+            ResourceLocation loc = ResourceLocation.parse(tagId);
+            // Registry key is reflect-loaded; raw ResourceKey avoids generic capture mismatch on TagKey.create.
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            TagKey<?> tagKey = TagKey.create((ResourceKey) regName, loc);
+            Object registry = registries.getClass().getMethod("lookupOrThrow", ResourceKey.class).invoke(registries, regName);
+            Object tagOpt = registry.getClass().getMethod("get", TagKey.class).invoke(registry, tagKey);
+            if (!(tagOpt instanceof Optional<?> to) || to.isEmpty()) {
+                return empty;
+            }
+            Object holderSet = to.get();
+            try (java.util.stream.Stream<?> stream =
+                    (java.util.stream.Stream<?>) holderSet.getClass().getMethod("stream").invoke(holderSet)) {
+                java.util.Optional<?> first = stream.findFirst();
+                if (first.isEmpty()) {
+                    return empty;
+                }
+                Object holder = first.get();
+                Class<?> cs = Class.forName("mekanism.api.chemical.ChemicalStack");
+                return cs.getConstructor(holder.getClass(), long.class).newInstance(holder, amount);
+            }
+        } catch (Throwable ignored) {
+            return empty;
+        }
+    }
+
+    public static Object firstChemicalInModForDisplay(String modIdPrefix, long amount, HolderLookup.Provider registries) {
+        Object empty = emptyStack();
+        if (!isLoaded() || registries == null || modIdPrefix == null || modIdPrefix.isEmpty() || amount <= 0) {
+            return empty;
+        }
+        try {
+            Class<?> api = Class.forName("mekanism.api.MekanismAPI");
+            ResourceKey<?> regName = (ResourceKey<?>) api.getField("CHEMICAL_REGISTRY_NAME").get(null);
+            Object registry = registries.getClass().getMethod("lookupOrThrow", ResourceKey.class).invoke(registries, regName);
+            Object streamObj = registry.getClass().getMethod("listElementIds").invoke(registry);
+            if (!(streamObj instanceof java.util.stream.Stream<?>)) {
+                return empty;
+            }
+            try (java.util.stream.Stream<?> stream = (java.util.stream.Stream<?>) streamObj) {
+                java.util.Optional<?> firstKey =
+                        stream
+                                .filter(
+                                        rk -> {
+                                            try {
+                                                ResourceLocation loc =
+                                                        (ResourceLocation) rk.getClass().getMethod("location").invoke(rk);
+                                                return loc != null && loc.getNamespace().startsWith(modIdPrefix);
+                                            } catch (Throwable e) {
+                                                return false;
+                                            }
+                                        })
+                                .findFirst();
+                if (firstKey.isEmpty()) {
+                    return empty;
+                }
+                Object chemKey = firstKey.get();
+                Object holderOpt = registry.getClass().getMethod("get", ResourceKey.class).invoke(registry, chemKey);
+                if (!(holderOpt instanceof Optional<?> ho) || ho.isEmpty()) {
+                    return empty;
+                }
+                Object holder = ho.get();
+                Class<?> cs = Class.forName("mekanism.api.chemical.ChemicalStack");
+                return cs.getConstructor(holder.getClass(), long.class).newInstance(holder, amount);
+            }
+        } catch (Throwable ignored) {
+            return empty;
+        }
+    }
+
+    public static Object chemicalStackFromIdForDisplay(String idStr, long amount, HolderLookup.Provider registries) {
+        Object empty = emptyStack();
+        if (!isLoaded() || registries == null || idStr == null || idStr.isEmpty() || amount <= 0) {
+            return empty;
+        }
+        try {
+            Class<?> api = Class.forName("mekanism.api.MekanismAPI");
+            ResourceKey<?> regName = (ResourceKey<?>) api.getField("CHEMICAL_REGISTRY_NAME").get(null);
+            ResourceLocation rl = ResourceLocation.parse(idStr);
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            ResourceKey<?> chemKey = ResourceKey.create((ResourceKey) regName, rl);
+            Object registry = registries.getClass().getMethod("lookupOrThrow", ResourceKey.class).invoke(registries, regName);
+            Object holderOpt = registry.getClass().getMethod("get", ResourceKey.class).invoke(registry, chemKey);
+            if (!(holderOpt instanceof Optional<?> ho) || ho.isEmpty()) {
+                return empty;
+            }
+            Object holder = ho.get();
+            Class<?> cs = Class.forName("mekanism.api.chemical.ChemicalStack");
+            return cs.getConstructor(holder.getClass(), long.class).newInstance(holder, amount);
+        } catch (Throwable ignored) {
+            return empty;
         }
     }
 

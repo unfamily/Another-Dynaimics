@@ -822,10 +822,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         sourceFace,
                         destStorageFace,
                         destDuct));
-        String id = MekanismChemicalCompat.getTypeRegistryName(plannedStack);
-        long amt = MekanismChemicalCompat.getAmount(plannedStack);
-        if (id != null && !id.isEmpty() && amt > 0) {
-            DuctGasIncomingIndex.register(level, destDuct, id, amt);
+        if (!MekanismChemicalCompat.isEmptyStack(plannedStack) && MekanismChemicalCompat.getAmount(plannedStack) > 0) {
+            DuctGasIncomingIndex.register(level, destDuct, plannedStack);
         }
         setChanged();
         pushTransitSnapshotToClients(level);
@@ -844,9 +842,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 dirty = true;
                 continue;
             }
-            String id = MekanismChemicalCompat.getTypeRegistryName(s.stack);
-            long amt = MekanismChemicalCompat.getAmount(s.stack);
-            if (id == null || id.isEmpty() || amt <= 0) {
+            if (MekanismChemicalCompat.isEmptyStack(s.stack) || MekanismChemicalCompat.getAmount(s.stack) <= 0) {
                 it.remove();
                 dirty = true;
                 continue;
@@ -854,7 +850,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
             if (s.travelTicks > 0) {
                 if (DuctTransitTopology.firstBrokenGasPathEdge(level, s.ductPath).isPresent()) {
-                    DuctGasIncomingIndex.unregister(level, s.destDuct, id, amt);
+                    DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
                     it.remove();
                     dirty = true;
                     continue;
@@ -866,7 +862,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     continue;
                 }
                 if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity)) {
-                    DuctGasIncomingIndex.unregister(level, s.destDuct, id, amt);
+                    DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
                     it.remove();
                     dirty = true;
                     continue;
@@ -883,7 +879,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 net.unfamily.another_dynamics.AnotherDynamicsMod.LOGGER.error(
                         "Gas shipment execute failed at {} (ductId={})", worldPosition, logicalDuctId, t);
             } finally {
-                DuctGasIncomingIndex.unregister(level, s.destDuct, id, amt);
+                DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
                 it.remove();
                 dirty = true;
             }
@@ -935,6 +931,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         // Re-check filter at execution time for FILTER bank.
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctGasFilterLogic.passesGasFiltersForBank(destLanes.gas, DuctFaceNode.FilterBank.FILTER, s.stack, level)) {
+            return;
+        }
+
+        Object toMoveProbe = MekanismChemicalCompat.copyWithAmount(s.stack, want);
+        DuctFaceNode srcNodeGas = sourceBe.getFaceLanes(s.sourceFace).gas;
+        long keepCap =
+                DuctGasAllowLimitLogic.maxExtractRespectingKeep(
+                        srcHandler,
+                        srcNodeGas.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR),
+                        srcNodeGas.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR),
+                        toMoveProbe,
+                        level.registryAccess());
+        if (keepCap != Long.MAX_VALUE && MekanismChemicalCompat.getAmount(toMoveProbe) > keepCap) {
             return;
         }
 
