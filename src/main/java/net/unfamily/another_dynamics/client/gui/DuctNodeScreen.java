@@ -713,6 +713,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0;
     }
 
+    /** Multi-transport picker: no machine slots should appear (upgrade / copy backgrounds or items). */
+    private boolean isTransportHubMainView() {
+        return subView == SubView.MAIN
+                && menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
+                && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
+    }
+
     /** Node mode + opaque: row 1 on transport hub, row 2 on detail (filters use row 1 in detail). */
     private void layoutMainChromeRowsForHubOrDetail() {
         if (nodeModeButton == null || opaqueRenderingButton == null) {
@@ -727,7 +734,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         nodeModeButton.setY(y);
         nodeModeButton.setWidth(ROW_BTN_W);
         nodeModeButton.setHeight(BTN_H);
-        opaqueRenderingButton.setX(this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP);
+        // Hub: opaque third column (empty middle slot). Detail: opaque second column (with routing third).
+        int opaqueCol = hubMain ? 2 : 1;
+        opaqueRenderingButton.setX(this.leftPos + CENTER_X + opaqueCol * (ROW_BTN_W + ROW_GAP));
         opaqueRenderingButton.setY(y);
         opaqueRenderingButton.setWidth(ROW_BTN_W);
         opaqueRenderingButton.setHeight(BTN_H);
@@ -743,8 +752,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0
                         && subView == SubView.MAIN;
         int y = this.topPos + (hubMain ? ROW2_Y : TRANSPORT_KIND_BUTTON_Y);
-        int totalW = n * ROW_BTN_W + (n - 1) * ROW_GAP;
-        int startX = this.leftPos + CENTER_X + (3 * (ROW_BTN_W + ROW_GAP) - totalW) / 2;
+        // Same horizontal grid as deny/list/allow (avoids skew from wrong "centered" width: 3*(w+g) is one gap too wide).
+        int startX = this.leftPos + CENTER_X;
         for (int i = 0; i < n; i++) {
             Button b = transportKindPickerButtons.get(i);
             b.setX(startX + i * (ROW_BTN_W + ROW_GAP));
@@ -3161,6 +3170,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private void blitMachineSlotBackgrounds(GuiGraphics graphics) {
+        if (isTransportHubMainView()) {
+            return;
+        }
         int sw = 18;
         int sh = 18;
         for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
@@ -3198,12 +3210,18 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (subView == SubView.HOW_TO_USE) {
             return;
         }
+        if (isTransportHubMainView() && slot.index >= 0 && slot.index < DuctNodeMenu.MACHINE_SLOTS) {
+            return;
+        }
         super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
     }
 
     @Override
     protected void renderSlot(@NotNull GuiGraphics graphics, @NotNull Slot slot) {
         if (subView == SubView.HOW_TO_USE) {
+            return;
+        }
+        if (isTransportHubMainView() && slot.index >= 0 && slot.index < DuctNodeMenu.MACHINE_SLOTS) {
             return;
         }
         if (slot.index >= 0 && slot.index < DuctNodeMenu.MACHINE_SLOTS) {
