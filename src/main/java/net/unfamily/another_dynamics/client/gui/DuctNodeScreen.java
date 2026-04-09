@@ -2631,8 +2631,38 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         graphics.pose().popPose();
     }
 
+    private boolean isMouseOverAnyVisibleTextField(double mouseX, double mouseY) {
+        if (routingPriorityBox != null && routingPriorityBox.visible && routingPriorityBox.isMouseOver(mouseX, mouseY)) {
+            return true;
+        }
+        if (editModeTextBox != null && editModeTextBox.visible && editModeTextBox.isMouseOver(mouseX, mouseY)) {
+            return true;
+        }
+        if (advCapEditBox != null && advCapEditBox.visible && advCapEditBox.isMouseOver(mouseX, mouseY)) {
+            return true;
+        }
+        return false;
+    }
+
+    /** Clears text focus so JEI search / other overlays receive keyboard input. */
+    private void unfocusAllTextFields() {
+        if (routingPriorityBox != null) {
+            routingPriorityBox.setFocused(false);
+        }
+        if (editModeTextBox != null) {
+            editModeTextBox.setFocused(false);
+        }
+        if (advCapEditBox != null) {
+            advCapEditBox.setFocused(false);
+            syncAllowCapEditBoxDisplay();
+        }
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0 && subView != SubView.HOW_TO_USE && !isMouseOverAnyVisibleTextField(mouseX, mouseY)) {
+            unfocusAllTextFields();
+        }
         // Right-click on Mode cycles backward.
         if (button == 1 && nodeModeButton != null && nodeModeButton.visible) {
             if (mouseX >= nodeModeButton.getX()
@@ -2769,11 +2799,24 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
         }
 
-        boolean editFilterFocused = editModeTextBox != null && editModeTextBox.isFocused();
         boolean esc = keyCode == InputConstants.KEY_ESCAPE;
         boolean inv =
                 minecraft != null && minecraft.options.keyInventory != null
                         && minecraft.options.keyInventory.matches(keyCode, scanCode);
+
+        if (esc || inv) {
+            if (routingPriorityBox.isFocused()) {
+                routingPriorityBox.setFocused(false);
+                return true;
+            }
+            if (advCapEditBox != null && advCapEditBox.isFocused()) {
+                advCapEditBox.setFocused(false);
+                syncAllowCapEditBoxDisplay();
+                return true;
+            }
+        }
+
+        boolean editFilterFocused = editModeTextBox != null && editModeTextBox.isFocused();
 
         if (editFilterFocused) {
             if (editModeTextBox.keyPressed(keyCode, scanCode, modifiers)) {
@@ -2783,8 +2826,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 applyEditModeAndClose();
                 return true;
             }
-            // While typing a filter, do not close the screen (inventory key / Esc), like DeepDrawerExtractorScreen
+            // Drop focus only (do not close GUI); allows JEI search and inventory after E / Esc.
             if (esc || inv) {
+                editModeTextBox.setFocused(false);
                 return true;
             }
         }
