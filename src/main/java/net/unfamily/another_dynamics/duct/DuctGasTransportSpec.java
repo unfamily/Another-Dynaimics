@@ -1,7 +1,7 @@
 package net.unfamily.another_dynamics.duct;
 
 /**
- * Gas transport parameters from datapack {@code can_transport} (dec {@code gas}).
+ * Gas transport parameters from datapack {@code can_transport} (dec {@code mek_gas}).
  *
  * <p>Amounts are in Mekanism chemical units (long). We keep naming generic (\"amount\") so the spec remains usable even
  * if Mekanism tweaks exact internal scaling.</p>

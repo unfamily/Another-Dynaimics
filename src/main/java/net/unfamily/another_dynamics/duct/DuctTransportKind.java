@@ -5,13 +5,16 @@ import java.util.List;
 
 /**
  * Datapack {@code can_transport} discriminator ({@code dec}) mapped to transport lanes. Extensible for future kinds
- * (gas, energy) without changing save layout keys ({@code Item}, {@code Fluid}, …).
+ * (Mek gas, energy) without changing save layout keys ({@code Item}, {@code Fluid}, …).
  */
 public enum DuctTransportKind {
     ITEM("item"),
     FLUID("fluid"),
-    GAS("gas"),
-    ENERGY("forge_energy");
+    /** Mekanism chemicals; datapack {@code dec} is {@code mek_gas}. */
+    GAS("mek_gas"),
+    ENERGY("forge_energy"),
+    /** Mekanism {@code IHeatHandler} on block faces; requires Mekanism. */
+    HEAT("mek_heat");
 
     private final String jsonDec;
 
@@ -26,10 +29,6 @@ public enum DuctTransportKind {
     public static DuctTransportKind fromJsonDec(String dec) {
         if (dec == null) {
             return null;
-        }
-        // Backward/alternate naming: RF is the common player-facing name for Forge Energy.
-        if ("rf".equalsIgnoreCase(dec) || "redstone_flux".equalsIgnoreCase(dec)) {
-            return ENERGY;
         }
         for (DuctTransportKind k : values()) {
             if (k.jsonDec.equalsIgnoreCase(dec)) {

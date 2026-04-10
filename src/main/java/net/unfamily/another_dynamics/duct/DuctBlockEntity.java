@@ -37,12 +37,14 @@ import net.unfamily.another_dynamics.duct.logistics.GasTransitShipment;
 import net.unfamily.another_dynamics.duct.logistics.DuctFluidServerTick;
 import net.unfamily.another_dynamics.duct.logistics.DuctGasServerTick;
 import net.unfamily.another_dynamics.duct.logistics.DuctEnergyServerTick;
+import net.unfamily.another_dynamics.duct.logistics.DuctHeatServerTick;
 import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
 import net.unfamily.another_dynamics.duct.logistics.DuctTargetSelector;
 import net.unfamily.another_dynamics.duct.logistics.DuctTransitTopology;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
 import net.unfamily.another_dynamics.duct.logistics.TransitPhase;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
 import net.unfamily.another_dynamics.client.transit.DuctFluidTransitClientState;
 import net.unfamily.another_dynamics.client.transit.DuctGasTransitClientState;
 import net.unfamily.another_dynamics.client.transit.DuctTransitClientState;
@@ -284,6 +286,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 .orElseGet(DuctEnergyTransportSpec::fallback);
     }
 
+    public DuctHeatTransportSpec heatTransportSpec() {
+        return DuctDefinitionRegistry.getByLogicalId(logicalDuctId)
+                .map(DuctDefinition::heatTransportOrFallback)
+                .orElseGet(DuctHeatTransportSpec::fallback);
+    }
+
     public Optional<DuctDefinition> ductDefinition() {
         return DuctDefinitionRegistry.getByLogicalId(logicalDuctId);
     }
@@ -365,7 +373,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return switch (menuActiveTransportKind()) {
             case FLUID -> getFluidFaceNode(face);
             case GAS -> getGasFaceNode(face);
-            case ENERGY -> getFaceNode(face);
+            case ENERGY, HEAT -> getFaceNode(face);
             case ITEM -> getFaceNode(face);
         };
     }
@@ -375,7 +383,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return switch (kind) {
             case FLUID -> getFluidFaceNode(face);
             case GAS -> getGasFaceNode(face);
-            case ENERGY -> getFaceNode(face);
+            case ENERGY, HEAT -> getFaceNode(face);
             case ITEM -> getFaceNode(face);
         };
     }
@@ -500,6 +508,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (kinds.contains(DuctTransportKind.ENERGY)) {
             out.add(DuctNetworkType.ENERGY);
         }
+        if (kinds.contains(DuctTransportKind.HEAT)
+                && MekanismHeatCompat.isLoaded()
+                && MekanismHeatCompat.isHeatCapabilityAvailable()) {
+            out.add(DuctNetworkType.HEAT);
+        }
         if (out.isEmpty()) {
             out.add(DuctNetworkType.ITEM);
         }
@@ -552,6 +565,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         } else if (net == DuctNetworkType.ENERGY) {
             var eh = level.getCapability(Capabilities.EnergyStorage.BLOCK, neighborPos, dir.getOpposite());
             if (eh != null) {
+                return 1 << dir.ordinal();
+            }
+        } else if (net == DuctNetworkType.HEAT) {
+            if (!MekanismHeatCompat.isHeatCapabilityAvailable()) {
+                return 0;
+            }
+            if (MekanismHeatCompat.getHeatHandler(level, neighborPos, dir.getOpposite()) != null) {
                 return 1 << dir.ordinal();
             }
         }
@@ -664,6 +684,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctFluidServerTick.tick(this, serverLevel);
         DuctGasServerTick.tick(this, serverLevel);
         DuctEnergyServerTick.tick(this, serverLevel);
+        DuctHeatServerTick.tick(this, serverLevel);
     }
 
     private void resolveNegativeTravelShipments(ServerLevel level) {
@@ -2271,7 +2292,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 switch (menuActiveTransportKind()) {
                     case FLUID -> computeFluidExtractBatchSettingCap(accessFace);
                     case GAS -> computeGasExtractBatchSettingCap(accessFace);
-                    case ENERGY -> 0;
+                    case ENERGY, HEAT -> 0;
                     case ITEM -> computeExtractBatchSettingCap(accessFace);
                 });
         menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
@@ -2289,7 +2310,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (faceLanes.nodeMode.usesRouting()) {
             flags |= DuctMenuSync.FLAG_ROUTING_ACTIVE;
         }
-        if (menuActiveTransportKind() != DuctTransportKind.ENERGY && faceLanes.nodeMode.usesItemFilterConfig()) {
+        if (menuActiveTransportKind() != DuctTransportKind.ENERGY
+                && menuActiveTransportKind() != DuctTransportKind.HEAT
+                && faceLanes.nodeMode.usesItemFilterConfig()) {
             flags |= DuctMenuSync.FLAG_FILTERS_ACTIVE;
         }
         menuData.set(DuctMenuSync.FLAGS, flags);
@@ -2565,7 +2588,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 switch (laneKind) {
                     case FLUID -> faceHasFluidUpgradeSlots(face);
                     case GAS -> faceHasGasUpgradeSlots(face);
-                    case ENERGY -> false;
+                    case ENERGY, HEAT -> false;
                     case ITEM -> faceHasUpgradeSlots(face);
                 };
         for (int i = 0; i < maxA; i++) {
@@ -2593,7 +2616,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             node.clampFilterSizes(fluidSpec, sharedMode);
         } else if (laneKind == DuctTransportKind.GAS) {
             node.clampFilterSizes(gasSpec, sharedMode);
-        } else if (laneKind == DuctTransportKind.ENERGY) {
+        } else if (laneKind == DuctTransportKind.ENERGY || laneKind == DuctTransportKind.HEAT) {
             node.clampFilterSizes(itemSpec, sharedMode);
         } else {
             node.clampFilterSizes(itemSpec, sharedMode);
@@ -2621,7 +2644,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 switch (laneKind) {
                     case FLUID -> faceHasFluidUpgradeSlots(face);
                     case GAS -> faceHasGasUpgradeSlots(face);
-                    case ENERGY -> false;
+                    case ENERGY, HEAT -> false;
                     case ITEM -> faceHasUpgradeSlots(face);
                 };
         if (!DuctFeaturePolicy.isUsable(
@@ -2704,7 +2727,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 switch (menuActiveTransportKind()) {
                                     case FLUID -> faceHasFluidUpgradeSlots(accessFace);
                                     case GAS -> faceHasGasUpgradeSlots(accessFace);
-                                    case ENERGY -> false;
+                                    case ENERGY, HEAT -> false;
                                     case ITEM -> faceHasUpgradeSlots(accessFace);
                                 };
                         if (!DuctFeaturePolicy.isUsable(
@@ -2721,7 +2744,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 switch (menuActiveTransportKind()) {
                                     case FLUID -> faceHasFluidUpgradeSlots(accessFace);
                                     case GAS -> faceHasGasUpgradeSlots(accessFace);
-                                    case ENERGY -> false;
+                                    case ENERGY, HEAT -> false;
                                     case ITEM -> faceHasUpgradeSlots(accessFace);
                                 };
                         if (!DuctFeaturePolicy.isUsable(
@@ -2738,7 +2761,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 switch (menuActiveTransportKind()) {
                                     case FLUID -> faceHasFluidUpgradeSlots(accessFace);
                                     case GAS -> faceHasGasUpgradeSlots(accessFace);
-                                    case ENERGY -> false;
+                                    case ENERGY, HEAT -> false;
                                     case ITEM -> faceHasUpgradeSlots(accessFace);
                                 };
                         if (!DuctFeaturePolicy.isUsable(

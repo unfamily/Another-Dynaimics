@@ -9,5 +9,7 @@ public enum DuctNetworkType {
     ITEM,
     FLUID,
     GAS,
-    ENERGY
+    ENERGY,
+    /** Mekanism thermal ducts ({@link DuctTransportKind#HEAT}). */
+    HEAT
 }

@@ -399,6 +399,9 @@ public final class DuctPathfinder {
         if (network == DuctNetworkType.ENERGY) {
             return DuctPipeAdjacency.areEnergyPipeNeighbors(level, from, to);
         }
+        if (network == DuctNetworkType.HEAT) {
+            return DuctPipeAdjacency.areHeatPipeNeighbors(level, from, to);
+        }
         return DuctConnectable.isSameNetwork(level, from, network)
                 && DuctConnectable.isSameNetwork(level, to, network);
     }

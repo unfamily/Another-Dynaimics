@@ -253,13 +253,15 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.GAS.ordinal();
     }
 
-    private boolean clientEditingEnergyLane() {
+    private boolean clientEditingEnergyOrHeatLane() {
         if (linkedBlockEntity != null
                 && linkedBlockEntity.getLevel() != null
                 && !linkedBlockEntity.getLevel().isClientSide()) {
-            return linkedBlockEntity.menuActiveTransportKind() == DuctTransportKind.ENERGY;
+            DuctTransportKind k = linkedBlockEntity.menuActiveTransportKind();
+            return k == DuctTransportKind.ENERGY || k == DuctTransportKind.HEAT;
         }
-        return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.ENERGY.ordinal();
+        int o = syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
+        return o == DuctTransportKind.ENERGY.ordinal() || o == DuctTransportKind.HEAT.ordinal();
     }
 
     private int menuTransportKindOrdinalForPackets() {
@@ -280,7 +282,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
      */
     public boolean upgradeSlotsInteractive() {
         // Energy ducts do not support upgrades; keep the copy slot only.
-        if (clientEditingEnergyLane()) {
+        if (clientEditingEnergyOrHeatLane()) {
             return false;
         }
         if (linkedBlockEntity != null
@@ -296,7 +298,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
      *     ({@code Extr/Filt} or {@code Retr/Extr}); uses datapack {@code filter.allow_hybrid}/{@code deny_hybrid}.
      */
     public int filterAllowCap(boolean hybridFilterContext) {
-        if (clientEditingEnergyLane()) {
+        if (clientEditingEnergyOrHeatLane()) {
             return 0;
         }
         if (clientEditingFluidLane()) {
@@ -312,7 +314,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     public int filterDenyCap(boolean hybridFilterContext) {
-        if (clientEditingEnergyLane()) {
+        if (clientEditingEnergyOrHeatLane()) {
             return 0;
         }
         if (clientEditingFluidLane()) {
@@ -513,7 +515,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                         switch (linkedBlockEntity.menuActiveTransportKind()) {
                             case FLUID -> linkedBlockEntity.computeFluidExtractBatchSettingCap(accessFace);
                             case GAS -> linkedBlockEntity.computeGasExtractBatchSettingCap(accessFace);
-                            case ENERGY -> 0;
+                            case ENERGY, HEAT -> 0;
                             case ITEM -> linkedBlockEntity.computeExtractBatchSettingCap(accessFace);
                         };
                 linkedBlockEntity.getMenuData().set(DuctMenuSync.EXTRACT_BATCH_CAP, cap);

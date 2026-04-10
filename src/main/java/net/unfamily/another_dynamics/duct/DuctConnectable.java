@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
 
 /**
  * Blocks that participate in one or more {@link DuctNetworkType} routing graphs (pipe adjacency, pathfinding).
@@ -47,6 +48,10 @@ public interface DuctConnectable {
                 case FLUID -> kinds.contains(DuctTransportKind.FLUID);
                 case GAS -> MekanismChemicalCompat.isLoaded() && kinds.contains(DuctTransportKind.GAS);
                 case ENERGY -> kinds.contains(DuctTransportKind.ENERGY);
+                case HEAT ->
+                        MekanismHeatCompat.isLoaded()
+                                && MekanismHeatCompat.isHeatCapabilityAvailable()
+                                && kinds.contains(DuctTransportKind.HEAT);
             };
         }
         return dc.ductNetworkTypes().contains(type);

@@ -12,7 +12,7 @@
   "sound": "metallic",
   "can_transport": [
     {
-      "dec": "gas",
+      "dec": "mek_gas",
       "move_radioactive": true,
       "batch": {
         "default": 4000,

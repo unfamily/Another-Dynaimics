@@ -1,20 +1,19 @@
 {
   "type": "another_dynamics:declare_duct",
-  "id": "another_dynamics:flux_duct",
-  "name": "duct.another_dynamics.flux_duct",
+  "id": "another_dynamics:heat_duct",
+  "name": "duct.another_dynamics.heat_duct",
   "put_in_creative_menu": true,
   "sound": "metallic",
   "can_transport": [
     {
-      "dec": "forge_energy",
-      "ray_color": "#e30b28",
-      "extract": 1000,
+      "dec": "mek_heat",
+      "extract": 500,
       "transfer": 8000
     }
   ],
   "connect_with_compatbile": true,
-  "disabled_features":[],
-  "upgrade_features":[],
+  "disabled_features": [],
+  "upgrade_features": [],
   "rendering": {
     "always_opaque": false,
     "default_texture": "another_dynamics:block/duct/energy/rf/flux_duct_0_light",

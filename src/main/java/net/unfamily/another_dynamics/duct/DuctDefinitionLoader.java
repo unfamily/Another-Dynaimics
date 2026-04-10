@@ -27,6 +27,7 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
 
 /**
  * Loads duct declarations from {@code data/&lt;namespace&gt;/load/*.json} on server and client reload. Uses
@@ -142,6 +143,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             Optional<DuctFluidTransportSpec> fluidTransport = Optional.empty();
             Optional<DuctGasTransportSpec> gasTransport = Optional.empty();
             Optional<DuctEnergyTransportSpec> energyTransport = Optional.empty();
+            Optional<DuctHeatTransportSpec> heatTransport = Optional.empty();
             if (o.has("can_transport") && o.get("can_transport").isJsonArray()) {
                 for (JsonElement t : o.getAsJsonArray("can_transport")) {
                     if (!t.isJsonObject()) {
@@ -150,18 +152,27 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                     JsonObject to = t.getAsJsonObject();
                     if (to.has("dec")) {
                         String dec = to.get("dec").getAsString();
-                        kinds.add(dec);
                         DuctTransportKind kind = DuctTransportKind.fromJsonDec(dec);
                         if (kind == null) {
                             AnotherDynamicsMod.LOGGER.warn(
                                     "Duct '{}' ({}): unknown can_transport dec '{}'", logicalId, e.getKey(), dec);
-                        } else {
-                            switch (kind) {
-                                case ITEM -> itemTransport = Optional.of(parseItemTransport(to));
-                                case FLUID -> fluidTransport = Optional.of(parseFluidTransport(to));
-                                case GAS -> gasTransport = Optional.of(parseGasTransport(to));
-                                case ENERGY -> energyTransport = Optional.of(parseEnergyTransport(to));
-                            }
+                            continue;
+                        }
+                        if (kind == DuctTransportKind.HEAT && !MekanismHeatCompat.isHeatCapabilityAvailable()) {
+                            AnotherDynamicsMod.LOGGER.warn(
+                                    "Duct '{}' ({}): can_transport '{}' needs Mekanism heat API; skipping entry",
+                                    logicalId,
+                                    e.getKey(),
+                                    dec);
+                            continue;
+                        }
+                        kinds.add(dec);
+                        switch (kind) {
+                            case ITEM -> itemTransport = Optional.of(parseItemTransport(to));
+                            case FLUID -> fluidTransport = Optional.of(parseFluidTransport(to));
+                            case GAS -> gasTransport = Optional.of(parseGasTransport(to));
+                            case ENERGY -> energyTransport = Optional.of(parseEnergyTransport(to));
+                            case HEAT -> heatTransport = Optional.of(parseHeatTransport(to));
                         }
                     }
                 }
@@ -217,6 +228,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             fluidTransport,
                             gasTransport,
                             energyTransport,
+                            heatTransport,
                             defaultTexture,
                             modelDefault,
                             modelLine,
@@ -423,6 +435,18 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             }
         }
         return new DuctEnergyTransportSpec(extract, transfer, rayColor, rayAlpha);
+    }
+
+    private static DuctHeatTransportSpec parseHeatTransport(JsonObject to) {
+        double extract = DuctHeatTransportSpec.fallback().extract();
+        double transfer = DuctHeatTransportSpec.fallback().transfer();
+        if (to.has("extract") && to.get("extract").isJsonPrimitive()) {
+            extract = to.get("extract").getAsDouble();
+        }
+        if (to.has("transfer") && to.get("transfer").isJsonPrimitive()) {
+            transfer = to.get("transfer").getAsDouble();
+        }
+        return new DuctHeatTransportSpec(extract, transfer);
     }
 
     private static DuctFluidTransportSpec parseFluidTransport(JsonObject to) {
