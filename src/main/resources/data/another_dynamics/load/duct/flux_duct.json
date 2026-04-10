@@ -1,0 +1,25 @@
+{
+  "type": "another_dynamics:declare_duct",
+  "id": "another_dynamics:flux_duct",
+  "name": "duct.another_dynamics.flux_duct",
+  "put_in_creative_menu": true,
+  "sound": "metallic",
+  "can_transport": [
+    {
+      "dec": "forge_energy",
+      "ray_color":"#e30b28",
+      "extract": 1000,
+      "transfer": 8000
+    }
+  ],
+  "connect_with_compatbile": true,
+  "disabled_features":[],
+  "upgrade_features":[],
+  "rendering": {
+    "always_opaque": false,
+    "default_texture": "another_dynamics:block/duct/energy/rf/flux_duct_0_light",
+    "model_default": "another_dynamics:block/simple_duct_default",
+    "model_line": "another_dynamics:block/simple_duct_line"
+  },
+  "disabled_feathures": []
+}
