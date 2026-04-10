@@ -253,6 +253,15 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.GAS.ordinal();
     }
 
+    private boolean clientEditingEnergyLane() {
+        if (linkedBlockEntity != null
+                && linkedBlockEntity.getLevel() != null
+                && !linkedBlockEntity.getLevel().isClientSide()) {
+            return linkedBlockEntity.menuActiveTransportKind() == DuctTransportKind.ENERGY;
+        }
+        return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.ENERGY.ordinal();
+    }
+
     private int menuTransportKindOrdinalForPackets() {
         if (linkedBlockEntity != null
                 && linkedBlockEntity.getLevel() != null
@@ -270,6 +279,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
      * Upgrade slots are inactive on the multi-transport hub; the copy-settings slot stays usable there.
      */
     public boolean upgradeSlotsInteractive() {
+        // Energy ducts do not support upgrades; keep the copy slot only.
+        if (clientEditingEnergyLane()) {
+            return false;
+        }
         if (linkedBlockEntity != null
                 && linkedBlockEntity.getLevel() != null
                 && !linkedBlockEntity.getLevel().isClientSide()) {
@@ -283,6 +296,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
      *     ({@code Extr/Filt} or {@code Retr/Extr}); uses datapack {@code filter.allow_hybrid}/{@code deny_hybrid}.
      */
     public int filterAllowCap(boolean hybridFilterContext) {
+        if (clientEditingEnergyLane()) {
+            return 0;
+        }
         if (clientEditingFluidLane()) {
             var s = clientFluidTransportSpec();
             return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
@@ -296,6 +312,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     public int filterDenyCap(boolean hybridFilterContext) {
+        if (clientEditingEnergyLane()) {
+            return 0;
+        }
         if (clientEditingFluidLane()) {
             var s = clientFluidTransportSpec();
             return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
@@ -494,6 +513,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                         switch (linkedBlockEntity.menuActiveTransportKind()) {
                             case FLUID -> linkedBlockEntity.computeFluidExtractBatchSettingCap(accessFace);
                             case GAS -> linkedBlockEntity.computeGasExtractBatchSettingCap(accessFace);
+                            case ENERGY -> 0;
                             case ITEM -> linkedBlockEntity.computeExtractBatchSettingCap(accessFace);
                         };
                 linkedBlockEntity.getMenuData().set(DuctMenuSync.EXTRACT_BATCH_CAP, cap);

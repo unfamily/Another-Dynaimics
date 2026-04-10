@@ -32,6 +32,7 @@ public record DuctDefinition(
         Optional<DuctItemTransportSpec> itemTransport,
         Optional<DuctFluidTransportSpec> fluidTransport,
         Optional<DuctGasTransportSpec> gasTransport,
+        Optional<DuctEnergyTransportSpec> energyTransport,
         ResourceLocation defaultTexture,
         Optional<ResourceLocation> compositeModelDefault,
         Optional<ResourceLocation> compositeModelLine,
@@ -52,6 +53,10 @@ public record DuctDefinition(
 
     public DuctGasTransportSpec gasTransportOrFallback() {
         return gasTransport.orElseGet(DuctGasTransportSpec::fallback);
+    }
+
+    public DuctEnergyTransportSpec energyTransportOrFallback() {
+        return energyTransport.orElseGet(DuctEnergyTransportSpec::fallback);
     }
 
     /** Kinds enabled for this duct, in datapack order (then stable enum fill). */

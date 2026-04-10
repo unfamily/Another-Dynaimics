@@ -188,7 +188,7 @@ public final class DuctPathfinder {
                 .orElse(true);
     }
 
-    private static Optional<List<BlockPos>> shortestPath(
+    public static Optional<List<BlockPos>> shortestPath(
             Level level, BlockPos from, BlockPos to, long edgeWeightPerHop, DuctNetworkType network) {
         return shortestPath(level, from, to, edgeWeightPerHop, network, null);
     }
@@ -395,6 +395,9 @@ public final class DuctPathfinder {
         }
         if (network == DuctNetworkType.GAS) {
             return DuctPipeAdjacency.areGasPipeNeighbors(level, from, to);
+        }
+        if (network == DuctNetworkType.ENERGY) {
+            return DuctPipeAdjacency.areEnergyPipeNeighbors(level, from, to);
         }
         return DuctConnectable.isSameNetwork(level, from, network)
                 && DuctConnectable.isSameNetwork(level, to, network);

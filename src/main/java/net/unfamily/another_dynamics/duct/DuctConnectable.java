@@ -46,6 +46,7 @@ public interface DuctConnectable {
                 case ITEM -> kinds.contains(DuctTransportKind.ITEM);
                 case FLUID -> kinds.contains(DuctTransportKind.FLUID);
                 case GAS -> MekanismChemicalCompat.isLoaded() && kinds.contains(DuctTransportKind.GAS);
+                case ENERGY -> kinds.contains(DuctTransportKind.ENERGY);
             };
         }
         return dc.ductNetworkTypes().contains(type);

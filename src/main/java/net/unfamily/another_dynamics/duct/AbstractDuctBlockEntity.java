@@ -37,6 +37,7 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
             case ITEM -> DuctPipeAdjacency.areItemPipeNeighbors(level, a, b);
             case FLUID -> DuctPipeAdjacency.areFluidPipeNeighbors(level, a, b);
             case GAS -> DuctPipeAdjacency.areGasPipeNeighbors(level, a, b);
+            case ENERGY -> DuctPipeAdjacency.areEnergyPipeNeighbors(level, a, b);
         };
     }
 

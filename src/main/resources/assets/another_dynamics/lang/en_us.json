@@ -154,6 +154,7 @@
   "duct.another_dynamics.item_duct_imp": "Improved Item Duct",
   "duct.another_dynamics.fluid_duct": "Fluid Duct",
   "duct.another_dynamics.gas_duct": "Gas Duct",
+  "duct.another_dynamics.flux_duct": "Flux Duct",
   "itemGroup.another_dynamics.ducts": "Another Dynamics Ducts",
   "gui.another_dynamics.duct_node.allow_cap.label.limit": "Insert Limit",
   "gui.another_dynamics.duct_node.allow_cap.label.keep": "Keep in Storage",

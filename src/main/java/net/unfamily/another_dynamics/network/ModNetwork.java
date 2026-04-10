@@ -8,14 +8,17 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.client.EnergyRayClient;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
@@ -155,6 +158,10 @@ public final class ModNetwork {
             });
         });
 
+        reg.playToClient(EnergyRayPayload.TYPE, EnergyRayPayload.STREAM_CODEC, (payload, ctx) -> {
+            ctx.enqueueWork(() -> EnergyRayClient.handle(payload));
+        });
+
         reg.playToClient(DuctFilterSyncPayload.TYPE, DuctFilterSyncPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(
                     () -> {
@@ -227,6 +234,20 @@ public final class ModNetwork {
     /** Toggles duct opaque rendering preference (player attachment); server authoritative. */
     public static void sendDuctOpaqueToggle() {
         PacketDistributor.sendToServer(DuctOpaqueTogglePayload.INSTANCE);
+    }
+
+    public static void sendEnergyRay(ServerLevel level, BlockPos fromDuct, Direction fromFace, BlockPos toDuct, Direction toFace, int rgb) {
+        if (level == null) {
+            return;
+        }
+        var payload = new EnergyRayPayload(fromDuct, fromFace.ordinal(), toDuct, toFace.ordinal(), rgb);
+        Vec3 mid = new Vec3((fromDuct.getX() + toDuct.getX()) / 2.0 + 0.5, (fromDuct.getY() + toDuct.getY()) / 2.0 + 0.5, (fromDuct.getZ() + toDuct.getZ()) / 2.0 + 0.5);
+        double r2 = 64.0 * 64.0;
+        for (ServerPlayer p : level.players()) {
+            if (p.distanceToSqr(mid) <= r2) {
+                PacketDistributor.sendToPlayer(p, payload);
+            }
+        }
     }
 
     /**

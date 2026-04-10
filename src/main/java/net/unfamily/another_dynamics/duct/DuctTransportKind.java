@@ -10,7 +10,8 @@ import java.util.List;
 public enum DuctTransportKind {
     ITEM("item"),
     FLUID("fluid"),
-    GAS("gas");
+    GAS("gas"),
+    ENERGY("forge_energy");
 
     private final String jsonDec;
 
@@ -25,6 +26,10 @@ public enum DuctTransportKind {
     public static DuctTransportKind fromJsonDec(String dec) {
         if (dec == null) {
             return null;
+        }
+        // Backward/alternate naming: RF is the common player-facing name for Forge Energy.
+        if ("rf".equalsIgnoreCase(dec) || "redstone_flux".equalsIgnoreCase(dec)) {
+            return ENERGY;
         }
         for (DuctTransportKind k : values()) {
             if (k.jsonDec.equalsIgnoreCase(dec)) {

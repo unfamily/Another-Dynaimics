@@ -141,6 +141,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             Optional<DuctItemTransportSpec> itemTransport = Optional.empty();
             Optional<DuctFluidTransportSpec> fluidTransport = Optional.empty();
             Optional<DuctGasTransportSpec> gasTransport = Optional.empty();
+            Optional<DuctEnergyTransportSpec> energyTransport = Optional.empty();
             if (o.has("can_transport") && o.get("can_transport").isJsonArray()) {
                 for (JsonElement t : o.getAsJsonArray("can_transport")) {
                     if (!t.isJsonObject()) {
@@ -159,6 +160,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                                 case ITEM -> itemTransport = Optional.of(parseItemTransport(to));
                                 case FLUID -> fluidTransport = Optional.of(parseFluidTransport(to));
                                 case GAS -> gasTransport = Optional.of(parseGasTransport(to));
+                                case ENERGY -> energyTransport = Optional.of(parseEnergyTransport(to));
                             }
                         }
                     }
@@ -214,6 +216,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             itemTransport,
                             fluidTransport,
                             gasTransport,
+                            energyTransport,
                             defaultTexture,
                             modelDefault,
                             modelLine,
@@ -382,6 +385,37 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 allowHybrid,
                 denyHybrid,
                 moveRadioactive);
+    }
+
+    private static DuctEnergyTransportSpec parseEnergyTransport(JsonObject to) {
+        long extract = 1000;
+        long transfer = 8000;
+        String rayColor = "#e30b28";
+        if (to.has("extract") && to.get("extract").isJsonPrimitive()) {
+            extract = to.get("extract").getAsLong();
+        }
+        if (to.has("transfer") && to.get("transfer").isJsonPrimitive()) {
+            transfer = to.get("transfer").getAsLong();
+        } else if (to.has("transfert") && to.get("transfert").isJsonPrimitive()) {
+            // Legacy typo in early datapacks
+            transfer = to.get("transfert").getAsLong();
+        } else if (to.has("transfert") && to.get("transfert").isJsonObject()) {
+            // Older shape used in some packs (keep for compatibility)
+            JsonObject tr = to.getAsJsonObject("transfert");
+            if (tr.has("default")) {
+                extract = tr.get("default").getAsLong();
+            }
+            if (tr.has("max")) {
+                transfer = tr.get("max").getAsLong();
+            }
+        }
+        if (to.has("ray_color") && to.get("ray_color").isJsonPrimitive()) {
+            String s = to.get("ray_color").getAsString();
+            if (s != null && !s.isBlank()) {
+                rayColor = s.trim();
+            }
+        }
+        return new DuctEnergyTransportSpec(extract, transfer, rayColor);
     }
 
     private static DuctFluidTransportSpec parseFluidTransport(JsonObject to) {

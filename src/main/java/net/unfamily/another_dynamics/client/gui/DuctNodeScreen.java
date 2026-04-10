@@ -1833,6 +1833,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.GAS.ordinal();
     }
 
+    private boolean isEnergyTransport() {
+        return menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.ENERGY.ordinal();
+    }
+
     private String filterHelpTextPrefix() {
         int k = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
         if (k == DuctTransportKind.FLUID.ordinal()) {
@@ -3209,7 +3213,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private void blitMachineSlotBackgrounds(GuiGraphics graphics) {
         int sw = 18;
         int sh = 18;
-        if (!isTransportHubMainView()) {
+        if (!isTransportHubMainView() && !isEnergyTransport()) {
             for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
                 int y = DuctNodeMenu.SLOT_UPGRADE_Y0 + i * 18;
                 graphics.blit(
@@ -3251,6 +3255,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
             return;
         }
+        if (isEnergyTransport()
+                && slot.index >= 0
+                && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
+            return;
+        }
         super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
     }
 
@@ -3260,6 +3269,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return;
         }
         if (isTransportHubMainView()
+                && slot.index >= 0
+                && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
+            return;
+        }
+        if (isEnergyTransport()
                 && slot.index >= 0
                 && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
             return;
