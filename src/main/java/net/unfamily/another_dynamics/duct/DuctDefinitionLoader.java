@@ -391,6 +391,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
         long extract = 1000;
         long transfer = 8000;
         String rayColor = "#e30b28";
+        float rayAlpha = DuctEnergyTransportSpec.fallback().rayAlpha();
         if (to.has("extract") && to.get("extract").isJsonPrimitive()) {
             extract = to.get("extract").getAsLong();
         }
@@ -415,7 +416,13 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 rayColor = s.trim();
             }
         }
-        return new DuctEnergyTransportSpec(extract, transfer, rayColor);
+        if (to.has("ray_alpha") && to.get("ray_alpha").isJsonPrimitive()) {
+            try {
+                rayAlpha = to.get("ray_alpha").getAsFloat();
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return new DuctEnergyTransportSpec(extract, transfer, rayColor, rayAlpha);
     }
 
     private static DuctFluidTransportSpec parseFluidTransport(JsonObject to) {

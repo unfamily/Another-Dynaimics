@@ -7,7 +7,7 @@
   "can_transport": [
     {
       "dec": "forge_energy",
-      "ray_color":"#e30b28",
+      "ray_color": "#e30b28",
       "extract": 1000,
       "transfer": 8000
     }
@@ -16,7 +16,7 @@
   "disabled_features":[],
   "upgrade_features":[],
   "rendering": {
-    "always_opaque": false,
+    "always_opaque": true,
     "default_texture": "another_dynamics:block/duct/energy/rf/flux_duct_0_light",
     "model_default": "another_dynamics:block/simple_duct_default",
     "model_line": "another_dynamics:block/simple_duct_line"

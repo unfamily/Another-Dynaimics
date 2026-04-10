@@ -16,11 +16,15 @@ public record DuctEnergyTransportSpec(
          */
         long transfer,
         /**
-         * Particle ray color: {@code #RRGGBB} or {@code random}.
+         * Ray color: {@code #RRGGBB} or {@code random} (server picks RGB per pulse).
          */
-        String rayColor) {
+        String rayColor,
+        /**
+         * Vertex alpha for the energy ray (0 = invisible, 1 = opaque). Datapack: {@code ray_alpha}.
+         */
+        float rayAlpha) {
     public static DuctEnergyTransportSpec fallback() {
-        return new DuctEnergyTransportSpec(1000, 8000, "#e30b28");
+        return new DuctEnergyTransportSpec(1000, 8000, "#e30b28", 0.85f);
     }
 
     public long clampedExtract() {

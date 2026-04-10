@@ -1,55 +1,70 @@
 package net.unfamily.another_dynamics.client;
 
+import java.util.List;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.util.Mth;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
-import net.unfamily.another_dynamics.network.EnergyRayPayload;
+import net.unfamily.another_dynamics.network.EnergyRayPathPayload;
 import net.unfamily.another_dynamics.registry.ModAttachments;
 import org.joml.Vector3f;
 
+/**
+ * Client handler for energy path packets: spawns tinted dust along the duct path (see {@link DustParticleOptions}).
+ */
 public final class EnergyRayClient {
     private EnergyRayClient() {}
 
-    public static void handle(EnergyRayPayload payload) {
+    public static void handlePath(EnergyRayPathPayload payload) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.level == null || mc.player == null) {
+        Level level = mc.level;
+        if (level == null || mc.player == null) {
             return;
         }
-        // Player render toggle: when opaque mode is enabled, suppress the ray.
-        if (mc.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE)) {
+        if (mc.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get())) {
             return;
         }
+        List<BlockPos> path = payload.ductPath();
+        if (path == null || path.isEmpty()) {
+            return;
+        }
+        int argb = payload.argb();
+        float r = ((argb >> 16) & 0xFF) / 255.0F;
+        float g = ((argb >> 8) & 0xFF) / 255.0F;
+        float b = (argb & 0xFF) / 255.0F;
+        float scale = 0.5F;
+        var dust = new DustParticleOptions(new Vector3f(r, g, b), scale);
+        var rand = level.random;
 
-        BlockPos a = payload.fromDuct();
-        BlockPos b = payload.toDuct();
-        Direction fa = Direction.from3DDataValue(Mth.clamp(payload.fromFaceOrdinal(), 0, 5));
-        Direction fb = Direction.from3DDataValue(Mth.clamp(payload.toFaceOrdinal(), 0, 5));
-
-        Vec3 from = faceCenter(a, fa);
-        Vec3 to = faceCenter(b, fb);
-
-        int rgb = payload.rgb();
-        float r = ((rgb >> 16) & 0xFF) / 255f;
-        float g = ((rgb >> 8) & 0xFF) / 255f;
-        float bl = (rgb & 0xFF) / 255f;
-
-        int steps = 12;
-        Vec3 delta = to.subtract(from);
-        for (int i = 0; i <= steps; i++) {
-            double t = i / (double) steps;
-            Vec3 p = from.add(delta.scale(t));
-            mc.level.addParticle(new DustParticleOptions(new Vector3f(r, g, bl), 0.9f), true, p.x, p.y, p.z, 0, 0, 0);
+        if (path.size() == 1) {
+            Vec3 c = Vec3.atCenterOf(path.getFirst());
+            burstAt(level, dust, rand, c, 10);
+            return;
+        }
+        for (int i = 0; i < path.size() - 1; i++) {
+            Vec3 va = Vec3.atCenterOf(path.get(i));
+            Vec3 vb = Vec3.atCenterOf(path.get(i + 1));
+            double len = va.distanceTo(vb);
+            int steps = Math.max(3, Mth.ceil(len * 8.0));
+            for (int s = 0; s <= steps; s++) {
+                double t = s / (double) steps;
+                double x = Mth.lerp(t, va.x, vb.x) + (rand.nextDouble() - 0.5) * 0.06;
+                double y = Mth.lerp(t, va.y, vb.y) + (rand.nextDouble() - 0.5) * 0.06;
+                double z = Mth.lerp(t, va.z, vb.z) + (rand.nextDouble() - 0.5) * 0.06;
+                level.addParticle(dust, x, y, z, 0.0, 0.0, 0.0);
+            }
         }
     }
 
-    private static Vec3 faceCenter(BlockPos ductPos, Direction face) {
-        return new Vec3(
-                ductPos.getX() + 0.5 + face.getStepX() * 0.5,
-                ductPos.getY() + 0.5 + face.getStepY() * 0.5,
-                ductPos.getZ() + 0.5 + face.getStepZ() * 0.5);
+    private static void burstAt(Level level, DustParticleOptions dust, net.minecraft.util.RandomSource rand, Vec3 c, int count) {
+        for (int k = 0; k < count; k++) {
+            double ox = (rand.nextDouble() - 0.5) * 0.12;
+            double oy = (rand.nextDouble() - 0.5) * 0.12;
+            double oz = (rand.nextDouble() - 0.5) * 0.12;
+            level.addParticle(dust, c.x + ox, c.y + oy, c.z + oz, 0.0, 0.0, 0.0);
+        }
     }
 }
-

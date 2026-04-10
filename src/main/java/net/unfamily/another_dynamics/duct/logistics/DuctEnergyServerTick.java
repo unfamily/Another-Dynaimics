@@ -9,6 +9,7 @@ import java.util.OptionalLong;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
@@ -17,6 +18,7 @@ import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
+import net.unfamily.another_dynamics.duct.RoutingMode;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.network.ModNetwork;
@@ -29,8 +31,6 @@ import org.jetbrains.annotations.Nullable;
  * {@code transfer} across the chosen duct path (minimum transfer along the path).</p>
  */
 public final class DuctEnergyServerTick {
-    private static final int ROUTE_RETRY_CAP = 32;
-
     private DuctEnergyServerTick() {}
 
     public static void tick(DuctBlockEntity be, ServerLevel level) {
@@ -60,12 +60,16 @@ public final class DuctEnergyServerTick {
             }
             node.ticksUntilAction = rateTicks - 1;
             if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
-                tryExtractPush(level, be, dir, spec);
+                RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
+                tryExtractPush(level, be, dir, spec, rm, node);
             } else if (lanes.nodeMode == NodeMode.RETRIEVING) {
-                tryRetrievePull(level, be, dir, spec);
+                RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
+                tryRetrievePull(level, be, dir, spec, rm, node);
             } else if (lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
-                tryRetrievePull(level, be, dir, spec);
-                tryExtractPush(level, be, dir, spec);
+                RoutingMode rmR = lanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
+                RoutingMode rmE = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
+                tryRetrievePull(level, be, dir, spec, rmR, node);
+                tryExtractPush(level, be, dir, spec, rmE, node);
             }
         }
     }
@@ -75,7 +79,13 @@ public final class DuctEnergyServerTick {
         return level.getCapability(Capabilities.EnergyStorage.BLOCK, neighbor, ductFace.getOpposite());
     }
 
-    private static void tryExtractPush(ServerLevel level, DuctBlockEntity sourceBe, Direction sourceFace, DuctEnergyTransportSpec spec) {
+    private static void tryExtractPush(
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            DuctEnergyTransportSpec spec,
+            RoutingMode routing,
+            DuctFaceNode node) {
         BlockPos srcPos = sourceBe.getBlockPos();
         IEnergyStorage src = getEnergyHandlerOnFace(level, srcPos, sourceFace);
         if (src == null || !src.canExtract()) {
@@ -108,7 +118,7 @@ public final class DuctEnergyServerTick {
             OptionalLong dist =
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
-                            : OptionalLong.of(1L); // energy is instant; distance is only used for tie-breaks later.
+                            : hopDistance(level, srcPos, destPos);
             for (Direction df : Direction.values()) {
                 if ((dsm & (1 << df.ordinal())) == 0) {
                     continue;
@@ -135,38 +145,47 @@ public final class DuctEnergyServerTick {
                 if (recvSim <= 0) {
                     continue;
                 }
-                cands.add(new DestCandidate(destPos, df, dist.orElse(0L), recvSim));
+                int priority = destBe.getFaceNode(df).insertionPriority;
+                cands.add(new DestCandidate(destPos, df, priority, dist.orElse(Long.MAX_VALUE), recvSim));
             }
         }
         if (cands.isEmpty()) {
             return;
         }
-        cands.sort(
-                Comparator.comparingInt((DestCandidate c) -> c.moved()).reversed()
-                        .thenComparingLong(DestCandidate::dist)
-                        .thenComparingLong(c -> c.ductPos().asLong())
-                        .thenComparingInt(c -> c.face().ordinal()));
-
-        int tried = 0;
-        for (DestCandidate pick : cands) {
-            if (tried++ >= ROUTE_RETRY_CAP) {
-                return;
+        cands.sort(Comparator.comparingInt((DestCandidate c) -> c.priority()).reversed());
+        int maxP = cands.getFirst().priority();
+        ArrayList<DestCandidate> tier = new ArrayList<>();
+        for (DestCandidate c : cands) {
+            if (c.priority() == maxP) {
+                tier.add(c);
             }
+        }
+        int rr = node.roundRobinCursor;
+        DestCandidate pick = pickWithinTier(level, tier, routing, rr);
+        if (pick == null) {
+            return;
+        }
+        if (routing == RoutingMode.ROUND_ROBIN) {
+            node.roundRobinCursor = rr + 1;
+            sourceBe.setChanged();
+        }
+
+        {
             long bottleneck = bottleneckTransferAlongPath(level, srcPos, pick.ductPos());
             if (bottleneck <= 0) {
-                continue;
+                return;
             }
             int cap = (int) Math.min((long) pick.moved(), Math.min(bottleneck, (long) Integer.MAX_VALUE));
             if (cap <= 0) {
-                continue;
+                return;
             }
             IEnergyStorage dest = getEnergyHandlerOnFace(level, pick.ductPos(), pick.face());
             if (dest == null || !dest.canReceive()) {
-                continue;
+                return;
             }
             int recv = dest.receiveEnergy(cap, true);
             if (recv <= 0) {
-                continue;
+                return;
             }
             int extracted = src.extractEnergy(recv, false);
             if (extracted <= 0) {
@@ -180,12 +199,17 @@ public final class DuctEnergyServerTick {
                 // Best-effort: refund remainder to source if destination lied.
                 src.receiveEnergy(extracted - inserted, false);
             }
-            sendRayIfVisible(level, srcPos, sourceFace, pick.ductPos(), pick.face(), sourceBe.energyTransportSpec().rayColor());
-            return;
+            sendRayIfVisible(level, srcPos, pick.ductPos(), sourceBe.energyTransportSpec());
         }
     }
 
-    private static void tryRetrievePull(ServerLevel level, DuctBlockEntity retrieverBe, Direction retrieverFace, DuctEnergyTransportSpec spec) {
+    private static void tryRetrievePull(
+            ServerLevel level,
+            DuctBlockEntity retrieverBe,
+            Direction retrieverFace,
+            DuctEnergyTransportSpec spec,
+            RoutingMode routing,
+            DuctFaceNode node) {
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         IEnergyStorage dest = getEnergyHandlerOnFace(level, retrieverPos, retrieverFace);
         if (dest == null || !dest.canReceive()) {
@@ -205,8 +229,8 @@ public final class DuctEnergyServerTick {
         if (ducts.isEmpty()) {
             return;
         }
-        for (int donorIdx = 0; donorIdx < ducts.size() && donorIdx < ROUTE_RETRY_CAP; donorIdx++) {
-            BlockPos donorPos = ducts.get(donorIdx);
+        ArrayList<DonorCandidate> donors = new ArrayList<>();
+        for (BlockPos donorPos : ducts) {
             if (!(level.getBlockEntity(donorPos) instanceof DuctBlockEntity donorBe)) {
                 continue;
             }
@@ -223,56 +247,107 @@ public final class DuctEnergyServerTick {
                 if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION) {
                     continue;
                 }
+                if (!donorBe.getFaceNode(donorFace).eligibilityMode.isRetrievable()) {
+                    continue;
+                }
                 IEnergyStorage src = getEnergyHandlerOnFace(level, donorPos, donorFace);
                 if (src == null || !src.canExtract()) {
                     continue;
                 }
-                int availSim = src.extractEnergy(needSim, true);
-                if (availSim <= 0) {
+                OptionalLong dist =
+                        donorPos.equals(retrieverPos)
+                                ? OptionalLong.of(0L)
+                                : hopDistance(level, retrieverPos, donorPos);
+                if (dist.isEmpty()) {
                     continue;
                 }
-
-                long bottleneck = bottleneckTransferAlongPath(level, donorPos, retrieverPos);
-                if (bottleneck <= 0) {
-                    continue;
-                }
-                int cap = (int) Math.min((long) availSim, Math.min(bottleneck, (long) Integer.MAX_VALUE));
-                if (cap <= 0) {
-                    continue;
-                }
-                int recv2 = dest.receiveEnergy(cap, true);
-                if (recv2 <= 0) {
-                    continue;
-                }
-                int extracted = src.extractEnergy(recv2, false);
-                if (extracted <= 0) {
-                    continue;
-                }
-                int inserted = dest.receiveEnergy(extracted, false);
-                if (inserted <= 0) {
-                    src.receiveEnergy(extracted, false);
-                    continue;
-                }
-                if (inserted < extracted) {
-                    src.receiveEnergy(extracted - inserted, false);
-                }
-                sendRayIfVisible(level, donorPos, donorFace, retrieverPos, retrieverFace, donorBe.energyTransportSpec().rayColor());
-                return;
+                int priority = donorBe.getFaceNode(donorFace).insertionPriority;
+                donors.add(new DonorCandidate(donorPos, donorFace, priority, dist.getAsLong()));
             }
+        }
+        if (donors.isEmpty()) {
+            return;
+        }
+        donors.sort(Comparator.comparingInt((DonorCandidate c) -> c.priority()).reversed());
+        int maxP = donors.getFirst().priority();
+        ArrayList<DonorCandidate> tier = new ArrayList<>();
+        for (DonorCandidate c : donors) {
+            if (c.priority() == maxP) {
+                tier.add(c);
+            }
+        }
+        DonorCandidate pick = pickDonorWithinTier(level, tier, routing, node.roundRobinCursor);
+        if (pick == null) {
+            return;
+        }
+
+        IEnergyStorage src = getEnergyHandlerOnFace(level, pick.ductPos(), pick.face());
+        if (src == null || !src.canExtract()) {
+            return;
+        }
+        int availSim = src.extractEnergy(needSim, true);
+        if (availSim <= 0) {
+            return;
+        }
+        long bottleneck = bottleneckTransferAlongPath(level, pick.ductPos(), retrieverPos);
+        if (bottleneck <= 0) {
+            return;
+        }
+        int cap = (int) Math.min((long) availSim, Math.min(bottleneck, (long) Integer.MAX_VALUE));
+        if (cap <= 0) {
+            return;
+        }
+        int recv2 = dest.receiveEnergy(cap, true);
+        if (recv2 <= 0) {
+            return;
+        }
+        int extracted = src.extractEnergy(recv2, false);
+        if (extracted <= 0) {
+            return;
+        }
+        int inserted = dest.receiveEnergy(extracted, false);
+        if (inserted <= 0) {
+            src.receiveEnergy(extracted, false);
+            return;
+        }
+        if (inserted < extracted) {
+            src.receiveEnergy(extracted - inserted, false);
+        }
+        if (level.getBlockEntity(pick.ductPos()) instanceof DuctBlockEntity donor) {
+            sendRayIfVisible(level, pick.ductPos(), retrieverPos, donor.energyTransportSpec());
         }
     }
 
-    private static void sendRayIfVisible(
-            ServerLevel level, BlockPos fromDuct, Direction fromFace, BlockPos toDuct, Direction toFace, String rayColor) {
+    private static void sendRayIfVisible(ServerLevel level, BlockPos fromDuct, BlockPos toDuct, DuctEnergyTransportSpec spec) {
         if (level == null) {
             return;
         }
+        Optional<List<BlockPos>> pathOpt =
+                fromDuct.equals(toDuct)
+                        ? Optional.of(List.of(fromDuct))
+                        : DuctPathfinder.shortestPath(level, fromDuct, toDuct, 1L, DuctNetworkType.ENERGY);
+        if (pathOpt.isEmpty()) {
+            return;
+        }
+        List<BlockPos> path = pathOpt.get();
+        // If any duct is always-opaque, skip the ray.
+        for (BlockPos p : path) {
+            if (level.getBlockEntity(p) instanceof DuctBlockEntity be && be.ductAlwaysOpaqueRendering()) {
+                return;
+            }
+        }
+        int alphaByte = Math.min(255, Math.max(0, Math.round(Math.clamp(spec.rayAlpha(), 0f, 1f) * 255f)));
+        if (alphaByte <= 0) {
+            return;
+        }
+        String rayColor = spec.rayColor();
         if (rayColor == null || rayColor.isBlank()) {
             rayColor = "#e30b28";
         }
         if (rayColor.equalsIgnoreCase("random")) {
             int rgb = level.random.nextInt(0x1000000);
-            ModNetwork.sendEnergyRay(level, fromDuct, fromFace, toDuct, toFace, rgb);
+            int argb = (alphaByte << 24) | (rgb & 0xFFFFFF);
+            ModNetwork.sendEnergyRayPath(level, path, argb, midOf(path));
             return;
         }
         String s = rayColor.trim();
@@ -284,9 +359,27 @@ public final class DuctEnergyServerTick {
         }
         try {
             int rgb = Integer.parseInt(s, 16) & 0xFFFFFF;
-            ModNetwork.sendEnergyRay(level, fromDuct, fromFace, toDuct, toFace, rgb);
+            int argb = (alphaByte << 24) | rgb;
+            ModNetwork.sendEnergyRayPath(level, path, argb, midOf(path));
         } catch (NumberFormatException ignored) {
         }
+    }
+
+    private static Vec3 midOf(List<BlockPos> path) {
+        BlockPos a = path.getFirst();
+        BlockPos b = path.getLast();
+        return new Vec3((a.getX() + b.getX()) / 2.0 + 0.5, (a.getY() + b.getY()) / 2.0 + 0.5, (a.getZ() + b.getZ()) / 2.0 + 0.5);
+    }
+
+    private static OptionalLong hopDistance(ServerLevel level, BlockPos from, BlockPos to) {
+        if (from.equals(to)) {
+            return OptionalLong.of(0L);
+        }
+        Optional<List<BlockPos>> path = DuctPathfinder.shortestPath(level, from, to, 1L, DuctNetworkType.ENERGY);
+        if (path.isEmpty()) {
+            return OptionalLong.empty();
+        }
+        return OptionalLong.of(Math.max(0L, path.get().size()));
     }
 
     private static long bottleneckTransferAlongPath(ServerLevel level, BlockPos fromDuct, BlockPos toDuct) {
@@ -315,6 +408,119 @@ public final class DuctEnergyServerTick {
         return min == Long.MAX_VALUE ? 0L : min;
     }
 
-    private record DestCandidate(BlockPos ductPos, Direction face, long dist, int moved) {}
+    private static @Nullable DestCandidate pickWithinTier(ServerLevel level, List<DestCandidate> tier, RoutingMode routing, int roundRobinCursor) {
+        if (tier == null || tier.isEmpty()) {
+            return null;
+        }
+        orderTier(tier, routing, level, roundRobinCursor);
+        return tier.getFirst();
+    }
+
+    private static void orderTier(List<DestCandidate> tier, RoutingMode routing, ServerLevel level, int roundRobinCursor) {
+        if (tier.isEmpty()) {
+            return;
+        }
+        switch (routing) {
+            case NEAREST_FIRST -> tier.sort(
+                    Comparator.comparingLong(DestCandidate::dist)
+                            .thenComparingLong(c -> c.ductPos().asLong())
+                            .thenComparingInt(c -> c.face().ordinal()));
+            case FARTHEST_FIRST -> tier.sort(
+                    Comparator.comparingLong(DestCandidate::dist).reversed()
+                            .thenComparingLong(c -> c.ductPos().asLong())
+                            .thenComparingInt(c -> c.face().ordinal()));
+            case MIDDLEST_FIRST -> {
+                double sum = 0;
+                for (DestCandidate c : tier) {
+                    sum += c.dist();
+                }
+                double mean = sum / tier.size();
+                tier.sort(
+                        Comparator.comparingDouble((DestCandidate c) -> Math.abs(c.dist() - mean))
+                                .thenComparingLong(c -> c.ductPos().asLong())
+                                .thenComparingInt(c -> c.face().ordinal()));
+            }
+            case ROUND_ROBIN -> {
+                tier.sort(
+                        Comparator.comparingLong((DestCandidate c) -> c.ductPos().asLong())
+                                .thenComparingInt(c -> c.face().ordinal()));
+                int start = Math.floorMod(roundRobinCursor, tier.size());
+                if (start != 0) {
+                    ArrayList<DestCandidate> rotated = new ArrayList<>(tier.size());
+                    rotated.addAll(tier.subList(start, tier.size()));
+                    rotated.addAll(tier.subList(0, start));
+                    tier.clear();
+                    tier.addAll(rotated);
+                }
+            }
+            case RANDOM -> {
+                for (int i2 = tier.size() - 1; i2 > 0; i2--) {
+                    int j = level.random.nextInt(i2 + 1);
+                    DestCandidate a = tier.get(i2);
+                    tier.set(i2, tier.get(j));
+                    tier.set(j, a);
+                }
+            }
+        }
+    }
+
+    private static @Nullable DonorCandidate pickDonorWithinTier(ServerLevel level, List<DonorCandidate> tier, RoutingMode routing, int roundRobinCursor) {
+        if (tier == null || tier.isEmpty()) {
+            return null;
+        }
+        orderDonorTier(tier, routing, level, roundRobinCursor);
+        return tier.getFirst();
+    }
+
+    private static void orderDonorTier(List<DonorCandidate> tier, RoutingMode routing, ServerLevel level, int roundRobinCursor) {
+        if (tier.isEmpty()) {
+            return;
+        }
+        switch (routing) {
+            case NEAREST_FIRST -> tier.sort(
+                    Comparator.comparingLong(DonorCandidate::dist)
+                            .thenComparingLong(c -> c.ductPos().asLong())
+                            .thenComparingInt(c -> c.face().ordinal()));
+            case FARTHEST_FIRST -> tier.sort(
+                    Comparator.comparingLong(DonorCandidate::dist).reversed()
+                            .thenComparingLong(c -> c.ductPos().asLong())
+                            .thenComparingInt(c -> c.face().ordinal()));
+            case MIDDLEST_FIRST -> {
+                double sum = 0;
+                for (DonorCandidate c : tier) {
+                    sum += c.dist();
+                }
+                double mean = sum / tier.size();
+                tier.sort(
+                        Comparator.comparingDouble((DonorCandidate c) -> Math.abs(c.dist() - mean))
+                                .thenComparingLong(c -> c.ductPos().asLong())
+                                .thenComparingInt(c -> c.face().ordinal()));
+            }
+            case ROUND_ROBIN -> {
+                tier.sort(
+                        Comparator.comparingLong((DonorCandidate c) -> c.ductPos().asLong())
+                                .thenComparingInt(c -> c.face().ordinal()));
+                int start = Math.floorMod(roundRobinCursor, tier.size());
+                if (start != 0) {
+                    ArrayList<DonorCandidate> rotated = new ArrayList<>(tier.size());
+                    rotated.addAll(tier.subList(start, tier.size()));
+                    rotated.addAll(tier.subList(0, start));
+                    tier.clear();
+                    tier.addAll(rotated);
+                }
+            }
+            case RANDOM -> {
+                for (int i2 = tier.size() - 1; i2 > 0; i2--) {
+                    int j = level.random.nextInt(i2 + 1);
+                    DonorCandidate a = tier.get(i2);
+                    tier.set(i2, tier.get(j));
+                    tier.set(j, a);
+                }
+            }
+        }
+    }
+
+    private record DestCandidate(BlockPos ductPos, Direction face, int priority, long dist, int moved) {}
+    private record DonorCandidate(BlockPos ductPos, Direction face, int priority, long dist) {}
 }
 

@@ -18,13 +18,14 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
-import net.unfamily.another_dynamics.client.EnergyRayClient;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
+import net.unfamily.another_dynamics.client.EnergyRayClient;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.registry.ModAttachments;
+import java.util.List;
 
 @EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class ModNetwork {
@@ -158,8 +159,8 @@ public final class ModNetwork {
             });
         });
 
-        reg.playToClient(EnergyRayPayload.TYPE, EnergyRayPayload.STREAM_CODEC, (payload, ctx) -> {
-            ctx.enqueueWork(() -> EnergyRayClient.handle(payload));
+        reg.playToClient(EnergyRayPathPayload.TYPE, EnergyRayPathPayload.STREAM_CODEC, (payload, ctx) -> {
+            ctx.enqueueWork(() -> EnergyRayClient.handlePath(payload));
         });
 
         reg.playToClient(DuctFilterSyncPayload.TYPE, DuctFilterSyncPayload.STREAM_CODEC, (payload, ctx) -> {
@@ -236,12 +237,11 @@ public final class ModNetwork {
         PacketDistributor.sendToServer(DuctOpaqueTogglePayload.INSTANCE);
     }
 
-    public static void sendEnergyRay(ServerLevel level, BlockPos fromDuct, Direction fromFace, BlockPos toDuct, Direction toFace, int rgb) {
-        if (level == null) {
+    public static void sendEnergyRayPath(ServerLevel level, List<BlockPos> ductPath, int argb, Vec3 mid) {
+        if (level == null || ductPath == null || ductPath.isEmpty()) {
             return;
         }
-        var payload = new EnergyRayPayload(fromDuct, fromFace.ordinal(), toDuct, toFace.ordinal(), rgb);
-        Vec3 mid = new Vec3((fromDuct.getX() + toDuct.getX()) / 2.0 + 0.5, (fromDuct.getY() + toDuct.getY()) / 2.0 + 0.5, (fromDuct.getZ() + toDuct.getZ()) / 2.0 + 0.5);
+        var payload = new EnergyRayPathPayload(ductPath, argb);
         double r2 = 64.0 * 64.0;
         for (ServerPlayer p : level.players()) {
             if (p.distanceToSqr(mid) <= r2) {
