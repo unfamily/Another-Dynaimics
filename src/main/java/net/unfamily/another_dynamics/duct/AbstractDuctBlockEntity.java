@@ -148,3 +148,4 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
         this.storageMask = storage & 0xFF;
     }
 }
+
