@@ -134,15 +134,42 @@ public final class ModuleUpgradeTooltip {
         return row;
     }
 
-    /** Extra filter rows: allow-slot adds only (item + fluid + gas), summed. */
+    /**
+     * Extra filter allow-slot add: each transport kind gets its own bonus in-game ({@link DuctModuleEffects}); do not
+     * sum across kinds. Show one number when item/fluid/gas agree; otherwise sorted distinct positive adds joined with
+     * middle dot.
+     */
     private static void appendFilterAllowOnly(List<Component> out, ModuleDefinition def) {
-        int n =
-                def.filterSlotsItem().allowSlotAdd()
-                        + def.filterSlotsFluid().allowSlotAdd()
-                        + def.filterSlotsGas().allowSlotAdd();
-        if (n > 0) {
-            out.add(line(LINE_FILTER, n));
+        LinkedHashSet<Integer> distinct = new LinkedHashSet<>();
+        int item = def.filterSlotsItem().allowSlotAdd();
+        int fluid = def.filterSlotsFluid().allowSlotAdd();
+        int gas = def.filterSlotsGas().allowSlotAdd();
+        if (item > 0) {
+            distinct.add(item);
         }
+        if (fluid > 0) {
+            distinct.add(fluid);
+        }
+        if (gas > 0) {
+            distinct.add(gas);
+        }
+        if (distinct.isEmpty()) {
+            return;
+        }
+        if (distinct.size() == 1) {
+            out.add(line(LINE_FILTER, distinct.iterator().next()));
+            return;
+        }
+        ArrayList<Integer> sorted = new ArrayList<>(distinct);
+        sorted.sort(Integer::compareTo);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < sorted.size(); i++) {
+            if (i > 0) {
+                sb.append(" \u00b7 ");
+            }
+            sb.append(sorted.get(i));
+        }
+        out.add(line(LINE_FILTER, sb.toString()));
     }
 
     private static String formatSpeedLane(ItemQuantityModifiers m) {
