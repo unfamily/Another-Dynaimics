@@ -35,16 +35,16 @@ public final class ModCreativeTabs {
                             .sorted(Comparator.comparing(DuctDefinition::logicalId))
                             .map(d -> ModItems.createDuctStack(d.logicalId()))
                             .forEach(output::accept);
+                    output.accept(ModItems.INC_MODULE_0.get().getDefaultInstance());
                     output.accept(ModItems.INC_MODULE_1.get().getDefaultInstance());
                     output.accept(ModItems.INC_MODULE_2.get().getDefaultInstance());
                     output.accept(ModItems.INC_MODULE_3.get().getDefaultInstance());
                     output.accept(ModItems.INC_MODULE_4.get().getDefaultInstance());
-                    output.accept(ModItems.INC_MODULE_5.get().getDefaultInstance());
+                    output.accept(ModItems.FIL_MODULE_0.get().getDefaultInstance());
                     output.accept(ModItems.FIL_MODULE_1.get().getDefaultInstance());
                     output.accept(ModItems.FIL_MODULE_2.get().getDefaultInstance());
                     output.accept(ModItems.FIL_MODULE_3.get().getDefaultInstance());
                     output.accept(ModItems.FIL_MODULE_4.get().getDefaultInstance());
-                    output.accept(ModItems.FIL_MODULE_5.get().getDefaultInstance());
                     output.accept(ModItems.NETHERITE_NUGGET.get().getDefaultInstance());
                 })
                 .build();

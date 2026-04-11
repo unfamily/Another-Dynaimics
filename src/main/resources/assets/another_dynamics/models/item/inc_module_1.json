@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "another_dynamics:item/module/inc_0"
+    "layer0": "another_dynamics:item/module/inc_1"
   }
 }

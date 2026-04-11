@@ -5,7 +5,7 @@
     {
       "for": "item",
       "batch": {
-        "set": 64
+        "set": 96
       }
     }
   ],

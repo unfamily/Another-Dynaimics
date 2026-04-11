@@ -6,16 +6,16 @@
       "for": "item",
       "filter": {
         "allow": {
-          "add": 3
+          "add": 4
         },
         "deny": {
-          "add": 3
+          "add": 4
         },
         "allow_hybrid": {
-          "add": 3
+          "add": 4
         },
         "deny_hybrid": {
-          "add": 3
+          "add": 4
         }
       }
     }

@@ -1,21 +1,21 @@
 {
   "type": "another_dynamics:declare_module",
-  "id": "another_dynamics:fil_module_5",
+  "id": "another_dynamics:fil_module_0",
   "affects": [
     {
       "for": "item",
       "filter": {
         "allow": {
-          "add": 5
+          "add": 1
         },
         "deny": {
-          "add": 5
+          "add": 1
         },
         "allow_hybrid": {
-          "add": 5
+          "add": 1
         },
         "deny_hybrid": {
-          "add": 5
+          "add": 1
         }
       }
     }

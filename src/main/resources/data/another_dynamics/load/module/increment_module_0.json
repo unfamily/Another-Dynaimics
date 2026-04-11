@@ -1,11 +1,11 @@
 {
   "type": "another_dynamics:declare_module",
-  "id": "another_dynamics:inc_module_5",
+  "id": "another_dynamics:inc_module_0",
   "affects": [
     {
       "for": "item",
       "batch": {
-        "set": 128
+        "set": 16
       }
     }
   ],
