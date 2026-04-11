@@ -107,6 +107,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     /** Detects module-slot changes so {@link DuctMenuSync#EXTRACT_BATCH_CAP} can be refreshed without full menu spam. */
     private int lastModuleSlotsFingerprint;
 
+    /** Server-side only: player that opened this menu, used to re-send filter sync on module changes. */
+    private final @Nullable ServerPlayer menuPlayer;
+
     /** Client-side filter cache (filled by {@link #receiveFilterSync}). */
     private final List<String> clientAllowFiltersExtractor = new ArrayList<>();
     private final List<String> clientDenyFiltersExtractor = new ArrayList<>();
@@ -217,6 +220,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         this.clientDuctLogicalId = clientDuctLogicalId;
         this.moduleSlotCount = Math.max(0, moduleSlotCount);
         this.machineSlotCount = this.moduleSlotCount + 1;
+        this.menuPlayer = (!playerInventory.player.level().isClientSide() && playerInventory.player instanceof ServerPlayer sp) ? sp : null;
 
         for (int i = 0; i < this.moduleSlotCount; i++) {
             int y = SLOT_MODULE_Y0 + i * 18;
@@ -665,6 +669,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 lastModuleSlotsFingerprint = fp;
                 linkedBlockEntity.clampAllTransportExtractBatchesForFace(accessFace);
                 linkedBlockEntity.refreshMenuData(accessFace);
+                if (menuPlayer != null && !linkedBlockEntity.isMenuHubLayer()) {
+                    ModNetwork.sendFilterSyncToPlayer(menuPlayer, linkedBlockEntity, accessFace);
+                }
             }
         }
     }

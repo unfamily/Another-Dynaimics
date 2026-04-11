@@ -55,8 +55,14 @@ public final class DuctGasFilterLogic {
         }
         DuctFaceNode view = new DuctFaceNode(() -> {});
         view.denyOverridesAllow = node.bankDenyOverridesAllow(bank);
-        view.allowFilters.addAll(node.bankAllowFilters(bank));
-        view.denyFilters.addAll(node.bankDenyFilters(bank));
+        // Limit to effective capacity so entries preserved beyond current module capacity are not
+        // evaluated during filtering.
+        List<String> fullAllow = node.bankAllowFilters(bank);
+        List<String> fullDeny = node.bankDenyFilters(bank);
+        int ac = node.effectiveAllowBankCap;
+        int dc = node.effectiveDenyBankCap;
+        view.allowFilters.addAll(fullAllow.subList(0, Math.min(fullAllow.size(), ac)));
+        view.denyFilters.addAll(fullDeny.subList(0, Math.min(fullDeny.size(), dc)));
         return passesGasFilters(view, chemicalStack, level);
     }
 

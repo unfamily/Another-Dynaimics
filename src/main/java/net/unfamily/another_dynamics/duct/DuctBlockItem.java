@@ -1,9 +1,15 @@
 package net.unfamily.another_dynamics.duct;
 
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 import net.unfamily.another_dynamics.client.DuctItemRenderer;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
@@ -47,6 +53,37 @@ public final class DuctBlockItem extends BlockItem {
                 return this.renderer;
             }
         });
+    }
+
+    public String getDefaultLogicalId() {
+        return defaultLogicalId;
+    }
+
+    @Override
+    public InteractionResult useOn(UseOnContext context) {
+        if (context.getPlayer() != null && context.getPlayer().isSecondaryUseActive()) {
+            Level level = context.getLevel();
+            BlockPos pos = context.getClickedPos();
+            BlockState state = level.getBlockState(pos);
+            if (state.getBlock() instanceof AbstractDuctBlock) {
+                BlockEntity entity = level.getBlockEntity(pos);
+                if (entity instanceof DuctBlockEntity ductBE) {
+                    ItemStack stack = context.getItemInHand();
+                    String newLogicalId = stack.get(ModDataComponents.DUCT_LOGICAL_ID.get());
+                    if (newLogicalId == null || newLogicalId.isEmpty()) {
+                        newLogicalId = defaultLogicalId;
+                    }
+                    if (level.isClientSide()) {
+                        return InteractionResult.SUCCESS;
+                    }
+                    ductBE.refreshFromWorld();
+                    return DuctReplaceHelper.tryReplace(
+                            context.getPlayer(), level, pos, ductBE, newLogicalId, context.getHand()
+                    ).result();
+                }
+            }
+        }
+        return super.useOn(context);
     }
 
     @Override

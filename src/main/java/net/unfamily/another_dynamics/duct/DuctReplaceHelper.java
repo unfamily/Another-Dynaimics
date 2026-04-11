@@ -12,6 +12,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
@@ -148,6 +149,12 @@ public final class DuctReplaceHelper {
         // Clamp filter sizes to the new transport specs (may shrink lists that barely fit, but we
         // already verified nothing is actually lost above).
         ductBE.clampFaceFiltersToSpec();
+
+        // Force an immediate sync packet to all clients watching this chunk so the new logical id
+        // and model data reach the client before the next chunk tick.
+        BlockState currentState = level.getBlockState(pos);
+        level.blockEntityChanged(pos);
+        level.sendBlockUpdated(pos, currentState, currentState, 3);
 
         // Consume one item from the player's hand.
         ItemStack handStack = player.getItemInHand(hand);

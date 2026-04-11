@@ -103,6 +103,14 @@ public final class DuctFaceNode {
 
     public final ItemStackHandler guiSlots;
 
+    /**
+     * Effective capacity for each multi-bank allow/deny list, updated by {@link #clampFilterSizes}.
+     * Entries stored beyond this index are preserved for data safety but are not evaluated during
+     * filter matching. Default is {@link Integer#MAX_VALUE} (unlimited) until first clamp.
+     */
+    public int effectiveAllowBankCap = Integer.MAX_VALUE;
+    public int effectiveDenyBankCap = Integer.MAX_VALUE;
+
     public DuctFaceNode(Runnable onChanged) {
         this.guiSlots =
                 new ItemStackHandler(1) {
@@ -260,6 +268,8 @@ public final class DuctFaceNode {
 
         int bankA = DuctModuleEffects.effectiveItemAllowBank(spec, sharedNodeMode, fb);
         int bankD = DuctModuleEffects.effectiveItemDenyBank(spec, sharedNodeMode, fb);
+        effectiveAllowBankCap = bankA;
+        effectiveDenyBankCap = bankD;
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
@@ -283,6 +293,8 @@ public final class DuctFaceNode {
 
         int bankA = DuctModuleEffects.effectiveFluidAllowBank(spec, sharedNodeMode, fb);
         int bankD = DuctModuleEffects.effectiveFluidDenyBank(spec, sharedNodeMode, fb);
+        effectiveAllowBankCap = bankA;
+        effectiveDenyBankCap = bankD;
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
@@ -305,6 +317,8 @@ public final class DuctFaceNode {
 
         int bankA = DuctModuleEffects.effectiveGasAllowBank(spec, sharedNodeMode, fb);
         int bankD = DuctModuleEffects.effectiveGasDenyBank(spec, sharedNodeMode, fb);
+        effectiveAllowBankCap = bankA;
+        effectiveDenyBankCap = bankD;
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
@@ -472,8 +486,17 @@ public final class DuctFaceNode {
     }
 
     private static void clampList(List<String> list, int max) {
+        // Only remove trailing blank slots beyond capacity.
+        // Non-blank entries beyond capacity are preserved so that temporarily removing a filter
+        // module does not destroy configured filter patterns; those extra entries are inactive
+        // (not evaluated during filtering) until capacity is restored.
         while (list.size() > max) {
-            list.remove(list.size() - 1);
+            String last = list.get(list.size() - 1);
+            if (last == null || last.isBlank()) {
+                list.remove(list.size() - 1);
+            } else {
+                break;
+            }
         }
         while (list.size() < max) {
             list.add("");

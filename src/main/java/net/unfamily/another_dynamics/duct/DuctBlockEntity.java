@@ -2498,17 +2498,26 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (stack.isEmpty()) {
             return false;
         }
-        if (getFaceLanes(face).nodeMode == NodeMode.NONE) {
+        DuctFaceLanes lanes = getFaceLanes(face);
+        if (lanes.nodeMode == NodeMode.NONE) {
             return true;
         }
         DuctFaceNode node = getFaceNode(face);
-        // Build a lightweight view using the selected bank, so existing matching logic stays unchanged.
+        // Compute effective filter capacity so entries beyond capacity (kept for data preservation
+        // when modules are temporarily removed) are not evaluated during matching.
+        DuctItemTransportSpec itemSpec = itemTransportSpec();
+        DuctModuleEffects.FilterSlotBonuses fb = DuctModuleEffects.filterSlotBonuses(this, face);
+        int allowCap = DuctModuleEffects.effectiveItemAllowBank(itemSpec, lanes.nodeMode, fb);
+        int denyCap = DuctModuleEffects.effectiveItemDenyBank(itemSpec, lanes.nodeMode, fb);
+        // Build a lightweight view using the selected bank limited to effective capacity.
         DuctFaceNode view = new DuctFaceNode(() -> {});
         view.denyOverridesAllow = node.bankDenyOverridesAllow(bank);
         view.allowFilters.clear();
-        view.allowFilters.addAll(node.bankAllowFilters(bank));
+        List<String> fullAllow = node.bankAllowFilters(bank);
+        view.allowFilters.addAll(fullAllow.subList(0, Math.min(fullAllow.size(), allowCap)));
         view.denyFilters.clear();
-        view.denyFilters.addAll(node.bankDenyFilters(bank));
+        List<String> fullDeny = node.bankDenyFilters(bank);
+        view.denyFilters.addAll(fullDeny.subList(0, Math.min(fullDeny.size(), denyCap)));
         return DuctFilterLogic.passesItemFilters(view, stack, level);
     }
 
@@ -2554,12 +2563,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         List<String> d = node.bankDenyFilters(bank);
         List<Integer> caps = node.bankAllowCaps(bank);
         List<Integer> caps2 = bank == DuctFaceNode.FilterBank.FILTER ? node.filterBankKeepCaps() : null;
-        a.clear();
-        d.clear();
-        caps.clear();
-        if (caps2 != null) {
-            caps2.clear();
-        }
         int maxA;
         int maxD;
         if (laneKind == DuctTransportKind.FLUID) {
@@ -2580,23 +2583,71 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case ENERGY, HEAT -> false;
                     case ITEM -> faceHasAnyModule(face);
                 };
+        // Snapshot the full current lists before clearing.
+        // - Positions allowIn.size()..maxA-1: client had fewer visible slots than the current capacity
+        //   (e.g. module was just re-added); preserve server-side values instead of writing "".
+        // - Positions beyond maxA: preserved so they survive a capacity reduction and are
+        //   restored automatically when capacity is increased again.
+        List<String> origA = new ArrayList<>(a);
+        List<Integer> origCaps = new ArrayList<>(caps);
+        List<Integer> origCaps2 = caps2 != null ? new ArrayList<>(caps2) : null;
+        List<String> origD = new ArrayList<>(d);
+        a.clear();
+        d.clear();
+        caps.clear();
+        if (caps2 != null) {
+            caps2.clear();
+        }
         for (int i = 0; i < maxA; i++) {
-            String s = i < allowIn.size() ? allowIn.get(i) : "";
-            s = s != null ? s : "";
+            String s;
+            if (i < allowIn.size()) {
+                s = allowIn.get(i);
+                s = s != null ? s : "";
+            } else {
+                s = i < origA.size() ? origA.get(i) : "";
+                s = s != null ? s : "";
+            }
             a.add(clampFilterLine(def, hasModule, s));
-            Integer capObj = i < allowCapsIn.size() ? allowCapsIn.get(i) : null;
+            Integer capObj;
+            if (i < allowCapsIn.size()) {
+                capObj = allowCapsIn.get(i);
+            } else {
+                capObj = i < origCaps.size() ? origCaps.get(i) : null;
+            }
             int cap = capObj != null ? capObj : 0;
             caps.add(Math.max(0, cap));
             if (caps2 != null) {
-                Integer capObj2 = i < allowCaps2In.size() ? allowCaps2In.get(i) : null;
+                Integer capObj2;
+                if (i < allowCaps2In.size()) {
+                    capObj2 = allowCaps2In.get(i);
+                } else {
+                    capObj2 = origCaps2 != null && i < origCaps2.size() ? origCaps2.get(i) : null;
+                }
                 int cap2 = capObj2 != null ? capObj2 : 0;
                 caps2.add(Math.max(0, cap2));
             }
         }
         for (int i = 0; i < maxD; i++) {
-            String s = i < denyIn.size() ? denyIn.get(i) : "";
-            s = s != null ? s : "";
+            String s;
+            if (i < denyIn.size()) {
+                s = denyIn.get(i);
+                s = s != null ? s : "";
+            } else {
+                s = i < origD.size() ? origD.get(i) : "";
+                s = s != null ? s : "";
+            }
             d.add(clampFilterLine(def, hasModule, s));
+        }
+        // Restore entries beyond current capacity (inactive until capacity is restored).
+        if (origA.size() > maxA) {
+            a.addAll(origA.subList(maxA, origA.size()));
+            if (origCaps.size() > maxA) caps.addAll(origCaps.subList(maxA, origCaps.size()));
+            if (caps2 != null && origCaps2 != null && origCaps2.size() > maxA) {
+                caps2.addAll(origCaps2.subList(maxA, origCaps2.size()));
+            }
+        }
+        if (origD.size() > maxD) {
+            d.addAll(origD.subList(maxD, origD.size()));
         }
         if (DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.listPrecedenceKey(sharedMode, bank), hasModule)) {
             node.setBankDenyOverridesAllow(bank, denyOverridesAllow);
@@ -3399,6 +3450,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
         CompoundTag t = super.getUpdateTag(registries);
+        t.putString("DuctLogicalId", logicalDuctId);
         t.putByte("PipeMask", (byte) getPipeMask());
         t.putByte("StorageMask", (byte) getStorageMask());
         t.putByte("UserDisc", (byte) getUserDisconnectedFaceMask());
