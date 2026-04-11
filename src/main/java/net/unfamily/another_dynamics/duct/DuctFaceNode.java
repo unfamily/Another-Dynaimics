@@ -252,8 +252,8 @@ public final class DuctFaceNode {
 
     public void clampFilterSizes(
             DuctItemTransportSpec spec, NodeMode sharedNodeMode, DuctModuleEffects.FilterSlotBonuses fb) {
-        int legacyA = Math.max(0, spec.filterAllowSlots() + fb.allowAdd());
-        int legacyD = Math.max(0, spec.filterDenySlots() + fb.denyAdd());
+        int legacyA = Math.max(0, spec.filterAllowSlots() + fb.item().allowAdd());
+        int legacyD = Math.max(0, spec.filterDenySlots() + fb.item().denyAdd());
         clampList(allowFilters, legacyA);
         clampList(denyFilters, legacyD);
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
@@ -275,8 +275,8 @@ public final class DuctFaceNode {
     /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode, DuctModuleEffects.FilterSlotBonuses)} using fluid datapack caps. */
     public void clampFilterSizes(
             DuctFluidTransportSpec spec, NodeMode sharedNodeMode, DuctModuleEffects.FilterSlotBonuses fb) {
-        int legacyA = Math.max(0, spec.filterAllowSlots() + fb.allowAdd());
-        int legacyD = Math.max(0, spec.filterDenySlots() + fb.denyAdd());
+        int legacyA = Math.max(0, spec.filterAllowSlots() + fb.fluid().allowAdd());
+        int legacyD = Math.max(0, spec.filterDenySlots() + fb.fluid().denyAdd());
         clampList(allowFilters, legacyA);
         clampList(denyFilters, legacyD);
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
@@ -297,8 +297,8 @@ public final class DuctFaceNode {
 
     /** Same layout as item clamp using gas datapack caps. */
     public void clampFilterSizes(DuctGasTransportSpec spec, NodeMode sharedNodeMode, DuctModuleEffects.FilterSlotBonuses fb) {
-        int legacyA = Math.max(0, spec.filterAllowSlots() + fb.allowAdd());
-        int legacyD = Math.max(0, spec.filterDenySlots() + fb.denyAdd());
+        int legacyA = Math.max(0, spec.filterAllowSlots() + fb.gas().allowAdd());
+        int legacyD = Math.max(0, spec.filterDenySlots() + fb.gas().denyAdd());
         clampList(allowFilters, legacyA);
         clampList(denyFilters, legacyD);
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());

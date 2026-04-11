@@ -24,6 +24,7 @@ import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
+import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -41,7 +42,6 @@ public final class DuctFluidServerTick {
             return;
         }
         DuctFluidTransportSpec spec = be.fluidTransportSpec();
-        int rate = spec.clampedRateTicks(spec.rateDefaultTicks());
         int sm = be.getStorageMask();
         for (Direction dir : Direction.values()) {
             if ((sm & (1 << dir.ordinal())) == 0) {
@@ -57,6 +57,7 @@ public final class DuctFluidServerTick {
                 be.setChanged();
                 continue;
             }
+            int rate = DuctModuleEffects.effectiveFluidActionRateTicks(be, dir, spec);
             node.ticksUntilAction = rate - 1;
             NodeMode nm = lanes.nodeMode;
             if (nm == NodeMode.RETRIEVING || nm == NodeMode.RETRIEVING_EXTRACTION) {
@@ -231,8 +232,9 @@ public final class DuctFluidServerTick {
                             .orElseGet(() -> List.of(srcPos, pick.ductPos()));
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
+        long edgeTicks = DuctModuleEffects.effectiveFluidEdgeTravelTicks(sourceBe, sourceFace, spec);
         sourceBe.scheduleFluidTransitPending(
-                level, planned, pathWire, sourceFace, pick.face(), pick.ductPos(), spec);
+                level, planned, pathWire, sourceFace, pick.face(), pick.ductPos(), spec, edgeTicks);
     }
 
     private static void tryRetrievePull(
@@ -363,6 +365,7 @@ public final class DuctFluidServerTick {
                 node.roundRobinCursor = rr[0] + donorIdx + 1;
             }
             FluidStack planned = new FluidStack(available.getFluid(), plannedMb);
+            long edgeTicks = DuctModuleEffects.effectiveFluidEdgeTravelTicks(donorBe, donorFace, spec);
             donorBe.scheduleFluidTransitPending(
                     level,
                     planned,
@@ -370,7 +373,8 @@ public final class DuctFluidServerTick {
                     donorFace,
                     retrieverFace,
                     retrieverPos,
-                    spec);
+                    spec,
+                    edgeTicks);
             retrieverBe.setChanged();
             return;
         }

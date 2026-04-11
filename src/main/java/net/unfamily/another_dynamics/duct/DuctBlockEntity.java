@@ -496,20 +496,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private int getFluidExtractBatchModuleBonus(Direction face) {
-        if (!DuctFeaturePolicy.isUsable(
-                ductDefinition().orElse(null),
-                DuctFeatureKeys.SPECIAL_MODULES,
-                faceHasAnyModule(face))) {
-            return 0;
-        }
-        int bonus = 0;
-        ItemStackHandler upg = getFaceLanes(face).moduleSlots;
-        for (int i = 0; i < upg.getSlots(); i++) {
-            if (!upg.getStackInSlot(i).isEmpty()) {
-                // Future: fluid module items
-            }
-        }
-        return bonus;
+        return DuctModuleEffects.fluidExtractBatchBonusMb(this, face, fluidTransportSpec());
     }
 
     public DuctOverflowBuffer getOverflowBuffer() {
@@ -688,7 +675,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 ductDefinition().map(d -> d.enabledTransportKinds().contains(DuctTransportKind.ITEM)).orElse(true);
         if (wantsItem && isStorageAttachmentNode()) {
             DuctItemTransportSpec spec = itemTransportSpec();
-            int rate = spec.clampedRateTicks(spec.rateDefaultTicks());
             int sm = getStorageMask();
             for (Direction dir : Direction.values()) {
                 if ((sm & (1 << dir.ordinal())) == 0) {
@@ -699,6 +685,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 if (!isFaceTransportEnabled(dir)) {
                     continue;
                 }
+                int rate = DuctModuleEffects.effectiveItemActionRateTicks(this, dir, spec);
                 if (node.ticksUntilAction > 0) {
                     node.ticksUntilAction--;
                     setChanged();
@@ -854,21 +841,23 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             Direction sourceFace,
             Direction destStorageFace,
             BlockPos destDuct,
-            DuctFluidTransportSpec spec) {
+            DuctFluidTransportSpec spec,
+            long edgeTicksPerBlock) {
         if (path == null || path.isEmpty() || plannedFluid.isEmpty()) {
             return;
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(path);
-        long travel = DuctPathfinder.pathTravelTicks(pathWire, spec);
+        long edge = Math.max(1L, edgeTicksPerBlock);
+        long travel = DuctPathfinder.pathTravelTicks(pathWire, edge);
         int tot = (int) Math.min(Math.max(1L, travel), Integer.MAX_VALUE);
-        int edge = (int) Math.min(Math.max(1L, DuctPathfinder.edgeTravelTicks(spec)), Integer.MAX_VALUE);
+        int edgeI = (int) Math.min(edge, Integer.MAX_VALUE);
         FluidTransitShipment added =
                 new FluidTransitShipment(
                         plannedFluid.copy(),
                         pathWire,
                         tot,
                         tot,
-                        edge,
+                        edgeI,
                         level.getGameTime(),
                         sourceFace,
                         destStorageFace,
@@ -927,7 +916,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             Direction sourceFace,
             Direction destStorageFace,
             BlockPos destDuct,
-            DuctGasTransportSpec spec) {
+            DuctGasTransportSpec spec,
+            long edgeTicksPerBlock) {
         if (!MekanismChemicalCompat.isLoaded()) {
             return;
         }
@@ -935,16 +925,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(path);
-        long travel = DuctPathfinder.pathTravelTicks(pathWire, spec);
+        long edge = Math.max(1L, edgeTicksPerBlock);
+        long travel = DuctPathfinder.pathTravelTicks(pathWire, edge);
         int tot = (int) Math.min(Math.max(1L, travel), Integer.MAX_VALUE);
-        int edge = (int) Math.min(Math.max(1L, DuctPathfinder.edgeTravelTicks(spec)), Integer.MAX_VALUE);
+        int edgeI = (int) Math.min(edge, Integer.MAX_VALUE);
         GasTransitShipment gsh =
                 new GasTransitShipment(
                         plannedStack,
                         pathWire,
                         tot,
                         tot,
-                        edge,
+                        edgeI,
                         level.getGameTime(),
                         sourceFace,
                         destStorageFace,
@@ -1828,13 +1819,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     planned.setCount(plannedCount);
                 }
                 lastSuccessfulCandIdx = candIdx;
-                long travel = DuctPathfinder.pathTravelTicks(path, spec);
+                long edgeTicks = DuctModuleEffects.effectiveItemEdgeTravelTicks(this, face, spec);
+                long travel = DuctPathfinder.pathTravelTicks(path, edgeTicks);
                 int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
                 OutboundShipment sh =
                         new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
                 sh.ductPath = OutboundShipment.copyPath(path);
                 sh.totalTravelTicks = travelTicks;
-                sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec));
+                sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, edgeTicks);
                 sh.journeyStartGameTime = level.getGameTime();
                 sh.transitPhase = TransitPhase.FORWARD;
                 outboundShipments.add(sh);
@@ -1958,14 +1950,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 if (!DuctRedstoneLogic.isFaceTransportActive(level, worldPosition, getFaceLanes(retrieverFace).redstoneMode)) {
                     continue;
                 }
-                long travel = DuctPathfinder.pathTravelTicks(path, spec);
+                long edgeTicks = DuctModuleEffects.effectiveItemEdgeTravelTicks(this, retrieverFace, spec);
+                long travel = DuctPathfinder.pathTravelTicks(path, edgeTicks);
                 int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
                 OutboundShipment sh =
                         new OutboundShipment(
                                 planned, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
                 sh.ductPath = OutboundShipment.copyPath(path);
                 sh.totalTravelTicks = travelTicks;
-                sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, DuctPathfinder.edgeTravelTicks(spec));
+                sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, edgeTicks);
                 sh.journeyStartGameTime = level.getGameTime();
                 sh.transitPhase = TransitPhase.FORWARD;
                 outboundShipments.add(sh);
@@ -2089,21 +2082,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return false;
     }
 
-    private int getGasExtractBatchModuleBonus(Direction face) {
-        if (!DuctFeaturePolicy.isUsable(
-                ductDefinition().orElse(null),
-                DuctFeatureKeys.SPECIAL_MODULES,
-                faceHasAnyModule(face))) {
-            return 0;
-        }
-        int bonus = 0;
-        ItemStackHandler upg = getFaceLanes(face).moduleSlots;
-        for (int i = 0; i < upg.getSlots(); i++) {
-            if (!upg.getStackInSlot(i).isEmpty()) {
-                // Future: gas-tier modules (mirrors fluid).
-            }
-        }
-        return bonus;
+    private long getGasExtractBatchModuleBonus(Direction face) {
+        return DuctModuleEffects.gasExtractBatchBonus(this, face, gasTransportSpec());
     }
 
     public int computeGasExtractBatchSettingCap(Direction face) {

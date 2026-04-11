@@ -3141,44 +3141,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private void renderFilterPanel(GuiGraphics graphics, int mouseX, int mouseY) {
         int maxSlots = currentFilterMaxSlots();
         int vis = visibleFilterEntries();
-        if (maxSlots > vis) {
-            int scrollbarX = this.leftPos + SCROLLBAR_X_REL;
-            int buttonUpY = this.topPos + BUTTON_UP_Y_REL;
-            int scrollbarY = this.topPos + SCROLLBAR_Y_REL;
-            int buttonDownY = this.topPos + BUTTON_DOWN_Y_REL;
-            graphics.blit(
-                    SCROLLBAR_TEXTURE,
-                    scrollbarX,
-                    scrollbarY,
-                    0,
-                    0,
-                    SCROLLBAR_WIDTH,
-                    SCROLLBAR_HEIGHT,
-                    32,
-                    34);
-            int upV =
-                    mouseX >= scrollbarX && mouseX < scrollbarX + SCROLLBAR_WIDTH && mouseY >= buttonUpY && mouseY < buttonUpY + HANDLE_SIZE
-                            ? HANDLE_SIZE
-                            : 0;
-            graphics.blit(SCROLLBAR_TEXTURE, scrollbarX, buttonUpY, SCROLLBAR_WIDTH * 2, upV, HANDLE_SIZE, HANDLE_SIZE, 32, 34);
-            int downV =
-                    mouseX >= scrollbarX && mouseX < scrollbarX + SCROLLBAR_WIDTH && mouseY >= buttonDownY && mouseY < buttonDownY + HANDLE_SIZE
-                            ? HANDLE_SIZE
-                            : 0;
-            graphics.blit(
-                    SCROLLBAR_TEXTURE, scrollbarX, buttonDownY, SCROLLBAR_WIDTH * 3, downV, HANDLE_SIZE, HANDLE_SIZE, 32, 34);
-            int maxScroll = maxFilterScroll();
-            if (maxScroll > 0) {
-                double ratio = (double) filterScrollOffset / maxScroll;
-                int handleY = scrollbarY + (int) (ratio * (SCROLLBAR_HEIGHT - HANDLE_SIZE));
-                int hV =
-                        mouseX >= scrollbarX && mouseX < scrollbarX + HANDLE_SIZE && mouseY >= handleY && mouseY < handleY + HANDLE_SIZE
-                                ? HANDLE_SIZE
-                                : 0;
-                graphics.blit(SCROLLBAR_TEXTURE, scrollbarX, handleY, SCROLLBAR_WIDTH, hV, HANDLE_SIZE, HANDLE_SIZE, 32, 34);
-            }
-        }
-
         List<String> list = getEditingList();
         for (int i = 0; i < vis; i++) {
             int idx = filterScrollOffset + i;
@@ -3237,6 +3199,45 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 displayText = font.plainSubstrByWidth(displayText, maxTextWidth - font.width("...")) + "...";
             }
             graphics.drawString(font, displayText, textX, textY, 0x404040, false);
+        }
+
+        // After entry rows so the handle draws above the list edge (DeepDrawerExtractorScreen order).
+        if (maxSlots > vis) {
+            int scrollbarX = this.leftPos + SCROLLBAR_X_REL;
+            int buttonUpY = this.topPos + BUTTON_UP_Y_REL;
+            int scrollbarY = this.topPos + SCROLLBAR_Y_REL;
+            int buttonDownY = this.topPos + BUTTON_DOWN_Y_REL;
+            graphics.blit(
+                    SCROLLBAR_TEXTURE,
+                    scrollbarX,
+                    scrollbarY,
+                    0,
+                    0,
+                    SCROLLBAR_WIDTH,
+                    SCROLLBAR_HEIGHT,
+                    32,
+                    34);
+            int upV =
+                    mouseX >= scrollbarX && mouseX < scrollbarX + SCROLLBAR_WIDTH && mouseY >= buttonUpY && mouseY < buttonUpY + HANDLE_SIZE
+                            ? HANDLE_SIZE
+                            : 0;
+            graphics.blit(SCROLLBAR_TEXTURE, scrollbarX, buttonUpY, SCROLLBAR_WIDTH * 2, upV, HANDLE_SIZE, HANDLE_SIZE, 32, 34);
+            int downV =
+                    mouseX >= scrollbarX && mouseX < scrollbarX + SCROLLBAR_WIDTH && mouseY >= buttonDownY && mouseY < buttonDownY + HANDLE_SIZE
+                            ? HANDLE_SIZE
+                            : 0;
+            graphics.blit(
+                    SCROLLBAR_TEXTURE, scrollbarX, buttonDownY, SCROLLBAR_WIDTH * 3, downV, HANDLE_SIZE, HANDLE_SIZE, 32, 34);
+            int maxScroll = maxFilterScroll();
+            if (maxScroll > 0) {
+                double ratio = (double) filterScrollOffset / maxScroll;
+                int handleY = scrollbarY + (int) (ratio * (SCROLLBAR_HEIGHT - HANDLE_SIZE));
+                int hV =
+                        mouseX >= scrollbarX && mouseX < scrollbarX + HANDLE_SIZE && mouseY >= handleY && mouseY < handleY + HANDLE_SIZE
+                                ? HANDLE_SIZE
+                                : 0;
+                graphics.blit(SCROLLBAR_TEXTURE, scrollbarX, handleY, SCROLLBAR_WIDTH, hV, HANDLE_SIZE, HANDLE_SIZE, 32, 34);
+            }
         }
     }
 
@@ -3964,7 +3965,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
 
         super.render(graphics, mouseX, mouseY, partialTick);
-        // Slot / container tooltips (same pattern as DeepDrawerExtractorScreen — not always drawn by super alone).
         this.renderTooltip(graphics, mouseX, mouseY);
 
         if (mouseX >= redstoneButtonScreenX

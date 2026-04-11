@@ -340,6 +340,18 @@ public final class DuctPathfinder {
         return w * path.size();
     }
 
+    /**
+     * Same as {@link #pathTravelTicks(List, DuctItemTransportSpec)} but with a caller-provided edge cost (e.g. module
+     * {@code speed} modifiers on the scheduling face).
+     */
+    public static long pathTravelTicks(List<BlockPos> path, long edgeTicksPerBlock) {
+        if (path == null || path.isEmpty()) {
+            return 0L;
+        }
+        long w = Math.max(0L, edgeTicksPerBlock);
+        return w * path.size();
+    }
+
     public static long pathTravelTicks(List<BlockPos> path, DuctFluidTransportSpec spec) {
         if (path == null || path.isEmpty()) {
             return 0L;

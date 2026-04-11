@@ -20,6 +20,7 @@ import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.MekHeatRayColor;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
+import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import org.jetbrains.annotations.Nullable;
@@ -43,7 +44,6 @@ public final class DuctHeatServerTick {
             return;
         }
         DuctHeatTransportSpec spec = be.heatTransportSpec();
-        int rateTicks = 10;
         int sm = be.getStorageMask();
         for (Direction dir : Direction.values()) {
             if ((sm & (1 << dir.ordinal())) == 0) {
@@ -59,6 +59,7 @@ public final class DuctHeatServerTick {
                 be.setChanged();
                 continue;
             }
+            int rateTicks = DuctModuleEffects.effectiveHeatActionRateTicks(be, dir, 10);
             node.ticksUntilAction = rateTicks - 1;
             if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
                 RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
@@ -143,7 +144,8 @@ public final class DuctHeatServerTick {
                 if (bot <= 0.0) {
                     continue;
                 }
-                double cap = Math.min(spec.clampedExtract(), bot);
+                double cap =
+                        Math.min(DuctModuleEffects.effectiveHeatExtractPerAction(sourceBe, sourceFace, spec), bot);
                 double qEq = equilibriumTransfer(src, dest);
                 if (Math.min(cap, qEq) <= HEAT_EPS) {
                     continue;
@@ -178,7 +180,7 @@ public final class DuctHeatServerTick {
             return;
         }
         double bot = bottleneckHeatAlongPath(level, srcPos, pick.ductPos());
-        double cap = Math.min(spec.clampedExtract(), bot);
+        double cap = Math.min(DuctModuleEffects.effectiveHeatExtractPerAction(sourceBe, sourceFace, spec), bot);
         double qEq = equilibriumTransfer(src, dest);
         double q = Math.min(cap, qEq);
         if (q <= HEAT_EPS) {
@@ -269,7 +271,7 @@ public final class DuctHeatServerTick {
             return;
         }
         double bot = bottleneckHeatAlongPath(level, pick.ductPos(), retrieverPos);
-        double cap = Math.min(spec.clampedExtract(), bot);
+        double cap = Math.min(DuctModuleEffects.effectiveHeatExtractPerAction(retrieverBe, retrieverFace, spec), bot);
         double qEq = equilibriumTransfer(src, dest);
         double q = Math.min(cap, qEq);
         if (q <= HEAT_EPS) {

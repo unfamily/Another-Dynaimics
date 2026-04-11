@@ -6,16 +6,50 @@
       "for": "item",
       "filter": {
         "allow": {
-          "add": 4
+          "add": 40
         },
         "deny": {
-          "add": 4
+          "add": 40
         },
         "allow_hybrid": {
-          "add": 4
+          "add": 20
         },
         "deny_hybrid": {
-          "add": 4
+          "add": 20
+        }
+      }
+    },
+    {
+      "for": "fluid",
+      "filter": {
+        "allow": {
+          "add": 40
+        },
+        "deny": {
+          "add": 40
+        },
+        "allow_hybrid": {
+          "add": 20
+        },
+        "deny_hybrid": {
+          "add": 20
+        }
+      }
+    },
+    {
+      "for": "gas",
+      "filter": {
+        "allow": {
+          "add": 40
+        },
+        "deny": {
+          "add": 40
+        },
+        "allow_hybrid": {
+          "add": 20
+        },
+        "deny_hybrid": {
+          "add": 20
         }
       }
     }

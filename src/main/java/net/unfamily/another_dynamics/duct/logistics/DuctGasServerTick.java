@@ -5,6 +5,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.*;
+import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
 import java.util.ArrayList;
@@ -36,7 +37,6 @@ public final class DuctGasServerTick {
             return;
         }
         DuctGasTransportSpec spec = be.gasTransportSpec();
-        int rate = spec.clampedRateTicks(spec.rateDefaultTicks());
         int sm = be.getStorageMask();
         for (Direction dir : Direction.values()) {
             if ((sm & (1 << dir.ordinal())) == 0) {
@@ -52,6 +52,7 @@ public final class DuctGasServerTick {
                 be.setChanged();
                 continue;
             }
+            int rate = DuctModuleEffects.effectiveGasActionRateTicks(be, dir, spec);
             node.ticksUntilAction = rate - 1;
             NodeMode nm = lanes.nodeMode;
             if (nm == NodeMode.RETRIEVING || nm == NodeMode.RETRIEVING_EXTRACTION) {
@@ -257,8 +258,9 @@ public final class DuctGasServerTick {
             }
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
+        long edgeTicks = DuctModuleEffects.effectiveGasEdgeTravelTicks(sourceBe, sourceFace, spec);
         sourceBe.scheduleGasTransitPending(
-                level, planned, pathWire, sourceFace, pick.face(), pick.ductPos(), spec);
+                level, planned, pathWire, sourceFace, pick.face(), pick.ductPos(), spec, edgeTicks);
     }
 
     private static void tryRetrievePull(
@@ -395,8 +397,9 @@ public final class DuctGasServerTick {
                 node.roundRobinCursor = rr[0] + donorIdx + 1;
             }
             Object planned = MekanismChemicalCompat.copyWithAmount(available, plannedAmt);
+            long edgeTicks = DuctModuleEffects.effectiveGasEdgeTravelTicks(donorBe, donorFace, spec);
             donorBe.scheduleGasTransitPending(
-                    level, planned, OutboundShipment.copyPath(path), donorFace, retrieverFace, retrieverPos, spec);
+                    level, planned, OutboundShipment.copyPath(path), donorFace, retrieverFace, retrieverPos, spec, edgeTicks);
             retrieverBe.setChanged();
             return;
         }

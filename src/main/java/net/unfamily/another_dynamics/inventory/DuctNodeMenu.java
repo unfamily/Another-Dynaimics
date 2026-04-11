@@ -30,6 +30,11 @@ import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.NodeMode;
+import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
+import net.unfamily.another_dynamics.duct.module.DuctModuleHelper;
+import net.unfamily.another_dynamics.duct.module.ModuleDefinition;
+import net.unfamily.another_dynamics.duct.module.ModuleDefinitionRegistry;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
@@ -392,39 +397,88 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     /**
-     * @param hybridFilterContext {@code true} when the open GUI is editing a hybrid face sub-panel
-     *     ({@code Extr/Filt} or {@code Retr/Extr}); uses datapack {@code filter.allow_hybrid}/{@code deny_hybrid}.
+     * @param hybridFilterContext Kept for API compatibility; effective caps follow synced {@link NodeMode} and module
+     *     slots (same rules as server {@link net.unfamily.another_dynamics.duct.DuctFaceNode#clampFilterSizes}).
      */
+    @SuppressWarnings("unused")
     public int filterAllowCap(boolean hybridFilterContext) {
         if (clientEditingEnergyOrHeatLane()) {
             return 0;
         }
+        NodeMode nm = NodeMode.fromOrdinal(syncData.get(DuctMenuSync.NODE_MODE));
+        DuctModuleEffects.FilterSlotBonuses fb = clientFilterSlotBonusesFromModuleColumn();
         if (clientEditingFluidLane()) {
             var s = clientFluidTransportSpec();
-            return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
+            return DuctModuleEffects.effectiveFluidAllowBank(s, nm, fb);
         }
         if (clientEditingGasLane()) {
             var s = clientGasTransportSpec();
-            return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
+            return DuctModuleEffects.effectiveGasAllowBank(s, nm, fb);
         }
         var s = clientItemTransportSpec();
-        return hybridFilterContext ? s.filterAllowHybridSlots() : s.filterAllowSlots();
+        return DuctModuleEffects.effectiveItemAllowBank(s, nm, fb);
     }
 
+    @SuppressWarnings("unused")
     public int filterDenyCap(boolean hybridFilterContext) {
         if (clientEditingEnergyOrHeatLane()) {
             return 0;
         }
+        NodeMode nm = NodeMode.fromOrdinal(syncData.get(DuctMenuSync.NODE_MODE));
+        DuctModuleEffects.FilterSlotBonuses fb = clientFilterSlotBonusesFromModuleColumn();
         if (clientEditingFluidLane()) {
             var s = clientFluidTransportSpec();
-            return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
+            return DuctModuleEffects.effectiveFluidDenyBank(s, nm, fb);
         }
         if (clientEditingGasLane()) {
             var s = clientGasTransportSpec();
-            return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
+            return DuctModuleEffects.effectiveGasDenyBank(s, nm, fb);
         }
         var s = clientItemTransportSpec();
-        return hybridFilterContext ? s.filterDenyHybridSlots() : s.filterDenySlots();
+        return DuctModuleEffects.effectiveItemDenyBank(s, nm, fb);
+    }
+
+    /**
+     * Client: sum filter slot adds from non-empty module column slots (matches server
+     * {@link DuctModuleEffects#filterSlotBonuses}).
+     */
+    public DuctModuleEffects.FilterSlotBonuses clientFilterSlotBonusesFromModuleColumn() {
+        int ia = 0, idn = 0, iah = 0, idnh = 0;
+        int fa = 0, fd = 0, fah = 0, fdh = 0;
+        int ga = 0, gd = 0, gah = 0, gdh = 0;
+        for (int i = 0; i < moduleSlotCount; i++) {
+            ItemStack s = getSlot(i).getItem();
+            if (s.isEmpty()) {
+                continue;
+            }
+            var modId = DuctModuleHelper.resolvedDeclarationId(s);
+            if (modId.isEmpty()) {
+                continue;
+            }
+            ModuleDefinition def = ModuleDefinitionRegistry.get(modId.get()).orElse(null);
+            if (def == null) {
+                continue;
+            }
+            ModuleDefinition.FilterSlotModifiers fi = def.filterSlotsItem();
+            ia += fi.allowSlotAdd();
+            idn += fi.denySlotAdd();
+            iah += fi.allowHybridSlotAdd();
+            idnh += fi.denyHybridSlotAdd();
+            ModuleDefinition.FilterSlotModifiers ff = def.filterSlotsFluid();
+            fa += ff.allowSlotAdd();
+            fd += ff.denySlotAdd();
+            fah += ff.allowHybridSlotAdd();
+            fdh += ff.denyHybridSlotAdd();
+            ModuleDefinition.FilterSlotModifiers fg = def.filterSlotsGas();
+            ga += fg.allowSlotAdd();
+            gd += fg.denySlotAdd();
+            gah += fg.allowHybridSlotAdd();
+            gdh += fg.denyHybridSlotAdd();
+        }
+        return new DuctModuleEffects.FilterSlotBonuses(
+                new DuctModuleEffects.FilterSlotBonuses.PerKind(ia, idn, iah, idnh),
+                new DuctModuleEffects.FilterSlotBonuses.PerKind(fa, fd, fah, fdh),
+                new DuctModuleEffects.FilterSlotBonuses.PerKind(ga, gd, gah, gdh));
     }
 
     public List<String> getClientAllowFilters(net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {

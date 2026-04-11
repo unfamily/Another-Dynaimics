@@ -21,6 +21,7 @@ import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.NodeMode;
+import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import org.jetbrains.annotations.Nullable;
 
@@ -41,8 +42,6 @@ public final class DuctEnergyServerTick {
             return;
         }
         DuctEnergyTransportSpec spec = be.energyTransportSpec();
-        // Reuse gas cadence defaults as a sane starting point: energy is instant but should still be throttled.
-        int rateTicks = 10;
         int sm = be.getStorageMask();
         for (Direction dir : Direction.values()) {
             if ((sm & (1 << dir.ordinal())) == 0) {
@@ -58,6 +57,7 @@ public final class DuctEnergyServerTick {
                 be.setChanged();
                 continue;
             }
+            int rateTicks = DuctModuleEffects.effectiveEnergyActionRateTicks(be, dir, 10);
             node.ticksUntilAction = rateTicks - 1;
             if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
                 RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
@@ -92,7 +92,7 @@ public final class DuctEnergyServerTick {
             return;
         }
 
-        long want = Math.min(spec.clampedExtract(), Integer.MAX_VALUE);
+        long want = Math.min(DuctModuleEffects.effectiveEnergyExtractPerAction(sourceBe, sourceFace, spec), Integer.MAX_VALUE);
         if (want <= 0) {
             return;
         }
@@ -215,7 +215,8 @@ public final class DuctEnergyServerTick {
         if (dest == null || !dest.canReceive()) {
             return;
         }
-        long wantL = Math.min(spec.clampedExtract(), Integer.MAX_VALUE);
+        long wantL =
+                Math.min(DuctModuleEffects.effectiveEnergyExtractPerAction(retrieverBe, retrieverFace, spec), Integer.MAX_VALUE);
         if (wantL <= 0) {
             return;
         }

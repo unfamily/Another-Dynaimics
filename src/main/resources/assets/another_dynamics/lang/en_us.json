@@ -196,5 +196,11 @@
   "another_dynamics.item_duct.node": "Item Duct Node",
   "another_dynamics.item_duct_imp.node": "Improved Item Duct Node",
   "another_dynamics.fluid_duct.node": "Fluid Duct Node",
-  "another_dynamics.gas_duct.node": "Gas Duct Node"
+  "another_dynamics.gas_duct.node": "Gas Duct Node",
+  "gui.another_dynamics.module.line.speed": "Travel Speed: %s",
+  "gui.another_dynamics.module.line.filter": "Extra Filters: %s",
+  "gui.another_dynamics.module.line.rate": "Extract Rate: %s",
+  "gui.another_dynamics.module.line.quantity": "Extract Quantity: %s",
+  "gui.another_dynamics.module.suffix.item": "item",
+  "gui.another_dynamics.module.suffix.mb": "mB"
 }

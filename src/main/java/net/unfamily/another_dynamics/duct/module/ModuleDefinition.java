@@ -23,23 +23,70 @@ public record ModuleDefinition(
          * (after the attempted operation) is greater than this value. Default {@code 1} matches legacy behavior.
          */
         int incompatibilityActivation,
-        ItemBatchModifiers itemBatchModifiers,
-        FilterSlotModifiers filterSlots,
+        ItemQuantityModifiers itemQuantityModifiers,
+        ItemQuantityModifiers itemRateModifiers,
+        ItemQuantityModifiers itemSpeedModifiers,
+        ItemQuantityModifiers fluidQuantityModifiers,
+        ItemQuantityModifiers fluidRateModifiers,
+        ItemQuantityModifiers fluidSpeedModifiers,
+        ItemQuantityModifiers gasQuantityModifiers,
+        ItemQuantityModifiers gasRateModifiers,
+        ItemQuantityModifiers gasSpeedModifiers,
+        /**
+         * Forge-energy lane: {@code affects[].for=energy.*} — parsed for datapack/KubeJS; no default JSON in the mod.
+         */
+        ItemQuantityModifiers energyQuantityModifiers,
+        ItemQuantityModifiers energyRateModifiers,
+        ItemQuantityModifiers energySpeedModifiers,
+        /**
+         * Mekanism heat lane: {@code affects[].for=heat.*} — parsed for datapack/KubeJS; no default JSON in the mod.
+         */
+        ItemQuantityModifiers heatQuantityModifiers,
+        ItemQuantityModifiers heatRateModifiers,
+        ItemQuantityModifiers heatSpeedModifiers,
+        FilterSlotModifiers filterSlotsItem,
+        FilterSlotModifiers filterSlotsFluid,
+        FilterSlotModifiers filterSlotsGas,
         List<TagKey<Item>> matchingItemTags) {
 
     public static ModuleDefinition missing(ResourceLocation id) {
         return new ModuleDefinition(
-                id, 64, 1, List.of(), 1, ItemBatchModifiers.none(), FilterSlotModifiers.none(), List.of());
+                id,
+                64,
+                1,
+                List.of(),
+                1,
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                FilterSlotModifiers.none(),
+                FilterSlotModifiers.none(),
+                FilterSlotModifiers.none(),
+                List.of());
     }
 
-    public record ItemBatchModifiers(boolean hasSet, int setValue, int addSum, double multProduct) {
-        public static ItemBatchModifiers none() {
-            return new ItemBatchModifiers(false, 0, 0, 1.0);
+    /** Numeric modifiers merged with set (max wins), summed adds, multiplied mults (used for quantity, rate, speed). */
+    public record ItemQuantityModifiers(boolean hasSet, int setValue, int addSum, double multProduct) {
+        public static ItemQuantityModifiers none() {
+            return new ItemQuantityModifiers(false, 0, 0, 1.0);
         }
     }
 
     /**
-     * Extra filter line slots from {@code affects[].for=item.filter} (add values summed per key).
+     * Extra filter line slots from {@code affects[].filter} when {@code for} matches {@code item}, {@code fluid}, or
+     * {@code gas} (add values summed per key within that lane).
      */
     public record FilterSlotModifiers(int allowSlotAdd, int denySlotAdd, int allowHybridSlotAdd, int denyHybridSlotAdd) {
         public static FilterSlotModifiers none() {

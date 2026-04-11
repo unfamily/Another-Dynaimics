@@ -4,8 +4,38 @@
   "affects": [
     {
       "for": "item",
-      "batch": {
-        "set": 96
+      "quantity": {
+        "set": 64
+      },
+      "speed": {
+        "mult": 0.5
+      },
+      "rate": {
+        "mult": 0.5
+      }
+    },
+    {
+      "for": "fluid",
+      "quantity": {
+        "set": 64000
+      },
+      "speed": {
+        "mult": 0.5
+      },
+      "rate": {
+        "mult": 0.5
+      }
+    },
+    {
+      "for": "gas",
+      "quantity": {
+        "set": 64000
+      },
+      "speed": {
+        "mult": 0.5
+      },
+      "rate": {
+        "mult": 0.5
       }
     }
   ],

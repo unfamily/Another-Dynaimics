@@ -196,5 +196,11 @@
   "another_dynamics.item_duct.node": "Nodo tubo oggetti",
   "another_dynamics.item_duct_imp.node": "Nodo tubo oggetti migliorato",
   "another_dynamics.fluid_duct.node": "Nodo tubo fluidi",
-  "another_dynamics.gas_duct.node": "Nodo tubo gas"
+  "another_dynamics.gas_duct.node": "Nodo tubo gas",
+  "gui.another_dynamics.module.line.speed": "Velocità di viaggio: %s",
+  "gui.another_dynamics.module.line.filter": "Filtri extra: %s",
+  "gui.another_dynamics.module.line.rate": "Frequenza estrazione: %s",
+  "gui.another_dynamics.module.line.quantity": "Quantità estrazione: %s",
+  "gui.another_dynamics.module.suffix.item": "item",
+  "gui.another_dynamics.module.suffix.mb": "mB"
 }

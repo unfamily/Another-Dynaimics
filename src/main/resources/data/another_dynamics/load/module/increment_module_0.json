@@ -4,8 +4,20 @@
   "affects": [
     {
       "for": "item",
-      "batch": {
+      "quantity": {
         "set": 16
+      }
+    },
+    {
+      "for": "fluid",
+      "quantity": {
+        "set": 8000
+      }
+    },
+    {
+      "for": "gas",
+      "quantity": {
+        "set": 8000
       }
     }
   ],

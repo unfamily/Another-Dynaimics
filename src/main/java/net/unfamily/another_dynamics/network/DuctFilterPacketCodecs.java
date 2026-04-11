@@ -9,7 +9,12 @@ import net.minecraft.network.codec.StreamCodec;
 final class DuctFilterPacketCodecs {
     /** Per-entry UTF-8 cap (NBT {@code ?} filters from ghost slot can be long). */
     static final int MAX_FILTER_STRING_UTF = 16_384;
-    static final int MAX_LIST_ENTRIES = 64;
+    /**
+     * Max list length on the wire. Must exceed any realistic {@code filter.*} datapack cap plus
+     * {@link net.unfamily.another_dynamics.duct.module.ModuleDefinition.FilterSlotModifiers} bonuses; {@code 64} was
+     * too low and caused {@code DecoderException} on {@code duct_filter_sync} when filter modules added many lines.
+     */
+    static final int MAX_LIST_ENTRIES = 4096;
 
     static final StreamCodec<RegistryFriendlyByteBuf, List<String>> STRING_LIST =
             StreamCodec.of(
