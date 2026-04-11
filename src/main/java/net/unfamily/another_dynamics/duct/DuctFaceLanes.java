@@ -168,9 +168,9 @@ public final class DuctFaceLanes {
         redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
         int rsFmt = tag.contains("RsFmt") ? tag.getByte("RsFmt") & 0xFF : 0;
         if (rsFmt < REDSTONE_FMT_V1) {
-            if (redstoneMode == 3) {
-                redstoneMode = 0;
-            } else if (redstoneMode >= 4) {
+            // Legacy saves without RsFmt: only clamp invalid ordinals. Do not map 3 -> 0 (that turned "disabled" into
+            // "ignored" in UI and broke parity with new defaults).
+            if (redstoneMode >= 4) {
                 redstoneMode = 3;
             }
         } else if (redstoneMode >= 4) {
@@ -183,9 +183,7 @@ public final class DuctFaceLanes {
         redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
         int rsFmt = tag.contains("RsFmt") ? tag.getByte("RsFmt") & 0xFF : 0;
         if (rsFmt < REDSTONE_FMT_V1) {
-            if (redstoneMode == 3) {
-                redstoneMode = 0;
-            } else if (redstoneMode >= 4) {
+            if (redstoneMode >= 4) {
                 redstoneMode = 3;
             }
         } else if (redstoneMode >= 4) {

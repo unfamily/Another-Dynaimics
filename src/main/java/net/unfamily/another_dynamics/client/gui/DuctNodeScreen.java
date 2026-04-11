@@ -675,10 +675,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 CHANNEL_WIDGET_W,
                 CHANNEL_WIDGET_H,
                 dir -> {
-                    if (minecraft != null && minecraft.gameMode != null) {
-                        int id = dir == 0 ? 13 : (dir > 0 ? 4 : 5);
-                        minecraft.gameMode.handleInventoryButtonClick(menu.containerId, id);
-                    }
+                    int id = dir == 0 ? 13 : (dir > 0 ? 4 : 5);
+                    ModNetwork.sendDuctMenuButton(menu, id);
                 });
         channelButton.setTooltip(
                 Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.channel_letter.tooltip")));
@@ -2511,9 +2509,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
         }
         playClickSound();
-        if (minecraft != null && minecraft.gameMode != null) {
-            minecraft.gameMode.handleInventoryButtonClick(menu.containerId, id);
-        }
+        ModNetwork.sendDuctMenuButton(menu, id);
     }
 
     @Override

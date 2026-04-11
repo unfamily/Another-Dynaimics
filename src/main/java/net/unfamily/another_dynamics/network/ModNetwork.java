@@ -12,8 +12,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -27,7 +25,6 @@ import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.registry.ModAttachments;
 import java.util.List;
 
-@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class ModNetwork {
     public static final CustomPacketPayload.Type<DuctFieldPayload> DUCT_FIELD =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_field"));
@@ -49,7 +46,6 @@ public final class ModNetwork {
 
     private ModNetwork() {}
 
-    @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(AnotherDynamicsMod.MOD_ID);
         reg.playToServer(DUCT_FIELD, DUCT_FIELD_STREAM, (payload, ctx) -> {
@@ -63,8 +59,7 @@ public final class ModNetwork {
                 if (fo < 0 || fo >= Direction.values().length) {
                     return;
                 }
-                if (player.distanceToSqr(payload.pos().getX() + 0.5, payload.pos().getY() + 0.5, payload.pos().getZ() + 0.5)
-                        > 8 * 8) {
+                if (!validateDuctGuiInteraction(player, payload.pos())) {
                     return;
                 }
                 duct.applyClientFieldUpdate(
@@ -83,7 +78,7 @@ public final class ModNetwork {
                 if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
                     return;
                 }
-                if (!validateDuctGuiDistance(player, payload.pos())) {
+                if (!validateDuctGuiInteraction(player, payload.pos())) {
                     return;
                 }
                 int fo = payload.faceOrdinal();
@@ -116,7 +111,7 @@ public final class ModNetwork {
                 if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
                     return;
                 }
-                if (!validateDuctGuiDistance(player, payload.pos())) {
+                if (!validateDuctGuiInteraction(player, payload.pos())) {
                     return;
                 }
                 int fo = payload.faceOrdinal();
@@ -141,6 +136,37 @@ public final class ModNetwork {
             });
         });
 
+        reg.playToServer(DuctMenuButtonPayload.TYPE, DuctMenuButtonPayload.STREAM_CODEC, (payload, ctx) -> {
+            ctx.enqueueWork(() -> {
+                ServerPlayer player = (ServerPlayer) ctx.player();
+                if (!(player.containerMenu instanceof DuctNodeMenu menu)) {
+                    return;
+                }
+                DuctBlockEntity linked = menu.linkedDuctBlockEntity();
+                if (linked == null || linked.isRemoved()) {
+                    return;
+                }
+                if (!menu.getDuctBlockPos().equals(payload.pos())) {
+                    return;
+                }
+                int fo = payload.faceOrdinal();
+                if (fo < 0 || fo >= Direction.values().length) {
+                    return;
+                }
+                if (menu.getAccessFace() != Direction.values()[fo]) {
+                    return;
+                }
+                if (player.level().getBlockEntity(payload.pos()) != linked) {
+                    return;
+                }
+                if (!validateDuctGuiInteraction(player, payload.pos())) {
+                    return;
+                }
+                boolean flag = menu.clickMenuButton(player, payload.buttonId());
+                menu.broadcastChanges();
+            });
+        });
+
         reg.playToServer(DuctSelfFeedPayload.TYPE, DuctSelfFeedPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
@@ -148,7 +174,7 @@ public final class ModNetwork {
                 if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
                     return;
                 }
-                if (!validateDuctGuiDistance(player, payload.pos())) {
+                if (!validateDuctGuiInteraction(player, payload.pos())) {
                     return;
                 }
                 int fo = payload.faceOrdinal();
@@ -184,8 +210,12 @@ public final class ModNetwork {
 
     }
 
-    private static boolean validateDuctGuiDistance(ServerPlayer player, BlockPos pos) {
-        return player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 8 * 8;
+    /**
+     * Matches vanilla container {@code stillValid} reach check ({@code canInteractWithBlock(pos, 4.0)}), so duct GUI
+     * packets are accepted whenever vanilla would allow opening/using the block menu.
+     */
+    private static boolean validateDuctGuiInteraction(ServerPlayer player, BlockPos pos) {
+        return player.canInteractWithBlock(pos, 4.0);
     }
 
     public static void sendFieldUpdate(
@@ -235,6 +265,15 @@ public final class ModNetwork {
     /** Toggles duct opaque rendering preference (player attachment); server authoritative. */
     public static void sendDuctOpaqueToggle() {
         PacketDistributor.sendToServer(DuctOpaqueTogglePayload.INSTANCE);
+    }
+
+    /**
+     * Applies a duct node menu button on the server with the same validation as other duct GUI payloads, avoiding
+     * vanilla {@code ServerboundContainerButtonClickPacket} which is dropped when {@code stillValid} is false.
+     */
+    public static void sendDuctMenuButton(DuctNodeMenu menu, int buttonId) {
+        PacketDistributor.sendToServer(
+                new DuctMenuButtonPayload(menu.getDuctBlockPos(), menu.getAccessFace().ordinal(), buttonId));
     }
 
     public static void sendEnergyRayPath(ServerLevel level, List<BlockPos> ductPath, int argb, Vec3 mid) {

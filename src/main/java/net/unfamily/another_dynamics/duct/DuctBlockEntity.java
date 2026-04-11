@@ -530,16 +530,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return getStorageMask() | latchedStorageFaceMask;
     }
 
-    /**
-     * Whether server-side menu actions may update this face: {@link #getSettingsFaceMask()} or any pipe port on that
-     * face. Pipe-only hits open the node GUI but have no live storage bit; without this, hub/mode/redstone and slot
-     * sync would be rejected on line interiors.
-     */
-    public boolean nodeFaceAllowsMenuServerUpdates(Direction face) {
-        int bit = 1 << face.ordinal();
-        return (getSettingsFaceMask() & bit) != 0 || (getPipeMask() & bit) != 0;
-    }
-
     @Override
     protected void mergePersistentStorageFaceLatch(int previousWorldStorageMask, int newWorldStorageMask) {
         int merged = latchedStorageFaceMask | previousWorldStorageMask | newWorldStorageMask;
@@ -2525,9 +2515,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
-        if (!nodeFaceAllowsMenuServerUpdates(face)) {
-            return;
-        }
         DuctItemTransportSpec itemSpec = itemTransportSpec();
         DuctFluidTransportSpec fluidSpec = fluidTransportSpec();
         DuctGasTransportSpec gasSpec = gasTransportSpec();
@@ -2640,9 +2627,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
-        if (!nodeFaceAllowsMenuServerUpdates(face)) {
-            return;
-        }
         DuctFaceLanes faceLanes = getFaceLanes(face);
         DuctFaceNode node = faceNodeForTransportKind(face, laneKind);
         if (!faceLanes.nodeMode.usesItemFilterConfig()) {
@@ -2671,9 +2655,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
-        if (!nodeFaceAllowsMenuServerUpdates(face)) {
-            return;
-        }
         NodeMode shared = getFaceLanes(face).nodeMode;
         if (shared != NodeMode.EXTRACTION_FILTERING && shared != NodeMode.RETRIEVING_EXTRACTION) {
             return;
@@ -2688,9 +2669,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     public boolean handleMenuButtonClick(Player player, int buttonId, Direction accessFace) {
         if (level == null || level.isClientSide) {
-            return false;
-        }
-        if (!nodeFaceAllowsMenuServerUpdates(accessFace)) {
             return false;
         }
         if (buttonId >= MENU_BUTTON_TRANSPORT_KIND_BASE
@@ -2991,9 +2969,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int extractBatch,
             int eligibilityModeOrdinal) {
         if (level == null || level.isClientSide) {
-            return;
-        }
-        if (!nodeFaceAllowsMenuServerUpdates(accessFace)) {
             return;
         }
         DuctTransportKind[] vals = DuctTransportKind.values();

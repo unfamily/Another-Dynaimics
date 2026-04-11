@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.inventory.ContainerLevelAccess;
@@ -237,6 +238,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     public BlockPos getDuctBlockPos() {
         return ductBlockPos;
+    }
+
+    /** Server menu only: linked duct BE (client factory passes {@code null}). */
+    public @Nullable DuctBlockEntity linkedDuctBlockEntity() {
+        return linkedBlockEntity;
     }
 
     public boolean isDuctAlwaysOpaqueLocked() {
@@ -572,6 +578,16 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     @Override
     public boolean stillValid(Player player) {
+        if (linkedBlockEntity != null && !linkedBlockEntity.isRemoved()) {
+            BlockPos pos = linkedBlockEntity.getBlockPos();
+            Level pl = player.level();
+            if (!pl.isClientSide()
+                    && pl.getBlockEntity(pos) == linkedBlockEntity
+                    && ModBlocks.isDuctBlock(pl.getBlockState(pos).getBlock())
+                    && player.canInteractWithBlock(pos, 4.0)) {
+                return true;
+            }
+        }
         return stillValid(access, player, ModBlocks.DUCT.get())
                 || stillValid(access, player, ModBlocks.FLUID_DUCT.get())
                 || stillValid(access, player, ModBlocks.ITEM_FLUID_DUCT.get())

@@ -29,6 +29,11 @@ public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
     }
 
     private ItemStackHandler copyHandler() {
+        // On the multi-transport hub, {@code menuActiveTransportKind} is the first tab until the player picks one; the
+        // copy slot must still target a stable lane so inserts/extracts and sync stay consistent with server logic.
+        if (duct.isMenuHubLayer()) {
+            return duct.getFaceNode(face).guiSlots;
+        }
         return duct.activeMenuFaceNode(face).guiSlots;
     }
 

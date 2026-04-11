@@ -18,6 +18,7 @@ import net.unfamily.another_dynamics.registry.ModCreativeTabs;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 import net.unfamily.another_dynamics.registry.ModItems;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
+import net.unfamily.another_dynamics.network.ModNetwork;
 
 @Mod(AnotherDynamicsMod.MOD_ID)
 public final class AnotherDynamicsMod {
@@ -42,6 +43,8 @@ public final class AnotherDynamicsMod {
         ModMenuTypes.MENUS.register(modEventBus);
         ModAttachments.TYPES.register(modEventBus);
         ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
+
+        modEventBus.addListener(ModNetwork::register);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
     }
