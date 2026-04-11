@@ -43,7 +43,7 @@ public record DuctDefinition(
         Set<String> disabledFeatures,
         Set<String> forbiddenFeatures,
         boolean alwaysOpaqueRendering,
-        int upgradeSlotCount
+        int moduleSlotCount
 ) {
     public DuctItemTransportSpec itemTransportOrFallback() {
         return itemTransport.orElseGet(DuctItemTransportSpec::fallback);

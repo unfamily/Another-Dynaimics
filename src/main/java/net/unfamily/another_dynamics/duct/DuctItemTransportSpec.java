@@ -39,11 +39,11 @@ public record DuctItemTransportSpec(
     }
 
     /**
-     * Max extract/retrieve batch the player may configure: {@code batchDefault + upgradeBonus}, then limited by datapack
+     * Max extract/retrieve batch the player may configure: {@code batchDefault + moduleBonus}, then limited by datapack
      * {@code batch.max} when that value is non-negative; when {@code batch.max} is negative, only default + bonus applies.
      */
-    public int extractBatchSettingCap(int upgradeBonus) {
-        int base = batchDefault + upgradeBonus;
+    public int extractBatchSettingCap(int moduleBonus) {
+        int base = batchDefault + moduleBonus;
         if (batchMax < 0) {
             return Math.max(1, base);
         }

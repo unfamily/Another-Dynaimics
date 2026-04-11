@@ -27,7 +27,7 @@ public final class DuctMenuSync {
     /** 1 if {@link net.unfamily.another_dynamics.duct.DuctFaceNode#denyOverridesAllow} ({@code >>>>>}), 0 for {@code <<<<<}. */
     public static final int DENY_OVERRIDES_ALLOW = 15;
     /**
-     * Max extract/retrieve batch the player may configure for this face: {@code batch.default + upgrades}, then clamped
+     * Max extract/retrieve batch the player may configure for this face: {@code batch.default + module bonuses}, then clamped
      * by datapack {@code batch.max} when that value is non-negative.
      */
     public static final int EXTRACT_BATCH_CAP = 16;

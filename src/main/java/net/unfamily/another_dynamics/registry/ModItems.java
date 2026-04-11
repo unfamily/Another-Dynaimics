@@ -2,6 +2,7 @@ package net.unfamily.another_dynamics.registry;
 
 import java.util.Optional;
 
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
@@ -10,10 +11,14 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlockItem;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctModuleItem;
 
 public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(AnotherDynamicsMod.MOD_ID);
     private static final boolean MEKANISM_LOADED = ModList.get().isLoaded("mekanism");
+
+    public static final DeferredItem<Item> NETHERITE_NUGGET =
+            ITEMS.register("netherite_nugget", () -> new Item(new Item.Properties()));
 
     public static final DeferredItem<DuctBlockItem> DUCT =
             ITEMS.register(
@@ -22,6 +27,18 @@ public final class ModItems {
                             new DuctBlockItem(
                                     ModBlocks.DUCT.get(),
                                     new Item.Properties()));
+
+    public static final DeferredItem<DuctModuleItem> INC_MODULE_1 = registerModule("inc_module_1");
+    public static final DeferredItem<DuctModuleItem> INC_MODULE_2 = registerModule("inc_module_2");
+    public static final DeferredItem<DuctModuleItem> INC_MODULE_3 = registerModule("inc_module_3");
+    public static final DeferredItem<DuctModuleItem> INC_MODULE_4 = registerModule("inc_module_4");
+    public static final DeferredItem<DuctModuleItem> INC_MODULE_5 = registerModule("inc_module_5");
+
+    public static final DeferredItem<DuctModuleItem> FIL_MODULE_1 = registerModule("fil_module_1");
+    public static final DeferredItem<DuctModuleItem> FIL_MODULE_2 = registerModule("fil_module_2");
+    public static final DeferredItem<DuctModuleItem> FIL_MODULE_3 = registerModule("fil_module_3");
+    public static final DeferredItem<DuctModuleItem> FIL_MODULE_4 = registerModule("fil_module_4");
+    public static final DeferredItem<DuctModuleItem> FIL_MODULE_5 = registerModule("fil_module_5");
 
     public static final DeferredItem<DuctBlockItem> FLUID_DUCT =
             ITEMS.register(
@@ -54,6 +71,17 @@ public final class ModItems {
                     : null;
 
     private ModItems() {}
+
+    private static DeferredItem<DuctModuleItem> registerModule(String id) {
+        return ITEMS.register(
+                id,
+                () ->
+                        new DuctModuleItem(
+                                new Item.Properties()
+                                        .component(
+                                                ModDataComponents.DUCT_MODULE_DECLARATION.get(),
+                                                ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, id))));
+    }
 
     /** Creative / recipe-friendly stack: block item matches enabled transport kinds; logical id in component. */
     public static ItemStack createDuctStack(String logicalId) {

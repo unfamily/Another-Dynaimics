@@ -59,7 +59,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Duct node GUI: upgrades, center controls, filter sub-screens (Deep Drawer Extractor parity), right column, inventory.
+ * Duct node GUI: modules, center controls, filter sub-screens (Deep Drawer Extractor parity), right column, inventory.
  */
 public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> {
     private enum HybridPanel {
@@ -236,6 +236,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private int amountBlockLayoutCache = -1;
     /** Relayout advanced cap block when eligibility/bank changes (Both vs Only affects geometry). */
     private int advCapLayoutCache = -1;
+    /** Client-only: previous {@link #syncedExtractBatchCap()} to detect cap drops after module changes. */
+    private int lastTrackedExtractBatchCap = -1;
 
     private static final class ExampleData {
         final String example;
@@ -2782,6 +2784,26 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 layoutEditModeWidgets();
             }
         }
+        if (!amountIsPriority && nm.usesExtractBatchField()) {
+            int capNow = syncedExtractBatchCap();
+            if (lastTrackedExtractBatchCap >= 0
+                    && capNow < lastTrackedExtractBatchCap
+                    && routingPriorityBox != null) {
+                int parsed = parsePriorityOr(routingPriorityBox.getValue(), syncedExtractBatch());
+                if (parsed > capNow) {
+                    int clamped = Mth.clamp(parsed, 0, capNow);
+                    syncingAmountBoxFromServer = true;
+                    routingPriorityBox.setValue(Integer.toString(clamped));
+                    syncingAmountBoxFromServer = false;
+                    if (clamped == syncedExtractBatch()) {
+                        amountFieldsDirty = false;
+                    }
+                }
+            }
+            lastTrackedExtractBatchCap = capNow;
+        } else {
+            lastTrackedExtractBatchCap = -1;
+        }
         if (!routingPriorityBox.isFocused() && !amountFieldsDirty) {
             int v =
                     amountIsPriority
@@ -2846,7 +2868,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     /**
      * Server-authoritative max configurable extract batch; before {@link DuctMenuSync#EXTRACT_BATCH_CAP} syncs, derives
-     * the same cap from registry + local upgrade slots (bonus currently zero until upgrade items exist).
+     * the same cap from registry + local module slots (see {@link net.unfamily.another_dynamics.duct.module.DuctModuleEffects}).
      */
     private int syncedExtractBatchCap() {
         int c = menu.getSyncData().get(DuctMenuSync.EXTRACT_BATCH_CAP);
@@ -2854,10 +2876,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return c;
         }
         int bonus = 0;
-        for (int i = 0; i < menu.upgradeSlotCount(); i++) {
+        for (int i = 0; i < menu.moduleSlotCount(); i++) {
             Slot s = menu.getSlot(i);
             if (s != null && s.hasItem()) {
-                // Future: parse upgrade item stats (keep in sync with DuctBlockEntity#getExtractBatchUpgradeBonus).
+                // Future: parse module item stats client-side (keep in sync with DuctBlockEntity batch bonus).
             }
         }
         if (menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal()) {
@@ -3221,11 +3243,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private void blitMachineSlotBackgrounds(GuiGraphics graphics) {
         int sw = 18;
         int sh = 18;
-        for (int i = 0; i < menu.upgradeSlotCount(); i++) {
-            int y = DuctNodeMenu.SLOT_UPGRADE_BACKGROUND_Y0 + i * 18;
+        for (int i = 0; i < menu.moduleSlotCount(); i++) {
+            int y = DuctNodeMenu.SLOT_MODULE_BACKGROUND_Y0 + i * 18;
             graphics.blit(
                     SINGLE_SLOT,
-                    this.leftPos + DuctNodeMenu.SLOT_UPGRADE_BACKGROUND_X,
+                    this.leftPos + DuctNodeMenu.SLOT_MODULE_BACKGROUND_X,
                     this.topPos + y,
                     0,
                     0,

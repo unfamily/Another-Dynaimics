@@ -9,6 +9,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.neoforged.neoforge.items.ItemStackHandler;
+import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 
 /**
  * Per-transport-kind lane on a duct face (item or fluid): filters, routing, channel, GUI slots, amounts.
@@ -55,6 +56,12 @@ public final class DuctFaceNode {
     public int insertionPriority;
     /** Extract / retrieve modes: items moved per operation (0 = use duct default). */
     public int extractBatch;
+    /**
+     * Last {@code extractBatch} setting cap applied in {@link net.unfamily.another_dynamics.duct.DuctBlockEntity} clamp
+     * for this lane; when the player had the batch pinned to the old cap and modules raise the cap, we bump
+     * {@link #extractBatch} to the new cap.
+     */
+    public int lastExtractBatchSettingCapApplied;
     public int channelLetter = 1;
     public int roundRobinCursor;
     /** Per transport kind; not shared with the sibling lane (item vs fluid may use different duct rates). */
@@ -106,12 +113,12 @@ public final class DuctFaceNode {
                 };
     }
 
-    /** Legacy combined GUI: slots 0–4 upgrades, slot 5 copy. */
+    /** Legacy combined GUI: slots 0–4 modules, slot 5 copy. */
     private static final int LEGACY_GUI_SLOT_COUNT = 6;
 
     private void loadGuiSlotsFromNbt(HolderLookup.Provider registries, CompoundTag nodeGuiTag) {
-        // Ph10: guiSlots is 1 slot (copy). Legacy world saves used 6 slots (0–4 upgrades, 5 copy) in NodeGui.
-        // New NBT has Size 1 and the copy stack in slot 0. Old migration used "any of 0–4 non-empty" as upgrade signal;
+        // Ph10: guiSlots is 1 slot (copy). Legacy world saves used 6 slots (0–4 modules, 5 copy) in NodeGui.
+        // New NBT has Size 1 and the copy stack in slot 0. Old migration used "any of 0–4 non-empty" as module signal;
         // that is true for the new layout whenever copy is non-empty, then slot 5 was read → empty → copy wiped.
         int declaredSize = LEGACY_GUI_SLOT_COUNT;
         if (nodeGuiTag.contains("Size", Tag.TAG_INT)) {
@@ -128,14 +135,14 @@ public final class DuctFaceNode {
 
         ItemStackHandler probe = new ItemStackHandler(LEGACY_GUI_SLOT_COUNT);
         probe.deserializeNBT(registries, nodeGuiTag);
-        boolean upgradeColumnUsed = false;
+        boolean moduleColumnUsed = false;
         for (int i = 0; i < 5; i++) {
             if (!probe.getStackInSlot(i).isEmpty()) {
-                upgradeColumnUsed = true;
+                moduleColumnUsed = true;
                 break;
             }
         }
-        if (upgradeColumnUsed || !probe.getStackInSlot(5).isEmpty()) {
+        if (moduleColumnUsed || !probe.getStackInSlot(5).isEmpty()) {
             guiSlots.setStackInSlot(0, probe.getStackInSlot(5).copy());
         } else {
             guiSlots.setStackInSlot(0, probe.getStackInSlot(0).copy());
@@ -145,6 +152,7 @@ public final class DuctFaceNode {
     public void resetPipeSegmentDefaults() {
         insertionPriority = 0;
         extractBatch = 0;
+        lastExtractBatchSettingCapApplied = 0;
         roundRobinCursor = 0;
         selfFeed = false;
         ticksUntilAction = 0;
@@ -156,6 +164,7 @@ public final class DuctFaceNode {
         tag.putByte("RoutingModeRe", (byte) routingModeRetriever.ordinal());
         tag.putInt("InsertionPriority", insertionPriority);
         tag.putInt("ExtractBatch", extractBatch);
+        tag.putInt("ExtractBatchCapMemo", lastExtractBatchSettingCapApplied);
         tag.putByte("Channel", (byte) channelLetter);
         tag.putInt("RrCursor", roundRobinCursor);
         tag.putInt("TicksAct", ticksUntilAction);
@@ -185,6 +194,8 @@ public final class DuctFaceNode {
         if (tag.contains("ExtractBatch")) {
             extractBatch = tag.getInt("ExtractBatch");
         }
+        lastExtractBatchSettingCapApplied =
+                tag.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? tag.getInt("ExtractBatchCapMemo") : 0;
         channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
         roundRobinCursor = tag.getInt("RrCursor");
         ticksUntilAction = tag.contains("TicksAct") ? tag.getInt("TicksAct") : 0;
@@ -198,7 +209,7 @@ public final class DuctFaceNode {
     }
 
     /**
-     * Copy legacy single-lane NBT (world upgrade). {@code sharedNodeMode} comes from {@link DuctFaceLanes} (already loaded
+     * Copy legacy single-lane NBT (world migration). {@code sharedNodeMode} comes from {@link DuctFaceLanes} (already loaded
      * from the same root).
      */
     public void loadFromLegacyRootTag(HolderLookup.Provider registries, CompoundTag root, NodeMode sharedNodeMode) {
@@ -216,6 +227,8 @@ public final class DuctFaceNode {
         if (root.contains("ExtractBatch")) {
             extractBatch = root.getInt("ExtractBatch");
         }
+        lastExtractBatchSettingCapApplied =
+                root.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? root.getInt("ExtractBatchCapMemo") : 0;
         if (!root.contains("InsertionPriority")
                 && !root.contains("InsPriority")
                 && !root.contains("ExtractBatch")
@@ -237,21 +250,16 @@ public final class DuctFaceNode {
                 root.contains("EligMode") ? EligibilityMode.fromOrdinal(root.getByte("EligMode")) : EligibilityMode.BOTH;
     }
 
-    public void clampFilterSizes(DuctItemTransportSpec spec, NodeMode sharedNodeMode) {
-        int legacyA = Math.max(0, spec.filterAllowSlots());
-        int legacyD = Math.max(0, spec.filterDenySlots());
+    public void clampFilterSizes(
+            DuctItemTransportSpec spec, NodeMode sharedNodeMode, DuctModuleEffects.FilterSlotBonuses fb) {
+        int legacyA = Math.max(0, spec.filterAllowSlots() + fb.allowAdd());
+        int legacyD = Math.max(0, spec.filterDenySlots() + fb.denyAdd());
         clampList(allowFilters, legacyA);
         clampList(denyFilters, legacyD);
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
 
-        int bankA =
-                sharedNodeMode.isHybrid()
-                        ? Math.max(0, spec.filterAllowHybridSlots())
-                        : Math.max(0, spec.filterAllowSlots());
-        int bankD =
-                sharedNodeMode.isHybrid()
-                        ? Math.max(0, spec.filterDenyHybridSlots())
-                        : Math.max(0, spec.filterDenySlots());
+        int bankA = DuctModuleEffects.effectiveItemAllowBank(spec, sharedNodeMode, fb);
+        int bankD = DuctModuleEffects.effectiveItemDenyBank(spec, sharedNodeMode, fb);
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
@@ -264,22 +272,17 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
     }
 
-    /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode)} using fluid datapack caps. */
-    public void clampFilterSizes(DuctFluidTransportSpec spec, NodeMode sharedNodeMode) {
-        int legacyA = Math.max(0, spec.filterAllowSlots());
-        int legacyD = Math.max(0, spec.filterDenySlots());
+    /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode, DuctModuleEffects.FilterSlotBonuses)} using fluid datapack caps. */
+    public void clampFilterSizes(
+            DuctFluidTransportSpec spec, NodeMode sharedNodeMode, DuctModuleEffects.FilterSlotBonuses fb) {
+        int legacyA = Math.max(0, spec.filterAllowSlots() + fb.allowAdd());
+        int legacyD = Math.max(0, spec.filterDenySlots() + fb.denyAdd());
         clampList(allowFilters, legacyA);
         clampList(denyFilters, legacyD);
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
 
-        int bankA =
-                sharedNodeMode.isHybrid()
-                        ? Math.max(0, spec.filterAllowHybridSlots())
-                        : Math.max(0, spec.filterAllowSlots());
-        int bankD =
-                sharedNodeMode.isHybrid()
-                        ? Math.max(0, spec.filterDenyHybridSlots())
-                        : Math.max(0, spec.filterDenySlots());
+        int bankA = DuctModuleEffects.effectiveFluidAllowBank(spec, sharedNodeMode, fb);
+        int bankD = DuctModuleEffects.effectiveFluidDenyBank(spec, sharedNodeMode, fb);
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
@@ -292,22 +295,16 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
     }
 
-    /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode)} using gas datapack caps. */
-    public void clampFilterSizes(DuctGasTransportSpec spec, NodeMode sharedNodeMode) {
-        int legacyA = Math.max(0, spec.filterAllowSlots());
-        int legacyD = Math.max(0, spec.filterDenySlots());
+    /** Same layout as item clamp using gas datapack caps. */
+    public void clampFilterSizes(DuctGasTransportSpec spec, NodeMode sharedNodeMode, DuctModuleEffects.FilterSlotBonuses fb) {
+        int legacyA = Math.max(0, spec.filterAllowSlots() + fb.allowAdd());
+        int legacyD = Math.max(0, spec.filterDenySlots() + fb.denyAdd());
         clampList(allowFilters, legacyA);
         clampList(denyFilters, legacyD);
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
 
-        int bankA =
-                sharedNodeMode.isHybrid()
-                        ? Math.max(0, spec.filterAllowHybridSlots())
-                        : Math.max(0, spec.filterAllowSlots());
-        int bankD =
-                sharedNodeMode.isHybrid()
-                        ? Math.max(0, spec.filterDenyHybridSlots())
-                        : Math.max(0, spec.filterDenySlots());
+        int bankA = DuctModuleEffects.effectiveGasAllowBank(spec, sharedNodeMode, fb);
+        int bankD = DuctModuleEffects.effectiveGasDenyBank(spec, sharedNodeMode, fb);
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());

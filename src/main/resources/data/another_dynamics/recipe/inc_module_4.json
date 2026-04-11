@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "another_dynamics:increment_module",
+  "pattern": ["ABA", "BCB", "ABA"],
+  "key": {
+    "A": { "item": "minecraft:stone" },
+    "B": [{ "tag": "c:gems/diamond" }, { "tag": "c:gems/prismarine" }],
+    "C": { "item": "another_dynamics:inc_module_3" }
+  },
+  "result": {
+    "id": "another_dynamics:inc_module_4",
+    "count": 1
+  }
+}

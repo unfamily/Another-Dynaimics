@@ -8,7 +8,7 @@ import java.util.Locale;
  */
 public final class DuctFeatureKeys {
     public static final String SPECIAL_CHANNEL = "special:channel";
-    public static final String SPECIAL_UPGRADES = "special:upgrades";
+    public static final String SPECIAL_MODULES = "special:modules";
 
     public static final String FILTER_ITEM = "filter:item";
     public static final String FILTER_TAG = "filter:tag";

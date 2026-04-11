@@ -25,13 +25,10 @@ import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
-import net.unfamily.another_dynamics.registry.ModBlockEntities;
 
 /**
  * Geometry and neighbor refresh shared by duct blocks. Subclasses supply sound, voxel shape from masks, BE/ticker, and
@@ -67,22 +64,12 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     public java.util.List<net.minecraft.world.item.ItemStack> getDrops(BlockState state, LootParams.Builder builder) {
         BlockEntity be = builder.getOptionalParameter(LootContextParams.BLOCK_ENTITY);
         if (be instanceof DuctBlockEntity ductBe) {
+            java.util.ArrayList<net.minecraft.world.item.ItemStack> drops = new java.util.ArrayList<>();
             var drop = new net.minecraft.world.item.ItemStack(this.asItem());
             drop.set(ModDataComponents.DUCT_LOGICAL_ID.get(), ductBe.getLogicalDuctId());
-
-            // Store a compact config payload under BlockEntityTag.DuctConfig, so placement can restore settings.
-            // This avoids maintaining per-logical-id loot tables.
-            CompoundTag cfg = new CompoundTag();
-            cfg.putString("DuctLogicalId", ductBe.getLogicalDuctId());
-            cfg.putByte("UserDisc", (byte) ductBe.getUserDisconnectedFaceMask());
-            cfg.putByte("LatchedFaces", (byte) ductBe.getLatchedStorageFaceMaskForLoot());
-            cfg.put("FaceNodes", ductBe.saveFaceNodesForLoot(builder.getLevel().registryAccess()));
-
-            CompoundTag beTag = new CompoundTag();
-            beTag.put("DuctConfig", cfg);
-            BlockItem.setBlockEntityData(drop, ModBlockEntities.DUCT.get(), beTag);
-
-            return java.util.List.of(drop);
+            drops.add(drop);
+            ductBe.appendUpgradeAndGuiDrops(drops, builder.getLevel().registryAccess());
+            return drops;
         }
         return super.getDrops(state, builder);
     }

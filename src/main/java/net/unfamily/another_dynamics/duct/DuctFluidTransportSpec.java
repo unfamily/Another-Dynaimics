@@ -31,8 +31,8 @@ public record DuctFluidTransportSpec(
         return Math.min(Math.max(0, requested), max);
     }
 
-    public int extractBatchSettingCapMb(int upgradeBonusMb) {
-        int base = batchDefaultMb + upgradeBonusMb;
+    public int extractBatchSettingCapMb(int moduleBonusMb) {
+        int base = batchDefaultMb + moduleBonusMb;
         if (batchMaxMb < 0) {
             return Math.max(1, base);
         }

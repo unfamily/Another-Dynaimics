@@ -1,21 +1,26 @@
 package net.unfamily.another_dynamics.duct;
 
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.neoforged.neoforge.items.ItemStackHandler;
+import net.unfamily.another_dynamics.duct.module.DuctFaceModuleItemHandler;
+import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 
 /**
  * Per-face transport lanes. Item, fluid, and gas keep separate filters, channels, routing fields, and amount fields.
  * <p>
- * <strong>Shared for the whole face</strong>: {@link #nodeMode}, {@link #redstoneMode}, and {@link #upgradeSlots}
- * (one upgrade column for all item/fluid/gas lanes). Each lane keeps its own copy-settings slot in
+ * <strong>Shared for the whole face</strong>: {@link #nodeMode}, {@link #redstoneMode}, and {@link #moduleSlots}
+ * (one module column for all item/fluid/gas lanes). Each lane keeps its own copy-settings slot in
  * {@link DuctFaceNode#guiSlots}.
  */
 public final class DuctFaceLanes {
     private static final byte REDSTONE_FMT_V1 = 1;
+    private static final String NBT_MODULES = "Modules";
+    private static final String NBT_MODULES_LEGACY = "Upgrades";
 
-    private final Runnable onChanged;
+    private final DuctBlockEntity duct;
+    private final Direction face;
 
     public NodeMode nodeMode = NodeMode.NONE;
     /**
@@ -23,43 +28,35 @@ public final class DuctFaceLanes {
      */
     public int redstoneMode = 3;
 
-    /** Shared upgrade column; size follows {@link DuctDefinition#upgradeSlotCount()} (clamped). */
-    public ItemStackHandler upgradeSlots;
+    /** Shared module column; size follows {@link DuctDefinition#moduleSlotCount()} (clamped). */
+    public DuctFaceModuleItemHandler moduleSlots;
 
     public final DuctFaceNode item;
     public final DuctFaceNode fluid;
     public final DuctFaceNode gas;
 
-    public DuctFaceLanes(Runnable onChanged, int upgradeSlotCount) {
-        this.onChanged = onChanged;
-        int n = Math.max(0, upgradeSlotCount);
-        this.upgradeSlots = createUpgradeHandler(n);
-        this.item = new DuctFaceNode(onChanged);
-        this.fluid = new DuctFaceNode(onChanged);
-        this.gas = new DuctFaceNode(onChanged);
-    }
-
-    private ItemStackHandler createUpgradeHandler(int size) {
-        return new ItemStackHandler(size) {
-            @Override
-            protected void onContentsChanged(int slot) {
-                onChanged.run();
-            }
-        };
+    public DuctFaceLanes(DuctBlockEntity duct, Direction face, int moduleSlotCount) {
+        this.duct = duct;
+        this.face = face;
+        int n = Math.max(0, moduleSlotCount);
+        this.moduleSlots = new DuctFaceModuleItemHandler(duct, face, n);
+        this.item = new DuctFaceNode(duct::setChanged);
+        this.fluid = new DuctFaceNode(duct::setChanged);
+        this.gas = new DuctFaceNode(duct::setChanged);
     }
 
     /**
-     * Resizes the shared upgrade handler, preserving stacks in the overlapping prefix.
+     * Resizes the shared module handler, preserving stacks in the overlapping prefix.
      */
-    public void resizeUpgradeSlots(int want) {
+    public void resizeModuleSlots(int want) {
         want = Math.max(0, want);
-        if (upgradeSlots.getSlots() == want) {
+        if (moduleSlots.getSlots() == want) {
             return;
         }
-        ItemStackHandler prev = upgradeSlots;
-        upgradeSlots = createUpgradeHandler(want);
+        DuctFaceModuleItemHandler prev = moduleSlots;
+        moduleSlots = new DuctFaceModuleItemHandler(duct, face, want);
         for (int i = 0; i < Math.min(want, prev.getSlots()); i++) {
-            upgradeSlots.setStackInSlot(i, prev.getStackInSlot(i).copy());
+            moduleSlots.setStackInSlot(i, prev.getStackInSlot(i).copy());
         }
     }
 
@@ -70,7 +67,7 @@ public final class DuctFaceLanes {
         shared.putByte("RsFmt", REDSTONE_FMT_V1);
         tag.put("Shared", shared);
 
-        tag.put("Upgrades", upgradeSlots.serializeNBT(registries));
+        tag.put(NBT_MODULES, moduleSlots.serializeNBT(registries));
 
         CompoundTag itemTag = new CompoundTag();
         item.save(registries, itemTag);
@@ -91,12 +88,14 @@ public final class DuctFaceLanes {
             loadSharedFromLegacyNodeTag(itemLike);
         }
 
-        // Upgrade column size must match {@link DuctBlockEntity#ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition()}
+        // Module column size must match {@link DuctBlockEntity#ensureFaceLaneModuleSlotCapacitiesMatchDefinition()}
         // before load (logical duct id). Do not resize to GUI max here or reload shrinks stacks to the wrong cap.
-        if (tag.contains("Upgrades", Tag.TAG_COMPOUND)) {
-            upgradeSlots.deserializeNBT(registries, tag.getCompound("Upgrades"));
+        if (tag.contains(NBT_MODULES, Tag.TAG_COMPOUND)) {
+            moduleSlots.deserializeNBT(registries, tag.getCompound(NBT_MODULES));
+        } else if (tag.contains(NBT_MODULES_LEGACY, Tag.TAG_COMPOUND)) {
+            moduleSlots.deserializeNBT(registries, tag.getCompound(NBT_MODULES_LEGACY));
         } else {
-            migrateLegacyUpgradesFromItemNodeGui(registries, tag);
+            migrateLegacyModulesFromItemNodeGui(registries, tag);
         }
 
         CompoundTag rawItem = tag.contains("Item", Tag.TAG_COMPOUND) ? tag.getCompound("Item") : tag;
@@ -114,7 +113,7 @@ public final class DuctFaceLanes {
         }
     }
 
-    private void migrateLegacyUpgradesFromItemNodeGui(HolderLookup.Provider registries, CompoundTag faceTag) {
+    private void migrateLegacyModulesFromItemNodeGui(HolderLookup.Provider registries, CompoundTag faceTag) {
         CompoundTag nodeGuiHost = null;
         if (faceTag.contains("Item", Tag.TAG_COMPOUND)) {
             CompoundTag itemTag = faceTag.getCompound("Item");
@@ -128,20 +127,22 @@ public final class DuctFaceLanes {
         if (nodeGuiHost == null) {
             return;
         }
-        ItemStackHandler legacy = new ItemStackHandler(6);
+        net.neoforged.neoforge.items.ItemStackHandler legacy = new net.neoforged.neoforge.items.ItemStackHandler(6);
         legacy.deserializeNBT(registries, nodeGuiHost.getCompound("NodeGui"));
-        int limit = Math.min(5, upgradeSlots.getSlots());
+        int limit = Math.min(5, moduleSlots.getSlots());
         for (int i = 0; i < limit; i++) {
-            upgradeSlots.setStackInSlot(i, legacy.getStackInSlot(i).copy());
+            moduleSlots.setStackInSlot(i, legacy.getStackInSlot(i).copy());
         }
     }
 
     public void loadFromLegacyRootTag(HolderLookup.Provider registries, CompoundTag root) {
         loadSharedFromLegacyNodeTag(root);
-        if (!root.contains("Upgrades", Tag.TAG_COMPOUND)) {
-            migrateLegacyUpgradesFromItemNodeGui(registries, root);
+        if (root.contains(NBT_MODULES, Tag.TAG_COMPOUND)) {
+            moduleSlots.deserializeNBT(registries, root.getCompound(NBT_MODULES));
+        } else if (root.contains(NBT_MODULES_LEGACY, Tag.TAG_COMPOUND)) {
+            moduleSlots.deserializeNBT(registries, root.getCompound(NBT_MODULES_LEGACY));
         } else {
-            upgradeSlots.deserializeNBT(registries, root.getCompound("Upgrades"));
+            migrateLegacyModulesFromItemNodeGui(registries, root);
         }
         item.loadFromLegacyRootTag(registries, stripSharedKeys(root), nodeMode);
     }
@@ -158,9 +159,10 @@ public final class DuctFaceLanes {
     }
 
     public void clampFilterSizes(DuctItemTransportSpec itemSpec, DuctFluidTransportSpec fluidSpec, DuctGasTransportSpec gasSpec) {
-        item.clampFilterSizes(itemSpec, nodeMode);
-        fluid.clampFilterSizes(fluidSpec, nodeMode);
-        gas.clampFilterSizes(gasSpec, nodeMode);
+        DuctModuleEffects.FilterSlotBonuses fb = DuctModuleEffects.filterSlotBonuses(duct, face);
+        item.clampFilterSizes(itemSpec, nodeMode, fb);
+        fluid.clampFilterSizes(fluidSpec, nodeMode, fb);
+        gas.clampFilterSizes(gasSpec, nodeMode, fb);
     }
 
     private void loadShared(CompoundTag tag) {

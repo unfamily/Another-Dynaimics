@@ -4,7 +4,7 @@
   "name": "duct.another_dynamics.flux_duct",
   "put_in_creative_menu": true,
   "sound": "metallic",
-  "upgrade_slots": 0,
+  "module_slots": 0,
   "can_transport": [
     {
       "dec": "forge_energy",
@@ -15,7 +15,7 @@
   ],
   "connect_with_compatbile": true,
   "disabled_features":[],
-  "upgrade_features":[],
+  "module_features":[],
   "rendering": {
     "always_opaque": false,
     "default_texture": "another_dynamics:block/duct/energy/rf/flux_duct_0_light",

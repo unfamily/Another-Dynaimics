@@ -27,6 +27,7 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.duct.module.ModuleDefinitionLoader;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
 
 /**
@@ -215,17 +216,23 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             "connect_with_compatbile");
             Set<String> disabledFeatures = readStringFeatureSet(restrictionsRoot, "disabled_features", "disabled_feathures");
             Set<String> forbiddenFeatures =
-                    readStringFeatureSet(restrictionsRoot, "forbidden_features", "upgrade_features");
+                    readStringFeatureSet(restrictionsRoot, "forbidden_features", "module_features", "upgrade_features");
             warnUnknownFeatureKeys(logicalId, disabledFeatures, forbiddenFeatures);
-            int upgradeSlots = 5;
-            if (o.has("upgrade_slots") && o.get("upgrade_slots").isJsonPrimitive()) {
+            int moduleSlots = 5;
+            if (o.has("module_slots") && o.get("module_slots").isJsonPrimitive()) {
                 try {
-                    upgradeSlots = o.get("upgrade_slots").getAsInt();
+                    moduleSlots = o.get("module_slots").getAsInt();
                 } catch (NumberFormatException ignored) {
-                    upgradeSlots = 5;
+                    moduleSlots = 5;
+                }
+            } else if (o.has("upgrade_slots") && o.get("upgrade_slots").isJsonPrimitive()) {
+                try {
+                    moduleSlots = o.get("upgrade_slots").getAsInt();
+                } catch (NumberFormatException ignored) {
+                    moduleSlots = 5;
                 }
             }
-            upgradeSlots = DuctGuiLayout.clampUpgradeSlotCount(upgradeSlots);
+            moduleSlots = DuctGuiLayout.clampModuleSlotCount(moduleSlots);
             out.put(
                     e.getKey(),
                     new DuctDefinition(
@@ -247,8 +254,10 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             disabledFeatures,
                             forbiddenFeatures,
                             alwaysOpaqueRendering,
-                            upgradeSlots));
+                            moduleSlots));
         }
+
+        ModuleDefinitionLoader.tryApplyPrepared(prepared);
 
         if (out.isEmpty() && !DuctDefinitionRegistry.all().isEmpty()) {
             AnotherDynamicsMod.LOGGER.warn(
@@ -565,6 +574,9 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             if (el.isJsonPrimitive()) {
                 String s = el.getAsString().trim().toLowerCase(Locale.ROOT);
                 if (!s.isEmpty()) {
+                    if ("special:upgrades".equals(s)) {
+                        s = "special:modules";
+                    }
                     out.add(s);
                 }
             }

@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "another_dynamics:filter_module",
+  "pattern": ["ABA", "BCB", "ABA"],
+  "key": {
+    "A": { "item": "minecraft:stone" },
+    "B": { "tag": "c:ingots/gold" },
+    "C": { "item": "another_dynamics:fil_module_1" }
+  },
+  "result": {
+    "id": "another_dynamics:fil_module_2",
+    "count": 1
+  }
+}

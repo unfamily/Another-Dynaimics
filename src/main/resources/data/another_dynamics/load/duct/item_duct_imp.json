@@ -4,7 +4,7 @@
   "name": "duct.another_dynamics.item_duct_imp",
   "put_in_creative_menu": true,
   "sound": "metallic",
-  "upgrade_slots": 5,
+  "module_slots": 5,
   "can_transport": [
     {
       "dec": "item",
@@ -30,7 +30,7 @@
   ],
   "connect_with_compatbile": true,
   "disabled_features":[],
-  "upgrade_features":[],
+  "module_features":[],
   "rendering": {
     "always_opaque": false,
     "default_texture": "another_dynamics:block/duct/item/item_duct_1_gold",

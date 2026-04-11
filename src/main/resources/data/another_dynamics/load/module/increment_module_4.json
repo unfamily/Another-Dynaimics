@@ -1,0 +1,17 @@
+{
+  "type": "another_dynamics:declare_module",
+  "id": "another_dynamics:inc_module_4",
+  "affects": [
+    {
+      "for": "item",
+      "batch": {
+        "set": 96
+      }
+    }
+  ],
+  "stack": 1,
+  "max_slots": 1,
+  "incompatible_with": [
+    "#another_dynamics:increment_modules"
+  ]
+}

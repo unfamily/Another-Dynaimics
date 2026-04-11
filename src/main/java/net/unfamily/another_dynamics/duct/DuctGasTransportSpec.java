@@ -41,8 +41,8 @@ public record DuctGasTransportSpec(
         return Math.min(Math.max(0L, requested), max);
     }
 
-    public long extractBatchSettingCap(long upgradeBonus) {
-        long base = batchDefault + upgradeBonus;
+    public long extractBatchSettingCap(long moduleBonus) {
+        long base = batchDefault + moduleBonus;
         if (batchMax < 0) {
             return Math.max(1L, base);
         }

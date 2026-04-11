@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -52,26 +53,26 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private static final int SLOT_GEOMETRY_NUDGE = 2;
 
     /**
-     * Where {@code SINGLE_SLOT} is blitted for the upgrade column (aligned to {@code node.png}); do not shift this for
-     * container content — see {@link #SLOT_UPGRADE_X} / {@link #SLOT_UPGRADE_Y0}.
+     * Where {@code SINGLE_SLOT} is blitted for the module column (aligned to {@code node.png}); do not shift this for
+     * container content — see {@link #SLOT_MODULE_X} / {@link #SLOT_MODULE_Y0}.
      */
-    public static final int SLOT_UPGRADE_BACKGROUND_X = 14 + SLOT_GEOMETRY_NUDGE;
-    /** Top of upgrade column slot art; must match {@link DuctGuiLayout#UPGRADE_COLUMN_FIRST_SLOT_Y}. */
-    public static final int SLOT_UPGRADE_BACKGROUND_Y0 = DuctGuiLayout.UPGRADE_COLUMN_FIRST_SLOT_Y;
+    public static final int SLOT_MODULE_BACKGROUND_X = 14 + SLOT_GEOMETRY_NUDGE;
+    /** Top of module column slot art; must match {@link DuctGuiLayout#MODULE_COLUMN_FIRST_SLOT_Y}. */
+    public static final int SLOT_MODULE_BACKGROUND_Y0 = DuctGuiLayout.MODULE_COLUMN_FIRST_SLOT_Y;
 
     /** Copy column: {@code SINGLE_SLOT} blit position (node texture alignment). */
     public static final int SLOT_COPY_BACKGROUND_X = 278 + SLOT_GEOMETRY_NUDGE;
     public static final int SLOT_COPY_BACKGROUND_Y = 52 + SLOT_GEOMETRY_NUDGE;
 
     /**
-     * Container {@link Slot} origins for upgrade/copy: one pixel right and down from the slot frame art so items and
+     * Container {@link Slot} origins for module/copy: one pixel right and down from the slot frame art so items and
      * interaction sit in the content layer.
      */
     private static final int SLOT_CONTENT_LAYER_DX = 1;
     private static final int SLOT_CONTENT_LAYER_DY = 1;
 
-    public static final int SLOT_UPGRADE_X = SLOT_UPGRADE_BACKGROUND_X + SLOT_CONTENT_LAYER_DX;
-    public static final int SLOT_UPGRADE_Y0 = SLOT_UPGRADE_BACKGROUND_Y0 + SLOT_CONTENT_LAYER_DY;
+    public static final int SLOT_MODULE_X = SLOT_MODULE_BACKGROUND_X + SLOT_CONTENT_LAYER_DX;
+    public static final int SLOT_MODULE_Y0 = SLOT_MODULE_BACKGROUND_Y0 + SLOT_CONTENT_LAYER_DY;
 
     public static final int SLOT_COPY_X = SLOT_COPY_BACKGROUND_X + SLOT_CONTENT_LAYER_DX;
     public static final int SLOT_COPY_Y = SLOT_COPY_BACKGROUND_Y + SLOT_CONTENT_LAYER_DY;
@@ -95,11 +96,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     /** Open-menu sync: {@link DuctBlockEntity#getLogicalDuctId()} for correct client-side datapack caps. */
     private final String clientDuctLogicalId;
 
-    private final int upgradeSlotCount;
+    private final int moduleSlotCount;
     private final int machineSlotCount;
 
-    /** Detects upgrade-slot changes so {@link DuctMenuSync#EXTRACT_BATCH_CAP} can be refreshed without full menu spam. */
-    private int lastUpgradeSlotsFingerprint;
+    /** Detects module-slot changes so {@link DuctMenuSync#EXTRACT_BATCH_CAP} can be refreshed without full menu spam. */
+    private int lastModuleSlotsFingerprint;
 
     /** Client-side filter cache (filled by {@link #receiveFilterSync}). */
     private final List<String> clientAllowFiltersExtractor = new ArrayList<>();
@@ -123,7 +124,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         this(
                 containerId,
                 playerInventory,
-                new DuctMenuActiveLaneSlots(be, accessFace, be.upgradeSlotCountForMenu()),
+                new DuctMenuActiveLaneSlots(be, accessFace, be.moduleSlotCountForMenu()),
                 ContainerLevelAccess.create(be.getLevel(), be.getBlockPos()),
                 be.getMenuData(),
                 be,
@@ -131,7 +132,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 be.getBlockPos(),
                 be.ductAlwaysOpaqueRendering(),
                 be.getLogicalDuctId(),
-                be.upgradeSlotCountForMenu());
+                be.moduleSlotCountForMenu());
         be.clampFaceFiltersToSpec();
         be.refreshMenuData(accessFace);
         if (!be.getLevel().isClientSide() && playerInventory.player instanceof ServerPlayer sp) {
@@ -158,7 +159,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         if (menuLayer > 1) {
             menuLayer = 1;
         }
-        int ug = DuctGuiLayout.clampUpgradeSlotCount(extraData.readByte() & 0xFF);
+        int ug = DuctGuiLayout.clampModuleSlotCount(extraData.readByte() & 0xFF);
         SimpleContainerData clientData = new SimpleContainerData(DuctMenuSync.COUNT);
         clientData.set(DuctMenuSync.MENU_VIEW_LAYER, menuLayer);
         List<DuctTransportKind> ordKinds =
@@ -167,10 +168,18 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         if (!ordKinds.isEmpty()) {
             clientData.set(DuctMenuSync.ACTIVE_TRANSPORT_KIND, ordKinds.getFirst().ordinal());
         }
+        Level lvl = playerInventory.player.level();
+        ItemStackHandler nodeSlots;
+        BlockEntity be = lvl.getBlockEntity(pos);
+        if (be instanceof DuctBlockEntity dbe) {
+            nodeSlots = new DuctMenuActiveLaneSlots(dbe, face, ug);
+        } else {
+            nodeSlots = new ItemStackHandler(ug + 1);
+        }
         return new DuctNodeMenu(
                 containerId,
                 playerInventory,
-                new ItemStackHandler(ug + 1),
+                nodeSlots,
                 ContainerLevelAccess.NULL,
                 clientData,
                 null,
@@ -192,7 +201,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             BlockPos ductBlockPos,
             boolean clientDuctAlwaysOpaqueLock,
             String clientDuctLogicalId,
-            int upgradeSlotCount) {
+            int moduleSlotCount) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
         this.access = access;
         this.syncData = syncData;
@@ -201,21 +210,57 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         this.ductBlockPos = ductBlockPos;
         this.clientDuctAlwaysOpaqueLock = clientDuctAlwaysOpaqueLock;
         this.clientDuctLogicalId = clientDuctLogicalId;
-        this.upgradeSlotCount = Math.max(0, upgradeSlotCount);
-        this.machineSlotCount = this.upgradeSlotCount + 1;
+        this.moduleSlotCount = Math.max(0, moduleSlotCount);
+        this.machineSlotCount = this.moduleSlotCount + 1;
 
-        for (int i = 0; i < this.upgradeSlotCount; i++) {
-            int y = SLOT_UPGRADE_Y0 + i * 18;
+        for (int i = 0; i < this.moduleSlotCount; i++) {
+            int y = SLOT_MODULE_Y0 + i * 18;
+            int slotIndex = i;
             addSlot(
-                    new SlotItemHandler(nodeSlots, i, SLOT_UPGRADE_X, y) {
+                    new SlotItemHandler(nodeSlots, i, SLOT_MODULE_X, y) {
+                        @Override
+                        public int getMaxStackSize(ItemStack stack) {
+                            if (stack.isEmpty()) {
+                                return super.getMaxStackSize();
+                            }
+                            if (nodeSlots instanceof DuctMenuActiveLaneSlots lanes) {
+                                return lanes.moduleInsertLimit(slotIndex, stack);
+                            }
+                            return Math.min(stack.getMaxStackSize(), nodeSlots.getSlotLimit(slotIndex));
+                        }
+
+                        @Override
+                        public boolean mayPlace(ItemStack stack) {
+                            if (stack.isEmpty()) {
+                                return true;
+                            }
+                            return nodeSlots.isItemValid(slotIndex, stack);
+                        }
+
                         @Override
                         public boolean isActive() {
-                            return super.isActive() && upgradeSlotsInteractive();
+                            return super.isActive() && moduleSlotsInteractive();
                         }
                     });
         }
         addSlot(
-                new SlotItemHandler(nodeSlots, this.upgradeSlotCount, SLOT_COPY_X, SLOT_COPY_Y) {
+                new SlotItemHandler(nodeSlots, this.moduleSlotCount, SLOT_COPY_X, SLOT_COPY_Y) {
+                    @Override
+                    public int getMaxStackSize(ItemStack stack) {
+                        if (stack.isEmpty()) {
+                            return super.getMaxStackSize();
+                        }
+                        if (nodeSlots instanceof DuctMenuActiveLaneSlots lanes) {
+                            return lanes.moduleInsertLimit(moduleSlotCount, stack);
+                        }
+                        return Math.min(stack.getMaxStackSize(), nodeSlots.getSlotLimit(moduleSlotCount));
+                    }
+
+                    @Override
+                    public boolean mayPlace(ItemStack stack) {
+                        return stack.isEmpty() || nodeSlots.isItemValid(moduleSlotCount, stack);
+                    }
+
                     @Override
                     public boolean isActive() {
                         return super.isActive();
@@ -226,9 +271,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         addDataSlots(syncData);
 
         if (linkedBlockEntity != null && linkedBlockEntity.getLevel() != null && !linkedBlockEntity.getLevel().isClientSide()) {
-            lastUpgradeSlotsFingerprint = upgradeSlotsFingerprint();
+            lastModuleSlotsFingerprint = moduleSlotsFingerprint();
         } else {
-            lastUpgradeSlotsFingerprint = 0;
+            lastModuleSlotsFingerprint = 0;
         }
     }
 
@@ -313,8 +358,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return syncData;
     }
 
-    public int upgradeSlotCount() {
-        return upgradeSlotCount;
+    public int moduleSlotCount() {
+        return moduleSlotCount;
     }
 
     public int machineSlotCount() {
@@ -322,14 +367,14 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     public int copySettingsSlotIndex() {
-        return upgradeSlotCount;
+        return moduleSlotCount;
     }
 
     /**
-     * Energy/heat lanes do not use upgrade slots; copy remains usable. Multi-transport hub uses the first sync kind
-     * ordinal until a tab is picked — treat hub as non-energy for upgrade interaction so shared upgrades work.
+     * Energy/heat lanes do not use module slots; copy remains usable. Multi-transport hub uses the first sync kind
+     * ordinal until a tab is picked — treat hub as non-energy for module interaction so shared modules work.
      */
-    public boolean upgradeSlotsInteractive() {
+    public boolean moduleSlotsInteractive() {
         if (isMultiTransportHubMainLayer()) {
             return true;
         }
@@ -545,12 +590,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return machineSlotCount;
     }
 
-    private int upgradeSlotsFingerprint() {
+    private int moduleSlotsFingerprint() {
         if (linkedBlockEntity == null) {
             return 0;
         }
         int fp = 1;
-        var stacks = linkedBlockEntity.getFaceLanes(accessFace).upgradeSlots;
+        var stacks = linkedBlockEntity.getFaceLanes(accessFace).moduleSlots;
         for (int i = 0; i < stacks.getSlots(); i++) {
             fp = 31 * fp + stacks.getStackInSlot(i).hashCode();
         }
@@ -561,17 +606,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public void broadcastChanges() {
         super.broadcastChanges();
         if (linkedBlockEntity != null && linkedBlockEntity.getLevel() != null && !linkedBlockEntity.getLevel().isClientSide()) {
-            int fp = upgradeSlotsFingerprint();
-            if (fp != lastUpgradeSlotsFingerprint) {
-                lastUpgradeSlotsFingerprint = fp;
-                int cap =
-                        switch (linkedBlockEntity.menuActiveTransportKind()) {
-                            case FLUID -> linkedBlockEntity.computeFluidExtractBatchSettingCap(accessFace);
-                            case GAS -> linkedBlockEntity.computeGasExtractBatchSettingCap(accessFace);
-                            case ENERGY, HEAT -> 0;
-                            case ITEM -> linkedBlockEntity.computeExtractBatchSettingCap(accessFace);
-                        };
-                linkedBlockEntity.getMenuData().set(DuctMenuSync.EXTRACT_BATCH_CAP, cap);
+            int fp = moduleSlotsFingerprint();
+            if (fp != lastModuleSlotsFingerprint) {
+                lastModuleSlotsFingerprint = fp;
+                linkedBlockEntity.clampAllTransportExtractBatchesForFace(accessFace);
+                linkedBlockEntity.refreshMenuData(accessFace);
             }
         }
     }
@@ -608,12 +647,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         int playerLast = this.slots.size();
         int copyIx = copySettingsSlotIndex();
 
-        if (!upgradeSlotsInteractive()) {
+        if (!moduleSlotsInteractive()) {
             Slot slot = this.slots.get(index);
             if (slot == null || !slot.hasItem()) {
                 return ItemStack.EMPTY;
             }
-            if (index >= 0 && index < upgradeSlotCount) {
+            if (index >= 0 && index < moduleSlotCount) {
                 return ItemStack.EMPTY;
             }
             if (index == copyIx) {

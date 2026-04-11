@@ -4,7 +4,7 @@
   "name": "duct.another_dynamics.test_duct",
   "put_in_creative_menu": true,
   "sound": "metallic",
-  "upgrade_slots": 12,
+  "module_slots": 12,
   "can_transport": [
     {
       "dec": "item",
@@ -51,7 +51,7 @@
   ],
   "connect_with_compatible": true,
   "disabled_features": [],
-  "upgrade_features": [],
+  "module_features": [],
   "rendering": {
     "always_opaque": false,
     "default_texture": "another_dynamics:block/duct/item/item_duct_0_dark",

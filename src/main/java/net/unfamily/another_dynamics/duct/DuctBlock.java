@@ -213,9 +213,9 @@ public class DuctBlock extends AbstractDuctBlock {
     private static void openDuctMenu(ServerPlayer player, DuctBlockEntity duct, Direction clickedFace) {
         duct.prepareMenuOpenState();
         // Must run before constructing {@link net.unfamily.another_dynamics.inventory.DuctMenuActiveLaneSlots}:
-        // menu slot count comes from the datapack definition, while face {@code upgradeSlots} may still be the
+        // menu slot count comes from the datapack definition, while face {@code moduleSlots} may still be the
         // previous size until resized (otherwise {@code broadcastChanges} throws "Slot N not in valid range").
-        duct.ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition();
+        duct.ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
         player.openMenu(
                 new MenuProvider() {
                     @Override
@@ -234,7 +234,7 @@ public class DuctBlock extends AbstractDuctBlock {
                     buf.writeBoolean(duct.ductAlwaysOpaqueRendering());
                     buf.writeUtf(duct.getLogicalDuctId());
                     buf.writeByte(duct.menuUiLayer());
-                    buf.writeByte(duct.upgradeSlotCountForMenu());
+                    buf.writeByte(duct.moduleSlotCountForMenu());
                 });
     }
 }

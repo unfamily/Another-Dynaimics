@@ -150,8 +150,7 @@ public final class DuctCapHelper {
             return 0;
         }
         // Apply all in-flight pending into a virtual copy of the destination handler, then measure how many more
-        // `template` fit (up to `limit`). Avoids subtracting pending from a single-stack probe capped at maxStackSize,
-        // which wrongly returned 0 when many batches were in transit (e.g. 8×8 pending vs physicalCap≤64).
+        // `template` fit (up to `limit`). Simulation allows counts above a single stack when the handler can spread them.
         ItemStackHandler virtual = simulateInventoryAfterPending(h, priorPending);
         int physicalCap = simulateMaxInsertableIntoHandler(virtual, template, limit);
         return Math.max(0, Math.min(limit, physicalCap));
@@ -359,9 +358,9 @@ public final class DuctCapHelper {
         if (limit <= 0 || template.isEmpty()) {
             return 0;
         }
-        int cap = Math.min(limit, template.getMaxStackSize());
+        // Do not cap `hi` at template.getMaxStackSize(): stacked handlers may accept >64 in one logical insert pass.
+        int hi = limit;
         int lo = 0;
-        int hi = cap;
         while (lo < hi) {
             int mid = (lo + hi + 1) / 2;
             List<ItemStack> order = new ArrayList<>(priorPending.size() + 1);
@@ -462,9 +461,9 @@ public final class DuctCapHelper {
         if (limit <= 0 || template.isEmpty()) {
             return 0;
         }
-        int cap = Math.min(limit, template.getMaxStackSize());
+        // Binary search up to `limit`; insertItemStacked / slot loop can place more than one stack worth per template.
         int lo = 0;
-        int hi = cap;
+        int hi = limit;
         while (lo < hi) {
             int mid = (lo + hi + 1) / 2;
             ItemStack test = template.copy();

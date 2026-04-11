@@ -23,9 +23,9 @@ public final class DuctFeaturePolicy {
     }
 
     /**
-     * @param hasUpgrade coarse unlock: any upgrade slot non-empty on the edited face (see duct BE helper).
+     * @param hasModule coarse unlock: any module slot non-empty on the edited face (see duct BE helper).
      */
-    public static boolean isUsable(@Nullable DuctDefinition def, String key, boolean hasUpgrade) {
+    public static boolean isUsable(@Nullable DuctDefinition def, String key, boolean hasModule) {
         if (def == null) {
             return true;
         }
@@ -33,16 +33,16 @@ public final class DuctFeaturePolicy {
             return false;
         }
         if (isForbidden(def, key)) {
-            return hasUpgrade;
+            return hasModule;
         }
         return true;
     }
 
-    public static boolean isModeUsable(@Nullable DuctDefinition def, NodeMode mode, boolean hasUpgrade) {
-        return isUsable(def, DuctFeatureKeys.modeKey(mode), hasUpgrade);
+    public static boolean isModeUsable(@Nullable DuctDefinition def, NodeMode mode, boolean hasModule) {
+        return isUsable(def, DuctFeatureKeys.modeKey(mode), hasModule);
     }
 
-    public static boolean isRoutingUsable(@Nullable DuctDefinition def, RoutingMode mode, boolean hasUpgrade) {
-        return isUsable(def, DuctFeatureKeys.routingKey(mode), hasUpgrade);
+    public static boolean isRoutingUsable(@Nullable DuctDefinition def, RoutingMode mode, boolean hasModule) {
+        return isUsable(def, DuctFeatureKeys.routingKey(mode), hasModule);
     }
 }

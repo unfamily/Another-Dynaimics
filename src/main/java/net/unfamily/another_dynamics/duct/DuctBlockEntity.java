@@ -38,6 +38,7 @@ import net.unfamily.another_dynamics.duct.logistics.DuctFluidServerTick;
 import net.unfamily.another_dynamics.duct.logistics.DuctGasServerTick;
 import net.unfamily.another_dynamics.duct.logistics.DuctEnergyServerTick;
 import net.unfamily.another_dynamics.duct.logistics.DuctHeatServerTick;
+import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
 import net.unfamily.another_dynamics.duct.logistics.DuctTargetSelector;
 import net.unfamily.another_dynamics.duct.logistics.DuctTransitTopology;
@@ -244,7 +245,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public DuctBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.DUCT.get(), pos, state);
         for (int i = 0; i < FACE_COUNT; i++) {
-            faceLanes[i] = new DuctFaceLanes(this::setChanged, 5);
+            faceLanes[i] = new DuctFaceLanes(this, Direction.values()[i], 5);
         }
     }
 
@@ -258,21 +259,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         logicalDuctId = n;
-        ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition();
+        ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
         setChanged();
         requestModelDataUpdate();
     }
 
-    /** Clamped datapack upgrade column size (not including copy slot). */
-    public int upgradeSlotCountForMenu() {
-        return DuctGuiLayout.clampUpgradeSlotCount(
-                ductDefinition().map(DuctDefinition::upgradeSlotCount).orElse(5));
+    /** Clamped datapack module column size (not including copy slot). */
+    public int moduleSlotCountForMenu() {
+        return DuctGuiLayout.clampModuleSlotCount(
+                ductDefinition().map(DuctDefinition::moduleSlotCount).orElse(5));
     }
 
-    public void ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition() {
-        int want = upgradeSlotCountForMenu();
+    public void ensureFaceLaneModuleSlotCapacitiesMatchDefinition() {
+        int want = moduleSlotCountForMenu();
         for (Direction d : Direction.values()) {
-            getFaceLanes(d).resizeUpgradeSlots(want);
+            getFaceLanes(d).resizeModuleSlots(want);
         }
     }
 
@@ -356,6 +357,36 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             faces.add(ft);
         }
         return faces;
+    }
+
+    /**
+     * Adds non-empty module stacks and per-lane GUI (copy) stacks for every face — used by {@link AbstractDuctBlock#getDrops}
+     * so the block item stays lightweight (logical id only) while upgrades remain as separate loot.
+     */
+    public void appendUpgradeAndGuiDrops(
+            List<ItemStack> out, @SuppressWarnings("unused") HolderLookup.Provider registries) {
+        for (Direction d : Direction.values()) {
+            DuctFaceLanes lanes = getFaceLanes(d);
+            ItemStackHandler modules = lanes.moduleSlots;
+            for (int i = 0; i < modules.getSlots(); i++) {
+                ItemStack s = modules.getStackInSlot(i);
+                if (!s.isEmpty()) {
+                    out.add(s.copy());
+                }
+            }
+            appendNonEmptyGuiSlots(lanes.item.guiSlots, out);
+            appendNonEmptyGuiSlots(lanes.fluid.guiSlots, out);
+            appendNonEmptyGuiSlots(lanes.gas.guiSlots, out);
+        }
+    }
+
+    private static void appendNonEmptyGuiSlots(ItemStackHandler gui, List<ItemStack> out) {
+        for (int i = 0; i < gui.getSlots(); i++) {
+            ItemStack s = gui.getStackInSlot(i);
+            if (!s.isEmpty()) {
+                out.add(s.copy());
+            }
+        }
     }
 
     public DuctFaceNode getFaceNode(Direction dir) {
@@ -461,21 +492,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public int computeFluidExtractBatchSettingCap(Direction face) {
-        return fluidTransportSpec().extractBatchSettingCapMb(getFluidExtractBatchUpgradeBonus(face));
+        return fluidTransportSpec().extractBatchSettingCapMb(getFluidExtractBatchModuleBonus(face));
     }
 
-    private int getFluidExtractBatchUpgradeBonus(Direction face) {
+    private int getFluidExtractBatchModuleBonus(Direction face) {
         if (!DuctFeaturePolicy.isUsable(
                 ductDefinition().orElse(null),
-                DuctFeatureKeys.SPECIAL_UPGRADES,
-                faceHasSharedUpgradeSlots(face))) {
+                DuctFeatureKeys.SPECIAL_MODULES,
+                faceHasAnyModule(face))) {
             return 0;
         }
         int bonus = 0;
-        ItemStackHandler upg = getFaceLanes(face).upgradeSlots;
+        ItemStackHandler upg = getFaceLanes(face).moduleSlots;
         for (int i = 0; i < upg.getSlots(); i++) {
             if (!upg.getStackInSlot(i).isEmpty()) {
-                // Future: fluid upgrade items
+                // Future: fluid module items
             }
         }
         return bonus;
@@ -2029,38 +2060,27 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     /**
-     * Maximum extract/retrieve batch the player may store on this face: {@code batch.default} plus upgrade bonuses,
+     * Maximum extract/retrieve batch the player may store on this face: {@code batch.default} plus module bonuses,
      * then limited by datapack {@code batch.max} when that value is {@code >= 0}. When {@code max} is negative,
-     * only default + upgrades applies (not unlimited).
+     * only default + modules applies (not unlimited).
      */
     public int computeExtractBatchSettingCap(Direction face) {
-        return itemTransportSpec().extractBatchSettingCap(getExtractBatchUpgradeBonus(face));
+        return itemTransportSpec().extractBatchSettingCap(getExtractBatchModuleBonus(face));
     }
 
-    /** Per-face upgrade slots that raise extract batch; extend when upgrade items exist. */
-    private int getExtractBatchUpgradeBonus(Direction face) {
+    /** Per-face module column contribution to extract batch (item lane). */
+    private int getExtractBatchModuleBonus(Direction face) {
         if (!DuctFeaturePolicy.isUsable(
                 ductDefinition().orElse(null),
-                DuctFeatureKeys.SPECIAL_UPGRADES,
-                faceHasSharedUpgradeSlots(face))) {
+                DuctFeatureKeys.SPECIAL_MODULES,
+                faceHasAnyModule(face))) {
             return 0;
         }
-        int bonus = 0;
-        ItemStackHandler upg = getFaceLanes(face).upgradeSlots;
-        for (int i = 0; i < upg.getSlots(); i++) {
-            if (!upg.getStackInSlot(i).isEmpty()) {
-                // Future: parse upgrade item stats (e.g. +8 per tier).
-            }
-        }
-        return bonus;
+        return net.unfamily.another_dynamics.duct.module.DuctModuleEffects.itemExtractBatchBonus(this, face, itemTransportSpec());
     }
 
-    private boolean faceHasUpgradeSlots(Direction face) {
-        return faceHasSharedUpgradeSlots(face);
-    }
-
-    private boolean faceHasSharedUpgradeSlots(Direction face) {
-        ItemStackHandler upg = getFaceLanes(face).upgradeSlots;
+    private boolean faceHasAnyModule(Direction face) {
+        ItemStackHandler upg = getFaceLanes(face).moduleSlots;
         for (int i = 0; i < upg.getSlots(); i++) {
             if (!upg.getStackInSlot(i).isEmpty()) {
                 return true;
@@ -2069,66 +2089,66 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return false;
     }
 
-    private int getGasExtractBatchUpgradeBonus(Direction face) {
+    private int getGasExtractBatchModuleBonus(Direction face) {
         if (!DuctFeaturePolicy.isUsable(
                 ductDefinition().orElse(null),
-                DuctFeatureKeys.SPECIAL_UPGRADES,
-                faceHasSharedUpgradeSlots(face))) {
+                DuctFeatureKeys.SPECIAL_MODULES,
+                faceHasAnyModule(face))) {
             return 0;
         }
         int bonus = 0;
-        ItemStackHandler upg = getFaceLanes(face).upgradeSlots;
+        ItemStackHandler upg = getFaceLanes(face).moduleSlots;
         for (int i = 0; i < upg.getSlots(); i++) {
             if (!upg.getStackInSlot(i).isEmpty()) {
-                // Future: gas-tier upgrades (mirrors fluid).
+                // Future: gas-tier modules (mirrors fluid).
             }
         }
         return bonus;
     }
 
     public int computeGasExtractBatchSettingCap(Direction face) {
-        long cap = gasTransportSpec().extractBatchSettingCap(getGasExtractBatchUpgradeBonus(face));
+        long cap = gasTransportSpec().extractBatchSettingCap(getGasExtractBatchModuleBonus(face));
         return (int) Math.min(cap, Integer.MAX_VALUE);
     }
 
-    private static String clampFilterLine(Optional<DuctDefinition> def, boolean hasUpgrade, String line) {
+    private static String clampFilterLine(Optional<DuctDefinition> def, boolean hasModule, String line) {
         if (line == null || line.isEmpty()) {
             return line == null ? "" : line;
         }
         String fk = DuctFeatureKeys.filterSyntaxKey(line);
-        if (fk != null && !DuctFeaturePolicy.isUsable(def.orElse(null), fk, hasUpgrade)) {
+        if (fk != null && !DuctFeaturePolicy.isUsable(def.orElse(null), fk, hasModule)) {
             return "";
         }
         return line;
     }
 
-    private void scrubFilterListsForPolicy(Direction face, Optional<DuctDefinition> def, boolean hasUpgrade) {
+    private void scrubFilterListsForPolicy(Direction face, Optional<DuctDefinition> def, boolean hasModule) {
         DuctFaceNode n = getFaceNode(face);
-        scrubFilterListsForNode(def, hasUpgrade, n);
+        scrubFilterListsForNode(def, hasModule, n);
     }
 
-    private void scrubFilterListsForPolicyFluid(Direction face, Optional<DuctDefinition> def, boolean hasUpgrade) {
-        scrubFilterListsForNode(def, hasUpgrade, getFluidFaceNode(face));
+    private void scrubFilterListsForPolicyFluid(Direction face, Optional<DuctDefinition> def, boolean hasModule) {
+        scrubFilterListsForNode(def, hasModule, getFluidFaceNode(face));
     }
 
-    private void scrubFilterListsForPolicyGas(Direction face, Optional<DuctDefinition> def, boolean hasUpgrade) {
-        scrubFilterListsForNode(def, hasUpgrade, getGasFaceNode(face));
+    private void scrubFilterListsForPolicyGas(Direction face, Optional<DuctDefinition> def, boolean hasModule) {
+        scrubFilterListsForNode(def, hasModule, getGasFaceNode(face));
     }
 
-    private static void scrubFilterListsForNode(Optional<DuctDefinition> def, boolean hasUpgrade, DuctFaceNode n) {
-        scrubList(def, hasUpgrade, n.allowFilters);
-        scrubList(def, hasUpgrade, n.denyFilters);
-        scrubList(def, hasUpgrade, n.allowFiltersExtractor);
-        scrubList(def, hasUpgrade, n.denyFiltersExtractor);
-        scrubList(def, hasUpgrade, n.allowFiltersRetriever);
-        scrubList(def, hasUpgrade, n.denyFiltersRetriever);
-        scrubList(def, hasUpgrade, n.allowFiltersFilter);
-        scrubList(def, hasUpgrade, n.denyFiltersFilter);
+    private static void scrubFilterListsForNode(Optional<DuctDefinition> def, boolean hasModule, DuctFaceNode n) {
+        scrubList(def, hasModule, n.allowFilters);
+        scrubList(def, hasModule, n.denyFilters);
+        scrubList(def, hasModule, n.allowFiltersExtractor);
+        scrubList(def, hasModule, n.denyFiltersExtractor);
+        scrubList(def, hasModule, n.allowFiltersRetriever);
+        scrubList(def, hasModule, n.denyFiltersRetriever);
+        scrubList(def, hasModule, n.allowFiltersFilter);
+        scrubList(def, hasModule, n.denyFiltersFilter);
     }
 
-    private static void scrubList(Optional<DuctDefinition> def, boolean hasUpgrade, List<String> list) {
+    private static void scrubList(Optional<DuctDefinition> def, boolean hasModule, List<String> list) {
         for (int i = 0; i < list.size(); i++) {
-            list.set(i, clampFilterLine(def, hasUpgrade, list.get(i)));
+            list.set(i, clampFilterLine(def, hasModule, list.get(i)));
         }
     }
 
@@ -2141,9 +2161,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         boolean any = false;
         for (Direction d : Direction.values()) {
             DuctFaceLanes L = getFaceLanes(d);
-            boolean hasItemUp = faceHasUpgradeSlots(d);
-            boolean hasFluidUp = faceHasSharedUpgradeSlots(d);
-            boolean hasGasUp = faceHasSharedUpgradeSlots(d);
+            boolean hasItemUp = faceHasAnyModule(d);
+            boolean hasFluidUp = faceHasAnyModule(d);
+            boolean hasGasUp = faceHasAnyModule(d);
             boolean modeUnlock = hasItemUp || hasFluidUp || hasGasUp;
             if (!DuctFeaturePolicy.isModeUsable(def.orElse(null), L.nodeMode, modeUnlock)) {
                 L.nodeMode = NodeMode.NONE;
@@ -2274,6 +2294,25 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
         }
         return n;
+    }
+
+    /**
+     * Shared module column on {@code face} changed: clamp item/fluid/gas stored batch amounts to current module caps.
+     */
+    public void clampAllTransportExtractBatchesForFace(Direction face) {
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        Optional<DuctDefinition> def = ductDefinition();
+        if (def.map(d -> d.enabledTransportKinds().contains(DuctTransportKind.ITEM)).orElse(true)) {
+            clampExtractAmount(getFaceNode(face), face);
+        }
+        if (def.map(d -> d.enabledTransportKinds().contains(DuctTransportKind.FLUID)).orElse(false)) {
+            clampFluidExtractAmount(getFluidFaceNode(face), face);
+        }
+        if (def.map(d -> d.enabledTransportKinds().contains(DuctTransportKind.GAS)).orElse(false)) {
+            clampGasExtractAmount(getGasFaceNode(face), face);
+        }
     }
 
     public void refreshMenuData(Direction accessFace) {
@@ -2524,6 +2563,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         NodeMode sharedMode = faceLanes.nodeMode;
+        DuctModuleEffects.FilterSlotBonuses filterBonuses = DuctModuleEffects.filterSlotBonuses(this, face);
         if (allowCapsIn == null) {
             allowCapsIn = List.of();
         }
@@ -2543,53 +2583,27 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int maxA;
         int maxD;
         if (laneKind == DuctTransportKind.FLUID) {
-            maxA =
-                    Math.max(
-                            0,
-                            sharedMode.isHybrid()
-                                    ? fluidSpec.filterAllowHybridSlots()
-                                    : fluidSpec.filterAllowSlots());
-            maxD =
-                    Math.max(
-                            0,
-                            sharedMode.isHybrid()
-                                    ? fluidSpec.filterDenyHybridSlots()
-                                    : fluidSpec.filterDenySlots());
+            maxA = DuctModuleEffects.effectiveFluidAllowBank(fluidSpec, sharedMode, filterBonuses);
+            maxD = DuctModuleEffects.effectiveFluidDenyBank(fluidSpec, sharedMode, filterBonuses);
         } else if (laneKind == DuctTransportKind.GAS) {
-            maxA =
-                    Math.max(
-                            0,
-                            sharedMode.isHybrid()
-                                    ? gasSpec.filterAllowHybridSlots()
-                                    : gasSpec.filterAllowSlots());
-            maxD =
-                    Math.max(
-                            0,
-                            sharedMode.isHybrid()
-                                    ? gasSpec.filterDenyHybridSlots()
-                                    : gasSpec.filterDenySlots());
+            maxA = DuctModuleEffects.effectiveGasAllowBank(gasSpec, sharedMode, filterBonuses);
+            maxD = DuctModuleEffects.effectiveGasDenyBank(gasSpec, sharedMode, filterBonuses);
         } else {
-            maxA =
-                    Math.max(
-                            0,
-                            sharedMode.isHybrid() ? itemSpec.filterAllowHybridSlots() : itemSpec.filterAllowSlots());
-            maxD =
-                    Math.max(
-                            0,
-                            sharedMode.isHybrid() ? itemSpec.filterDenyHybridSlots() : itemSpec.filterDenySlots());
+            maxA = DuctModuleEffects.effectiveItemAllowBank(itemSpec, sharedMode, filterBonuses);
+            maxD = DuctModuleEffects.effectiveItemDenyBank(itemSpec, sharedMode, filterBonuses);
         }
         Optional<DuctDefinition> def = ductDefinition();
-        boolean hasUpgrade =
+        boolean hasModule =
                 switch (laneKind) {
-                    case FLUID -> faceHasSharedUpgradeSlots(face);
-                    case GAS -> faceHasSharedUpgradeSlots(face);
+                    case FLUID -> faceHasAnyModule(face);
+                    case GAS -> faceHasAnyModule(face);
                     case ENERGY, HEAT -> false;
-                    case ITEM -> faceHasUpgradeSlots(face);
+                    case ITEM -> faceHasAnyModule(face);
                 };
         for (int i = 0; i < maxA; i++) {
             String s = i < allowIn.size() ? allowIn.get(i) : "";
             s = s != null ? s : "";
-            a.add(clampFilterLine(def, hasUpgrade, s));
+            a.add(clampFilterLine(def, hasModule, s));
             Integer capObj = i < allowCapsIn.size() ? allowCapsIn.get(i) : null;
             int cap = capObj != null ? capObj : 0;
             caps.add(Math.max(0, cap));
@@ -2602,19 +2616,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         for (int i = 0; i < maxD; i++) {
             String s = i < denyIn.size() ? denyIn.get(i) : "";
             s = s != null ? s : "";
-            d.add(clampFilterLine(def, hasUpgrade, s));
+            d.add(clampFilterLine(def, hasModule, s));
         }
-        if (DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.listPrecedenceKey(sharedMode, bank), hasUpgrade)) {
+        if (DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.listPrecedenceKey(sharedMode, bank), hasModule)) {
             node.setBankDenyOverridesAllow(bank, denyOverridesAllow);
         }
         if (laneKind == DuctTransportKind.FLUID) {
-            node.clampFilterSizes(fluidSpec, sharedMode);
+            node.clampFilterSizes(fluidSpec, sharedMode, filterBonuses);
         } else if (laneKind == DuctTransportKind.GAS) {
-            node.clampFilterSizes(gasSpec, sharedMode);
+            node.clampFilterSizes(gasSpec, sharedMode, filterBonuses);
         } else if (laneKind == DuctTransportKind.ENERGY || laneKind == DuctTransportKind.HEAT) {
-            node.clampFilterSizes(itemSpec, sharedMode);
+            node.clampFilterSizes(itemSpec, sharedMode, filterBonuses);
         } else {
-            node.clampFilterSizes(itemSpec, sharedMode);
+            node.clampFilterSizes(itemSpec, sharedMode, filterBonuses);
         }
         setChanged();
         refreshMenuData(face);
@@ -2632,17 +2646,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!faceLanes.nodeMode.usesItemFilterConfig()) {
             return;
         }
-        boolean hasUpgrade =
+        boolean hasModule =
                 switch (laneKind) {
-                    case FLUID -> faceHasSharedUpgradeSlots(face);
-                    case GAS -> faceHasSharedUpgradeSlots(face);
+                    case FLUID -> faceHasAnyModule(face);
+                    case GAS -> faceHasAnyModule(face);
                     case ENERGY, HEAT -> false;
-                    case ITEM -> faceHasUpgradeSlots(face);
+                    case ITEM -> faceHasAnyModule(face);
                 };
         if (!DuctFeaturePolicy.isUsable(
                 ductDefinition().orElse(null),
                 DuctFeatureKeys.listPrecedenceKey(faceLanes.nodeMode, bank),
-                hasUpgrade)) {
+                hasModule)) {
             return;
         }
         node.setBankDenyOverridesAllow(bank, !node.bankDenyOverridesAllow(bank));
@@ -2711,10 +2725,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case 4 -> {
                         boolean up =
                                 switch (menuActiveTransportKind()) {
-                                    case FLUID -> faceHasSharedUpgradeSlots(accessFace);
-                                    case GAS -> faceHasSharedUpgradeSlots(accessFace);
+                                    case FLUID -> faceHasAnyModule(accessFace);
+                                    case GAS -> faceHasAnyModule(accessFace);
                                     case ENERGY, HEAT -> false;
-                                    case ITEM -> faceHasUpgradeSlots(accessFace);
+                                    case ITEM -> faceHasAnyModule(accessFace);
                                 };
                         if (!DuctFeaturePolicy.isUsable(
                                 ductDefinition().orElse(null),
@@ -2728,10 +2742,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case 5 -> {
                         boolean up =
                                 switch (menuActiveTransportKind()) {
-                                    case FLUID -> faceHasSharedUpgradeSlots(accessFace);
-                                    case GAS -> faceHasSharedUpgradeSlots(accessFace);
+                                    case FLUID -> faceHasAnyModule(accessFace);
+                                    case GAS -> faceHasAnyModule(accessFace);
                                     case ENERGY, HEAT -> false;
-                                    case ITEM -> faceHasUpgradeSlots(accessFace);
+                                    case ITEM -> faceHasAnyModule(accessFace);
                                 };
                         if (!DuctFeaturePolicy.isUsable(
                                 ductDefinition().orElse(null),
@@ -2745,10 +2759,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case 13 -> {
                         boolean up =
                                 switch (menuActiveTransportKind()) {
-                                    case FLUID -> faceHasSharedUpgradeSlots(accessFace);
-                                    case GAS -> faceHasSharedUpgradeSlots(accessFace);
+                                    case FLUID -> faceHasAnyModule(accessFace);
+                                    case GAS -> faceHasAnyModule(accessFace);
                                     case ENERGY, HEAT -> false;
-                                    case ITEM -> faceHasUpgradeSlots(accessFace);
+                                    case ITEM -> faceHasAnyModule(accessFace);
                                 };
                         if (!DuctFeaturePolicy.isUsable(
                                 ductDefinition().orElse(null),
@@ -2781,10 +2795,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     NodeMode.RETRIEVING_EXTRACTION
                 };
         Optional<DuctDefinition> def = ductDefinition();
-        boolean hasUpgrade =
-                faceHasUpgradeSlots(accessFace)
-                        || faceHasSharedUpgradeSlots(accessFace)
-                        || faceHasSharedUpgradeSlots(accessFace);
+        boolean hasModule =
+                faceHasAnyModule(accessFace)
+                        || faceHasAnyModule(accessFace)
+                        || faceHasAnyModule(accessFace);
         int idx = 0;
         for (int i = 0; i < order.length; i++) {
             if (order[i] == lanes.nodeMode) {
@@ -2794,7 +2808,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         for (int off = 1; off <= order.length; off++) {
             NodeMode cand = order[(idx + off) % order.length];
-            if (DuctFeaturePolicy.isModeUsable(def.orElse(null), cand, hasUpgrade)) {
+            if (DuctFeaturePolicy.isModeUsable(def.orElse(null), cand, hasModule)) {
                 if (cand != lanes.nodeMode) {
                     lanes.nodeMode = cand;
                     onSharedModeChanged(lanes, accessFace);
@@ -2817,10 +2831,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     NodeMode.RETRIEVING_EXTRACTION
                 };
         Optional<DuctDefinition> def = ductDefinition();
-        boolean hasUpgrade =
-                faceHasUpgradeSlots(accessFace)
-                        || faceHasSharedUpgradeSlots(accessFace)
-                        || faceHasSharedUpgradeSlots(accessFace);
+        boolean hasModule =
+                faceHasAnyModule(accessFace)
+                        || faceHasAnyModule(accessFace)
+                        || faceHasAnyModule(accessFace);
         int idx = 0;
         for (int i = 0; i < order.length; i++) {
             if (order[i] == lanes.nodeMode) {
@@ -2830,7 +2844,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         for (int off = 1; off <= order.length; off++) {
             NodeMode cand = order[Math.floorMod(idx - off, order.length)];
-            if (DuctFeaturePolicy.isModeUsable(def.orElse(null), cand, hasUpgrade)) {
+            if (DuctFeaturePolicy.isModeUsable(def.orElse(null), cand, hasModule)) {
                 if (cand != lanes.nodeMode) {
                     lanes.nodeMode = cand;
                     onSharedModeChanged(lanes, accessFace);
@@ -2855,12 +2869,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             RoutingMode[] v,
             int delta,
             Optional<DuctDefinition> def,
-            boolean hasUpgrade) {
+            boolean hasModule) {
         int idx = current.ordinal();
         int dir = delta > 0 ? 1 : -1;
         for (int step = 1; step <= v.length; step++) {
             int ni = Math.floorMod(idx + dir * step, v.length);
-            if (DuctFeaturePolicy.isRoutingUsable(def.orElse(null), v[ni], hasUpgrade)) {
+            if (DuctFeaturePolicy.isRoutingUsable(def.orElse(null), v[ni], hasModule)) {
                 return v[ni];
             }
         }
@@ -2876,17 +2890,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return false;
         }
         Optional<DuctDefinition> def = ductDefinition();
-        boolean hasUpgrade =
+        boolean hasModule =
                 isFluidLaneNode(node)
-                        ? faceHasSharedUpgradeSlots(accessFace)
+                        ? faceHasAnyModule(accessFace)
                         : isGasLaneNode(node)
-                                ? faceHasSharedUpgradeSlots(accessFace)
-                                : faceHasUpgradeSlots(accessFace);
+                                ? faceHasAnyModule(accessFace)
+                                : faceHasAnyModule(accessFace);
         RoutingMode[] v = RoutingMode.values();
         return switch (shared) {
             case EXTRACTION_FILTERING -> {
                 RoutingMode cur = node.routingModeExtractor;
-                RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasUpgrade);
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasModule);
                 if (nxt != cur) {
                     node.routingModeExtractor = nxt;
                     yield true;
@@ -2895,7 +2909,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             case RETRIEVING_EXTRACTION -> {
                 RoutingMode cur = node.routingModeRetriever;
-                RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasUpgrade);
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasModule);
                 if (nxt != cur) {
                     node.routingModeRetriever = nxt;
                     node.routingModeExtractor = nxt;
@@ -2905,7 +2919,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             default -> {
                 RoutingMode cur = node.routingMode;
-                RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasUpgrade);
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasModule);
                 if (nxt != cur) {
                     node.routingMode = nxt;
                     yield true;
@@ -2990,18 +3004,34 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void clampExtractAmount(DuctFaceNode node, Direction face) {
-        int cap = computeExtractBatchSettingCap(face);
-        node.extractBatch = Math.min(Math.max(0, node.extractBatch), cap);
+        applyExtractBatchAgainstCap(node, computeExtractBatchSettingCap(face));
     }
 
     private void clampFluidExtractAmount(DuctFaceNode node, Direction face) {
-        int cap = computeFluidExtractBatchSettingCap(face);
-        node.extractBatch = Math.min(Math.max(0, node.extractBatch), cap);
+        applyExtractBatchAgainstCap(node, computeFluidExtractBatchSettingCap(face));
     }
 
     private void clampGasExtractAmount(DuctFaceNode node, Direction face) {
-        int cap = computeGasExtractBatchSettingCap(face);
-        node.extractBatch = Math.min(Math.max(0, node.extractBatch), cap);
+        applyExtractBatchAgainstCap(node, computeGasExtractBatchSettingCap(face));
+    }
+
+    /**
+     * Clamps {@link DuctFaceNode#extractBatch} to {@code cap}. If the stored amount was pinned to the previous cap and
+     * {@code cap} increases (e.g. new module), raises the amount to the new cap so the duct stays at "max". If
+     * {@code cap} decreases and the amount was pinned to the old cap, sets the amount to the new cap (same as clamp when
+     * {@code prev > cap}).
+     */
+    private static void applyExtractBatchAgainstCap(DuctFaceNode node, int cap) {
+        int prev = node.extractBatch;
+        int memo = node.lastExtractBatchSettingCapApplied;
+        if (memo > 0 && prev >= memo && cap > memo) {
+            node.extractBatch = cap;
+        } else if (memo > 0 && prev >= memo && cap < memo) {
+            node.extractBatch = cap;
+        } else {
+            node.extractBatch = Mth.clamp(prev, 0, cap);
+        }
+        node.lastExtractBatchSettingCapApplied = cap;
     }
 
     private void enforcePipeSegmentBehavior() {
@@ -3256,7 +3286,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (cfg.contains("DuctLogicalId")) {
                 logicalDuctId = DuctIds.normalize(cfg.getString("DuctLogicalId"));
             }
-            ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition();
+            ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
             if (cfg.contains("UserDisc", Tag.TAG_BYTE)) {
                 setUserDisconnectedFaceMaskForLoad(cfg.getByte("UserDisc") & 0xFF);
             }
@@ -3277,7 +3307,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
             logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
         }
-        ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition();
+        ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
 
         setConnectionMasksForLoad(tag.getByte("PipeMask") & 0xFF, tag.getByte("StorageMask") & 0xFF);
         if (tag.contains("FaceNodes", Tag.TAG_LIST)) {
