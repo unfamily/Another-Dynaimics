@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "ABA",
+    "BCB",
+    "ABA"
+  ],
+  "key": {
+    "A": {
+      "item": "minecraft:stone"
+    },
+    "B": {
+      "tag": "c:gems/amethyst"
+    },
+    "C": {
+      "item": "another_dynamics:inc_module_1"
+    }
+  },
+  "result": {
+    "id": "another_dynamics:inc_module_2",
+    "count": 1
+  }
+}

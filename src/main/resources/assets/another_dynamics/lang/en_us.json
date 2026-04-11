@@ -202,5 +202,10 @@
   "gui.another_dynamics.module.line.rate": "Extract Rate: %s",
   "gui.another_dynamics.module.line.quantity": "Extract Quantity: %s",
   "gui.another_dynamics.module.suffix.item": "item",
-  "gui.another_dynamics.module.suffix.mb": "mB"
+  "gui.another_dynamics.module.suffix.mb": "mB",
+  "another_dynamics.duct_replace.success": "Duct replaced.",
+  "another_dynamics.duct_replace.unknown_type": "Cannot replace: the target duct type is unknown.",
+  "another_dynamics.duct_replace.incompatible_types": "Cannot replace: the new duct does not support all transport types of the installed one.",
+  "another_dynamics.duct_replace.module_slots_lost": "Cannot replace: installed modules would not fit in the new duct's module slots.",
+  "another_dynamics.duct_replace.filter_slots_lost": "Cannot replace: active filters would be lost because the new duct has fewer filter slots."
 }

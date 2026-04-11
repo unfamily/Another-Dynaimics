@@ -1,0 +1,29 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "ABA",
+    "BCB",
+    "ABA"
+  ],
+  "key": {
+    "A": {
+      "item": "minecraft:stone"
+    },
+    "B": [
+      {
+        "tag": "c:ingots/iron"
+      },
+      {
+        "tag": "c:gems/quartz"
+      }
+    ],
+    "C": {
+      "tag": "c:ingots/copper"
+    }
+  },
+  "result": {
+    "id": "another_dynamics:fil_module_0",
+    "count": 1
+  }
+}

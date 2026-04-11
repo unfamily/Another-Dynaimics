@@ -202,5 +202,11 @@
   "gui.another_dynamics.module.line.rate": "Frequenza estrazione: %s",
   "gui.another_dynamics.module.line.quantity": "Quantità estrazione: %s",
   "gui.another_dynamics.module.suffix.item": "item",
-  "gui.another_dynamics.module.suffix.mb": "mB"
+  "gui.another_dynamics.module.suffix.mb": "mB",
+  "another_dynamics.duct_replace.success": "Tubo sostituito.",
+  "another_dynamics.duct_replace.unknown_type": "Impossibile sostituire: il tipo di tubo di destinazione è sconosciuto.",
+  "another_dynamics.duct_replace.incompatible_types": "Impossibile sostituire: il nuovo tubo non supporta tutti i tipi di trasporto del tubo installato.",
+  "another_dynamics.duct_replace.module_slots_lost": "Impossibile sostituire: i moduli installati non entrerebbero negli slot moduli del nuovo tubo.",
+  "another_dynamics.duct_replace.filter_slots_lost": "Impossibile sostituire: i filtri attivi andrebbero persi perché il nuovo tubo ha meno slot filtro."
 }
+

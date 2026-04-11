@@ -192,6 +192,28 @@ public class DuctBlock extends AbstractDuctBlock {
                 duct.tryReconnectFace(level, hitResult.getDirection());
                 return ItemInteractionResult.SUCCESS;
             }
+            if (player.isShiftKeyDown()) {
+                // Check if the item in hand is a duct (with or without logical id component).
+                String newLogicalId = stack.get(ModDataComponents.DUCT_LOGICAL_ID.get());
+                if (newLogicalId != null && !newLogicalId.isEmpty()) {
+                    if (level.isClientSide()) {
+                        return ItemInteractionResult.SUCCESS;
+                    }
+                    return DuctReplaceHelper.tryReplace(player, level, pos, duct, newLogicalId, hand);
+                }
+                // If the item is a DuctBlockItem without a component, use its default logical id.
+                if (stack.getItem() instanceof DuctBlockItem ductItem) {
+                    if (level.isClientSide()) {
+                        return ItemInteractionResult.SUCCESS;
+                    }
+                    // DuctBlockItem has a defaultLogicalId; we need to extract it.
+                    ItemStack defaultInstance = ductItem.getDefaultInstance();
+                    String defaultLogicalId = defaultInstance.get(ModDataComponents.DUCT_LOGICAL_ID.get());
+                    if (defaultLogicalId != null && !defaultLogicalId.isEmpty()) {
+                        return DuctReplaceHelper.tryReplace(player, level, pos, duct, defaultLogicalId, hand);
+                    }
+                }
+            }
             Optional<Direction> face = nodeFaceFromHitLocation(pos, hitResult, duct);
             if (face.isEmpty()) {
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
