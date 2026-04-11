@@ -5,60 +5,104 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 
 /**
- * Menu slots that delegate to the item or fluid {@link net.unfamily.another_dynamics.duct.DuctFaceNode#guiSlots} for the
- * face, depending on {@link DuctBlockEntity#menuActiveTransportKind()}.
+ * Virtual menu handler: upgrade indices map to {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#upgradeSlots};
+ * the last index is the per-lane copy slot ({@link net.unfamily.another_dynamics.duct.DuctFaceNode#guiSlots} slot 0).
  */
 public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
     private final DuctBlockEntity duct;
     private final net.minecraft.core.Direction face;
+    private final int upgradeSlotCount;
 
-    public DuctMenuActiveLaneSlots(DuctBlockEntity duct, net.minecraft.core.Direction face) {
-        super(DuctNodeMenu.MACHINE_SLOTS);
+    public DuctMenuActiveLaneSlots(DuctBlockEntity duct, net.minecraft.core.Direction face, int upgradeSlotCount) {
+        super(Math.max(0, upgradeSlotCount) + 1);
         this.duct = duct;
         this.face = face;
+        this.upgradeSlotCount = Math.max(0, upgradeSlotCount);
     }
 
-    private ItemStackHandler backing() {
+    public int upgradeSlotCount() {
+        return upgradeSlotCount;
+    }
+
+    private ItemStackHandler upgradeHandler() {
+        return duct.getFaceLanes(face).upgradeSlots;
+    }
+
+    private ItemStackHandler copyHandler() {
         return duct.activeMenuFaceNode(face).guiSlots;
     }
 
     @Override
     public int getSlots() {
-        return backing().getSlots();
+        return upgradeSlotCount + 1;
     }
 
     @Override
     public ItemStack getStackInSlot(int slot) {
-        return backing().getStackInSlot(slot);
+        if (slot >= 0 && slot < upgradeSlotCount) {
+            return upgradeHandler().getStackInSlot(slot);
+        }
+        if (slot == upgradeSlotCount) {
+            return copyHandler().getStackInSlot(0);
+        }
+        return ItemStack.EMPTY;
     }
 
     @Override
     public void setStackInSlot(int slot, ItemStack stack) {
-        backing().setStackInSlot(slot, stack);
+        if (slot >= 0 && slot < upgradeSlotCount) {
+            upgradeHandler().setStackInSlot(slot, stack);
+        } else if (slot == upgradeSlotCount) {
+            copyHandler().setStackInSlot(0, stack);
+        }
     }
 
     @Override
     public int getSlotLimit(int slot) {
-        return backing().getSlotLimit(slot);
+        if (slot >= 0 && slot < upgradeSlotCount) {
+            return upgradeHandler().getSlotLimit(slot);
+        }
+        if (slot == upgradeSlotCount) {
+            return copyHandler().getSlotLimit(0);
+        }
+        return 0;
     }
 
     @Override
     public boolean isItemValid(int slot, ItemStack stack) {
-        return backing().isItemValid(slot, stack);
+        if (slot >= 0 && slot < upgradeSlotCount) {
+            return upgradeHandler().isItemValid(slot, stack);
+        }
+        if (slot == upgradeSlotCount) {
+            return copyHandler().isItemValid(0, stack);
+        }
+        return false;
     }
 
     @Override
     public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
-        return backing().insertItem(slot, stack, simulate);
+        if (slot >= 0 && slot < upgradeSlotCount) {
+            return upgradeHandler().insertItem(slot, stack, simulate);
+        }
+        if (slot == upgradeSlotCount) {
+            return copyHandler().insertItem(0, stack, simulate);
+        }
+        return stack;
     }
 
     @Override
     public ItemStack extractItem(int slot, int amount, boolean simulate) {
-        return backing().extractItem(slot, amount, simulate);
+        if (slot >= 0 && slot < upgradeSlotCount) {
+            return upgradeHandler().extractItem(slot, amount, simulate);
+        }
+        if (slot == upgradeSlotCount) {
+            return copyHandler().extractItem(0, amount, simulate);
+        }
+        return ItemStack.EMPTY;
     }
 
     @Override
     public void setSize(int size) {
-        backing().setSize(size);
+        // Size is fixed from duct definition for this menu instance.
     }
 }

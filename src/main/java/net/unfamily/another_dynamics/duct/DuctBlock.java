@@ -230,6 +230,7 @@ public class DuctBlock extends AbstractDuctBlock {
                     buf.writeBoolean(duct.ductAlwaysOpaqueRendering());
                     buf.writeUtf(duct.getLogicalDuctId());
                     buf.writeByte(duct.menuUiLayer());
+                    buf.writeByte(duct.upgradeSlotCountForMenu());
                 });
     }
 }

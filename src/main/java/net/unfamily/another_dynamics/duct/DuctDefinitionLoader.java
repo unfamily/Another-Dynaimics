@@ -217,6 +217,15 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             Set<String> forbiddenFeatures =
                     readStringFeatureSet(restrictionsRoot, "forbidden_features", "upgrade_features");
             warnUnknownFeatureKeys(logicalId, disabledFeatures, forbiddenFeatures);
+            int upgradeSlots = 5;
+            if (o.has("upgrade_slots") && o.get("upgrade_slots").isJsonPrimitive()) {
+                try {
+                    upgradeSlots = o.get("upgrade_slots").getAsInt();
+                } catch (NumberFormatException ignored) {
+                    upgradeSlots = 5;
+                }
+            }
+            upgradeSlots = DuctGuiLayout.clampUpgradeSlotCount(upgradeSlots);
             out.put(
                     e.getKey(),
                     new DuctDefinition(
@@ -237,7 +246,8 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             connectWithCompatible,
                             disabledFeatures,
                             forbiddenFeatures,
-                            alwaysOpaqueRendering));
+                            alwaysOpaqueRendering,
+                            upgradeSlots));
         }
 
         if (out.isEmpty() && !DuctDefinitionRegistry.all().isEmpty()) {

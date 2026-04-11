@@ -10,6 +10,7 @@
   "name": "duct.another_dynamics.gas_duct",
   "put_in_creative_menu": true,
   "sound": "metallic",
+  "upgrade_slots": 5,
   "can_transport": [
     {
       "dec": "mek_gas",

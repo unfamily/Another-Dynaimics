@@ -151,9 +151,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     /** Below the copy-settings slot in the same column (slot is 18px tall). */
     private static final int CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT = 4;
     private static final int CHANNEL_WIDGET_Y =
-            DuctNodeMenu.SLOT_COPY_Y + 18 + CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT;
-    /** Detail view: transport pickers below channel widget (hub uses {@link #ROW2_Y} instead). */
+            DuctNodeMenu.SLOT_COPY_BACKGROUND_Y + 18 + CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT;
+    /** Detail view: transport pickers below channel widget (hub main uses {@link #ROW2_Y} in a 3-column grid). */
     private static final int TRANSPORT_KIND_BUTTON_Y = CHANNEL_WIDGET_Y + CHANNEL_WIDGET_H + 4;
+
+    /** Multi-transport hub: wrap kind pickers so at most this many fit per row within {@link #TEXTURE_WIDTH}. */
+    private static final int HUB_TRANSPORT_KIND_COLUMNS = 3;
 
     /** Visible filter rows; scroll when there are more slots. */
     private static final int VISIBLE_FILTER_ENTRIES = 4;
@@ -665,7 +668,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 .build();
         addRenderableWidget(validKeysButton);
 
-        int channelX = DuctNodeMenu.SLOT_COPY_X + (18 - CHANNEL_WIDGET_W) / 2;
+        int channelX = DuctNodeMenu.SLOT_COPY_BACKGROUND_X + (18 - CHANNEL_WIDGET_W) / 2;
         channelButton = new ChannelLetterButton(
                 this.leftPos + channelX,
                 this.topPos + CHANNEL_WIDGET_Y,
@@ -713,13 +716,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0;
     }
 
-    /** Multi-transport hub: hide upgrade slots only; copy-settings slot stays visible and interactive. */
-    private boolean isTransportHubMainView() {
-        return subView == SubView.MAIN
-                && menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
-                && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
-    }
-
     /** Node mode + opaque: row 1 on transport hub, row 2 on detail (filters use row 1 in detail). */
     private void layoutMainChromeRowsForHubOrDetail() {
         if (nodeModeButton == null || opaqueRenderingButton == null) {
@@ -751,15 +747,29 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
                         && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0
                         && subView == SubView.MAIN;
-        int y = this.topPos + (hubMain ? ROW2_Y : TRANSPORT_KIND_BUTTON_Y);
-        // Same horizontal grid as deny/list/allow (avoids skew from wrong "centered" width: 3*(w+g) is one gap too wide).
+        int baseY = hubMain ? ROW2_Y : TRANSPORT_KIND_BUTTON_Y;
+        // Same cell size as deny/list/allow (3*(w+g) matches texture chrome width).
         int startX = this.leftPos + CENTER_X;
-        for (int i = 0; i < n; i++) {
-            Button b = transportKindPickerButtons.get(i);
-            b.setX(startX + i * (ROW_BTN_W + ROW_GAP));
-            b.setY(y);
-            b.setWidth(ROW_BTN_W);
-            b.setHeight(BTN_H);
+        if (hubMain) {
+            int rowStride = BTN_H + ROW_GAP;
+            for (int i = 0; i < n; i++) {
+                Button b = transportKindPickerButtons.get(i);
+                int col = i % HUB_TRANSPORT_KIND_COLUMNS;
+                int row = i / HUB_TRANSPORT_KIND_COLUMNS;
+                b.setX(startX + col * (ROW_BTN_W + ROW_GAP));
+                b.setY(this.topPos + baseY + row * rowStride);
+                b.setWidth(ROW_BTN_W);
+                b.setHeight(BTN_H);
+            }
+        } else {
+            int y = this.topPos + baseY;
+            for (int i = 0; i < n; i++) {
+                Button b = transportKindPickerButtons.get(i);
+                b.setX(startX + i * (ROW_BTN_W + ROW_GAP));
+                b.setY(y);
+                b.setWidth(ROW_BTN_W);
+                b.setHeight(BTN_H);
+            }
         }
     }
 
@@ -2848,7 +2858,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return c;
         }
         int bonus = 0;
-        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
+        for (int i = 0; i < menu.upgradeSlotCount(); i++) {
             Slot s = menu.getSlot(i);
             if (s != null && s.hasItem()) {
                 // Future: parse upgrade item stats (keep in sync with DuctBlockEntity#getExtractBatchUpgradeBonus).
@@ -3161,8 +3171,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int entryY = this.topPos + FIRST_FILTER_ROW_Y + i * ENTRY_HEIGHT;
             graphics.blit(ENTRY_ROW_TEXTURE, entryX, entryY, 0, 0, ENTRY_WIDTH, ENTRY_HEIGHT, ENTRY_WIDTH, ENTRY_HEIGHT);
 
+            // Match DeepDrawerExtractorScreen: icon slot inset 3px from entry top-left (entry row is 24px tall).
             int slotX = entryX + 3;
-            int slotY = entryY + (ENTRY_HEIGHT - 18) / 2;
+            int slotY = entryY + 3;
             graphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, 18, 18, 18, 18);
             String filter = idx < list.size() && list.get(idx) != null ? list.get(idx) : "";
             if (isFluidFilterTransport() && minecraft != null && minecraft.level != null) {
@@ -3214,25 +3225,23 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private void blitMachineSlotBackgrounds(GuiGraphics graphics) {
         int sw = 18;
         int sh = 18;
-        if (!isTransportHubMainView() && !isEnergyOrHeatTransport()) {
-            for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
-                int y = DuctNodeMenu.SLOT_UPGRADE_Y0 + i * 18;
-                graphics.blit(
-                        SINGLE_SLOT,
-                        this.leftPos + DuctNodeMenu.SLOT_UPGRADE_X,
-                        this.topPos + y,
-                        0,
-                        0,
-                        sw,
-                        sh,
-                        sw,
-                        sh);
-            }
+        for (int i = 0; i < menu.upgradeSlotCount(); i++) {
+            int y = DuctNodeMenu.SLOT_UPGRADE_BACKGROUND_Y0 + i * 18;
+            graphics.blit(
+                    SINGLE_SLOT,
+                    this.leftPos + DuctNodeMenu.SLOT_UPGRADE_BACKGROUND_X,
+                    this.topPos + y,
+                    0,
+                    0,
+                    sw,
+                    sh,
+                    sw,
+                    sh);
         }
         graphics.blit(
                 SINGLE_SLOT,
-                this.leftPos + DuctNodeMenu.SLOT_COPY_X,
-                this.topPos + DuctNodeMenu.SLOT_COPY_Y,
+                this.leftPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_X,
+                this.topPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_Y,
                 0,
                 0,
                 sw,
@@ -3251,16 +3260,6 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (subView == SubView.HOW_TO_USE) {
             return;
         }
-        if (isTransportHubMainView()
-                && slot.index >= 0
-                && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
-            return;
-        }
-        if (isEnergyOrHeatTransport()
-                && slot.index >= 0
-                && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
-            return;
-        }
         super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
     }
 
@@ -3269,20 +3268,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (subView == SubView.HOW_TO_USE) {
             return;
         }
-        if (isTransportHubMainView()
-                && slot.index >= 0
-                && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
-            return;
-        }
-        if (isEnergyOrHeatTransport()
-                && slot.index >= 0
-                && slot.index < DuctNodeMenu.UPGRADE_SLOT_COUNT) {
-            return;
-        }
-        if (slot.index >= 0 && slot.index < DuctNodeMenu.MACHINE_SLOTS) {
+        if (slot.index >= 0 && slot.index < menu.machineSlotCount()) {
             ItemStack stack = slot.getItem();
-            int x = this.leftPos + slot.x;
-            int y = this.topPos + slot.y;
+            // AbstractContainerScreen has already translated the pose by (leftPos, topPos); slot x/y are GUI-local
+            // (same space as {@link #renderLabels}). Do not add leftPos/topPos again or the stack shifts by ~2× panel.
+            int x = slot.x;
+            int y = slot.y;
             if (!stack.isEmpty()) {
                 graphics.renderItem(stack, x, y);
                 graphics.renderItemDecorations(this.font, stack, x, y);

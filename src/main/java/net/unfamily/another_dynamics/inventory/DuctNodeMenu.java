@@ -20,6 +20,7 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctGuiLayout;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctGasTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctIds;
@@ -37,9 +38,9 @@ import org.jetbrains.annotations.Nullable;
  * Duct node GUI for one {@link Direction} face (independent node configuration per side).
  */
 public final class DuctNodeMenu extends AbstractContainerMenu {
+    /** @deprecated Prefer {@link #machineSlotCount()} (per-menu). */
+    @Deprecated
     public static final int MACHINE_SLOTS = 6;
-    public static final int UPGRADE_SLOT_COUNT = 5;
-    public static final int COPY_SETTINGS_SLOT = 5;
 
     public static final int PLAYER_SLOTS_X = 80;
     /** Matches player inventory position on {@code node.png} (moved +13px down for filter list space). */
@@ -49,14 +50,34 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     /** Fine alignment vs {@code node.png} slot art (right and down). */
     private static final int SLOT_GEOMETRY_NUDGE = 2;
 
-    public static final int SLOT_UPGRADE_X = 14 + SLOT_GEOMETRY_NUDGE;
-    public static final int SLOT_UPGRADE_Y0 = 32 + SLOT_GEOMETRY_NUDGE;
+    /**
+     * Where {@code SINGLE_SLOT} is blitted for the upgrade column (aligned to {@code node.png}); do not shift this for
+     * container content — see {@link #SLOT_UPGRADE_X} / {@link #SLOT_UPGRADE_Y0}.
+     */
+    public static final int SLOT_UPGRADE_BACKGROUND_X = 14 + SLOT_GEOMETRY_NUDGE;
+    /** Top of upgrade column slot art; must match {@link DuctGuiLayout#UPGRADE_COLUMN_FIRST_SLOT_Y}. */
+    public static final int SLOT_UPGRADE_BACKGROUND_Y0 = DuctGuiLayout.UPGRADE_COLUMN_FIRST_SLOT_Y;
 
-    public static final int SLOT_COPY_X = 278 + SLOT_GEOMETRY_NUDGE;
-    public static final int SLOT_COPY_Y = 52 + SLOT_GEOMETRY_NUDGE;
+    /** Copy column: {@code SINGLE_SLOT} blit position (node texture alignment). */
+    public static final int SLOT_COPY_BACKGROUND_X = 278 + SLOT_GEOMETRY_NUDGE;
+    public static final int SLOT_COPY_BACKGROUND_Y = 52 + SLOT_GEOMETRY_NUDGE;
+
+    /**
+     * Container {@link Slot} origins for upgrade/copy: one pixel right and down from the slot frame art so items and
+     * interaction sit in the content layer.
+     */
+    private static final int SLOT_CONTENT_LAYER_DX = 1;
+    private static final int SLOT_CONTENT_LAYER_DY = 1;
+
+    public static final int SLOT_UPGRADE_X = SLOT_UPGRADE_BACKGROUND_X + SLOT_CONTENT_LAYER_DX;
+    public static final int SLOT_UPGRADE_Y0 = SLOT_UPGRADE_BACKGROUND_Y0 + SLOT_CONTENT_LAYER_DY;
+
+    public static final int SLOT_COPY_X = SLOT_COPY_BACKGROUND_X + SLOT_CONTENT_LAYER_DX;
+    public static final int SLOT_COPY_Y = SLOT_COPY_BACKGROUND_Y + SLOT_CONTENT_LAYER_DY;
 
     private static final int REDSTONE_BUTTON_SIZE = 16;
-    public static final int REDSTONE_GUI_X = SLOT_COPY_X + (18 - REDSTONE_BUTTON_SIZE) / 2;
+    /** Centered on copy column slot art, not the offset container slot. */
+    public static final int REDSTONE_GUI_X = SLOT_COPY_BACKGROUND_X + (18 - REDSTONE_BUTTON_SIZE) / 2;
     public static final int REDSTONE_GUI_Y = 32;
 
     private final ContainerLevelAccess access;
@@ -72,6 +93,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     private final boolean clientDuctAlwaysOpaqueLock;
     /** Open-menu sync: {@link DuctBlockEntity#getLogicalDuctId()} for correct client-side datapack caps. */
     private final String clientDuctLogicalId;
+
+    private final int upgradeSlotCount;
+    private final int machineSlotCount;
 
     /** Detects upgrade-slot changes so {@link DuctMenuSync#EXTRACT_BATCH_CAP} can be refreshed without full menu spam. */
     private int lastUpgradeSlotsFingerprint;
@@ -98,14 +122,15 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         this(
                 containerId,
                 playerInventory,
-                new DuctMenuActiveLaneSlots(be, accessFace),
+                new DuctMenuActiveLaneSlots(be, accessFace, be.upgradeSlotCountForMenu()),
                 ContainerLevelAccess.create(be.getLevel(), be.getBlockPos()),
                 be.getMenuData(),
                 be,
                 accessFace,
                 be.getBlockPos(),
                 be.ductAlwaysOpaqueRendering(),
-                be.getLogicalDuctId());
+                be.getLogicalDuctId(),
+                be.upgradeSlotCountForMenu());
         be.clampFaceFiltersToSpec();
         be.refreshMenuData(accessFace);
         if (!be.getLevel().isClientSide() && playerInventory.player instanceof ServerPlayer sp) {
@@ -132,6 +157,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         if (menuLayer > 1) {
             menuLayer = 1;
         }
+        int ug = DuctGuiLayout.clampUpgradeSlotCount(extraData.readByte() & 0xFF);
         SimpleContainerData clientData = new SimpleContainerData(DuctMenuSync.COUNT);
         clientData.set(DuctMenuSync.MENU_VIEW_LAYER, menuLayer);
         List<DuctTransportKind> ordKinds =
@@ -143,14 +169,15 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return new DuctNodeMenu(
                 containerId,
                 playerInventory,
-                new ItemStackHandler(MACHINE_SLOTS),
+                new ItemStackHandler(ug + 1),
                 ContainerLevelAccess.NULL,
                 clientData,
                 null,
                 face,
                 pos,
                 alwaysOpaqueLock,
-                logicalId);
+                logicalId,
+                ug);
     }
 
     private DuctNodeMenu(
@@ -163,7 +190,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             Direction accessFace,
             BlockPos ductBlockPos,
             boolean clientDuctAlwaysOpaqueLock,
-            String clientDuctLogicalId) {
+            String clientDuctLogicalId,
+            int upgradeSlotCount) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
         this.access = access;
         this.syncData = syncData;
@@ -172,8 +200,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         this.ductBlockPos = ductBlockPos;
         this.clientDuctAlwaysOpaqueLock = clientDuctAlwaysOpaqueLock;
         this.clientDuctLogicalId = clientDuctLogicalId;
+        this.upgradeSlotCount = Math.max(0, upgradeSlotCount);
+        this.machineSlotCount = this.upgradeSlotCount + 1;
 
-        for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
+        for (int i = 0; i < this.upgradeSlotCount; i++) {
             int y = SLOT_UPGRADE_Y0 + i * 18;
             addSlot(
                     new SlotItemHandler(nodeSlots, i, SLOT_UPGRADE_X, y) {
@@ -184,7 +214,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                     });
         }
         addSlot(
-                new SlotItemHandler(nodeSlots, COPY_SETTINGS_SLOT, SLOT_COPY_X, SLOT_COPY_Y) {
+                new SlotItemHandler(nodeSlots, this.upgradeSlotCount, SLOT_COPY_X, SLOT_COPY_Y) {
                     @Override
                     public boolean isActive() {
                         return super.isActive();
@@ -277,20 +307,37 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return syncData;
     }
 
+    public int upgradeSlotCount() {
+        return upgradeSlotCount;
+    }
+
+    public int machineSlotCount() {
+        return machineSlotCount;
+    }
+
+    public int copySettingsSlotIndex() {
+        return upgradeSlotCount;
+    }
+
     /**
-     * Upgrade slots are inactive on the multi-transport hub; the copy-settings slot stays usable there.
+     * Energy/heat lanes do not use upgrade slots; copy remains usable. Multi-transport hub uses the first sync kind
+     * ordinal until a tab is picked — treat hub as non-energy for upgrade interaction so shared upgrades work.
      */
     public boolean upgradeSlotsInteractive() {
-        // Energy ducts do not support upgrades; keep the copy slot only.
-        if (clientEditingEnergyOrHeatLane()) {
-            return false;
+        if (isMultiTransportHubMainLayer()) {
+            return true;
         }
+        return !clientEditingEnergyOrHeatLane();
+    }
+
+    private boolean isMultiTransportHubMainLayer() {
         if (linkedBlockEntity != null
                 && linkedBlockEntity.getLevel() != null
                 && !linkedBlockEntity.getLevel().isClientSide()) {
-            return !linkedBlockEntity.isMenuHubLayer();
+            return linkedBlockEntity.isMenuHubLayer() && linkedBlockEntity.orderedMenuTransportKinds().size() > 1;
         }
-        return syncData.get(DuctMenuSync.MENU_VIEW_LAYER) != 0;
+        return syncData.get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
+                && syncData.get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
     }
 
     /**
@@ -488,8 +535,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         }
     }
 
-    public static int playerSlotStart() {
-        return MACHINE_SLOTS;
+    public int playerSlotStart() {
+        return machineSlotCount;
     }
 
     private int upgradeSlotsFingerprint() {
@@ -497,8 +544,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             return 0;
         }
         int fp = 1;
-        var stacks = linkedBlockEntity.activeMenuFaceNode(accessFace).guiSlots;
-        for (int i = 0; i < UPGRADE_SLOT_COUNT; i++) {
+        var stacks = linkedBlockEntity.getFaceLanes(accessFace).upgradeSlots;
+        for (int i = 0; i < stacks.getSlots(); i++) {
             fp = 31 * fp + stacks.getStackInSlot(i).hashCode();
         }
         return fp;
@@ -543,16 +590,17 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public ItemStack quickMoveStack(Player player, int index) {
         int playerFirst = playerSlotStart();
         int playerLast = this.slots.size();
+        int copyIx = copySettingsSlotIndex();
 
         if (!upgradeSlotsInteractive()) {
             Slot slot = this.slots.get(index);
             if (slot == null || !slot.hasItem()) {
                 return ItemStack.EMPTY;
             }
-            if (index >= 0 && index < UPGRADE_SLOT_COUNT) {
+            if (index >= 0 && index < upgradeSlotCount) {
                 return ItemStack.EMPTY;
             }
-            if (index == COPY_SETTINGS_SLOT) {
+            if (index == copyIx) {
                 ItemStack stack = slot.getItem();
                 ItemStack result = stack.copy();
                 if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
@@ -569,12 +617,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 slot.onTake(player, stack);
                 return result;
             }
-            if (index < MACHINE_SLOTS) {
+            if (index < machineSlotCount) {
                 return ItemStack.EMPTY;
             }
             ItemStack stack = slot.getItem();
             ItemStack result = stack.copy();
-            if (!moveItemStackTo(stack, COPY_SETTINGS_SLOT, MACHINE_SLOTS, false)) {
+            if (!moveItemStackTo(stack, copyIx, machineSlotCount, false)) {
                 if (index < playerFirst + 27) {
                     if (!moveItemStackTo(stack, playerFirst + 27, playerLast, true)) {
                         return ItemStack.EMPTY;
@@ -602,11 +650,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         if (slot != null && slot.hasItem()) {
             ItemStack stack = slot.getItem();
             result = stack.copy();
-            if (index < MACHINE_SLOTS) {
+            if (index < machineSlotCount) {
                 if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
                     return ItemStack.EMPTY;
                 }
-            } else if (!moveItemStackTo(stack, 0, MACHINE_SLOTS, false)) {
+            } else if (!moveItemStackTo(stack, 0, machineSlotCount, false)) {
                 return ItemStack.EMPTY;
             }
             if (stack.isEmpty()) {

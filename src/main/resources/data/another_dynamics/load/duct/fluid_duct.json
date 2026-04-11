@@ -4,6 +4,7 @@
   "name": "duct.another_dynamics.fluid_duct",
   "put_in_creative_menu": true,
   "sound": "copper",
+  "upgrade_slots": 5,
   "can_transport": [
     {
       "dec": "fluid",

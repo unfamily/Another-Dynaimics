@@ -42,7 +42,8 @@ public record DuctDefinition(
         boolean restrictionsConnectWithCompatible,
         Set<String> disabledFeatures,
         Set<String> forbiddenFeatures,
-        boolean alwaysOpaqueRendering
+        boolean alwaysOpaqueRendering,
+        int upgradeSlotCount
 ) {
     public DuctItemTransportSpec itemTransportOrFallback() {
         return itemTransport.orElseGet(DuctItemTransportSpec::fallback);

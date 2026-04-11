@@ -4,6 +4,7 @@
   "name": "duct.another_dynamics.item_duct",
   "put_in_creative_menu": true,
   "sound": "metallic",
+  "upgrade_slots": 5,
   "can_transport": [
     {
       "dec": "item",

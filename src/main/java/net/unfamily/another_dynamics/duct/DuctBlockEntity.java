@@ -48,7 +48,7 @@ import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
 import net.unfamily.another_dynamics.client.transit.DuctFluidTransitClientState;
 import net.unfamily.another_dynamics.client.transit.DuctGasTransitClientState;
 import net.unfamily.another_dynamics.client.transit.DuctTransitClientState;
-import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
@@ -244,7 +244,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public DuctBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.DUCT.get(), pos, state);
         for (int i = 0; i < FACE_COUNT; i++) {
-            faceLanes[i] = new DuctFaceLanes(this::setChanged);
+            faceLanes[i] = new DuctFaceLanes(this::setChanged, 5);
         }
     }
 
@@ -258,8 +258,22 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         logicalDuctId = n;
+        ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition();
         setChanged();
         requestModelDataUpdate();
+    }
+
+    /** Clamped datapack upgrade column size (not including copy slot). */
+    public int upgradeSlotCountForMenu() {
+        return DuctGuiLayout.clampUpgradeSlotCount(
+                ductDefinition().map(DuctDefinition::upgradeSlotCount).orElse(5));
+    }
+
+    public void ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition() {
+        int want = upgradeSlotCountForMenu();
+        for (Direction d : Direction.values()) {
+            getFaceLanes(d).resizeUpgradeSlots(want);
+        }
     }
 
     public DuctItemTransportSpec itemTransportSpec() {
@@ -454,27 +468,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!DuctFeaturePolicy.isUsable(
                 ductDefinition().orElse(null),
                 DuctFeatureKeys.SPECIAL_UPGRADES,
-                faceHasFluidUpgradeSlots(face))) {
+                faceHasSharedUpgradeSlots(face))) {
             return 0;
         }
-        DuctFaceNode node = getFluidFaceNode(face);
         int bonus = 0;
-        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
-            if (!node.guiSlots.getStackInSlot(i).isEmpty()) {
+        ItemStackHandler upg = getFaceLanes(face).upgradeSlots;
+        for (int i = 0; i < upg.getSlots(); i++) {
+            if (!upg.getStackInSlot(i).isEmpty()) {
                 // Future: fluid upgrade items
             }
         }
         return bonus;
-    }
-
-    private boolean faceHasFluidUpgradeSlots(Direction face) {
-        DuctFaceNode node = getFluidFaceNode(face);
-        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
-            if (!node.guiSlots.getStackInSlot(i).isEmpty()) {
-                return true;
-            }
-        }
-        return false;
     }
 
     public DuctOverflowBuffer getOverflowBuffer() {
@@ -524,6 +528,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
      */
     public int getSettingsFaceMask() {
         return getStorageMask() | latchedStorageFaceMask;
+    }
+
+    /**
+     * Whether server-side menu actions may update this face: {@link #getSettingsFaceMask()} or any pipe port on that
+     * face. Pipe-only hits open the node GUI but have no live storage bit; without this, hub/mode/redstone and slot
+     * sync would be rejected on line interiors.
+     */
+    public boolean nodeFaceAllowsMenuServerUpdates(Direction face) {
+        int bit = 1 << face.ordinal();
+        return (getSettingsFaceMask() & bit) != 0 || (getPipeMask() & bit) != 0;
     }
 
     @Override
@@ -2038,13 +2052,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!DuctFeaturePolicy.isUsable(
                 ductDefinition().orElse(null),
                 DuctFeatureKeys.SPECIAL_UPGRADES,
-                faceHasUpgradeSlots(face))) {
+                faceHasSharedUpgradeSlots(face))) {
             return 0;
         }
-        DuctFaceNode node = getFaceNode(face);
         int bonus = 0;
-        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
-            if (!node.guiSlots.getStackInSlot(i).isEmpty()) {
+        ItemStackHandler upg = getFaceLanes(face).upgradeSlots;
+        for (int i = 0; i < upg.getSlots(); i++) {
+            if (!upg.getStackInSlot(i).isEmpty()) {
                 // Future: parse upgrade item stats (e.g. +8 per tier).
             }
         }
@@ -2052,19 +2066,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private boolean faceHasUpgradeSlots(Direction face) {
-        DuctFaceNode node = getFaceNode(face);
-        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
-            if (!node.guiSlots.getStackInSlot(i).isEmpty()) {
-                return true;
-            }
-        }
-        return false;
+        return faceHasSharedUpgradeSlots(face);
     }
 
-    private boolean faceHasGasUpgradeSlots(Direction face) {
-        DuctFaceNode node = getGasFaceNode(face);
-        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
-            if (!node.guiSlots.getStackInSlot(i).isEmpty()) {
+    private boolean faceHasSharedUpgradeSlots(Direction face) {
+        ItemStackHandler upg = getFaceLanes(face).upgradeSlots;
+        for (int i = 0; i < upg.getSlots(); i++) {
+            if (!upg.getStackInSlot(i).isEmpty()) {
                 return true;
             }
         }
@@ -2075,13 +2083,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!DuctFeaturePolicy.isUsable(
                 ductDefinition().orElse(null),
                 DuctFeatureKeys.SPECIAL_UPGRADES,
-                faceHasGasUpgradeSlots(face))) {
+                faceHasSharedUpgradeSlots(face))) {
             return 0;
         }
-        DuctFaceNode node = getGasFaceNode(face);
         int bonus = 0;
-        for (int i = 0; i < DuctNodeMenu.UPGRADE_SLOT_COUNT; i++) {
-            if (!node.guiSlots.getStackInSlot(i).isEmpty()) {
+        ItemStackHandler upg = getFaceLanes(face).upgradeSlots;
+        for (int i = 0; i < upg.getSlots(); i++) {
+            if (!upg.getStackInSlot(i).isEmpty()) {
                 // Future: gas-tier upgrades (mirrors fluid).
             }
         }
@@ -2144,8 +2152,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         for (Direction d : Direction.values()) {
             DuctFaceLanes L = getFaceLanes(d);
             boolean hasItemUp = faceHasUpgradeSlots(d);
-            boolean hasFluidUp = faceHasFluidUpgradeSlots(d);
-            boolean hasGasUp = faceHasGasUpgradeSlots(d);
+            boolean hasFluidUp = faceHasSharedUpgradeSlots(d);
+            boolean hasGasUp = faceHasSharedUpgradeSlots(d);
             boolean modeUnlock = hasItemUp || hasFluidUp || hasGasUp;
             if (!DuctFeaturePolicy.isModeUsable(def.orElse(null), L.nodeMode, modeUnlock)) {
                 L.nodeMode = NodeMode.NONE;
@@ -2517,7 +2525,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
-        if ((getSettingsFaceMask() & (1 << face.ordinal())) == 0) {
+        if (!nodeFaceAllowsMenuServerUpdates(face)) {
             return;
         }
         DuctItemTransportSpec itemSpec = itemTransportSpec();
@@ -2586,8 +2594,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         Optional<DuctDefinition> def = ductDefinition();
         boolean hasUpgrade =
                 switch (laneKind) {
-                    case FLUID -> faceHasFluidUpgradeSlots(face);
-                    case GAS -> faceHasGasUpgradeSlots(face);
+                    case FLUID -> faceHasSharedUpgradeSlots(face);
+                    case GAS -> faceHasSharedUpgradeSlots(face);
                     case ENERGY, HEAT -> false;
                     case ITEM -> faceHasUpgradeSlots(face);
                 };
@@ -2632,7 +2640,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
-        if ((getSettingsFaceMask() & (1 << face.ordinal())) == 0) {
+        if (!nodeFaceAllowsMenuServerUpdates(face)) {
             return;
         }
         DuctFaceLanes faceLanes = getFaceLanes(face);
@@ -2642,8 +2650,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         boolean hasUpgrade =
                 switch (laneKind) {
-                    case FLUID -> faceHasFluidUpgradeSlots(face);
-                    case GAS -> faceHasGasUpgradeSlots(face);
+                    case FLUID -> faceHasSharedUpgradeSlots(face);
+                    case GAS -> faceHasSharedUpgradeSlots(face);
                     case ENERGY, HEAT -> false;
                     case ITEM -> faceHasUpgradeSlots(face);
                 };
@@ -2663,7 +2671,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
-        if ((getSettingsFaceMask() & (1 << face.ordinal())) == 0) {
+        if (!nodeFaceAllowsMenuServerUpdates(face)) {
             return;
         }
         NodeMode shared = getFaceLanes(face).nodeMode;
@@ -2682,7 +2690,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return false;
         }
-        if ((getSettingsFaceMask() & (1 << accessFace.ordinal())) == 0) {
+        if (!nodeFaceAllowsMenuServerUpdates(accessFace)) {
             return false;
         }
         if (buttonId >= MENU_BUTTON_TRANSPORT_KIND_BASE
@@ -2725,8 +2733,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case 4 -> {
                         boolean up =
                                 switch (menuActiveTransportKind()) {
-                                    case FLUID -> faceHasFluidUpgradeSlots(accessFace);
-                                    case GAS -> faceHasGasUpgradeSlots(accessFace);
+                                    case FLUID -> faceHasSharedUpgradeSlots(accessFace);
+                                    case GAS -> faceHasSharedUpgradeSlots(accessFace);
                                     case ENERGY, HEAT -> false;
                                     case ITEM -> faceHasUpgradeSlots(accessFace);
                                 };
@@ -2742,8 +2750,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case 5 -> {
                         boolean up =
                                 switch (menuActiveTransportKind()) {
-                                    case FLUID -> faceHasFluidUpgradeSlots(accessFace);
-                                    case GAS -> faceHasGasUpgradeSlots(accessFace);
+                                    case FLUID -> faceHasSharedUpgradeSlots(accessFace);
+                                    case GAS -> faceHasSharedUpgradeSlots(accessFace);
                                     case ENERGY, HEAT -> false;
                                     case ITEM -> faceHasUpgradeSlots(accessFace);
                                 };
@@ -2759,8 +2767,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case 13 -> {
                         boolean up =
                                 switch (menuActiveTransportKind()) {
-                                    case FLUID -> faceHasFluidUpgradeSlots(accessFace);
-                                    case GAS -> faceHasGasUpgradeSlots(accessFace);
+                                    case FLUID -> faceHasSharedUpgradeSlots(accessFace);
+                                    case GAS -> faceHasSharedUpgradeSlots(accessFace);
                                     case ENERGY, HEAT -> false;
                                     case ITEM -> faceHasUpgradeSlots(accessFace);
                                 };
@@ -2797,8 +2805,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         Optional<DuctDefinition> def = ductDefinition();
         boolean hasUpgrade =
                 faceHasUpgradeSlots(accessFace)
-                        || faceHasFluidUpgradeSlots(accessFace)
-                        || faceHasGasUpgradeSlots(accessFace);
+                        || faceHasSharedUpgradeSlots(accessFace)
+                        || faceHasSharedUpgradeSlots(accessFace);
         int idx = 0;
         for (int i = 0; i < order.length; i++) {
             if (order[i] == lanes.nodeMode) {
@@ -2833,8 +2841,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         Optional<DuctDefinition> def = ductDefinition();
         boolean hasUpgrade =
                 faceHasUpgradeSlots(accessFace)
-                        || faceHasFluidUpgradeSlots(accessFace)
-                        || faceHasGasUpgradeSlots(accessFace);
+                        || faceHasSharedUpgradeSlots(accessFace)
+                        || faceHasSharedUpgradeSlots(accessFace);
         int idx = 0;
         for (int i = 0; i < order.length; i++) {
             if (order[i] == lanes.nodeMode) {
@@ -2892,9 +2900,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         Optional<DuctDefinition> def = ductDefinition();
         boolean hasUpgrade =
                 isFluidLaneNode(node)
-                        ? faceHasFluidUpgradeSlots(accessFace)
+                        ? faceHasSharedUpgradeSlots(accessFace)
                         : isGasLaneNode(node)
-                                ? faceHasGasUpgradeSlots(accessFace)
+                                ? faceHasSharedUpgradeSlots(accessFace)
                                 : faceHasUpgradeSlots(accessFace);
         RoutingMode[] v = RoutingMode.values();
         return switch (shared) {
@@ -2985,7 +2993,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
-        if ((getSettingsFaceMask() & (1 << accessFace.ordinal())) == 0) {
+        if (!nodeFaceAllowsMenuServerUpdates(accessFace)) {
             return;
         }
         DuctTransportKind[] vals = DuctTransportKind.values();
@@ -3273,6 +3281,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (cfg.contains("DuctLogicalId")) {
                 logicalDuctId = DuctIds.normalize(cfg.getString("DuctLogicalId"));
             }
+            ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition();
             if (cfg.contains("UserDisc", Tag.TAG_BYTE)) {
                 setUserDisconnectedFaceMaskForLoad(cfg.getByte("UserDisc") & 0xFF);
             }
@@ -3289,6 +3298,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             setChanged();
             return;
         }
+
+        if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
+            logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
+        }
+        ensureFaceLaneUpgradeSlotCapacitiesMatchDefinition();
 
         setConnectionMasksForLoad(tag.getByte("PipeMask") & 0xFF, tag.getByte("StorageMask") & 0xFF);
         if (tag.contains("FaceNodes", Tag.TAG_LIST)) {
@@ -3380,9 +3394,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         if (tag.contains("DuctOverflow", Tag.TAG_COMPOUND)) {
             overflowBuffer.load(registries, tag.getCompound("DuctOverflow"));
-        }
-        if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
-            logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
         }
         setUserDisconnectedFaceMaskForLoad(tag.contains("UserDisc", Tag.TAG_BYTE) ? tag.getByte("UserDisc") & 0xFF : 0);
         requestModelDataUpdate();

@@ -4,6 +4,7 @@
   "name": "duct.another_dynamics.flux_duct",
   "put_in_creative_menu": true,
   "sound": "metallic",
+  "upgrade_slots": 0,
   "can_transport": [
     {
       "dec": "forge_energy",

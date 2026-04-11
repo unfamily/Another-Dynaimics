@@ -9,7 +9,6 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.neoforged.neoforge.items.ItemStackHandler;
-import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 
 /**
  * Per-transport-kind lane on a duct face (item or fluid): filters, routing, channel, GUI slots, amounts.
@@ -99,12 +98,48 @@ public final class DuctFaceNode {
 
     public DuctFaceNode(Runnable onChanged) {
         this.guiSlots =
-                new ItemStackHandler(DuctNodeMenu.MACHINE_SLOTS) {
+                new ItemStackHandler(1) {
                     @Override
                     protected void onContentsChanged(int slot) {
                         onChanged.run();
                     }
                 };
+    }
+
+    /** Legacy combined GUI: slots 0–4 upgrades, slot 5 copy. */
+    private static final int LEGACY_GUI_SLOT_COUNT = 6;
+
+    private void loadGuiSlotsFromNbt(HolderLookup.Provider registries, CompoundTag nodeGuiTag) {
+        // Ph10: guiSlots is 1 slot (copy). Legacy world saves used 6 slots (0–4 upgrades, 5 copy) in NodeGui.
+        // New NBT has Size 1 and the copy stack in slot 0. Old migration used "any of 0–4 non-empty" as upgrade signal;
+        // that is true for the new layout whenever copy is non-empty, then slot 5 was read → empty → copy wiped.
+        int declaredSize = LEGACY_GUI_SLOT_COUNT;
+        if (nodeGuiTag.contains("Size", Tag.TAG_INT)) {
+            declaredSize = nodeGuiTag.getInt("Size");
+        } else if (nodeGuiTag.contains("Size", Tag.TAG_BYTE)) {
+            declaredSize = nodeGuiTag.getByte("Size") & 0xFF;
+        }
+        if (declaredSize <= 1) {
+            ItemStackHandler compact = new ItemStackHandler(1);
+            compact.deserializeNBT(registries, nodeGuiTag);
+            guiSlots.setStackInSlot(0, compact.getStackInSlot(0).copy());
+            return;
+        }
+
+        ItemStackHandler probe = new ItemStackHandler(LEGACY_GUI_SLOT_COUNT);
+        probe.deserializeNBT(registries, nodeGuiTag);
+        boolean upgradeColumnUsed = false;
+        for (int i = 0; i < 5; i++) {
+            if (!probe.getStackInSlot(i).isEmpty()) {
+                upgradeColumnUsed = true;
+                break;
+            }
+        }
+        if (upgradeColumnUsed || !probe.getStackInSlot(5).isEmpty()) {
+            guiSlots.setStackInSlot(0, probe.getStackInSlot(5).copy());
+        } else {
+            guiSlots.setStackInSlot(0, probe.getStackInSlot(0).copy());
+        }
     }
 
     public void resetPipeSegmentDefaults() {
@@ -157,7 +192,7 @@ public final class DuctFaceNode {
         eligibilityMode =
                 tag.contains("EligMode") ? EligibilityMode.fromOrdinal(tag.getByte("EligMode")) : EligibilityMode.BOTH;
         if (tag.contains("NodeGui", Tag.TAG_COMPOUND)) {
-            guiSlots.deserializeNBT(registries, tag.getCompound("NodeGui"));
+            loadGuiSlotsFromNbt(registries, tag.getCompound("NodeGui"));
         }
         loadFilters(tag);
     }
@@ -168,7 +203,7 @@ public final class DuctFaceNode {
      */
     public void loadFromLegacyRootTag(HolderLookup.Provider registries, CompoundTag root, NodeMode sharedNodeMode) {
         if (root.contains("NodeGui", Tag.TAG_COMPOUND)) {
-            guiSlots.deserializeNBT(registries, root.getCompound("NodeGui"));
+            loadGuiSlotsFromNbt(registries, root.getCompound("NodeGui"));
         }
         routingMode = RoutingMode.fromOrdinal(root.getByte("RoutingMode"));
         insertionPriority = 0;
