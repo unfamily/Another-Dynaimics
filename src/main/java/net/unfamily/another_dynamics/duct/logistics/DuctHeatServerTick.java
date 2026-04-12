@@ -341,7 +341,7 @@ public final class DuctHeatServerTick {
             if (!(level.getBlockEntity(fromDuct) instanceof DuctBlockEntity be)) {
                 return 0.0;
             }
-            return be.heatTransportSpec().clampedTransfer();
+            return be.heatTransportSpec().clampedInsulation();
         }
         Optional<List<BlockPos>> pathOpt =
                 DuctPathfinder.shortestPath(level, fromDuct, toDuct, 1L, DuctNetworkType.HEAT);
@@ -353,7 +353,7 @@ public final class DuctHeatServerTick {
             if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 return 0.0;
             }
-            double tr = be.heatTransportSpec().clampedTransfer();
+            double tr = be.heatTransportSpec().clampedInsulation();
             min = Math.min(min, tr);
             if (min <= 0.0) {
                 return 0.0;

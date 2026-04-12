@@ -370,11 +370,11 @@ public final class DuctModuleEffects {
      */
     public static double effectiveHeatExtractPerAction(DuctBlockEntity duct, Direction face, DuctHeatTransportSpec spec) {
         if (!faceModuleEffectsEnabled(duct, face)) {
-            return spec.clampedExtract();
+            return spec.clampedInsulation();
         }
         ModuleDefinition.ItemQuantityModifiers agg =
                 aggregateTimingLike(duct, face, ModuleDefinition::heatQuantityModifiers);
-        double base = spec.clampedExtract();
+        double base = spec.clampedInsulation();
         double v = (agg.hasSet() ? agg.setValue() : base) + agg.addSum();
         v *= agg.multProduct();
         return Math.max(0.0, v);

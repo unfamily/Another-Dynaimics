@@ -8,8 +8,7 @@
   "can_transport": [
     {
       "dec": "mek_heat",
-      "extract": 10000,
-      "transfer": 100000
+      "insulation": 8000
     }
   ],
   "connect_with_compatbile": true,

@@ -457,15 +457,11 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
     }
 
     private static DuctHeatTransportSpec parseHeatTransport(JsonObject to) {
-        double extract = DuctHeatTransportSpec.fallback().extract();
-        double transfer = DuctHeatTransportSpec.fallback().transfer();
-        if (to.has("extract") && to.get("extract").isJsonPrimitive()) {
-            extract = to.get("extract").getAsDouble();
+        double insulation = DuctHeatTransportSpec.fallback().insulation();
+        if (to.has("insulation") && to.get("insulation").isJsonPrimitive()) {
+            insulation = to.get("insulation").getAsDouble();
         }
-        if (to.has("transfer") && to.get("transfer").isJsonPrimitive()) {
-            transfer = to.get("transfer").getAsDouble();
-        }
-        return new DuctHeatTransportSpec(extract, transfer);
+        return new DuctHeatTransportSpec(insulation);
     }
 
     private static DuctFluidTransportSpec parseFluidTransport(JsonObject to) {
