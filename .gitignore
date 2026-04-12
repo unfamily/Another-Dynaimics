@@ -1672,3 +1672,4 @@ repo/
 /.gradle-local/native/jansi/1.18/linux64/libjansi.so
 /.gradle-local/notifications/9.2.1/release-features.rendered
 /docs/FILTER_SYSTEM.md
+/docs/
