@@ -1,30 +1,27 @@
 package net.unfamily.another_dynamics.client.gui;
 
+import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
-
-import com.mojang.blaze3d.platform.InputConstants;
-
-import org.lwjgl.glfw.GLFW;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
@@ -38,65 +35,93 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
+import net.neoforged.neoforge.fluids.FluidStack;
+import net.neoforged.neoforge.fluids.FluidUtil;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
-import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
+import net.unfamily.another_dynamics.integration.jei.ghost.IAnDynamicsGhostTarget;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModAttachments;
-import net.neoforged.neoforge.fluids.FluidStack;
-import net.neoforged.neoforge.fluids.FluidUtil;
-
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * Duct node GUI: modules, center controls, filter sub-screens (Deep Drawer Extractor parity), right column, inventory.
  */
-public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> {
+public final class DuctNodeScreen
+    extends AbstractContainerScreen<DuctNodeMenu>
+    implements IAnDynamicsGhostTarget
+{
+
     private enum HybridPanel {
         NONE,
         EXTRACTOR,
         FILTERING,
-        RETRIEVER
+        RETRIEVER,
     }
+
     private enum SubView {
         MAIN,
         DENY_FILTERS,
         ALLOW_FILTERS,
         ADVANCED_FILTERING,
-        HOW_TO_USE
+        HOW_TO_USE,
     }
 
     private static final ResourceLocation TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/background/node.png");
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/background/node.png"
+        );
     private static final ResourceLocation VALID_KEYS_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/background/valid_keys.png");
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/background/valid_keys.png"
+        );
     private static final ResourceLocation MEDIUM_BUTTONS =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/medium_buttons.png");
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/medium_buttons.png"
+        );
     private static final ResourceLocation REDSTONE_GUI =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/redstone_gui.png");
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/redstone_gui.png"
+        );
     private static final ResourceLocation SINGLE_SLOT =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/single_slot.png");
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/single_slot.png"
+        );
     private static final ResourceLocation ENTRY_ROW_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/entry_duct.png");
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/entry_duct.png"
+        );
     private static final ResourceLocation SCROLLBAR_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "textures/gui/scrollbar.png");
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/scrollbar.png"
+        );
 
     private static final int TEXTURE_WIDTH = 320;
     private static final int TEXTURE_HEIGHT = 256;
 
     private static final int CLOSE_BUTTON_SIZE = 12;
     private static final int CLOSE_BUTTON_Y = 5;
-    private static final int CLOSE_BUTTON_X = TEXTURE_WIDTH - CLOSE_BUTTON_SIZE - 5;
+    private static final int CLOSE_BUTTON_X =
+        TEXTURE_WIDTH - CLOSE_BUTTON_SIZE - 5;
 
     private static final int REDSTONE_BUTTON_SIZE = 16;
     private static final int REDSTONE_ICON_SIZE = 12;
@@ -151,9 +176,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     /** Below the copy-settings slot in the same column (slot is 18px tall). */
     private static final int CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT = 4;
     private static final int CHANNEL_WIDGET_Y =
-            DuctNodeMenu.SLOT_COPY_BACKGROUND_Y + 18 + CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT;
+        DuctNodeMenu.SLOT_COPY_BACKGROUND_Y +
+        18 +
+        CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT;
     /** Detail view: transport pickers below channel widget (hub main uses {@link #ROW2_Y} in a 3-column grid). */
-    private static final int TRANSPORT_KIND_BUTTON_Y = CHANNEL_WIDGET_Y + CHANNEL_WIDGET_H + 4;
+    private static final int TRANSPORT_KIND_BUTTON_Y =
+        CHANNEL_WIDGET_Y + CHANNEL_WIDGET_H + 4;
 
     /** Multi-transport hub: wrap kind pickers so at most this many fit per row within {@link #TEXTURE_WIDTH}. */
     private static final int HUB_TRANSPORT_KIND_COLUMNS = 3;
@@ -184,7 +212,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private static final int SCROLLBAR_X_REL = ENTRY_X + ENTRY_WIDTH + 4;
     private static final int BUTTON_UP_Y_REL = FIRST_FILTER_ROW_Y;
     private static final int SCROLLBAR_Y_REL = BUTTON_UP_Y_REL + HANDLE_SIZE;
-    private static final int BUTTON_DOWN_Y_REL = SCROLLBAR_Y_REL + SCROLLBAR_HEIGHT;
+    private static final int BUTTON_DOWN_Y_REL =
+        SCROLLBAR_Y_REL + SCROLLBAR_HEIGHT;
 
     /** Left inset for Valid keys body text (inside panel border). */
     private static final int HELP_TEXT_X = 14;
@@ -222,7 +251,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     private SubView subView = SubView.MAIN;
     private SubView filterListBeforeHelp = SubView.DENY_FILTERS;
-    private DuctFaceNode.FilterBank activeFilterBank = DuctFaceNode.FilterBank.FILTER;
+    private DuctFaceNode.FilterBank activeFilterBank =
+        DuctFaceNode.FilterBank.FILTER;
     private HybridPanel hybridPanel = HybridPanel.NONE;
     private int filterScrollOffset;
     private boolean isDraggingHandle;
@@ -240,6 +270,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private int lastTrackedExtractBatchCap = -1;
 
     private static final class ExampleData {
+
         final String example;
         final int x;
         final int y;
@@ -288,9 +319,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private ItemStack ghostSlotItem = ItemStack.EMPTY;
     /** When editing fluid filters, preview still sprite from {@link FluidUtil#getFluidContained} on the ghost item. */
     private FluidStack ghostSlotFluid = FluidStack.EMPTY;
+
     /** When editing gas (Mekanism chemical) filters: sample from cursor item capability, or {@code null} when empty. */
     @Nullable
     private Object ghostSlotGas = null;
+
     private List<String> filterVariants = new ArrayList<>();
     private int currentFilterVariantIndex = 0;
 
@@ -299,7 +332,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private int lastMouseX;
     private int lastMouseY;
 
-    public DuctNodeScreen(DuctNodeMenu menu, Inventory playerInventory, Component title) {
+    /**
+     * Ghost ingredient consumer for JEI drag-and-drop into the filter calibration slot.
+     */
+    @Nullable
+    private IAnDynamicsGhostTarget.IGhostIngredientConsumer ghostIngredientConsumer;
+
+    public DuctNodeScreen(
+        DuctNodeMenu menu,
+        Inventory playerInventory,
+        Component title
+    ) {
         super(menu, playerInventory, title);
         this.imageWidth = TEXTURE_WIDTH;
         this.imageHeight = TEXTURE_HEIGHT;
@@ -311,15 +354,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
      * {@link DuctNodeMenu} cache and rebuilds filter entry buttons when this duct GUI is the active screen.
      */
     public static void applyClientFilterSync(
-            BlockPos pos,
-            Direction face,
-            int transportKindOrdinal,
-            int filterBankOrdinal,
-            List<String> allow,
-            List<String> deny,
-            List<Integer> allowCaps,
-            List<Integer> allowCaps2,
-            boolean denyOverridesAllow) {
+        BlockPos pos,
+        Direction face,
+        int transportKindOrdinal,
+        int filterBankOrdinal,
+        List<String> allow,
+        List<String> deny,
+        List<Integer> allowCaps,
+        List<Integer> allowCaps2,
+        boolean denyOverridesAllow
+    ) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
             return;
@@ -328,17 +372,23 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return;
         }
         menu.receiveFilterSync(
-                pos,
-                face,
-                transportKindOrdinal,
-                filterBankOrdinal,
-                allow,
-                deny,
-                allowCaps,
-                allowCaps2,
-                denyOverridesAllow);
-        if (mc.screen instanceof DuctNodeScreen screen && screen.getMenu() == menu) {
-            screen.menu.ensureClientFilterBufferSizes(screen.useHybridFilterCaps());
+            pos,
+            face,
+            transportKindOrdinal,
+            filterBankOrdinal,
+            allow,
+            deny,
+            allowCaps,
+            allowCaps2,
+            denyOverridesAllow
+        );
+        if (
+            mc.screen instanceof DuctNodeScreen screen &&
+            screen.getMenu() == menu
+        ) {
+            screen.menu.ensureClientFilterBufferSizes(
+                screen.useHybridFilterCaps()
+            );
             screen.rebuildFilterEntryWidgets();
         }
     }
@@ -351,91 +401,150 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         redstoneButtonScreenY = this.topPos + DuctNodeMenu.REDSTONE_GUI_Y;
 
         closeButton = Button.builder(Component.literal("\u2715"), b -> {
-                    playClickSound();
-                    handleCloseOrBack();
-                })
-                .bounds(this.leftPos + CLOSE_BUTTON_X, this.topPos + CLOSE_BUTTON_Y, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE)
-                .build();
+            playClickSound();
+            handleCloseOrBack();
+        })
+            .bounds(
+                this.leftPos + CLOSE_BUTTON_X,
+                this.topPos + CLOSE_BUTTON_Y,
+                CLOSE_BUTTON_SIZE,
+                CLOSE_BUTTON_SIZE
+            )
+            .build();
         addRenderableWidget(closeButton);
 
-        denyNavButton = Button.builder(Component.translatable("gui.another_dynamics.duct_node.deny_list"), b -> {
-                    playClickSound();
-                    NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-                    if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
-                        hybridPanel = (nm == NodeMode.EXTRACTION_FILTERING) ? HybridPanel.EXTRACTOR : HybridPanel.RETRIEVER;
-                        activeFilterBank = (hybridPanel == HybridPanel.EXTRACTOR)
-                                ? DuctFaceNode.FilterBank.EXTRACTOR
-                                : DuctFaceNode.FilterBank.RETRIEVER;
-                        applySubViewVisibility();
-                        return;
-                    }
-                    openFilterSubview(SubView.DENY_FILTERS);
-                })
-                .bounds(this.leftPos + CENTER_X, this.topPos + ROW1_Y, ROW_BTN_W, BTN_H)
-                .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.deny_list.tooltip")))
-                .build();
+        denyNavButton = Button.builder(
+            Component.translatable("gui.another_dynamics.duct_node.deny_list"),
+            b -> {
+                playClickSound();
+                NodeMode nm = NodeMode.fromOrdinal(
+                    menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+                );
+                if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
+                    hybridPanel = (nm == NodeMode.EXTRACTION_FILTERING)
+                        ? HybridPanel.EXTRACTOR
+                        : HybridPanel.RETRIEVER;
+                    activeFilterBank = (hybridPanel == HybridPanel.EXTRACTOR)
+                        ? DuctFaceNode.FilterBank.EXTRACTOR
+                        : DuctFaceNode.FilterBank.RETRIEVER;
+                    applySubViewVisibility();
+                    return;
+                }
+                openFilterSubview(SubView.DENY_FILTERS);
+            }
+        )
+            .bounds(
+                this.leftPos + CENTER_X,
+                this.topPos + ROW1_Y,
+                ROW_BTN_W,
+                BTN_H
+            )
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.deny_list.tooltip"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(denyNavButton);
 
         listLogicButton = Button.builder(Component.literal(">>>>>"), b -> {
-                    playClickSound();
-                    NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-                    if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
-                        boolean on = (menu.getSyncData().get(DuctMenuSync.SELF_FEED) != 0);
-                        ModNetwork.sendSelfFeedSet(menuSyncedPos(), menuSyncedFace(), !on);
-                        return;
-                    }
-                    ModNetwork.sendListLogicToggle(
-                            menuSyncedPos(),
-                            menuSyncedFace(),
-                            menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
-                            activeFilterBank.ordinal());
-                })
-                .bounds(
-                        this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
-                        this.topPos + ROW1_Y,
-                        ROW_BTN_W,
-                        BTN_H)
-                .build();
+            playClickSound();
+            NodeMode nm = NodeMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+            );
+            if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
+                boolean on = (menu.getSyncData().get(DuctMenuSync.SELF_FEED) !=
+                    0);
+                ModNetwork.sendSelfFeedSet(
+                    menuSyncedPos(),
+                    menuSyncedFace(),
+                    !on
+                );
+                return;
+            }
+            ModNetwork.sendListLogicToggle(
+                menuSyncedPos(),
+                menuSyncedFace(),
+                menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
+                activeFilterBank.ordinal()
+            );
+        })
+            .bounds(
+                this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
+                this.topPos + ROW1_Y,
+                ROW_BTN_W,
+                BTN_H
+            )
+            .build();
         addRenderableWidget(listLogicButton);
 
-        allowNavButton = Button.builder(Component.translatable("gui.another_dynamics.duct_node.allow_list"), b -> {
-                    playClickSound();
-                    NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-                    if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
-                        hybridPanel = (nm == NodeMode.EXTRACTION_FILTERING) ? HybridPanel.FILTERING : HybridPanel.EXTRACTOR;
-                        activeFilterBank = (hybridPanel == HybridPanel.FILTERING)
-                                ? DuctFaceNode.FilterBank.FILTER
-                                : DuctFaceNode.FilterBank.EXTRACTOR;
-                        applySubViewVisibility();
-                        return;
-                    }
-                    openFilterSubview(SubView.ALLOW_FILTERS);
-                })
-                .bounds(
-                        this.leftPos + CENTER_X + 2 * (ROW_BTN_W + ROW_GAP),
-                        this.topPos + ROW1_Y,
-                        ROW_BTN_W,
-                        BTN_H)
-                .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_list.tooltip")))
-                .build();
+        allowNavButton = Button.builder(
+            Component.translatable("gui.another_dynamics.duct_node.allow_list"),
+            b -> {
+                playClickSound();
+                NodeMode nm = NodeMode.fromOrdinal(
+                    menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+                );
+                if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
+                    hybridPanel = (nm == NodeMode.EXTRACTION_FILTERING)
+                        ? HybridPanel.FILTERING
+                        : HybridPanel.EXTRACTOR;
+                    activeFilterBank = (hybridPanel == HybridPanel.FILTERING)
+                        ? DuctFaceNode.FilterBank.FILTER
+                        : DuctFaceNode.FilterBank.EXTRACTOR;
+                    applySubViewVisibility();
+                    return;
+                }
+                openFilterSubview(SubView.ALLOW_FILTERS);
+            }
+        )
+            .bounds(
+                this.leftPos + CENTER_X + 2 * (ROW_BTN_W + ROW_GAP),
+                this.topPos + ROW1_Y,
+                ROW_BTN_W,
+                BTN_H
+            )
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.allow_list.tooltip"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(allowNavButton);
 
         int r2x = CENTER_X + 2 * (ROW_BTN_W + ROW_GAP);
-        routingModeButton = Button.builder(Component.empty(), b -> handleMenuButton(1))
-                .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
-                .build();
+        routingModeButton = Button.builder(Component.empty(), b ->
+            handleMenuButton(1)
+        )
+            .bounds(this.leftPos + r2x, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
+            .build();
         addRenderableWidget(routingModeButton);
 
-        routingMinusButton =
-                Button.builder(Component.literal("-"), b -> adjustAmountField(-1))
-                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
-                        .tooltip(
-                                Tooltip.create(
-                                        Component.translatable(
-                                                "gui.another_dynamics.duct_node.amount.minus.tooltip.priority")))
-                        .build();
+        routingMinusButton = Button.builder(Component.literal("-"), b ->
+            adjustAmountField(-1)
+        )
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.amount.minus.tooltip.priority"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(routingMinusButton);
-        routingPriorityBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.empty());
+        routingPriorityBox = new EditBox(
+            this.font,
+            0,
+            0,
+            AMOUNT_EDIT_W,
+            BTN_H,
+            Component.empty()
+        );
         routingPriorityBox.setMaxLength(6);
         routingPriorityBox.setResponder(s -> {
             if (!syncingAmountBoxFromServer) {
@@ -446,251 +555,414 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         routingPriorityBox.setValue("0");
         syncingAmountBoxFromServer = false;
         addRenderableWidget(routingPriorityBox);
-        routingPlusButton =
-                Button.builder(Component.literal("+"), b -> adjustAmountField(1))
-                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
-                        .tooltip(
-                                Tooltip.create(
-                                        Component.translatable("gui.another_dynamics.duct_node.amount.plus.tooltip.priority")))
-                        .build();
+        routingPlusButton = Button.builder(Component.literal("+"), b ->
+            adjustAmountField(1)
+        )
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.amount.plus.tooltip.priority"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(routingPlusButton);
 
-        amountClearButton =
-                Button.builder(Component.literal("0"), b -> amountClearField())
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.set_to_zero.tooltip")))
-                        .build();
+        amountClearButton = Button.builder(Component.literal("0"), b ->
+            amountClearField()
+        )
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.amount.set_to_zero.tooltip"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(amountClearButton);
-        amountApplyButton =
-                Button.builder(Component.literal("A"), b -> amountApplyField())
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.apply")))
-                        .build();
+        amountApplyButton = Button.builder(Component.literal("A"), b ->
+            amountApplyField()
+        )
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.filters.apply"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(amountApplyButton);
-        amountMaxButton =
-                Button.builder(Component.literal("M"), b -> amountMaxField())
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.set_to_max.tooltip")))
-                        .build();
+        amountMaxButton = Button.builder(Component.literal("M"), b ->
+            amountMaxField()
+        )
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.amount.set_to_max.tooltip"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(amountMaxButton);
-        amountDiscardButton =
-                Button.builder(Component.literal("\u2715"), b -> amountDiscardDraft())
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.undo.tooltip")))
-                        .build();
+        amountDiscardButton = Button.builder(Component.literal("\u2715"), b ->
+            amountDiscardDraft()
+        )
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.amount.undo.tooltip"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(amountDiscardButton);
 
         layoutAmountBlock();
 
-        advCapMinusButton =
-                Button.builder(Component.literal("-"), b -> adjustAdvCap(-1))
-                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.minus.limit")))
-                        .build();
+        advCapMinusButton = Button.builder(Component.literal("-"), b ->
+            adjustAdvCap(-1)
+        )
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.allow_cap.minus.limit"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCapMinusButton);
-        advCapEditBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.literal("Limit/Keep"));
+        advCapEditBox = new EditBox(
+            this.font,
+            0,
+            0,
+            AMOUNT_EDIT_W,
+            BTN_H,
+            Component.literal("Limit/Keep")
+        );
         advCapEditBox.setMaxLength(10);
-        advCapEditBox.setResponder(
-                v -> {
-                    String t = v.trim();
-                    if (t.isEmpty() || t.equals("\u221e") || t.equalsIgnoreCase("inf")) {
-                        editModeAllowCapValue = 0;
-                        return;
-                    }
-                    try {
-                        editModeAllowCapValue =
-                                (int) Mth.clamp(Long.parseLong(t), 0L, Integer.MAX_VALUE);
-                    } catch (NumberFormatException ignored) {
-                    }
-                });
+        advCapEditBox.setResponder(v -> {
+            String t = v.trim();
+            if (
+                t.isEmpty() || t.equals("\u221e") || t.equalsIgnoreCase("inf")
+            ) {
+                editModeAllowCapValue = 0;
+                return;
+            }
+            try {
+                editModeAllowCapValue = (int) Mth.clamp(
+                    Long.parseLong(t),
+                    0L,
+                    Integer.MAX_VALUE
+                );
+            } catch (NumberFormatException ignored) {}
+        });
         addRenderableWidget(advCapEditBox);
-        advCapPlusButton =
-                Button.builder(Component.literal("+"), b -> adjustAdvCap(1))
-                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.plus.limit")))
-                        .build();
+        advCapPlusButton = Button.builder(Component.literal("+"), b ->
+            adjustAdvCap(1)
+        )
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.allow_cap.plus.limit"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCapPlusButton);
-        advCapInfinityButton =
-                Button.builder(Component.literal("0"), b -> {
-                            playClickSound();
-                            editModeAllowCapValue = 0;
-                            syncAllowCapEditBoxDisplay();
-                        })
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(
-                                Tooltip.create(
-                                        Component.translatable("gui.another_dynamics.duct_node.allow_cap.set_to_zero")))
-                        .build();
+        advCapInfinityButton = Button.builder(Component.literal("0"), b -> {
+            playClickSound();
+            editModeAllowCapValue = 0;
+            syncAllowCapEditBoxDisplay();
+        })
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.allow_cap.set_to_zero"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCapInfinityButton);
-        advCapApplyButton =
-                Button.builder(Component.literal("A"), b -> applyAllowCapField())
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.apply")))
-                        .build();
+        advCapApplyButton = Button.builder(Component.literal("A"), b ->
+            applyAllowCapField()
+        )
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.filters.apply"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCapApplyButton);
-        advCapUndoButton =
-                Button.builder(Component.literal("\u2715"), b -> undoAllowCapDraft())
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(
-                                Tooltip.create(
-                                        Component.translatable("gui.another_dynamics.duct_node.amount.undo.tooltip")))
-                        .build();
+        advCapUndoButton = Button.builder(Component.literal("\u2715"), b ->
+            undoAllowCapDraft()
+        )
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.amount.undo.tooltip"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCapUndoButton);
 
-        advCap2MinusButton =
-                Button.builder(Component.literal("-"), b -> adjustAdvCap2(-1))
-                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.minus.keep")))
-                        .build();
+        advCap2MinusButton = Button.builder(Component.literal("-"), b ->
+            adjustAdvCap2(-1)
+        )
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.allow_cap.minus.keep"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCap2MinusButton);
-        advCap2EditBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.literal("Keep"));
+        advCap2EditBox = new EditBox(
+            this.font,
+            0,
+            0,
+            AMOUNT_EDIT_W,
+            BTN_H,
+            Component.literal("Keep")
+        );
         advCap2EditBox.setMaxLength(10);
-        advCap2EditBox.setResponder(
-                v -> {
-                    String t = v.trim();
-                    if (t.isEmpty() || t.equals("\u221e") || t.equalsIgnoreCase("inf")) {
-                        editModeAllowCap2Value = 0;
-                        return;
-                    }
-                    try {
-                        editModeAllowCap2Value =
-                                (int) Mth.clamp(Long.parseLong(t), 0L, Integer.MAX_VALUE);
-                    } catch (NumberFormatException ignored) {
-                    }
-                });
+        advCap2EditBox.setResponder(v -> {
+            String t = v.trim();
+            if (
+                t.isEmpty() || t.equals("\u221e") || t.equalsIgnoreCase("inf")
+            ) {
+                editModeAllowCap2Value = 0;
+                return;
+            }
+            try {
+                editModeAllowCap2Value = (int) Mth.clamp(
+                    Long.parseLong(t),
+                    0L,
+                    Integer.MAX_VALUE
+                );
+            } catch (NumberFormatException ignored) {}
+        });
         addRenderableWidget(advCap2EditBox);
-        advCap2PlusButton =
-                Button.builder(Component.literal("+"), b -> adjustAdvCap2(1))
-                        .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.plus.keep")))
-                        .build();
+        advCap2PlusButton = Button.builder(Component.literal("+"), b ->
+            adjustAdvCap2(1)
+        )
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.allow_cap.plus.keep"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCap2PlusButton);
-        advCap2InfinityButton =
-                Button.builder(Component.literal("0"), b -> {
-                            playClickSound();
-                            editModeAllowCap2Value = 0;
-                            syncAllowCap2EditBoxDisplay();
-                        })
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.set_to_zero")))
-                        .build();
+        advCap2InfinityButton = Button.builder(Component.literal("0"), b -> {
+            playClickSound();
+            editModeAllowCap2Value = 0;
+            syncAllowCap2EditBoxDisplay();
+        })
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.allow_cap.set_to_zero"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCap2InfinityButton);
-        advCap2ApplyButton =
-                Button.builder(Component.literal("A"), b -> applyAllowCap2Field())
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.apply")))
-                        .build();
+        advCap2ApplyButton = Button.builder(Component.literal("A"), b ->
+            applyAllowCap2Field()
+        )
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.filters.apply"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCap2ApplyButton);
-        advCap2UndoButton =
-                Button.builder(Component.literal("\u2715"), b -> undoAllowCap2Draft())
-                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.amount.undo.tooltip")))
-                        .build();
+        advCap2UndoButton = Button.builder(Component.literal("\u2715"), b ->
+            undoAllowCap2Draft()
+        )
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.amount.undo.tooltip"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(advCap2UndoButton);
 
         layoutAdvancedCapBlock();
 
         nodeModeButton = Button.builder(Component.empty(), b -> {
-                    playClickSound();
-                    NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-                    if (nm.isHybrid() && hybridPanel != HybridPanel.NONE) {
-                        hybridPanel = HybridPanel.NONE;
-                        applySubViewVisibility();
-                        return;
-                    }
-                    handleMenuButton(0);
-                })
-                .bounds(this.leftPos + CENTER_X, this.topPos + ROW2_Y, ROW_BTN_W, BTN_H)
-                .build();
+            playClickSound();
+            NodeMode nm = NodeMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+            );
+            if (nm.isHybrid() && hybridPanel != HybridPanel.NONE) {
+                hybridPanel = HybridPanel.NONE;
+                applySubViewVisibility();
+                return;
+            }
+            handleMenuButton(0);
+        })
+            .bounds(
+                this.leftPos + CENTER_X,
+                this.topPos + ROW2_Y,
+                ROW_BTN_W,
+                BTN_H
+            )
+            .build();
         addRenderableWidget(nodeModeButton);
-        selfFeedStub = Button.builder(Component.translatable("gui.another_dynamics.duct_node.self_feed"), b -> playClickSound())
-                .bounds(
-                        this.leftPos + CENTER_X + 2 * (ROW_BTN_W + ROW_GAP),
-                        this.topPos + ROW3_Y,
-                        ROW_BTN_W,
-                        BTN_H)
-                .build();
+        selfFeedStub = Button.builder(
+            Component.translatable("gui.another_dynamics.duct_node.self_feed"),
+            b -> playClickSound()
+        )
+            .bounds(
+                this.leftPos + CENTER_X + 2 * (ROW_BTN_W + ROW_GAP),
+                this.topPos + ROW3_Y,
+                ROW_BTN_W,
+                BTN_H
+            )
+            .build();
         addRenderableWidget(selfFeedStub);
-        opaqueRenderingButton =
-                Button.builder(Component.empty(), b -> {
-                            if (menu.isDuctAlwaysOpaqueLocked()) {
-                                return;
-                            }
-                            playClickSound();
-                            ModNetwork.sendDuctOpaqueToggle();
-                        })
-                        .bounds(
-                                this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
-                                this.topPos + ROW2_Y,
-                                ROW_BTN_W,
-                                BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.opaque_rendering.tooltip")))
-                        .build();
+        opaqueRenderingButton = Button.builder(Component.empty(), b -> {
+            if (menu.isDuctAlwaysOpaqueLocked()) {
+                return;
+            }
+            playClickSound();
+            ModNetwork.sendDuctOpaqueToggle();
+        })
+            .bounds(
+                this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
+                this.topPos + ROW2_Y,
+                ROW_BTN_W,
+                BTN_H
+            )
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.opaque_rendering.tooltip"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(opaqueRenderingButton);
 
-        hubBackButton =
-                Button.builder(Component.translatable("gui.another_dynamics.duct_node.hub_back"), b -> {
-                            playClickSound();
-                            handleMenuButton(DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB);
-                        })
-                        .bounds(0, 0, ROW_BTN_W, BTN_H)
-                        .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hub_back.tooltip")))
-                        .build();
+        hubBackButton = Button.builder(
+            Component.translatable("gui.another_dynamics.duct_node.hub_back"),
+            b -> {
+                playClickSound();
+                handleMenuButton(DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB);
+            }
+        )
+            .bounds(0, 0, ROW_BTN_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.hub_back.tooltip"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(hubBackButton);
 
-        backButton = Button.builder(Component.translatable("gui.another_dynamics.duct_node.filters.back"), b -> {
-                    playClickSound();
-                    if (subView == SubView.ADVANCED_FILTERING) {
-                        closeAdvancedFiltering();
-                    } else {
-                        closeFilterSubview();
-                    }
-                })
-                .bounds(
-                        this.leftPos + CENTER_X,
-                        this.topPos + filterNavRowScreenY(),
-                        ROW_BTN_W,
-                        BTN_H)
-                .build();
+        backButton = Button.builder(
+            Component.translatable(
+                "gui.another_dynamics.duct_node.filters.back"
+            ),
+            b -> {
+                playClickSound();
+                if (subView == SubView.ADVANCED_FILTERING) {
+                    closeAdvancedFiltering();
+                } else {
+                    closeFilterSubview();
+                }
+            }
+        )
+            .bounds(
+                this.leftPos + CENTER_X,
+                this.topPos + filterNavRowScreenY(),
+                ROW_BTN_W,
+                BTN_H
+            )
+            .build();
         addRenderableWidget(backButton);
 
-        validKeysButton = Button.builder(Component.translatable("gui.another_dynamics.duct_node.filters.how_to_use"), b -> {
-                    playClickSound();
-                    unfocusAllTextFields();
-                    filterListBeforeHelp = subView;
-                    subView = SubView.HOW_TO_USE;
-                    applySubViewVisibility();
-                    rebuildFilterEntryWidgets();
-                })
-                .bounds(
-                        this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
-                        this.topPos + filterNavRowScreenY(),
-                        ROW_BTN_W,
-                        BTN_H)
-                .build();
+        validKeysButton = Button.builder(
+            Component.translatable(
+                "gui.another_dynamics.duct_node.filters.how_to_use"
+            ),
+            b -> {
+                playClickSound();
+                unfocusAllTextFields();
+                filterListBeforeHelp = subView;
+                subView = SubView.HOW_TO_USE;
+                applySubViewVisibility();
+                rebuildFilterEntryWidgets();
+            }
+        )
+            .bounds(
+                this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
+                this.topPos + filterNavRowScreenY(),
+                ROW_BTN_W,
+                BTN_H
+            )
+            .build();
         addRenderableWidget(validKeysButton);
 
-        int channelX = DuctNodeMenu.SLOT_COPY_BACKGROUND_X + (18 - CHANNEL_WIDGET_W) / 2;
+        int channelX =
+            DuctNodeMenu.SLOT_COPY_BACKGROUND_X + (18 - CHANNEL_WIDGET_W) / 2;
         channelButton = new ChannelLetterButton(
-                this.leftPos + channelX,
-                this.topPos + CHANNEL_WIDGET_Y,
-                CHANNEL_WIDGET_W,
-                CHANNEL_WIDGET_H,
-                dir -> {
-                    int id = dir == 0 ? 13 : (dir > 0 ? 4 : 5);
-                    ModNetwork.sendDuctMenuButton(menu, id);
-                });
+            this.leftPos + channelX,
+            this.topPos + CHANNEL_WIDGET_Y,
+            CHANNEL_WIDGET_W,
+            CHANNEL_WIDGET_H,
+            dir -> {
+                int id = dir == 0 ? 13 : (dir > 0 ? 4 : 5);
+                ModNetwork.sendDuctMenuButton(menu, id);
+            }
+        );
         channelButton.setTooltip(
-                Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.channel_letter.tooltip")));
+            Tooltip.create(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.channel_letter.tooltip"
+                )
+            )
+        );
         addRenderableWidget(channelButton);
 
         transportKindPickerButtons.clear();
         for (DuctTransportKind k : DuctTransportKind.values()) {
             final int kindOrdinal = k.ordinal();
-            Button b =
-                    Button.builder(Component.empty(), btn -> handleMenuButton(DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE + kindOrdinal))
-                            .bounds(0, 0, ROW_BTN_W, BTN_H)
-                            .build();
+            Button b = Button.builder(Component.empty(), btn ->
+                handleMenuButton(
+                    DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE +
+                        kindOrdinal
+                )
+            )
+                .bounds(0, 0, ROW_BTN_W, BTN_H)
+                .build();
             transportKindPickerButtons.add(b);
             addRenderableWidget(b);
         }
@@ -712,8 +984,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private boolean shouldReturnToTransportHubInsteadOfClosing() {
-        return menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
-                && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0;
+        return (
+            menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
+            menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0
+        );
     }
 
     /** Node mode + opaque: row 1 on transport hub, row 2 on detail (filters use row 1 in detail). */
@@ -722,9 +996,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return;
         }
         boolean hubMain =
-                menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
-                        && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0
-                        && subView == SubView.MAIN;
+            menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
+            menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0 &&
+            subView == SubView.MAIN;
         int y = this.topPos + (hubMain ? ROW1_Y : ROW2_Y);
         nodeModeButton.setX(this.leftPos + CENTER_X);
         nodeModeButton.setY(y);
@@ -732,7 +1006,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         nodeModeButton.setHeight(BTN_H);
         // Hub: opaque third column (empty middle slot). Detail: opaque second column (with routing third).
         int opaqueCol = hubMain ? 2 : 1;
-        opaqueRenderingButton.setX(this.leftPos + CENTER_X + opaqueCol * (ROW_BTN_W + ROW_GAP));
+        opaqueRenderingButton.setX(
+            this.leftPos + CENTER_X + opaqueCol * (ROW_BTN_W + ROW_GAP)
+        );
         opaqueRenderingButton.setY(y);
         opaqueRenderingButton.setWidth(ROW_BTN_W);
         opaqueRenderingButton.setHeight(BTN_H);
@@ -744,9 +1020,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return;
         }
         boolean hubMain =
-                menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
-                        && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0
-                        && subView == SubView.MAIN;
+            menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
+            menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0 &&
+            subView == SubView.MAIN;
         int baseY = hubMain ? ROW2_Y : TRANSPORT_KIND_BUTTON_Y;
         // Same cell size as deny/list/allow (3*(w+g) matches texture chrome width).
         int startX = this.leftPos + CENTER_X;
@@ -840,7 +1116,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     /** Screen Y of the row with Back and Valid keys (below the filter entry list). */
     private int filterNavRowScreenY() {
-        return FIRST_FILTER_ROW_Y + VISIBLE_FILTER_ENTRIES * ENTRY_HEIGHT + FILTER_NAV_GAP;
+        return (
+            FIRST_FILTER_ROW_Y +
+            VISIBLE_FILTER_ENTRIES * ENTRY_HEIGHT +
+            FILTER_NAV_GAP
+        );
     }
 
     /** X/Y placement for the "Advanced" button slot in filter entry edit mode. */
@@ -862,7 +1142,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     private void layoutFilterNavAndHelpButtons() {
         boolean howto = subView == SubView.HOW_TO_USE;
-        boolean filterList = subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS;
+        boolean filterList =
+            subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS;
         if (howto) {
             backButton.setX(this.leftPos + HELP_BACK_BUTTON_X);
             backButton.setY(this.topPos + HELP_BACK_BUTTON_Y);
@@ -901,7 +1182,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private boolean isAllowOrDenyFilterListContext() {
-        return subView == SubView.ALLOW_FILTERS || subView == SubView.DENY_FILTERS;
+        return (
+            subView == SubView.ALLOW_FILTERS || subView == SubView.DENY_FILTERS
+        );
     }
 
     private static int amountBlockLayoutKey(NodeMode nm, HybridPanel hybrid) {
@@ -914,8 +1197,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
      * priority; the extractor sub-panel edits batch.
      */
     private boolean amountFieldEditsPriority() {
-        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-        if (nm == NodeMode.EXTRACTION_FILTERING && hybridPanel == HybridPanel.FILTERING) {
+        NodeMode nm = NodeMode.fromOrdinal(
+            menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+        );
+        if (
+            nm == NodeMode.EXTRACTION_FILTERING &&
+            hybridPanel == HybridPanel.FILTERING
+        ) {
             return true;
         }
         return nm.usesInsertionPriorityField();
@@ -923,10 +1211,18 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     /** Repositions priority/quantity widgets when {@link NodeMode} or hybrid panel toggles batch vs priority (M button slot). */
     private void layoutAmountBlock() {
-        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-        boolean showMax = nm.usesExtractBatchField() && !amountFieldEditsPriority();
+        NodeMode nm = NodeMode.fromOrdinal(
+            menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+        );
+        boolean showMax =
+            nm.usesExtractBatchField() && !amountFieldEditsPriority();
 
-        int numericRowW = AMOUNT_STEPPER_W + AMOUNT_INNER_GAP + AMOUNT_EDIT_W + AMOUNT_INNER_GAP + AMOUNT_STEPPER_W;
+        int numericRowW =
+            AMOUNT_STEPPER_W +
+            AMOUNT_INNER_GAP +
+            AMOUNT_EDIT_W +
+            AMOUNT_INNER_GAP +
+            AMOUNT_STEPPER_W;
         int actionRowW = AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
         if (showMax) {
             actionRowW += AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
@@ -943,7 +1239,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         routingMinusButton.setPosition(amX, amY);
 
         int boxX = amX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
-        amountEditBoxGuiLeft = numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        amountEditBoxGuiLeft =
+            numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
         routingPriorityBox.setPosition(boxX, amY);
 
         int plusX = boxX + AMOUNT_EDIT_W + AMOUNT_INNER_GAP;
@@ -966,27 +1263,46 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private void layoutAdvancedCapBlock() {
         boolean advanced = isAdvancedFilterCapSubview();
         DuctFaceNode.EligibilityMode em =
-                DuctFaceNode.EligibilityMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE));
-        boolean filter = advanced && activeFilterBank == DuctFaceNode.FilterBank.FILTER;
+            DuctFaceNode.EligibilityMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
+            );
+        boolean filter =
+            advanced && activeFilterBank == DuctFaceNode.FilterBank.FILTER;
         boolean filterBoth = filter && em == DuctFaceNode.EligibilityMode.BOTH;
-        boolean filterRetrieveOnly = filter && em == DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
+        boolean filterRetrieveOnly =
+            filter && em == DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
 
         int editW = AMOUNT_EDIT_W;
-        int numericRowW1 = AMOUNT_STEPPER_W + AMOUNT_INNER_GAP + editW + AMOUNT_INNER_GAP + AMOUNT_STEPPER_W;
-        int actionRowW1 = AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+        int numericRowW1 =
+            AMOUNT_STEPPER_W +
+            AMOUNT_INNER_GAP +
+            editW +
+            AMOUNT_INNER_GAP +
+            AMOUNT_STEPPER_W;
+        int actionRowW1 =
+            AMOUNT_ACTION_BTN +
+            AMOUNT_BTN_GAP +
+            AMOUNT_ACTION_BTN +
+            AMOUNT_BTN_GAP +
+            AMOUNT_ACTION_BTN;
         int pairGap = filterBoth ? 18 : 0;
-        int numericRowW = filterBoth ? (numericRowW1 * 2 + pairGap) : numericRowW1;
+        int numericRowW = filterBoth
+            ? (numericRowW1 * 2 + pairGap)
+            : numericRowW1;
         int blockW = numericRowW;
         int blockGuiX = (TEXTURE_WIDTH - blockW) / 2;
         int numericGuiX = blockGuiX + (blockW - numericRowW) / 2;
 
-        int capRowGuiY = isAdvancedFilterCapSubview() ? ADVANCED_CAP_NUMERIC_ROW_GUI_Y : AMOUNT_ROW_Y;
+        int capRowGuiY = isAdvancedFilterCapSubview()
+            ? ADVANCED_CAP_NUMERIC_ROW_GUI_Y
+            : AMOUNT_ROW_Y;
         int amX = this.leftPos + numericGuiX;
         int amY = this.topPos + capRowGuiY;
         advCapMinusButton.setPosition(amX, amY);
 
         int boxX = amX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
-        advCapEditBoxGuiLeft = numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        advCapEditBoxGuiLeft =
+            numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
         advCapEditBox.setPosition(boxX, amY);
         advCapEditBox.setWidth(editW);
 
@@ -1006,7 +1322,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int offsetX = numericRowW1 + pairGap;
             int amX2 = amX + offsetX;
             int boxX2 = amX2 + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
-            advCap2EditBoxGuiLeft = numericGuiX + offsetX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+            advCap2EditBoxGuiLeft =
+                numericGuiX + offsetX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
             int plusX2 = boxX2 + editW + AMOUNT_INNER_GAP;
 
             advCap2MinusButton.setPosition(amX2, amY);
@@ -1024,7 +1341,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         } else if (filterRetrieveOnly) {
             // In retrieve-only, the Keep configurator is the primary one and must be centered.
             advCap2MinusButton.setPosition(amX, amY);
-            advCap2EditBoxGuiLeft = numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+            advCap2EditBoxGuiLeft =
+                numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
             advCap2EditBox.setPosition(boxX, amY);
             advCap2EditBox.setWidth(editW);
             advCap2PlusButton.setPosition(plusX, amY);
@@ -1062,7 +1380,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         while (list.size() <= editModeFilterIndex) {
             list.add("");
         }
-        String line = list.get(editModeFilterIndex) != null ? list.get(editModeFilterIndex) : "";
+        String line =
+            list.get(editModeFilterIndex) != null
+                ? list.get(editModeFilterIndex)
+                : "";
         originalFilterValue = line;
         editModeTextBox.setValue(line);
         editModeTextBox.setCursorPosition(0);
@@ -1131,20 +1452,28 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private void applySubViewVisibility() {
         boolean main = subView == SubView.MAIN;
         boolean advancedFiltering = subView == SubView.ADVANCED_FILTERING;
-        boolean filterList = subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS;
+        boolean filterList =
+            subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS;
         boolean howto = subView == SubView.HOW_TO_USE;
         boolean edit = inEditMode();
-        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-        boolean inHybridSelector = nm.isHybrid() && hybridPanel == HybridPanel.NONE;
+        NodeMode nm = NodeMode.fromOrdinal(
+            menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+        );
+        boolean inHybridSelector =
+            nm.isHybrid() && hybridPanel == HybridPanel.NONE;
         boolean showMainStyleChrome = main || advancedFiltering;
-        boolean multiTransport = menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1;
-        boolean hubLayer = multiTransport && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
+        boolean multiTransport =
+            menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1;
+        boolean hubLayer =
+            multiTransport &&
+            menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
         boolean detailMain = main && !hubLayer;
 
         denyNavButton.visible = detailMain;
         listLogicButton.visible = detailMain;
         allowNavButton.visible = detailMain;
-        routingModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering && !hubLayer;
+        routingModeButton.visible =
+            showMainStyleChrome && !howto && !advancedFiltering && !hubLayer;
 
         boolean showAmountBlock = (detailMain && !howto && !inHybridSelector);
         routingMinusButton.visible = showAmountBlock;
@@ -1152,9 +1481,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         routingPriorityBox.visible = showAmountBlock;
         amountClearButton.visible = showAmountBlock;
         amountApplyButton.visible = showAmountBlock;
-        NodeMode amountNodeMode = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        NodeMode amountNodeMode = NodeMode.fromOrdinal(
+            menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+        );
         amountMaxButton.visible =
-                showAmountBlock && amountNodeMode.usesExtractBatchField() && !amountFieldEditsPriority();
+            showAmountBlock &&
+            amountNodeMode.usesExtractBatchField() &&
+            !amountFieldEditsPriority();
         amountDiscardButton.visible = showAmountBlock;
 
         boolean showAdvCapBlock = isAdvancedFilterCapSubview();
@@ -1165,20 +1498,26 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         advCapApplyButton.visible = showAdvCapBlock;
         advCapUndoButton.visible = showAdvCapBlock;
         boolean filterBoth =
-                showAdvCapBlock
-                        && activeFilterBank == DuctFaceNode.FilterBank.FILTER
-                        && DuctFaceNode.EligibilityMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE))
-                                == DuctFaceNode.EligibilityMode.BOTH;
+            showAdvCapBlock &&
+            activeFilterBank == DuctFaceNode.FilterBank.FILTER &&
+            DuctFaceNode.EligibilityMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
+            ) ==
+            DuctFaceNode.EligibilityMode.BOTH;
         boolean filterInsertOnly =
-                showAdvCapBlock
-                        && activeFilterBank == DuctFaceNode.FilterBank.FILTER
-                        && DuctFaceNode.EligibilityMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE))
-                                == DuctFaceNode.EligibilityMode.INSERT_ONLY;
+            showAdvCapBlock &&
+            activeFilterBank == DuctFaceNode.FilterBank.FILTER &&
+            DuctFaceNode.EligibilityMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
+            ) ==
+            DuctFaceNode.EligibilityMode.INSERT_ONLY;
         boolean filterRetrieveOnly =
-                showAdvCapBlock
-                        && activeFilterBank == DuctFaceNode.FilterBank.FILTER
-                        && DuctFaceNode.EligibilityMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE))
-                                == DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
+            showAdvCapBlock &&
+            activeFilterBank == DuctFaceNode.FilterBank.FILTER &&
+            DuctFaceNode.EligibilityMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
+            ) ==
+            DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
 
         // Primary cap editor acts as Limit for FILTER, otherwise as Keep/Limit depending on bank.
         if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
@@ -1198,7 +1537,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         advCap2UndoButton.visible = filterBoth || filterRetrieveOnly;
 
         // Hub layer: same widget positions as detail; only filters/routing/channel stay hidden (see detailMain).
-        nodeModeButton.visible = showMainStyleChrome && !howto && !advancedFiltering;
+        nodeModeButton.visible =
+            showMainStyleChrome && !howto && !advancedFiltering;
         selfFeedStub.visible = false;
         opaqueRenderingButton.visible = main && !howto && !advancedFiltering;
 
@@ -1209,12 +1549,15 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             b.visible = showTransportPickers;
         }
         if (hubBackButton != null) {
-            hubBackButton.visible = detailMain && multiTransport && !howto && !advancedFiltering;
+            hubBackButton.visible =
+                detailMain && multiTransport && !howto && !advancedFiltering;
         }
 
-        backButton.visible = howto || advancedFiltering || (filterList && !edit);
+        backButton.visible =
+            howto || advancedFiltering || (filterList && !edit);
         // Valid keys should always be consultable while browsing filters (allow/deny) and in advanced filtering.
-        validKeysButton.visible = (filterList || advancedFiltering) && !howto && !hubLayer;
+        validKeysButton.visible =
+            (filterList || advancedFiltering) && !howto && !hubLayer;
 
         boolean showFilterEntryList = filterList;
         for (Button b : filterEditButtons) {
@@ -1226,10 +1569,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         if (editModeTextBox != null) {
             boolean showFilterEditChrome =
-                    edit
-                            && (subView == SubView.DENY_FILTERS
-                                    || subView == SubView.ALLOW_FILTERS
-                                    || subView == SubView.ADVANCED_FILTERING);
+                edit &&
+                (subView == SubView.DENY_FILTERS ||
+                    subView == SubView.ALLOW_FILTERS ||
+                    subView == SubView.ADVANCED_FILTERING);
             editModeTextBox.visible = showFilterEditChrome;
             if (leftArrowButton != null) {
                 leftArrowButton.visible = showFilterEditChrome;
@@ -1249,28 +1592,47 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (advancedFilteringOpenButton != null) {
                 SubView effLine = effectiveFilterLineSubview();
                 boolean allowOrDeny =
-                        effLine == SubView.ALLOW_FILTERS || effLine == SubView.DENY_FILTERS;
-                advancedFilteringOpenButton.visible = showFilterEditChrome && allowOrDeny;
+                    effLine == SubView.ALLOW_FILTERS ||
+                    effLine == SubView.DENY_FILTERS;
+                advancedFilteringOpenButton.visible =
+                    showFilterEditChrome && allowOrDeny;
                 // In DENY list we show the button but keep it disabled (future feature hook).
-                advancedFilteringOpenButton.active = effLine == SubView.ALLOW_FILTERS;
+                advancedFilteringOpenButton.active =
+                    effLine == SubView.ALLOW_FILTERS;
             }
             if (editModeApplyButton != null && editModeCloseButton != null) {
                 if (isAdvancedFilterCapSubview()) {
                     editModeApplyButton.setTooltip(
-                            Tooltip.create(
-                                    Component.translatable(
-                                            "gui.another_dynamics.duct_node.filters.apply_keep_open.tooltip")));
+                        Tooltip.create(
+                            Component.translatable(
+                                "gui.another_dynamics.duct_node.filters.apply_keep_open.tooltip"
+                            )
+                        )
+                    );
                     editModeCloseButton.setMessage(Component.literal("\u2715"));
                     editModeCloseButton.setTooltip(
-                            Tooltip.create(
-                                    Component.translatable("gui.another_dynamics.duct_node.amount.undo.tooltip")));
+                        Tooltip.create(
+                            Component.translatable(
+                                "gui.another_dynamics.duct_node.amount.undo.tooltip"
+                            )
+                        )
+                    );
                 } else {
                     editModeApplyButton.setTooltip(
-                            Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.apply")));
+                        Tooltip.create(
+                            Component.translatable(
+                                "gui.another_dynamics.duct_node.filters.apply"
+                            )
+                        )
+                    );
                     editModeCloseButton.setMessage(Component.literal("\u2715"));
                     editModeCloseButton.setTooltip(
-                            Tooltip.create(
-                                    Component.translatable("gui.another_dynamics.duct_node.filters.close_without_saving")));
+                        Tooltip.create(
+                            Component.translatable(
+                                "gui.another_dynamics.duct_node.filters.close_without_saving"
+                            )
+                        )
+                    );
                 }
             }
             applyFilterEntryEditBoxTextStyle();
@@ -1280,11 +1642,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         layoutMainChromeRowsForHubOrDetail();
         layoutTransportKindPickers();
         layoutHubBackButton();
-        if ((subView == SubView.ADVANCED_FILTERING
-                        || subView == SubView.ALLOW_FILTERS
-                        || subView == SubView.DENY_FILTERS)
-                && editModeTextBox != null
-                && inEditMode()) {
+        if (
+            (subView == SubView.ADVANCED_FILTERING ||
+                subView == SubView.ALLOW_FILTERS ||
+                subView == SubView.DENY_FILTERS) &&
+            editModeTextBox != null &&
+            inEditMode()
+        ) {
             layoutEditModeWidgets();
         }
     }
@@ -1319,32 +1683,38 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int buttonY = entryY + (ENTRY_HEIGHT - buttonSize) / 2;
 
             final int idx = filterIndex;
-            Button del =
-                    Button.builder(Component.literal("C"), b -> {
-                                playClickSound();
-                                getEditingList().set(idx, "");
-                                if (effectiveFilterLineSubview() == SubView.ALLOW_FILTERS) {
-                                    List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
-                                    while (caps.size() <= idx) {
-                                        caps.add(0);
-                                    }
-                                    caps.set(idx, 0);
-                                }
-                                pushFiltersToServer();
-                            })
-                            .bounds(deleteX, buttonY, buttonSize, buttonSize)
-                            .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.clear")))
-                            .build();
+            Button del = Button.builder(Component.literal("C"), b -> {
+                playClickSound();
+                getEditingList().set(idx, "");
+                if (effectiveFilterLineSubview() == SubView.ALLOW_FILTERS) {
+                    List<Integer> caps = menu.getClientAllowCaps(
+                        activeFilterBank
+                    );
+                    while (caps.size() <= idx) {
+                        caps.add(0);
+                    }
+                    caps.set(idx, 0);
+                }
+                pushFiltersToServer();
+            })
+                .bounds(deleteX, buttonY, buttonSize, buttonSize)
+                .tooltip(
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.filters.clear"
+                        )
+                    )
+                )
+                .build();
             filterDeleteButtons.add(del);
             addRenderableWidget(del);
 
-            Button ed =
-                    Button.builder(Component.literal("\u270e"), b -> {
-                                playClickSound();
-                                enterEditMode(idx);
-                            })
-                            .bounds(editX, buttonY, buttonSize, buttonSize)
-                            .build();
+            Button ed = Button.builder(Component.literal("\u270e"), b -> {
+                playClickSound();
+                enterEditMode(idx);
+            })
+                .bounds(editX, buttonY, buttonSize, buttonSize)
+                .build();
             filterEditButtons.add(ed);
             addRenderableWidget(ed);
         }
@@ -1354,16 +1724,18 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private int currentFilterMaxSlots() {
         boolean hyb = useHybridFilterCaps();
         SubView eff = effectiveFilterLineSubview();
-        int raw =
-                (eff == SubView.ALLOW_FILTERS || eff == SubView.ADVANCED_FILTERING)
-                        ? menu.filterAllowCap(hyb)
-                        : menu.filterDenyCap(hyb);
+        int raw = (eff == SubView.ALLOW_FILTERS ||
+            eff == SubView.ADVANCED_FILTERING)
+            ? menu.filterAllowCap(hyb)
+            : menu.filterDenyCap(hyb);
         return Math.max(0, raw);
     }
 
     /** Hybrid selector uses no filter caps; sub-panels use {@code filter.*_hybrid} from the duct datapack. */
     private boolean useHybridFilterCaps() {
-        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        NodeMode nm = NodeMode.fromOrdinal(
+            menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+        );
         return nm.isHybrid() && hybridPanel != HybridPanel.NONE;
     }
 
@@ -1408,7 +1780,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private boolean scrollUpSilent() {
-        if (currentFilterMaxSlots() > visibleFilterEntries() && filterScrollOffset > 0) {
+        if (
+            currentFilterMaxSlots() > visibleFilterEntries() &&
+            filterScrollOffset > 0
+        ) {
             setFilterScrollOffset(filterScrollOffset - 1);
             return true;
         }
@@ -1417,26 +1792,40 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     private boolean scrollDownSilent() {
         int maxScroll = maxFilterScroll();
-        if (currentFilterMaxSlots() > visibleFilterEntries() && filterScrollOffset < maxScroll) {
+        if (
+            currentFilterMaxSlots() > visibleFilterEntries() &&
+            filterScrollOffset < maxScroll
+        ) {
             setFilterScrollOffset(filterScrollOffset + 1);
             return true;
         }
         return false;
     }
 
-    private boolean handleFilterScrollButtonClick(double mouseX, double mouseY) {
+    private boolean handleFilterScrollButtonClick(
+        double mouseX,
+        double mouseY
+    ) {
         if (currentFilterMaxSlots() <= visibleFilterEntries()) {
             return false;
         }
         int gx = this.leftPos;
         int gy = this.topPos;
-        if (mouseX >= gx + SCROLLBAR_X_REL && mouseX < gx + SCROLLBAR_X_REL + SCROLLBAR_WIDTH
-                && mouseY >= gy + BUTTON_UP_Y_REL && mouseY < gy + BUTTON_UP_Y_REL + HANDLE_SIZE) {
+        if (
+            mouseX >= gx + SCROLLBAR_X_REL &&
+            mouseX < gx + SCROLLBAR_X_REL + SCROLLBAR_WIDTH &&
+            mouseY >= gy + BUTTON_UP_Y_REL &&
+            mouseY < gy + BUTTON_UP_Y_REL + HANDLE_SIZE
+        ) {
             scrollUp();
             return true;
         }
-        if (mouseX >= gx + SCROLLBAR_X_REL && mouseX < gx + SCROLLBAR_X_REL + SCROLLBAR_WIDTH
-                && mouseY >= gy + BUTTON_DOWN_Y_REL && mouseY < gy + BUTTON_DOWN_Y_REL + HANDLE_SIZE) {
+        if (
+            mouseX >= gx + SCROLLBAR_X_REL &&
+            mouseX < gx + SCROLLBAR_X_REL + SCROLLBAR_WIDTH &&
+            mouseY >= gy + BUTTON_DOWN_Y_REL &&
+            mouseY < gy + BUTTON_DOWN_Y_REL + HANDLE_SIZE
+        ) {
             scrollDown();
             return true;
         }
@@ -1454,9 +1843,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int gx = this.leftPos;
         int gy = this.topPos;
         double scrollRatio = (double) filterScrollOffset / maxScroll;
-        int handleY = gy + SCROLLBAR_Y_REL + (int) (scrollRatio * (SCROLLBAR_HEIGHT - HANDLE_SIZE));
-        if (mouseX >= gx + SCROLLBAR_X_REL && mouseX < gx + SCROLLBAR_X_REL + HANDLE_SIZE
-                && mouseY >= handleY && mouseY < handleY + HANDLE_SIZE) {
+        int handleY =
+            gy +
+            SCROLLBAR_Y_REL +
+            (int) (scrollRatio * (SCROLLBAR_HEIGHT - HANDLE_SIZE));
+        if (
+            mouseX >= gx + SCROLLBAR_X_REL &&
+            mouseX < gx + SCROLLBAR_X_REL + HANDLE_SIZE &&
+            mouseY >= handleY &&
+            mouseY < handleY + HANDLE_SIZE
+        ) {
             isDraggingHandle = true;
             dragStartY = (int) mouseY;
             dragStartScrollOffset = filterScrollOffset;
@@ -1466,15 +1862,23 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return false;
     }
 
-    private boolean handleFilterScrollbarTrackClick(double mouseX, double mouseY) {
+    private boolean handleFilterScrollbarTrackClick(
+        double mouseX,
+        double mouseY
+    ) {
         if (currentFilterMaxSlots() <= visibleFilterEntries()) {
             return false;
         }
         int gx = this.leftPos;
         int gy = this.topPos;
-        if (mouseX >= gx + SCROLLBAR_X_REL && mouseX < gx + SCROLLBAR_X_REL + SCROLLBAR_WIDTH
-                && mouseY >= gy + SCROLLBAR_Y_REL && mouseY < gy + SCROLLBAR_Y_REL + SCROLLBAR_HEIGHT) {
-            float clickRatio = (float) (mouseY - (gy + SCROLLBAR_Y_REL)) / SCROLLBAR_HEIGHT;
+        if (
+            mouseX >= gx + SCROLLBAR_X_REL &&
+            mouseX < gx + SCROLLBAR_X_REL + SCROLLBAR_WIDTH &&
+            mouseY >= gy + SCROLLBAR_Y_REL &&
+            mouseY < gy + SCROLLBAR_Y_REL + SCROLLBAR_HEIGHT
+        ) {
+            float clickRatio =
+                (float) (mouseY - (gy + SCROLLBAR_Y_REL)) / SCROLLBAR_HEIGHT;
             clickRatio = Mth.clamp(clickRatio, 0.0f, 1.0f);
             int maxScroll = maxFilterScroll();
             int newOffset = (int) (clickRatio * maxScroll);
@@ -1500,10 +1904,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
      * filtering (list rows are not drawn in advanced, but the entry editor stays aligned with the non-advanced layout).
      */
     private int editModeRowAnchorScreenY() {
-        return this.topPos
-                + FIRST_FILTER_ROW_Y
-                + VISIBLE_FILTER_ENTRIES * ENTRY_HEIGHT
-                + EDIT_MODE_GAP_BELOW_LIST;
+        return (
+            this.topPos +
+            FIRST_FILTER_ROW_Y +
+            VISIBLE_FILTER_ENTRIES * ENTRY_HEIGHT +
+            EDIT_MODE_GAP_BELOW_LIST
+        );
     }
 
     /** Repositions filter-entry edit widgets when {@link #leftPos}/{@link #topPos} or {@link #subView} changes. */
@@ -1551,7 +1957,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int textBoxY = slotY + slotSize + 2;
         int textBoxHeight = 15;
         int textBoxX = this.leftPos + ENTRY_X + EDIT_MODE_TEXT_INSET_X;
-        int entryContentRight = this.leftPos + ENTRY_X + ENTRY_WIDTH - EDIT_MODE_TEXT_INSET_X;
+        int entryContentRight =
+            this.leftPos + ENTRY_X + ENTRY_WIDTH - EDIT_MODE_TEXT_INSET_X;
         int textBoxWidth = entryContentRight - textBoxX;
         editModeTextBox.setPosition(textBoxX, textBoxY);
         editModeTextBox.setWidth(textBoxWidth);
@@ -1603,7 +2010,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             originalAllowCapValue = 0;
         }
         createEditModeUI();
-        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
+        filterScrollOffset = Mth.clamp(
+            filterScrollOffset,
+            0,
+            maxFilterScroll()
+        );
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
         layoutEditModeWidgets();
@@ -1618,7 +2029,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
             list.set(editModeFilterIndex, originalFilterValue);
             SubView eff = effectiveFilterLineSubview();
-            if (eff == SubView.ALLOW_FILTERS || eff == SubView.ADVANCED_FILTERING) {
+            if (
+                eff == SubView.ALLOW_FILTERS ||
+                eff == SubView.ADVANCED_FILTERING
+            ) {
                 List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
                 while (caps.size() <= editModeFilterIndex) {
                     caps.add(0);
@@ -1631,7 +2045,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         removeEditModeUI();
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
-        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
+        filterScrollOffset = Mth.clamp(
+            filterScrollOffset,
+            0,
+            maxFilterScroll()
+        );
     }
 
     private void createEditModeUI() {
@@ -1640,85 +2058,118 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int buttonSize = 12;
 
         leftArrowButton = Button.builder(Component.literal("\u2190"), b -> {
-                    playClickSound();
-                    cycleFilterVariant(-1);
-                })
-                .bounds(0, 0, buttonSize, buttonSize)
-                .build();
+            playClickSound();
+            cycleFilterVariant(-1);
+        })
+            .bounds(0, 0, buttonSize, buttonSize)
+            .build();
         addRenderableWidget(leftArrowButton);
 
         rightArrowButton = Button.builder(Component.literal("\u2192"), b -> {
-                    playClickSound();
-                    cycleFilterVariant(1);
-                })
-                .bounds(0, 0, buttonSize, buttonSize)
-                .build();
+            playClickSound();
+            cycleFilterVariant(1);
+        })
+            .bounds(0, 0, buttonSize, buttonSize)
+            .build();
         addRenderableWidget(rightArrowButton);
 
         advancedFilteringOpenButton = null;
-        if (effectiveFilterLineSubview() == SubView.ALLOW_FILTERS
-                || effectiveFilterLineSubview() == SubView.DENY_FILTERS) {
-            advancedFilteringOpenButton =
-                    Button.builder(
-                                    Component.translatable("gui.another_dynamics.duct_node.advanced_filtering.button"),
-                                    b -> {
-                                        playClickSound();
-                                        openAdvancedFiltering();
-                                    })
-                            .bounds(0, 0, ADVANCED_FILTER_BUTTON_WIDTH, BTN_H)
-                            .tooltip(
-                                    Tooltip.create(
-                                            Component.translatable(
-                                                    "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip")))
-                            .build();
+        if (
+            effectiveFilterLineSubview() == SubView.ALLOW_FILTERS ||
+            effectiveFilterLineSubview() == SubView.DENY_FILTERS
+        ) {
+            advancedFilteringOpenButton = Button.builder(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.advanced_filtering.button"
+                ),
+                b -> {
+                    playClickSound();
+                    openAdvancedFiltering();
+                }
+            )
+                .bounds(0, 0, ADVANCED_FILTER_BUTTON_WIDTH, BTN_H)
+                .tooltip(
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip"
+                        )
+                    )
+                )
+                .build();
             addRenderableWidget(advancedFilteringOpenButton);
             // Visible but disabled in deny list (future feature hook).
-            advancedFilteringOpenButton.active = effectiveFilterLineSubview() == SubView.ALLOW_FILTERS;
+            advancedFilteringOpenButton.active =
+                effectiveFilterLineSubview() == SubView.ALLOW_FILTERS;
         }
 
-        editModeTextBox = new EditBox(this.font, 0, 0, 1, 15, Component.empty());
+        editModeTextBox = new EditBox(
+            this.font,
+            0,
+            0,
+            1,
+            15,
+            Component.empty()
+        );
         editModeTextBox.setMaxLength(16_384);
         editModeTextBox.setValue(originalFilterValue);
         editModeTextBox.setResponder(v -> {});
         addRenderableWidget(editModeTextBox);
 
         editModeClearButton = Button.builder(Component.literal("C"), b -> {
-                    playClickSound();
-                    if (editModeTextBox != null) {
-                        editModeTextBox.setValue("");
-                        editModeTextBox.setCursorPosition(0);
-                        editModeTextBox.setHighlightPos(0);
-                    }
-                })
-                .bounds(0, 0, buttonSize, buttonSize)
-                .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.clear")))
-                .build();
+            playClickSound();
+            if (editModeTextBox != null) {
+                editModeTextBox.setValue("");
+                editModeTextBox.setCursorPosition(0);
+                editModeTextBox.setHighlightPos(0);
+            }
+        })
+            .bounds(0, 0, buttonSize, buttonSize)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.filters.clear"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(editModeClearButton);
 
         editModeApplyButton = Button.builder(Component.literal("A"), b -> {
-                    if (isAdvancedFilterCapSubview()) {
-                        applyFilterEditDraft();
-                    } else {
-                        playClickSound();
-                        applyEditModeAndClose();
-                    }
-                })
-                .bounds(0, 0, buttonSize, buttonSize)
-                .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.apply")))
-                .build();
+            if (isAdvancedFilterCapSubview()) {
+                applyFilterEditDraft();
+            } else {
+                playClickSound();
+                applyEditModeAndClose();
+            }
+        })
+            .bounds(0, 0, buttonSize, buttonSize)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.filters.apply"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(editModeApplyButton);
 
         editModeCloseButton = Button.builder(Component.literal("\u2715"), b -> {
-                    if (isAdvancedFilterCapSubview()) {
-                        undoFilterEditDraft();
-                    } else {
-                        playClickSound();
-                        exitEditMode(true);
-                    }
-                })
-                .bounds(0, 0, buttonSize, buttonSize)
-                .tooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.close_without_saving")))
-                .build();
+            if (isAdvancedFilterCapSubview()) {
+                undoFilterEditDraft();
+            } else {
+                playClickSound();
+                exitEditMode(true);
+            }
+        })
+            .bounds(0, 0, buttonSize, buttonSize)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.filters.close_without_saving"
+                    )
+                )
+            )
+            .build();
         addRenderableWidget(editModeCloseButton);
 
         layoutEditModeWidgets();
@@ -1736,7 +2187,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
      * edit widgets open.
      */
     private void applyFilterEditDraft() {
-        if (editModeTextBox == null || editModeFilterIndex < 0 || !isAdvancedFilterCapSubview()) {
+        if (
+            editModeTextBox == null ||
+            editModeFilterIndex < 0 ||
+            !isAdvancedFilterCapSubview()
+        ) {
             return;
         }
         playClickSound();
@@ -1758,7 +2213,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     /** Reverts filter text and Limit/Keep draft to last applied values (advanced filtering only). */
     private void undoFilterEditDraft() {
-        if (editModeTextBox == null || editModeFilterIndex < 0 || !isAdvancedFilterCapSubview()) {
+        if (
+            editModeTextBox == null ||
+            editModeFilterIndex < 0 ||
+            !isAdvancedFilterCapSubview()
+        ) {
             return;
         }
         playClickSound();
@@ -1778,7 +2237,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
             list.set(editModeFilterIndex, value);
             SubView eff = effectiveFilterLineSubview();
-            if (eff == SubView.ALLOW_FILTERS || eff == SubView.ADVANCED_FILTERING) {
+            if (
+                eff == SubView.ALLOW_FILTERS ||
+                eff == SubView.ADVANCED_FILTERING
+            ) {
                 List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
                 while (caps.size() <= editModeFilterIndex) {
                     caps.add(0);
@@ -1794,7 +2256,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         removeEditModeUI();
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
-        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
+        filterScrollOffset = Mth.clamp(
+            filterScrollOffset,
+            0,
+            maxFilterScroll()
+        );
     }
 
     private void removeEditModeUI() {
@@ -1836,16 +2302,25 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private boolean isFluidFilterTransport() {
-        return menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal();
+        return (
+            menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) ==
+            DuctTransportKind.FLUID.ordinal()
+        );
     }
 
     private boolean isGasFilterTransport() {
-        return menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.GAS.ordinal();
+        return (
+            menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) ==
+            DuctTransportKind.GAS.ordinal()
+        );
     }
 
     private boolean isEnergyOrHeatTransport() {
         int k = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
-        return k == DuctTransportKind.ENERGY.ordinal() || k == DuctTransportKind.HEAT.ordinal();
+        return (
+            k == DuctTransportKind.ENERGY.ordinal() ||
+            k == DuctTransportKind.HEAT.ordinal()
+        );
     }
 
     private String filterHelpTextPrefix() {
@@ -1883,14 +2358,42 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int slotSize = 18;
         int slotX = editModeSlotX();
         int slotY = editModeSlotY();
-        guiGraphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, slotSize, slotSize, slotSize, slotSize);
-        if (ghostSlotGas != null && !MekanismChemicalCompat.isEmptyStack(ghostSlotGas)) {
-            GuiChemicalStillBlit.blit16(guiGraphics, ghostSlotGas, slotX + 1, slotY + 1);
+        guiGraphics.blit(
+            SINGLE_SLOT,
+            slotX,
+            slotY,
+            0,
+            0,
+            slotSize,
+            slotSize,
+            slotSize,
+            slotSize
+        );
+        if (
+            ghostSlotGas != null &&
+            !MekanismChemicalCompat.isEmptyStack(ghostSlotGas)
+        ) {
+            GuiChemicalStillBlit.blit16(
+                guiGraphics,
+                ghostSlotGas,
+                slotX + 1,
+                slotY + 1
+            );
         } else if (!ghostSlotFluid.isEmpty()) {
-            GuiFluidStillBlit.blit16(guiGraphics, ghostSlotFluid, slotX + 1, slotY + 1);
+            GuiFluidStillBlit.blit16(
+                guiGraphics,
+                ghostSlotFluid,
+                slotX + 1,
+                slotY + 1
+            );
         } else if (!ghostSlotItem.isEmpty()) {
             guiGraphics.renderItem(ghostSlotItem, slotX + 1, slotY + 1);
-            guiGraphics.renderItemDecorations(this.font, ghostSlotItem, slotX + 1, slotY + 1);
+            guiGraphics.renderItemDecorations(
+                this.font,
+                ghostSlotItem,
+                slotX + 1,
+                slotY + 1
+            );
         }
     }
 
@@ -1913,7 +2416,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             playClickSound();
         } else if (isFluidFilterTransport()) {
             ghostSlotGas = null;
-            Optional<FluidStack> contained = FluidUtil.getFluidContained(cursorItem);
+            Optional<FluidStack> contained = FluidUtil.getFluidContained(
+                cursorItem
+            );
             if (contained.isPresent() && !contained.get().isEmpty()) {
                 ghostSlotItem = ItemStack.EMPTY;
                 ghostSlotFluid = contained.get().copy();
@@ -1926,16 +2431,22 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
             currentFilterVariantIndex = 0;
             if (editModeTextBox != null) {
-                String v = filterVariants.isEmpty() ? "" : filterVariants.getFirst();
+                String v = filterVariants.isEmpty()
+                    ? ""
+                    : filterVariants.getFirst();
                 editModeTextBox.setValue(v);
                 editModeTextBox.setCursorPosition(0);
                 editModeTextBox.setHighlightPos(0);
             }
             playClickSound();
-        } else if (isGasFilterTransport() && MekanismChemicalCompat.isLoaded()) {
+        } else if (
+            isGasFilterTransport() && MekanismChemicalCompat.isLoaded()
+        ) {
             ghostSlotFluid = FluidStack.EMPTY;
             ghostSlotItem = ItemStack.EMPTY;
-            Object sample = MekanismChemicalCompat.sampleFromItemStack(cursorItem);
+            Object sample = MekanismChemicalCompat.sampleFromItemStack(
+                cursorItem
+            );
             if (!MekanismChemicalCompat.isEmptyStack(sample)) {
                 ghostSlotGas = sample;
                 filterVariants = generateGasFilterVariants(sample);
@@ -1945,7 +2456,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
             currentFilterVariantIndex = 0;
             if (editModeTextBox != null) {
-                String v = filterVariants.isEmpty() ? "" : filterVariants.getFirst();
+                String v = filterVariants.isEmpty()
+                    ? ""
+                    : filterVariants.getFirst();
                 editModeTextBox.setValue(v);
                 editModeTextBox.setCursorPosition(0);
                 editModeTextBox.setHighlightPos(0);
@@ -1964,6 +2477,209 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
             playClickSound();
         }
+    }
+
+    /**
+     * Handle dropping an ingredient from JEI onto the ghost filter slot.
+     * This method accepts the ingredient directly from JEI instead of reading from the cursor.
+     * For ItemStack, it attempts to extract fluids/gases before treating as a plain item.
+     *
+     * @param ingredient The ingredient dropped from JEI (ItemStack, FluidStack, or Mekanism chemical)
+     */
+    private void handleGhostIngredientDrop(Object ingredient) {
+        AnotherDynamicsMod.LOGGER.info(
+            "[JEI Ghost] Ingredient dropped: {} (type: {})",
+            ingredient,
+            ingredient != null ? ingredient.getClass().getSimpleName() : "null"
+        );
+
+        if (ingredient == null) {
+            AnotherDynamicsMod.LOGGER.info(
+                "[JEI Ghost] Clearing ghost slot (null ingredient)"
+            );
+            // Clear the ghost slot
+            ghostSlotItem = ItemStack.EMPTY;
+            ghostSlotFluid = FluidStack.EMPTY;
+            ghostSlotGas = null;
+            filterVariants.clear();
+            currentFilterVariantIndex = 0;
+            if (editModeTextBox != null) {
+                editModeTextBox.setValue("");
+                editModeTextBox.setCursorPosition(0);
+                editModeTextBox.setHighlightPos(0);
+            }
+            playClickSound();
+            applyFilterEditDraft();
+            return;
+        }
+
+        // Handle FluidStack directly from JEI
+        if (ingredient instanceof FluidStack fluidStack) {
+            AnotherDynamicsMod.LOGGER.info(
+                "[JEI Ghost] Handling FluidStack: {}",
+                fluidStack
+            );
+            ghostSlotGas = null;
+            if (!fluidStack.isEmpty()) {
+                ghostSlotItem = ItemStack.EMPTY;
+                ghostSlotFluid = fluidStack.copy();
+                filterVariants = generateFluidFilterVariants(ghostSlotFluid);
+                AnotherDynamicsMod.LOGGER.info(
+                    "[JEI Ghost] Set ghostSlotFluid, variants: {}",
+                    filterVariants.size()
+                );
+            } else {
+                ghostSlotFluid = FluidStack.EMPTY;
+                ghostSlotItem = ItemStack.EMPTY;
+                filterVariants = List.of();
+            }
+            currentFilterVariantIndex = 0;
+            if (editModeTextBox != null) {
+                String v = filterVariants.isEmpty()
+                    ? ""
+                    : filterVariants.getFirst();
+                editModeTextBox.setValue(v);
+                editModeTextBox.setCursorPosition(0);
+                editModeTextBox.setHighlightPos(0);
+            }
+            playClickSound();
+            applyFilterEditDraft();
+            return;
+        }
+
+        // Handle ItemStack - try to extract fluid or gas first
+        if (ingredient instanceof ItemStack itemStack) {
+            AnotherDynamicsMod.LOGGER.info(
+                "[JEI Ghost] Handling ItemStack: {}",
+                itemStack.getItem()
+            );
+
+            if (itemStack.isEmpty()) {
+                AnotherDynamicsMod.LOGGER.info(
+                    "[JEI Ghost] ItemStack is empty"
+                );
+                ghostSlotItem = ItemStack.EMPTY;
+                ghostSlotFluid = FluidStack.EMPTY;
+                ghostSlotGas = null;
+                filterVariants = List.of();
+                currentFilterVariantIndex = 0;
+                if (editModeTextBox != null) {
+                    editModeTextBox.setValue("");
+                    editModeTextBox.setCursorPosition(0);
+                    editModeTextBox.setHighlightPos(0);
+                }
+                playClickSound();
+                applyFilterEditDraft();
+                return;
+            }
+
+            // Try to extract fluid first
+            Optional<FluidStack> fluidContained = FluidUtil.getFluidContained(
+                itemStack
+            );
+            if (fluidContained.isPresent() && !fluidContained.get().isEmpty()) {
+                AnotherDynamicsMod.LOGGER.info(
+                    "[JEI Ghost] Extracted FluidStack from item: {}",
+                    fluidContained.get()
+                );
+                ghostSlotGas = null;
+                ghostSlotItem = ItemStack.EMPTY;
+                ghostSlotFluid = fluidContained.get().copy();
+                filterVariants = generateFluidFilterVariants(ghostSlotFluid);
+                currentFilterVariantIndex = 0;
+                if (editModeTextBox != null) {
+                    String v = filterVariants.isEmpty()
+                        ? ""
+                        : filterVariants.getFirst();
+                    editModeTextBox.setValue(v);
+                    editModeTextBox.setCursorPosition(0);
+                    editModeTextBox.setHighlightPos(0);
+                }
+                playClickSound();
+                applyFilterEditDraft();
+                return;
+            }
+
+            // Try to extract Mekanism chemical if loaded
+            if (MekanismChemicalCompat.isLoaded()) {
+                Object chemicalSample =
+                    MekanismChemicalCompat.sampleFromItemStack(itemStack);
+                if (!MekanismChemicalCompat.isEmptyStack(chemicalSample)) {
+                    AnotherDynamicsMod.LOGGER.info(
+                        "[JEI Ghost] Extracted Mekanism chemical from item: {}",
+                        chemicalSample
+                    );
+                    ghostSlotFluid = FluidStack.EMPTY;
+                    ghostSlotItem = ItemStack.EMPTY;
+                    ghostSlotGas = chemicalSample;
+                    filterVariants = generateGasFilterVariants(chemicalSample);
+                    currentFilterVariantIndex = 0;
+                    if (editModeTextBox != null) {
+                        String v = filterVariants.isEmpty()
+                            ? ""
+                            : filterVariants.getFirst();
+                        editModeTextBox.setValue(v);
+                        editModeTextBox.setCursorPosition(0);
+                        editModeTextBox.setHighlightPos(0);
+                    }
+                    playClickSound();
+                    applyFilterEditDraft();
+                    return;
+                }
+            }
+
+            // No fluid/gas extracted - treat as plain item
+            AnotherDynamicsMod.LOGGER.info(
+                "[JEI Ghost] No fluid/gas extracted, treating as plain item: {}",
+                itemStack.getItem()
+            );
+            ghostSlotGas = null;
+            ghostSlotFluid = FluidStack.EMPTY;
+            ghostSlotItem = itemStack.copy();
+            filterVariants = generateAllFilterVariants(itemStack);
+            currentFilterVariantIndex = 0;
+            if (editModeTextBox != null && !filterVariants.isEmpty()) {
+                editModeTextBox.setValue(filterVariants.getFirst());
+                editModeTextBox.setCursorPosition(0);
+                editModeTextBox.setHighlightPos(0);
+            }
+            playClickSound();
+            applyFilterEditDraft();
+            return;
+        }
+
+        // Handle Mekanism chemical directly (not wrapped in ItemStack)
+        if (
+            MekanismChemicalCompat.isLoaded() &&
+            !MekanismChemicalCompat.isEmptyStack(ingredient)
+        ) {
+            AnotherDynamicsMod.LOGGER.info(
+                "[JEI Ghost] Handling Mekanism chemical: {}",
+                ingredient
+            );
+            ghostSlotFluid = FluidStack.EMPTY;
+            ghostSlotItem = ItemStack.EMPTY;
+            ghostSlotGas = ingredient;
+            filterVariants = generateGasFilterVariants(ingredient);
+            currentFilterVariantIndex = 0;
+            if (editModeTextBox != null) {
+                String v = filterVariants.isEmpty()
+                    ? ""
+                    : filterVariants.getFirst();
+                editModeTextBox.setValue(v);
+                editModeTextBox.setCursorPosition(0);
+                editModeTextBox.setHighlightPos(0);
+            }
+            playClickSound();
+            applyFilterEditDraft();
+            return;
+        }
+
+        AnotherDynamicsMod.LOGGER.warn(
+            "[JEI Ghost] Unhandled ingredient type: {} ({})",
+            ingredient,
+            ingredient.getClass().getName()
+        );
     }
 
     private void cycleFilterVariant(int direction) {
@@ -1993,7 +2709,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (stack.isEmpty()) {
             return variants;
         }
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(
+            stack.getItem()
+        );
         if (itemId == null) {
             return variants;
         }
@@ -2002,20 +2720,21 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         variants.add("@" + namespace);
         Item item = stack.getItem();
         var holder = BuiltInRegistries.ITEM.wrapAsHolder(item);
-        List<String> itemTags =
-                BuiltInRegistries.ITEM.getTagNames()
-                        .filter(
-                                tagKey -> BuiltInRegistries.ITEM.getTag(tagKey)
-                                        .map(t -> t.contains(holder))
-                                        .orElse(false))
-                        .map(TagKey::location)
-                        .map(ResourceLocation::toString)
-                        .sorted()
-                        .toList();
+        List<String> itemTags = BuiltInRegistries.ITEM.getTagNames()
+            .filter(tagKey ->
+                BuiltInRegistries.ITEM.getTag(tagKey)
+                    .map(t -> t.contains(holder))
+                    .orElse(false)
+            )
+            .map(TagKey::location)
+            .map(ResourceLocation::toString)
+            .sorted()
+            .toList();
         for (String tagId : itemTags) {
             variants.add("#" + tagId);
         }
-        boolean enchantedMacro = stack.isEnchanted() || stack.is(Items.ENCHANTED_BOOK);
+        boolean enchantedMacro =
+            stack.isEnchanted() || stack.is(Items.ENCHANTED_BOOK);
         if (enchantedMacro) {
             variants.add("&enchanted");
         }
@@ -2032,8 +2751,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                         variants.add("?" + snbt);
                     }
                 }
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
         }
         return variants;
     }
@@ -2059,16 +2777,16 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         String namespace = fluidId.getNamespace();
         variants.add("@" + namespace);
         var holder = BuiltInRegistries.FLUID.wrapAsHolder(fluid);
-        List<String> fluidTags =
-                BuiltInRegistries.FLUID.getTagNames()
-                        .filter(
-                                tagKey -> BuiltInRegistries.FLUID.getTag(tagKey)
-                                        .map(t -> t.contains(holder))
-                                        .orElse(false))
-                        .map(TagKey::location)
-                        .map(ResourceLocation::toString)
-                        .sorted()
-                        .toList();
+        List<String> fluidTags = BuiltInRegistries.FLUID.getTagNames()
+            .filter(tagKey ->
+                BuiltInRegistries.FLUID.getTag(tagKey)
+                    .map(t -> t.contains(holder))
+                    .orElse(false)
+            )
+            .map(TagKey::location)
+            .map(ResourceLocation::toString)
+            .sorted()
+            .toList();
         for (String tagId : fluidTags) {
             variants.add("#" + tagId);
         }
@@ -2083,8 +2801,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             light = ft.getLightLevel(stack);
             density = ft.getDensity(stack);
             viscosity = ft.getViscosity(stack);
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
         variants.add("&temperature=" + temperature);
         variants.add("&light=" + light);
         variants.add("&density=" + density);
@@ -2097,22 +2814,25 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     variants.add("?" + snbt);
                 }
             }
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
         return variants;
     }
 
     /** Filter presets from a Mekanism chemical sample (ghost slot), mirroring {@link #generateFluidFilterVariants}. */
     private List<String> generateGasFilterVariants(Object chemicalStack) {
         List<String> variants = new ArrayList<>();
-        if (chemicalStack == null
-                || !MekanismChemicalCompat.isLoaded()
-                || MekanismChemicalCompat.isEmptyStack(chemicalStack)
-                || minecraft == null
-                || minecraft.level == null) {
+        if (
+            chemicalStack == null ||
+            !MekanismChemicalCompat.isLoaded() ||
+            MekanismChemicalCompat.isEmptyStack(chemicalStack) ||
+            minecraft == null ||
+            minecraft.level == null
+        ) {
             return variants;
         }
-        String idStr = MekanismChemicalCompat.getTypeRegistryName(chemicalStack);
+        String idStr = MekanismChemicalCompat.getTypeRegistryName(
+            chemicalStack
+        );
         if (idStr == null || idStr.isEmpty()) {
             return variants;
         }
@@ -2120,8 +2840,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         try {
             ResourceLocation id = ResourceLocation.parse(idStr);
             variants.add("@" + id.getNamespace());
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
         for (String tagId : MekanismChemicalCompat.getTagIds(chemicalStack)) {
             variants.add("#" + tagId);
         }
@@ -2129,7 +2848,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             variants.add("&radioactive");
         }
         variants.add("&tint=" + MekanismChemicalCompat.getTint(chemicalStack));
-        variants.add("&radioactivity=" + MekanismChemicalCompat.getRadioactivityPerUnit(chemicalStack));
+        variants.add(
+            "&radioactivity=" +
+                MekanismChemicalCompat.getRadioactivityPerUnit(chemicalStack)
+        );
         return variants;
     }
 
@@ -2162,9 +2884,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return switch (macro) {
                 case "enchanted" -> {
                     String snbt =
-                            "{components:{\"minecraft:enchantments\":{levels:{\"minecraft:aqua_affinity\":1}},\"minecraft:repair_cost\":1},count:1,id:\"minecraft:iron_pickaxe\"}";
+                        "{components:{\"minecraft:enchantments\":{levels:{\"minecraft:aqua_affinity\":1}},\"minecraft:repair_cost\":1},count:1,id:\"minecraft:iron_pickaxe\"}";
                     ItemStack st = parseItemStackFromSNBT(snbt);
-                    yield st.isEmpty() ? new ItemStack(Items.DIAMOND_PICKAXE) : st;
+                    yield st.isEmpty()
+                        ? new ItemStack(Items.DIAMOND_PICKAXE)
+                        : st;
                 }
                 case "damaged" -> {
                     ItemStack st = new ItemStack(Items.DIAMOND_SWORD);
@@ -2234,9 +2958,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             ResourceLocation loc = ResourceLocation.parse(tagId);
             TagKey<Fluid> tagKey = TagKey.create(Registries.FLUID, loc);
             return BuiltInRegistries.FLUID.getTag(tagKey)
-                    .flatMap(t -> t.stream().findFirst())
-                    .map(h -> new FluidStack(h.value(), 1000))
-                    .orElse(FluidStack.EMPTY);
+                .flatMap(t -> t.stream().findFirst())
+                .map(h -> new FluidStack(h.value(), 1000))
+                .orElse(FluidStack.EMPTY);
         } catch (Exception e) {
             return FluidStack.EMPTY;
         }
@@ -2245,7 +2969,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private static FluidStack firstFluidInMod(String modId) {
         for (Fluid fluid : BuiltInRegistries.FLUID) {
             ResourceLocation id = BuiltInRegistries.FLUID.getKey(fluid);
-            if (id != null && id.getNamespace().startsWith(modId) && fluid != Fluids.EMPTY) {
+            if (
+                id != null &&
+                id.getNamespace().startsWith(modId) &&
+                fluid != Fluids.EMPTY
+            ) {
                 return new FluidStack(fluid, 1000);
             }
         }
@@ -2254,11 +2982,13 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     /** Sample chemical for filter row icon when the duct is in gas (Mekanism) filter mode. */
     private Object getDisplayGasForFilter(String filter) {
-        if (filter == null
-                || filter.trim().isEmpty()
-                || !MekanismChemicalCompat.isLoaded()
-                || minecraft == null
-                || minecraft.level == null) {
+        if (
+            filter == null ||
+            filter.trim().isEmpty() ||
+            !MekanismChemicalCompat.isLoaded() ||
+            minecraft == null ||
+            minecraft.level == null
+        ) {
             return MekanismChemicalCompat.emptyStack();
         }
         String f = filter.trim();
@@ -2267,15 +2997,31 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         var reg = minecraft.level.registryAccess();
         if (f.startsWith("-")) {
-            return MekanismChemicalCompat.chemicalStackFromIdForDisplay(f.substring(1), 1024L, reg);
+            return MekanismChemicalCompat.chemicalStackFromIdForDisplay(
+                f.substring(1),
+                1024L,
+                reg
+            );
         }
         if (f.startsWith("#")) {
-            return MekanismChemicalCompat.firstChemicalInTagForDisplay(f.substring(1), 1024L, reg);
+            return MekanismChemicalCompat.firstChemicalInTagForDisplay(
+                f.substring(1),
+                1024L,
+                reg
+            );
         }
         if (f.startsWith("@")) {
-            return MekanismChemicalCompat.firstChemicalInModForDisplay(f.substring(1), 1024L, reg);
+            return MekanismChemicalCompat.firstChemicalInModForDisplay(
+                f.substring(1),
+                1024L,
+                reg
+            );
         }
-        return MekanismChemicalCompat.chemicalStackFromIdForDisplay(f, 1024L, reg);
+        return MekanismChemicalCompat.chemicalStackFromIdForDisplay(
+            f,
+            1024L,
+            reg
+        );
     }
 
     private static ItemStack parseItemStackFromSNBT(String snbtString) {
@@ -2284,7 +3030,10 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (Minecraft.getInstance().level == null) {
                 return ItemStack.EMPTY;
             }
-            return ItemStack.parse(Minecraft.getInstance().level.registryAccess(), tag).orElse(ItemStack.EMPTY);
+            return ItemStack.parse(
+                Minecraft.getInstance().level.registryAccess(),
+                tag
+            ).orElse(ItemStack.EMPTY);
         } catch (CommandSyntaxException e) {
             return ItemStack.EMPTY;
         }
@@ -2298,7 +3047,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (contents.isPresent()) {
                 var items = contents.get();
                 if (items.size() > 0) {
-                    int index = (int) ((System.currentTimeMillis() / 2000) % items.size());
+                    int index = (int) ((System.currentTimeMillis() / 2000) %
+                        items.size());
                     return new ItemStack(items.get(index).value());
                 }
             }
@@ -2317,7 +3067,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
         }
         if (!modItems.isEmpty()) {
-            int index = (int) ((System.currentTimeMillis() / 2000) % modItems.size());
+            int index = (int) ((System.currentTimeMillis() / 2000) %
+                modItems.size());
             return new ItemStack(modItems.get(index));
         }
         return ItemStack.EMPTY;
@@ -2326,16 +3077,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     private void pushFiltersToServer() {
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         List<Integer> caps2 =
-                activeFilterBank == DuctFaceNode.FilterBank.FILTER
-                        ? new ArrayList<>(menu.getClientFilterKeepCaps())
-                        : List.of();
+            activeFilterBank == DuctFaceNode.FilterBank.FILTER
+                ? new ArrayList<>(menu.getClientFilterKeepCaps())
+                : List.of();
         menu.pushFilterConfigToServer(
-                activeFilterBank,
-                new ArrayList<>(menu.getClientAllowFilters(activeFilterBank)),
-                new ArrayList<>(menu.getClientDenyFilters(activeFilterBank)),
-                new ArrayList<>(menu.getClientAllowCaps(activeFilterBank)),
-                caps2,
-                menu.getClientDenyOverridesAllow(activeFilterBank));
+            activeFilterBank,
+            new ArrayList<>(menu.getClientAllowFilters(activeFilterBank)),
+            new ArrayList<>(menu.getClientDenyFilters(activeFilterBank)),
+            new ArrayList<>(menu.getClientAllowCaps(activeFilterBank)),
+            caps2,
+            menu.getClientDenyOverridesAllow(activeFilterBank)
+        );
     }
 
     private void syncAllowCapEditBoxDisplay() {
@@ -2348,7 +3100,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         boolean limitCtx;
         if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
             int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
-            DuctFaceNode.EligibilityMode em = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
+            DuctFaceNode.EligibilityMode em =
+                DuctFaceNode.EligibilityMode.fromOrdinal(ord);
             limitCtx = em.isInsertable();
         } else {
             limitCtx = activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
@@ -2379,9 +3132,7 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             return 0;
         }
         String t = raw.trim();
-        if (t.isEmpty()
-                || t.equals("\u221e")
-                || t.equalsIgnoreCase("inf")) {
+        if (t.isEmpty() || t.equals("\u221e") || t.equalsIgnoreCase("inf")) {
             return 0;
         }
         try {
@@ -2403,8 +3154,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (editModeAllowCapValue <= 0) {
                 editModeAllowCapValue = step;
             } else {
-                editModeAllowCapValue =
-                        (int) Mth.clamp((long) editModeAllowCapValue + (long) step, 1L, Integer.MAX_VALUE);
+                editModeAllowCapValue = (int) Mth.clamp(
+                    (long) editModeAllowCapValue + (long) step,
+                    1L,
+                    Integer.MAX_VALUE
+                );
             }
         }
         syncAllowCapEditBoxDisplay();
@@ -2417,14 +3171,20 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (editModeAllowCap2Value <= 0) {
                 editModeAllowCap2Value = 0;
             } else {
-                editModeAllowCap2Value = Math.max(0, editModeAllowCap2Value - step);
+                editModeAllowCap2Value = Math.max(
+                    0,
+                    editModeAllowCap2Value - step
+                );
             }
         } else {
             if (editModeAllowCap2Value <= 0) {
                 editModeAllowCap2Value = step;
             } else {
-                editModeAllowCap2Value =
-                        (int) Mth.clamp((long) editModeAllowCap2Value + (long) step, 1L, Integer.MAX_VALUE);
+                editModeAllowCap2Value = (int) Mth.clamp(
+                    (long) editModeAllowCap2Value + (long) step,
+                    1L,
+                    Integer.MAX_VALUE
+                );
             }
         }
         syncAllowCap2EditBoxDisplay();
@@ -2432,11 +3192,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     /** Commits allow-line Limit/Keep to the client menu cache and server. */
     private void applyAllowCapField() {
-        if (!isAdvancedFilterCapSubview() || editModeFilterIndex < 0 || advCapEditBox == null) {
+        if (
+            !isAdvancedFilterCapSubview() ||
+            editModeFilterIndex < 0 ||
+            advCapEditBox == null
+        ) {
             return;
         }
         playClickSound();
-        editModeAllowCapValue = parseAllowCapFromEditBox(advCapEditBox.getValue());
+        editModeAllowCapValue = parseAllowCapFromEditBox(
+            advCapEditBox.getValue()
+        );
         List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
         while (caps.size() <= editModeFilterIndex) {
             caps.add(0);
@@ -2447,14 +3213,18 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private void applyAllowCap2Field() {
-        if (!isAdvancedFilterCapSubview()
-                || activeFilterBank != DuctFaceNode.FilterBank.FILTER
-                || editModeFilterIndex < 0
-                || advCap2EditBox == null) {
+        if (
+            !isAdvancedFilterCapSubview() ||
+            activeFilterBank != DuctFaceNode.FilterBank.FILTER ||
+            editModeFilterIndex < 0 ||
+            advCap2EditBox == null
+        ) {
             return;
         }
         playClickSound();
-        editModeAllowCap2Value = parseAllowCapFromEditBox(advCap2EditBox.getValue());
+        editModeAllowCap2Value = parseAllowCapFromEditBox(
+            advCap2EditBox.getValue()
+        );
         List<Integer> caps2 = menu.getClientFilterKeepCaps();
         while (caps2.size() <= editModeFilterIndex) {
             caps2.add(0);
@@ -2487,26 +3257,29 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     private void handleMenuButton(int id) {
         if (id == 1) {
-            NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-            boolean inHybridPanel = nm.isHybrid() && hybridPanel != HybridPanel.NONE;
+            NodeMode nm = NodeMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+            );
+            boolean inHybridPanel =
+                nm.isHybrid() && hybridPanel != HybridPanel.NONE;
             boolean eligibilityCtx =
-                    nm == NodeMode.NONE
-                            || nm == NodeMode.FILTERING_INSERTION
-                            || (nm == NodeMode.EXTRACTION_FILTERING && inHybridPanel);
+                nm == NodeMode.NONE ||
+                nm == NodeMode.FILTERING_INSERTION ||
+                (nm == NodeMode.EXTRACTION_FILTERING && inHybridPanel);
             if (eligibilityCtx) {
                 playClickSound();
                 int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
                 var cur = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
-                var next =
-                        switch (cur) {
-                            case BOTH -> DuctFaceNode.EligibilityMode.INSERT_ONLY;
-                            case INSERT_ONLY -> DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
-                            case RETRIEVE_ONLY -> DuctFaceNode.EligibilityMode.BOTH;
-                        };
+                var next = switch (cur) {
+                    case BOTH -> DuctFaceNode.EligibilityMode.INSERT_ONLY;
+                    case INSERT_ONLY -> DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
+                    case RETRIEVE_ONLY -> DuctFaceNode.EligibilityMode.BOTH;
+                };
                 pushAmountFields(
-                        menu.getSyncData().get(DuctMenuSync.PRIORITY),
-                        menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD),
-                        next.ordinal());
+                    menu.getSyncData().get(DuctMenuSync.PRIORITY),
+                    menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD),
+                    next.ordinal()
+                );
                 return;
             }
         }
@@ -2529,7 +3302,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                     advCapEditBox.setValue("");
                 }
             }
-            if (advCap2EditBox != null && !advCap2EditBox.isFocused() && editModeAllowCap2Value == 0) {
+            if (
+                advCap2EditBox != null &&
+                !advCap2EditBox.isFocused() &&
+                editModeAllowCap2Value == 0
+            ) {
                 // Keep editor displays 0 when unfocused.
                 syncAllowCap2EditBoxDisplay();
             }
@@ -2537,192 +3314,386 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
                 // FILTER bank cap is interpreted as Limit when the face is insertable, and as Keep when it is retriever-only.
                 int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
-                DuctFaceNode.EligibilityMode em = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
+                DuctFaceNode.EligibilityMode em =
+                    DuctFaceNode.EligibilityMode.fromOrdinal(ord);
                 limitCtx = em.isInsertable();
             } else {
-                limitCtx = activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
+                limitCtx =
+                    activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
             }
             advCapMinusButton.setTooltip(
-                    Tooltip.create(
-                            Component.translatable(
-                                    limitCtx
-                                            ? "gui.another_dynamics.duct_node.allow_cap.minus.limit"
-                                            : "gui.another_dynamics.duct_node.allow_cap.minus.keep")));
+                Tooltip.create(
+                    Component.translatable(
+                        limitCtx
+                            ? "gui.another_dynamics.duct_node.allow_cap.minus.limit"
+                            : "gui.another_dynamics.duct_node.allow_cap.minus.keep"
+                    )
+                )
+            );
             advCapPlusButton.setTooltip(
-                    Tooltip.create(
-                            Component.translatable(
-                                    limitCtx
-                                            ? "gui.another_dynamics.duct_node.allow_cap.plus.limit"
-                                            : "gui.another_dynamics.duct_node.allow_cap.plus.keep")));
+                Tooltip.create(
+                    Component.translatable(
+                        limitCtx
+                            ? "gui.another_dynamics.duct_node.allow_cap.plus.limit"
+                            : "gui.another_dynamics.duct_node.allow_cap.plus.keep"
+                    )
+                )
+            );
             advCapEditBox.setTooltip(
-                    Tooltip.create(
-                            Component.translatable(
-                                    limitCtx ? allowCapLimitTooltipKey() : allowCapKeepTooltipKey())));
+                Tooltip.create(
+                    Component.translatable(
+                        limitCtx
+                            ? allowCapLimitTooltipKey()
+                            : allowCapKeepTooltipKey()
+                    )
+                )
+            );
             // Infinity/zero convenience button is contextual: Limit uses ∞, Keep uses 0.
-            advCapInfinityButton.setMessage(Component.literal(limitCtx ? "\u221e" : "0"));
+            advCapInfinityButton.setMessage(
+                Component.literal(limitCtx ? "\u221e" : "0")
+            );
             advCapInfinityButton.setTooltip(
-                    Tooltip.create(
-                            Component.translatable(
-                                    limitCtx
-                                            ? "gui.another_dynamics.duct_node.allow_cap.set_unlimited"
-                                            : "gui.another_dynamics.duct_node.allow_cap.set_to_zero")));
+                Tooltip.create(
+                    Component.translatable(
+                        limitCtx
+                            ? "gui.another_dynamics.duct_node.allow_cap.set_unlimited"
+                            : "gui.another_dynamics.duct_node.allow_cap.set_to_zero"
+                    )
+                )
+            );
 
             if (advCap2MinusButton != null) {
                 advCap2MinusButton.setTooltip(
-                        Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.minus.keep")));
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.allow_cap.minus.keep"
+                        )
+                    )
+                );
                 advCap2PlusButton.setTooltip(
-                        Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_cap.plus.keep")));
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.allow_cap.plus.keep"
+                        )
+                    )
+                );
                 advCap2EditBox.setTooltip(
-                        Tooltip.create(Component.translatable(allowCapKeepTooltipKey())));
+                    Tooltip.create(
+                        Component.translatable(allowCapKeepTooltipKey())
+                    )
+                );
             }
         }
-        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        NodeMode nm = NodeMode.fromOrdinal(
+            menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+        );
         syncActiveFilterBankToNodeMode(nm);
-        boolean inHybridPanel = nm.isHybrid() && hybridPanel != HybridPanel.NONE;
+        boolean inHybridPanel =
+            nm.isHybrid() && hybridPanel != HybridPanel.NONE;
         if (inHybridPanel) {
-            nodeModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.hybrid.back"));
-            nodeModeButton.setTooltip(Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hybrid.back.tooltip")));
-        } else {
-            nodeModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.mode." + nm.name().toLowerCase()));
+            nodeModeButton.setMessage(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.hybrid.back"
+                )
+            );
             nodeModeButton.setTooltip(
-                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.mode.tooltip." + nm.name().toLowerCase())));
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.hybrid.back.tooltip"
+                    )
+                )
+            );
+        } else {
+            nodeModeButton.setMessage(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.mode." +
+                        nm.name().toLowerCase()
+                )
+            );
+            nodeModeButton.setTooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.mode.tooltip." +
+                            nm.name().toLowerCase()
+                    )
+                )
+            );
         }
         int menuFlags = menu.getSyncData().get(DuctMenuSync.FLAGS);
-        boolean filtersActive = (menuFlags & DuctMenuSync.FLAG_FILTERS_ACTIVE) != 0;
+        boolean filtersActive =
+            (menuFlags & DuctMenuSync.FLAG_FILTERS_ACTIVE) != 0;
         if (!filtersActive && subView != SubView.MAIN) {
             forceExitFilterUiToMain();
         }
         boolean routingUsable = nm.usesRouting();
         boolean hybridAllowsRoutingUi =
-                !nm.isHybrid()
-                        || (nm == NodeMode.EXTRACTION_FILTERING
-                                && (hybridPanel == HybridPanel.NONE
-                                        || hybridPanel == HybridPanel.EXTRACTOR
-                                        || hybridPanel == HybridPanel.FILTERING))
-                        || (nm == NodeMode.RETRIEVING_EXTRACTION && hybridPanel == HybridPanel.RETRIEVER);
+            !nm.isHybrid() ||
+            (nm == NodeMode.EXTRACTION_FILTERING &&
+                (hybridPanel == HybridPanel.NONE ||
+                    hybridPanel == HybridPanel.EXTRACTOR ||
+                    hybridPanel == HybridPanel.FILTERING)) ||
+            (nm == NodeMode.RETRIEVING_EXTRACTION &&
+                hybridPanel == HybridPanel.RETRIEVER);
         boolean routingMovedUi =
-                (nm == NodeMode.RETRIEVING_EXTRACTION && hybridPanel != HybridPanel.RETRIEVER)
-                        || (nm == NodeMode.EXTRACTION_FILTERING && hybridPanel == HybridPanel.NONE);
+            (nm == NodeMode.RETRIEVING_EXTRACTION &&
+                hybridPanel != HybridPanel.RETRIEVER) ||
+            (nm == NodeMode.EXTRACTION_FILTERING &&
+                hybridPanel == HybridPanel.NONE);
         boolean routingActive = routingUsable && hybridAllowsRoutingUi;
 
         boolean eligibilityCtx =
-                nm == NodeMode.NONE
-                        || nm == NodeMode.FILTERING_INSERTION
-                        || (nm == NodeMode.EXTRACTION_FILTERING && inHybridPanel);
+            nm == NodeMode.NONE ||
+            nm == NodeMode.FILTERING_INSERTION ||
+            (nm == NodeMode.EXTRACTION_FILTERING && inHybridPanel);
 
         if (routingMovedUi) {
             routingModeButton.active = false;
-            routingModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.routing_moved"));
+            routingModeButton.setMessage(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.routing_moved"
+                )
+            );
             routingModeButton.setTooltip(
-                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.routing.tooltip.moved")));
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.routing.tooltip.moved"
+                    )
+                )
+            );
         } else if (eligibilityCtx) {
             int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
-            DuctFaceNode.EligibilityMode em = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
+            DuctFaceNode.EligibilityMode em =
+                DuctFaceNode.EligibilityMode.fromOrdinal(ord);
             routingModeButton.active = true;
             routingModeButton.setMessage(
-                    Component.translatable("gui.another_dynamics.duct_node.eligibility." + em.name().toLowerCase()));
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.eligibility." +
+                        em.name().toLowerCase()
+                )
+            );
             routingModeButton.setTooltip(
-                    Tooltip.create(
-                            Component.translatable(
-                                    "gui.another_dynamics.duct_node.eligibility.tooltip." + em.name().toLowerCase())));
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.eligibility.tooltip." +
+                            em.name().toLowerCase()
+                    )
+                )
+            );
         } else if (!routingActive) {
             routingModeButton.active = false;
-            routingModeButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.routing_unroutable"));
+            routingModeButton.setMessage(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.routing_unroutable"
+                )
+            );
             routingModeButton.setTooltip(
-                    Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.routing.tooltip.unroutable")));
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.routing.tooltip.unroutable"
+                    )
+                )
+            );
         } else {
             routingModeButton.active = true;
-            int rmOrd =
-                    nm.isHybrid()
-                            ? (hybridPanel == HybridPanel.RETRIEVER
-                                    ? menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_RETRIEVER)
-                                    : menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_EXTRACTOR))
-                            : menu.getSyncData().get(DuctMenuSync.ROUTING_MODE);
+            int rmOrd = nm.isHybrid()
+                ? (hybridPanel == HybridPanel.RETRIEVER
+                      ? menu
+                            .getSyncData()
+                            .get(DuctMenuSync.ROUTING_MODE_RETRIEVER)
+                      : menu
+                            .getSyncData()
+                            .get(DuctMenuSync.ROUTING_MODE_EXTRACTOR))
+                : menu.getSyncData().get(DuctMenuSync.ROUTING_MODE);
             RoutingMode rm = RoutingMode.fromOrdinal(rmOrd);
             routingModeButton.setMessage(
-                    Component.translatable("gui.another_dynamics.duct_node.routing." + rm.name().toLowerCase()));
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.routing." +
+                        rm.name().toLowerCase()
+                )
+            );
             routingModeButton.setTooltip(
-                    Tooltip.create(
-                            Component.translatable("gui.another_dynamics.duct_node.routing.tooltip." + rm.name().toLowerCase())));
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.routing.tooltip." +
+                            rm.name().toLowerCase()
+                    )
+                )
+            );
         }
-        if (minecraft != null && minecraft.player != null && opaqueRenderingButton != null) {
+        if (
+            minecraft != null &&
+            minecraft.player != null &&
+            opaqueRenderingButton != null
+        ) {
             boolean locked = menu.isDuctAlwaysOpaqueLocked();
             boolean opaqueOn =
-                    locked || minecraft.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get());
+                locked ||
+                minecraft.player.getData(
+                    ModAttachments.DUCT_TRANSIT_OPAQUE.get()
+                );
             opaqueRenderingButton.setMessage(
-                    Component.translatable(
-                            opaqueOn
-                                    ? "gui.another_dynamics.duct_node.opaque_rendering.on"
-                                    : "gui.another_dynamics.duct_node.opaque_rendering.off"));
+                Component.translatable(
+                    opaqueOn
+                        ? "gui.another_dynamics.duct_node.opaque_rendering.on"
+                        : "gui.another_dynamics.duct_node.opaque_rendering.off"
+                )
+            );
             opaqueRenderingButton.active = !locked;
         }
         if (nm.isHybrid()) {
             if (!inHybridPanel) {
                 if (nm == NodeMode.EXTRACTION_FILTERING) {
-                    denyNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.hybrid.selector.extractor"));
-                    allowNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.hybrid.selector.filtering"));
-                } else {
-                    denyNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.hybrid.selector.retrieving"));
-                    allowNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.hybrid.selector.extractor"));
-                }
-                boolean on = (menu.getSyncData().get(DuctMenuSync.SELF_FEED) != 0);
-                listLogicButton.setMessage(
+                    denyNavButton.setMessage(
                         Component.translatable(
-                                on
-                                        ? "gui.another_dynamics.duct_node.hybrid.self_feed.on"
-                                        : "gui.another_dynamics.duct_node.hybrid.self_feed.off"));
+                            "gui.another_dynamics.duct_node.hybrid.selector.extractor"
+                        )
+                    );
+                    allowNavButton.setMessage(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.selector.filtering"
+                        )
+                    );
+                } else {
+                    denyNavButton.setMessage(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.selector.retrieving"
+                        )
+                    );
+                    allowNavButton.setMessage(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.selector.extractor"
+                        )
+                    );
+                }
+                boolean on = (menu.getSyncData().get(DuctMenuSync.SELF_FEED) !=
+                    0);
+                listLogicButton.setMessage(
+                    Component.translatable(
+                        on
+                            ? "gui.another_dynamics.duct_node.hybrid.self_feed.on"
+                            : "gui.another_dynamics.duct_node.hybrid.self_feed.off"
+                    )
+                );
                 denyNavButton.active = true;
                 // Self-feed is only meaningful for the Extractor/Filtering hybrid mode.
                 // In Retriever/Extractor, keep it visible but disabled and forced OFF.
                 listLogicButton.active = nm == NodeMode.EXTRACTION_FILTERING;
                 if (nm != NodeMode.EXTRACTION_FILTERING) {
-                    listLogicButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.hybrid.self_feed.off"));
+                    listLogicButton.setMessage(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.self_feed.off"
+                        )
+                    );
                 }
                 allowNavButton.active = true;
                 if (nm == NodeMode.EXTRACTION_FILTERING) {
                     denyNavButton.setTooltip(
-                            Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hybrid.selector.extractor.tooltip")));
+                        Tooltip.create(
+                            Component.translatable(
+                                "gui.another_dynamics.duct_node.hybrid.selector.extractor.tooltip"
+                            )
+                        )
+                    );
                     allowNavButton.setTooltip(
-                            Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hybrid.selector.filtering.tooltip")));
+                        Tooltip.create(
+                            Component.translatable(
+                                "gui.another_dynamics.duct_node.hybrid.selector.filtering.tooltip"
+                            )
+                        )
+                    );
                 } else {
                     denyNavButton.setTooltip(
-                            Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hybrid.selector.retrieving.tooltip")));
+                        Tooltip.create(
+                            Component.translatable(
+                                "gui.another_dynamics.duct_node.hybrid.selector.retrieving.tooltip"
+                            )
+                        )
+                    );
                     allowNavButton.setTooltip(
-                            Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hybrid.selector.extractor.tooltip")));
+                        Tooltip.create(
+                            Component.translatable(
+                                "gui.another_dynamics.duct_node.hybrid.selector.extractor.tooltip"
+                            )
+                        )
+                    );
                 }
                 listLogicButton.setTooltip(
-                        Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.hybrid.self_feed.tooltip")));
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.self_feed.tooltip"
+                        )
+                    )
+                );
             } else {
-                denyNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.deny_list"));
-                allowNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.allow_list"));
+                denyNavButton.setMessage(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.deny_list"
+                    )
+                );
+                allowNavButton.setMessage(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.allow_list"
+                    )
+                );
                 denyNavButton.active = filtersActive;
                 allowNavButton.active = filtersActive;
                 listLogicButton.active = filtersActive;
-                boolean denyOver = menu.getClientDenyOverridesAllow(activeFilterBank);
-                listLogicButton.setMessage(Component.literal(denyOver ? ">>>>>" : "<<<<<"));
+                boolean denyOver = menu.getClientDenyOverridesAllow(
+                    activeFilterBank
+                );
+                listLogicButton.setMessage(
+                    Component.literal(denyOver ? ">>>>>" : "<<<<<")
+                );
             }
         } else {
-            denyNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.deny_list"));
-            allowNavButton.setMessage(Component.translatable("gui.another_dynamics.duct_node.allow_list"));
+            denyNavButton.setMessage(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.deny_list"
+                )
+            );
+            allowNavButton.setMessage(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.allow_list"
+                )
+            );
             denyNavButton.active = filtersActive;
             listLogicButton.active = filtersActive;
             allowNavButton.active = filtersActive;
-            boolean denyOver = menu.getSyncData().get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
-            listLogicButton.setMessage(Component.literal(denyOver ? ">>>>>" : "<<<<<"));
+            boolean denyOver =
+                menu.getSyncData().get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
+            listLogicButton.setMessage(
+                Component.literal(denyOver ? ">>>>>" : "<<<<<")
+            );
             if (filtersActive) {
                 denyNavButton.setTooltip(
-                        Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.deny_list.tooltip")));
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.deny_list.tooltip"
+                        )
+                    )
+                );
                 allowNavButton.setTooltip(
-                        Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.allow_list.tooltip")));
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.allow_list.tooltip"
+                        )
+                    )
+                );
                 listLogicButton.setTooltip(
-                        Tooltip.create(
-                                Component.translatable(
-                                        denyOver
-                                                ? "gui.another_dynamics.duct_node.list_logic.tooltip.deny_wins"
-                                                : "gui.another_dynamics.duct_node.list_logic.tooltip.allow_bypass")));
+                    Tooltip.create(
+                        Component.translatable(
+                            denyOver
+                                ? "gui.another_dynamics.duct_node.list_logic.tooltip.deny_wins"
+                                : "gui.another_dynamics.duct_node.list_logic.tooltip.allow_bypass"
+                        )
+                    )
+                );
             } else {
-                var inactive =
-                        Tooltip.create(Component.translatable("gui.another_dynamics.duct_node.filters.tooltip.inactive"));
+                var inactive = Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.filters.tooltip.inactive"
+                    )
+                );
                 denyNavButton.setTooltip(inactive);
                 allowNavButton.setTooltip(inactive);
                 listLogicButton.setTooltip(inactive);
@@ -2731,36 +3702,56 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         boolean amountIsPriority = amountFieldEditsPriority();
         routingPriorityBox.setTooltip(
-                Tooltip.create(
-                        Component.translatable(
-                                amountIsPriority
-                                        ? "gui.another_dynamics.duct_node.amount.field.tooltip.priority"
-                                        : "gui.another_dynamics.duct_node.amount.field.tooltip.batch")));
+            Tooltip.create(
+                Component.translatable(
+                    amountIsPriority
+                        ? "gui.another_dynamics.duct_node.amount.field.tooltip.priority"
+                        : "gui.another_dynamics.duct_node.amount.field.tooltip.batch"
+                )
+            )
+        );
         routingMinusButton.setTooltip(
-                Tooltip.create(
-                        Component.translatable(
-                                amountIsPriority
-                                        ? "gui.another_dynamics.duct_node.amount.minus.tooltip.priority"
-                                        : "gui.another_dynamics.duct_node.amount.minus.tooltip.batch")));
+            Tooltip.create(
+                Component.translatable(
+                    amountIsPriority
+                        ? "gui.another_dynamics.duct_node.amount.minus.tooltip.priority"
+                        : "gui.another_dynamics.duct_node.amount.minus.tooltip.batch"
+                )
+            )
+        );
         routingPlusButton.setTooltip(
-                Tooltip.create(
-                        Component.translatable(
-                                amountIsPriority
-                                        ? "gui.another_dynamics.duct_node.amount.plus.tooltip.priority"
-                                        : "gui.another_dynamics.duct_node.amount.plus.tooltip.batch")));
+            Tooltip.create(
+                Component.translatable(
+                    amountIsPriority
+                        ? "gui.another_dynamics.duct_node.amount.plus.tooltip.priority"
+                        : "gui.another_dynamics.duct_node.amount.plus.tooltip.batch"
+                )
+            )
+        );
 
         redstoneModeStub = menu.getSyncData().get(DuctMenuSync.REDSTONE_MODE);
-        channelButton.setLetterValue(menu.getSyncData().get(DuctMenuSync.CHANNEL));
+        channelButton.setLetterValue(
+            menu.getSyncData().get(DuctMenuSync.CHANNEL)
+        );
 
         EnumSet<DuctTransportKind> enabledKinds =
-                DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
-                        .map(DuctDefinition::enabledTransportKinds)
-                        .orElse(EnumSet.of(DuctTransportKind.ITEM));
+            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
+                .map(DuctDefinition::enabledTransportKinds)
+                .orElse(EnumSet.of(DuctTransportKind.ITEM));
         DuctTransportKind[] kinds = DuctTransportKind.values();
-        for (int i = 0; i < transportKindPickerButtons.size() && i < kinds.length; i++) {
+        for (
+            int i = 0;
+            i < transportKindPickerButtons.size() && i < kinds.length;
+            i++
+        ) {
             DuctTransportKind k = kinds[i];
             Button b = transportKindPickerButtons.get(i);
-            b.setMessage(Component.translatable("gui.another_dynamics.duct_node.transport." + k.name().toLowerCase()));
+            b.setMessage(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.transport." +
+                        k.name().toLowerCase()
+                )
+            );
             b.active = enabledKinds.contains(k);
         }
 
@@ -2777,7 +3768,8 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         if (isAdvancedFilterCapSubview()) {
             int eligOrd = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
-            int capLayoutKey = (activeFilterBank.ordinal() << 8) + (eligOrd & 0xFF);
+            int capLayoutKey =
+                (activeFilterBank.ordinal() << 8) + (eligOrd & 0xFF);
             if (advCapLayoutCache != capLayoutKey) {
                 advCapLayoutCache = capLayoutKey;
                 layoutAdvancedCapBlock();
@@ -2786,10 +3778,15 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         if (!amountIsPriority && nm.usesExtractBatchField()) {
             int capNow = syncedExtractBatchCap();
-            if (lastTrackedExtractBatchCap >= 0
-                    && capNow < lastTrackedExtractBatchCap
-                    && routingPriorityBox != null) {
-                int parsed = parsePriorityOr(routingPriorityBox.getValue(), syncedExtractBatch());
+            if (
+                lastTrackedExtractBatchCap >= 0 &&
+                capNow < lastTrackedExtractBatchCap &&
+                routingPriorityBox != null
+            ) {
+                int parsed = parsePriorityOr(
+                    routingPriorityBox.getValue(),
+                    syncedExtractBatch()
+                );
                 if (parsed > capNow) {
                     int clamped = Mth.clamp(parsed, 0, capNow);
                     syncingAmountBoxFromServer = true;
@@ -2805,16 +3802,19 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             lastTrackedExtractBatchCap = -1;
         }
         if (!routingPriorityBox.isFocused() && !amountFieldsDirty) {
-            int v =
-                    amountIsPriority
-                            ? menu.getSyncData().get(DuctMenuSync.PRIORITY)
-                            : menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD);
+            int v = amountIsPriority
+                ? menu.getSyncData().get(DuctMenuSync.PRIORITY)
+                : menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD);
             syncingAmountBoxFromServer = true;
             routingPriorityBox.setValue(Integer.toString(v));
             syncingAmountBoxFromServer = false;
         }
 
-        filterScrollOffset = Mth.clamp(filterScrollOffset, 0, maxFilterScroll());
+        filterScrollOffset = Mth.clamp(
+            filterScrollOffset,
+            0,
+            maxFilterScroll()
+        );
 
         // Server can change MENU_VIEW_LAYER / ACTIVE_TRANSPORT_KIND without node-mode layout key changing; keep hub vs detail visibility and positions in sync.
         applySubViewVisibility();
@@ -2832,22 +3832,20 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (hybridPanel == HybridPanel.NONE) {
                 return;
             }
-            activeFilterBank =
-                    switch (hybridPanel) {
-                        case EXTRACTOR -> DuctFaceNode.FilterBank.EXTRACTOR;
-                        case FILTERING -> DuctFaceNode.FilterBank.FILTER;
-                        case RETRIEVER -> DuctFaceNode.FilterBank.RETRIEVER;
-                        case NONE -> activeFilterBank;
-                    };
+            activeFilterBank = switch (hybridPanel) {
+                case EXTRACTOR -> DuctFaceNode.FilterBank.EXTRACTOR;
+                case FILTERING -> DuctFaceNode.FilterBank.FILTER;
+                case RETRIEVER -> DuctFaceNode.FilterBank.RETRIEVER;
+                case NONE -> activeFilterBank;
+            };
             return;
         }
-        activeFilterBank =
-                switch (nm) {
-                    case EXTRACTION -> DuctFaceNode.FilterBank.EXTRACTOR;
-                    case RETRIEVING -> DuctFaceNode.FilterBank.RETRIEVER;
-                    case FILTERING_INSERTION -> DuctFaceNode.FilterBank.FILTER;
-                    default -> activeFilterBank;
-                };
+        activeFilterBank = switch (nm) {
+            case EXTRACTION -> DuctFaceNode.FilterBank.EXTRACTOR;
+            case RETRIEVING -> DuctFaceNode.FilterBank.RETRIEVER;
+            case FILTERING_INSERTION -> DuctFaceNode.FilterBank.FILTER;
+            default -> activeFilterBank;
+        };
     }
 
     private BlockPos menuSyncedPos() {
@@ -2882,30 +3880,46 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 // Future: parse module item stats client-side (keep in sync with DuctBlockEntity batch bonus).
             }
         }
-        if (menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal()) {
-            return DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
-                    .map(DuctDefinition::fluidTransportOrFallback)
-                    .orElseGet(DuctDefinitionRegistry::fluidDuctTransportSpec)
-                    .extractBatchSettingCapMb(bonus);
+        if (
+            menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) ==
+            DuctTransportKind.FLUID.ordinal()
+        ) {
+            return DuctDefinitionRegistry.getByLogicalId(
+                menu.getClientDuctLogicalId()
+            )
+                .map(DuctDefinition::fluidTransportOrFallback)
+                .orElseGet(DuctDefinitionRegistry::fluidDuctTransportSpec)
+                .extractBatchSettingCapMb(bonus);
         }
-        return DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
-                .map(DuctDefinition::itemTransportOrFallback)
-                .orElseGet(DuctDefinitionRegistry::itemDuctTransportSpec)
-                .extractBatchSettingCap(bonus);
+        return DuctDefinitionRegistry.getByLogicalId(
+            menu.getClientDuctLogicalId()
+        )
+            .map(DuctDefinition::itemTransportOrFallback)
+            .orElseGet(DuctDefinitionRegistry::itemDuctTransportSpec)
+            .extractBatchSettingCap(bonus);
     }
 
     private void pushAmountFields(int insertionPriority, int extractBatch) {
-        pushAmountFields(insertionPriority, extractBatch, menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE));
+        pushAmountFields(
+            insertionPriority,
+            extractBatch,
+            menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
+        );
     }
 
-    private void pushAmountFields(int insertionPriority, int extractBatch, int eligibilityModeOrdinal) {
+    private void pushAmountFields(
+        int insertionPriority,
+        int extractBatch,
+        int eligibilityModeOrdinal
+    ) {
         ModNetwork.sendFieldUpdate(
-                menuSyncedPos(),
-                menuSyncedFace(),
-                menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
-                insertionPriority,
-                extractBatch,
-                eligibilityModeOrdinal);
+            menuSyncedPos(),
+            menuSyncedFace(),
+            menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
+            insertionPriority,
+            extractBatch,
+            eligibilityModeOrdinal
+        );
     }
 
     private int stepForPriorityAdjust() {
@@ -2935,19 +3949,24 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int priSynced = syncedInsertionPriority();
         int batchSynced = syncedExtractBatch();
         if (amountFieldEditsPriority()) {
-            int base = parsePriorityOr(routingPriorityBox.getValue(), priSynced);
+            int base = parsePriorityOr(
+                routingPriorityBox.getValue(),
+                priSynced
+            );
             int step = stepForPriorityAdjust();
-            int pri =
-                    (int)
-                            Mth.clamp(
-                                    (long) base + (long) sign * step,
-                                    Integer.MIN_VALUE,
-                                    Integer.MAX_VALUE);
+            int pri = (int) Mth.clamp(
+                (long) base + (long) sign * step,
+                Integer.MIN_VALUE,
+                Integer.MAX_VALUE
+            );
             syncingAmountBoxFromServer = true;
             routingPriorityBox.setValue(Integer.toString(pri));
             syncingAmountBoxFromServer = false;
         } else {
-            int base = parsePriorityOr(routingPriorityBox.getValue(), batchSynced);
+            int base = parsePriorityOr(
+                routingPriorityBox.getValue(),
+                batchSynced
+            );
             int cap = syncedExtractBatchCap();
             int step = stepForBatchAdjust();
             int batch = Mth.clamp(base + sign * step, 0, cap);
@@ -2984,7 +4003,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         if (amountFieldEditsPriority()) {
             return;
         }
-        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        NodeMode nm = NodeMode.fromOrdinal(
+            menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+        );
         if (!nm.usesExtractBatchField()) {
             return;
         }
@@ -3001,10 +4022,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private void revertAmountDraft(boolean defocus) {
-        int v =
-                amountFieldEditsPriority()
-                        ? syncedInsertionPriority()
-                        : syncedExtractBatch();
+        int v = amountFieldEditsPriority()
+            ? syncedInsertionPriority()
+            : syncedExtractBatch();
         syncingAmountBoxFromServer = true;
         routingPriorityBox.setValue(Integer.toString(v));
         syncingAmountBoxFromServer = false;
@@ -3034,7 +4054,11 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     private void playClickSound() {
         if (minecraft != null) {
-            minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+            minecraft
+                .getSoundManager()
+                .play(
+                    SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F)
+                );
         }
     }
 
@@ -3043,13 +4067,23 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
      * the texture). Use the same dim/blur as a normal in-world {@link net.minecraft.client.gui.screens.Screen} only.
      */
     @Override
-    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void renderBackground(
+        GuiGraphics guiGraphics,
+        int mouseX,
+        int mouseY,
+        float partialTick
+    ) {
         if (subView == SubView.HOW_TO_USE) {
             if (minecraft != null && minecraft.level != null) {
                 renderTransparentBackground(guiGraphics);
                 renderBlurredBackground(partialTick);
             } else {
-                super.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+                super.renderBackground(
+                    guiGraphics,
+                    mouseX,
+                    mouseY,
+                    partialTick
+                );
             }
             return;
         }
@@ -3057,16 +4091,35 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private boolean routeHowToUseInputToWidgetsOnly(
-            HowToUseInput op, double mouseX, double mouseY, int button, double dragX, double dragY, int keyCode, int scanCode, int modifiers, char codePoint) {
+        HowToUseInput op,
+        double mouseX,
+        double mouseY,
+        int button,
+        double dragX,
+        double dragY,
+        int keyCode,
+        int scanCode,
+        int modifiers,
+        char codePoint
+    ) {
         for (GuiEventListener child : children()) {
-            boolean handled =
-                    switch (op) {
-                        case MOUSE_CLICK -> child.mouseClicked(mouseX, mouseY, button);
-                        case MOUSE_RELEASE -> child.mouseReleased(mouseX, mouseY, button);
-                        case MOUSE_DRAG -> child.mouseDragged(mouseX, mouseY, button, dragX, dragY);
-                        case KEY -> child.keyPressed(keyCode, scanCode, modifiers);
-                        case CHAR -> child.charTyped(codePoint, modifiers);
-                    };
+            boolean handled = switch (op) {
+                case MOUSE_CLICK -> child.mouseClicked(mouseX, mouseY, button);
+                case MOUSE_RELEASE -> child.mouseReleased(
+                    mouseX,
+                    mouseY,
+                    button
+                );
+                case MOUSE_DRAG -> child.mouseDragged(
+                    mouseX,
+                    mouseY,
+                    button,
+                    dragX,
+                    dragY
+                );
+                case KEY -> child.keyPressed(keyCode, scanCode, modifiers);
+                case CHAR -> child.charTyped(codePoint, modifiers);
+            };
             if (handled) {
                 return true;
             }
@@ -3079,66 +4132,110 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         MOUSE_RELEASE,
         MOUSE_DRAG,
         KEY,
-        CHAR
+        CHAR,
     }
 
     @Override
-    protected void renderBg(@NotNull GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
+    protected void renderBg(
+        @NotNull GuiGraphics graphics,
+        float partialTick,
+        int mouseX,
+        int mouseY
+    ) {
         if (subView == SubView.HOW_TO_USE) {
             graphics.blit(
-                    VALID_KEYS_TEXTURE,
-                    this.leftPos,
-                    this.topPos,
-                    0,
-                    0,
-                    this.imageWidth,
-                    this.imageHeight,
-                    TEXTURE_WIDTH,
-                    TEXTURE_HEIGHT);
+                VALID_KEYS_TEXTURE,
+                this.leftPos,
+                this.topPos,
+                0,
+                0,
+                this.imageWidth,
+                this.imageHeight,
+                TEXTURE_WIDTH,
+                TEXTURE_HEIGHT
+            );
             return;
         }
 
-        graphics.blit(TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+        graphics.blit(
+            TEXTURE,
+            this.leftPos,
+            this.topPos,
+            0,
+            0,
+            this.imageWidth,
+            this.imageHeight,
+            TEXTURE_WIDTH,
+            TEXTURE_HEIGHT
+        );
 
         blitMachineSlotBackgrounds(graphics);
 
-        if (subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS) {
+        if (
+            subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS
+        ) {
             renderFilterPanel(graphics, mouseX, mouseY);
-            if (inEditMode() && (subView == SubView.ALLOW_FILTERS || subView == SubView.DENY_FILTERS)) {
+            if (
+                inEditMode() &&
+                (subView == SubView.ALLOW_FILTERS ||
+                    subView == SubView.DENY_FILTERS)
+            ) {
                 renderEditModeSlot(graphics);
             }
         } else if (subView == SubView.ADVANCED_FILTERING && inEditMode()) {
             renderEditModeSlot(graphics);
         }
 
-        boolean hovered = mouseX >= redstoneButtonScreenX
-                && mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE
-                && mouseY >= redstoneButtonScreenY
-                && mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE;
+        boolean hovered =
+            mouseX >= redstoneButtonScreenX &&
+            mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE &&
+            mouseY >= redstoneButtonScreenY &&
+            mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE;
         int textureY = hovered ? 16 : 0;
         graphics.blit(
-                MEDIUM_BUTTONS,
-                redstoneButtonScreenX,
-                redstoneButtonScreenY,
-                0,
-                textureY,
-                REDSTONE_BUTTON_SIZE,
-                REDSTONE_BUTTON_SIZE,
-                96,
-                96);
+            MEDIUM_BUTTONS,
+            redstoneButtonScreenX,
+            redstoneButtonScreenY,
+            0,
+            textureY,
+            REDSTONE_BUTTON_SIZE,
+            REDSTONE_BUTTON_SIZE,
+            96,
+            96
+        );
 
         int iconX = redstoneButtonScreenX + 2;
         int iconY = redstoneButtonScreenY + 2;
         switch (redstoneModeStub) {
-            case 0 -> renderScaledItem(graphics, new ItemStack(Items.GUNPOWDER), iconX, iconY);
-            case 1 -> renderScaledItem(graphics, new ItemStack(Items.REDSTONE), iconX, iconY);
+            case 0 -> renderScaledItem(
+                graphics,
+                new ItemStack(Items.GUNPOWDER),
+                iconX,
+                iconY
+            );
+            case 1 -> renderScaledItem(
+                graphics,
+                new ItemStack(Items.REDSTONE),
+                iconX,
+                iconY
+            );
             case 2 -> renderScaledTexture(graphics, REDSTONE_GUI, iconX, iconY);
-            case 3 -> renderScaledItem(graphics, new ItemStack(Items.BARRIER), iconX, iconY);
-            default -> {}
+            case 3 -> renderScaledItem(
+                graphics,
+                new ItemStack(Items.BARRIER),
+                iconX,
+                iconY
+            );
+            default -> {
+            }
         }
     }
 
-    private void renderFilterPanel(GuiGraphics graphics, int mouseX, int mouseY) {
+    private void renderFilterPanel(
+        GuiGraphics graphics,
+        int mouseX,
+        int mouseY
+    ) {
         int maxSlots = currentFilterMaxSlots();
         int vis = visibleFilterEntries();
         List<String> list = getEditingList();
@@ -3149,40 +4246,84 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             }
             int entryX = this.leftPos + ENTRY_X;
             int entryY = this.topPos + FIRST_FILTER_ROW_Y + i * ENTRY_HEIGHT;
-            graphics.blit(ENTRY_ROW_TEXTURE, entryX, entryY, 0, 0, ENTRY_WIDTH, ENTRY_HEIGHT, ENTRY_WIDTH, ENTRY_HEIGHT);
+            graphics.blit(
+                ENTRY_ROW_TEXTURE,
+                entryX,
+                entryY,
+                0,
+                0,
+                ENTRY_WIDTH,
+                ENTRY_HEIGHT,
+                ENTRY_WIDTH,
+                ENTRY_HEIGHT
+            );
 
             // Match DeepDrawerExtractorScreen: icon slot inset 3px from entry top-left (entry row is 24px tall).
             int slotX = entryX + 3;
             int slotY = entryY + 3;
             graphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, 18, 18, 18, 18);
-            String filter = idx < list.size() && list.get(idx) != null ? list.get(idx) : "";
-            if (isFluidFilterTransport() && minecraft != null && minecraft.level != null) {
+            String filter =
+                idx < list.size() && list.get(idx) != null ? list.get(idx) : "";
+            if (
+                isFluidFilterTransport() &&
+                minecraft != null &&
+                minecraft.level != null
+            ) {
                 FluidStack displayFluid = getDisplayFluidForFilter(filter);
                 if (!displayFluid.isEmpty()) {
-                    GuiFluidStillBlit.blit16(graphics, displayFluid, slotX + 1, slotY + 1);
+                    GuiFluidStillBlit.blit16(
+                        graphics,
+                        displayFluid,
+                        slotX + 1,
+                        slotY + 1
+                    );
                 } else {
                     ItemStack displayItem = getDisplayItemForFilter(filter);
                     if (!displayItem.isEmpty()) {
                         graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-                        graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+                        graphics.renderItemDecorations(
+                            this.font,
+                            displayItem,
+                            slotX + 1,
+                            slotY + 1
+                        );
                     }
                 }
-            } else if (isGasFilterTransport() && minecraft != null && minecraft.level != null) {
+            } else if (
+                isGasFilterTransport() &&
+                minecraft != null &&
+                minecraft.level != null
+            ) {
                 Object displayGas = getDisplayGasForFilter(filter);
                 if (!MekanismChemicalCompat.isEmptyStack(displayGas)) {
-                    GuiChemicalStillBlit.blit16(graphics, displayGas, slotX + 1, slotY + 1);
+                    GuiChemicalStillBlit.blit16(
+                        graphics,
+                        displayGas,
+                        slotX + 1,
+                        slotY + 1
+                    );
                 } else {
                     ItemStack displayItem = getDisplayItemForFilter(filter);
                     if (!displayItem.isEmpty()) {
                         graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-                        graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+                        graphics.renderItemDecorations(
+                            this.font,
+                            displayItem,
+                            slotX + 1,
+                            slotY + 1
+                        );
                     }
                 }
             } else {
                 ItemStack displayItem = getDisplayItemForFilter(filter);
                 if (!displayItem.isEmpty()) {
                     graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-                    graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+                    graphics.renderItemDecorations(
+                        this.font,
+                        displayItem,
+                        slotX + 1,
+                        slotY + 1
+                    );
                 }
             }
 
@@ -3195,10 +4336,24 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int deleteButtonX = editButtonX - buttonSize - buttonSpacing;
             int maxTextWidth = deleteButtonX - textX - 5;
             String displayText = filter;
-            if (font.width(displayText) > maxTextWidth && !displayText.isEmpty()) {
-                displayText = font.plainSubstrByWidth(displayText, maxTextWidth - font.width("...")) + "...";
+            if (
+                font.width(displayText) > maxTextWidth && !displayText.isEmpty()
+            ) {
+                displayText =
+                    font.plainSubstrByWidth(
+                        displayText,
+                        maxTextWidth - font.width("...")
+                    ) +
+                    "...";
             }
-            graphics.drawString(font, displayText, textX, textY, 0x404040, false);
+            graphics.drawString(
+                font,
+                displayText,
+                textX,
+                textY,
+                0x404040,
+                false
+            );
         }
 
         // After entry rows so the handle draws above the list edge (DeepDrawerExtractorScreen order).
@@ -3208,35 +4363,76 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int scrollbarY = this.topPos + SCROLLBAR_Y_REL;
             int buttonDownY = this.topPos + BUTTON_DOWN_Y_REL;
             graphics.blit(
-                    SCROLLBAR_TEXTURE,
-                    scrollbarX,
-                    scrollbarY,
-                    0,
-                    0,
-                    SCROLLBAR_WIDTH,
-                    SCROLLBAR_HEIGHT,
-                    32,
-                    34);
+                SCROLLBAR_TEXTURE,
+                scrollbarX,
+                scrollbarY,
+                0,
+                0,
+                SCROLLBAR_WIDTH,
+                SCROLLBAR_HEIGHT,
+                32,
+                34
+            );
             int upV =
-                    mouseX >= scrollbarX && mouseX < scrollbarX + SCROLLBAR_WIDTH && mouseY >= buttonUpY && mouseY < buttonUpY + HANDLE_SIZE
-                            ? HANDLE_SIZE
-                            : 0;
-            graphics.blit(SCROLLBAR_TEXTURE, scrollbarX, buttonUpY, SCROLLBAR_WIDTH * 2, upV, HANDLE_SIZE, HANDLE_SIZE, 32, 34);
-            int downV =
-                    mouseX >= scrollbarX && mouseX < scrollbarX + SCROLLBAR_WIDTH && mouseY >= buttonDownY && mouseY < buttonDownY + HANDLE_SIZE
-                            ? HANDLE_SIZE
-                            : 0;
+                mouseX >= scrollbarX &&
+                mouseX < scrollbarX + SCROLLBAR_WIDTH &&
+                mouseY >= buttonUpY &&
+                mouseY < buttonUpY + HANDLE_SIZE
+                    ? HANDLE_SIZE
+                    : 0;
             graphics.blit(
-                    SCROLLBAR_TEXTURE, scrollbarX, buttonDownY, SCROLLBAR_WIDTH * 3, downV, HANDLE_SIZE, HANDLE_SIZE, 32, 34);
+                SCROLLBAR_TEXTURE,
+                scrollbarX,
+                buttonUpY,
+                SCROLLBAR_WIDTH * 2,
+                upV,
+                HANDLE_SIZE,
+                HANDLE_SIZE,
+                32,
+                34
+            );
+            int downV =
+                mouseX >= scrollbarX &&
+                mouseX < scrollbarX + SCROLLBAR_WIDTH &&
+                mouseY >= buttonDownY &&
+                mouseY < buttonDownY + HANDLE_SIZE
+                    ? HANDLE_SIZE
+                    : 0;
+            graphics.blit(
+                SCROLLBAR_TEXTURE,
+                scrollbarX,
+                buttonDownY,
+                SCROLLBAR_WIDTH * 3,
+                downV,
+                HANDLE_SIZE,
+                HANDLE_SIZE,
+                32,
+                34
+            );
             int maxScroll = maxFilterScroll();
             if (maxScroll > 0) {
                 double ratio = (double) filterScrollOffset / maxScroll;
-                int handleY = scrollbarY + (int) (ratio * (SCROLLBAR_HEIGHT - HANDLE_SIZE));
+                int handleY =
+                    scrollbarY +
+                    (int) (ratio * (SCROLLBAR_HEIGHT - HANDLE_SIZE));
                 int hV =
-                        mouseX >= scrollbarX && mouseX < scrollbarX + HANDLE_SIZE && mouseY >= handleY && mouseY < handleY + HANDLE_SIZE
-                                ? HANDLE_SIZE
-                                : 0;
-                graphics.blit(SCROLLBAR_TEXTURE, scrollbarX, handleY, SCROLLBAR_WIDTH, hV, HANDLE_SIZE, HANDLE_SIZE, 32, 34);
+                    mouseX >= scrollbarX &&
+                    mouseX < scrollbarX + HANDLE_SIZE &&
+                    mouseY >= handleY &&
+                    mouseY < handleY + HANDLE_SIZE
+                        ? HANDLE_SIZE
+                        : 0;
+                graphics.blit(
+                    SCROLLBAR_TEXTURE,
+                    scrollbarX,
+                    handleY,
+                    SCROLLBAR_WIDTH,
+                    hV,
+                    HANDLE_SIZE,
+                    HANDLE_SIZE,
+                    32,
+                    34
+                );
             }
         }
     }
@@ -3247,43 +4443,55 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         for (int i = 0; i < menu.moduleSlotCount(); i++) {
             int y = DuctNodeMenu.SLOT_MODULE_BACKGROUND_Y0 + i * 18;
             graphics.blit(
-                    SINGLE_SLOT,
-                    this.leftPos + DuctNodeMenu.SLOT_MODULE_BACKGROUND_X,
-                    this.topPos + y,
-                    0,
-                    0,
-                    sw,
-                    sh,
-                    sw,
-                    sh);
-        }
-        graphics.blit(
                 SINGLE_SLOT,
-                this.leftPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_X,
-                this.topPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_Y,
+                this.leftPos + DuctNodeMenu.SLOT_MODULE_BACKGROUND_X,
+                this.topPos + y,
                 0,
                 0,
                 sw,
                 sh,
                 sw,
-                sh);
+                sh
+            );
+        }
+        graphics.blit(
+            SINGLE_SLOT,
+            this.leftPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_X,
+            this.topPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_Y,
+            0,
+            0,
+            sw,
+            sh,
+            sw,
+            sh
+        );
     }
 
     @Override
     protected void renderSlotHighlight(
-            @NotNull GuiGraphics guiGraphics,
-            @NotNull Slot slot,
-            int mouseX,
-            int mouseY,
-            float partialTick) {
+        @NotNull GuiGraphics guiGraphics,
+        @NotNull Slot slot,
+        int mouseX,
+        int mouseY,
+        float partialTick
+    ) {
         if (subView == SubView.HOW_TO_USE) {
             return;
         }
-        super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
+        super.renderSlotHighlight(
+            guiGraphics,
+            slot,
+            mouseX,
+            mouseY,
+            partialTick
+        );
     }
 
     @Override
-    protected void renderSlot(@NotNull GuiGraphics graphics, @NotNull Slot slot) {
+    protected void renderSlot(
+        @NotNull GuiGraphics graphics,
+        @NotNull Slot slot
+    ) {
         if (subView == SubView.HOW_TO_USE) {
             return;
         }
@@ -3302,7 +4510,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         super.renderSlot(graphics, slot);
     }
 
-    private static void renderScaledItem(GuiGraphics graphics, ItemStack stack, int x, int y) {
+    private static void renderScaledItem(
+        GuiGraphics graphics,
+        ItemStack stack,
+        int x,
+        int y
+    ) {
         graphics.pose().pushPose();
         float scale = REDSTONE_ICON_SIZE / 16.0f;
         graphics.pose().translate(x, y, 0);
@@ -3311,7 +4524,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         graphics.pose().popPose();
     }
 
-    private static void renderScaledTexture(GuiGraphics graphics, ResourceLocation texture, int x, int y) {
+    private static void renderScaledTexture(
+        GuiGraphics graphics,
+        ResourceLocation texture,
+        int x,
+        int y
+    ) {
         graphics.pose().pushPose();
         float scale = REDSTONE_ICON_SIZE / 16.0f;
         graphics.pose().translate(x, y, 0);
@@ -3320,17 +4538,36 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         graphics.pose().popPose();
     }
 
-    private boolean isMouseOverAnyVisibleTextField(double mouseX, double mouseY) {
-        if (routingPriorityBox != null && routingPriorityBox.visible && routingPriorityBox.isMouseOver(mouseX, mouseY)) {
+    private boolean isMouseOverAnyVisibleTextField(
+        double mouseX,
+        double mouseY
+    ) {
+        if (
+            routingPriorityBox != null &&
+            routingPriorityBox.visible &&
+            routingPriorityBox.isMouseOver(mouseX, mouseY)
+        ) {
             return true;
         }
-        if (editModeTextBox != null && editModeTextBox.visible && editModeTextBox.isMouseOver(mouseX, mouseY)) {
+        if (
+            editModeTextBox != null &&
+            editModeTextBox.visible &&
+            editModeTextBox.isMouseOver(mouseX, mouseY)
+        ) {
             return true;
         }
-        if (advCapEditBox != null && advCapEditBox.visible && advCapEditBox.isMouseOver(mouseX, mouseY)) {
+        if (
+            advCapEditBox != null &&
+            advCapEditBox.visible &&
+            advCapEditBox.isMouseOver(mouseX, mouseY)
+        ) {
             return true;
         }
-        if (advCap2EditBox != null && advCap2EditBox.visible && advCap2EditBox.isMouseOver(mouseX, mouseY)) {
+        if (
+            advCap2EditBox != null &&
+            advCap2EditBox.visible &&
+            advCap2EditBox.isMouseOver(mouseX, mouseY)
+        ) {
             return true;
         }
         return false;
@@ -3355,16 +4592,22 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     private boolean isMouseInsideOurGui() {
-        return lastMouseX >= this.leftPos
-                && lastMouseX < this.leftPos + this.imageWidth
-                && lastMouseY >= this.topPos
-                && lastMouseY < this.topPos + this.imageHeight;
+        return (
+            lastMouseX >= this.leftPos &&
+            lastMouseX < this.leftPos + this.imageWidth &&
+            lastMouseY >= this.topPos &&
+            lastMouseY < this.topPos + this.imageHeight
+        );
     }
 
     private static boolean jeiIsHandlingKeyboard() {
         try {
-            Class<?> c = Class.forName("net.unfamily.another_dynamics.integration.jei.JeiRuntimeState");
-            return (boolean) c.getMethod("jeiHasKeyboardFocusOrRecipesGuiOpen").invoke(null);
+            Class<?> c = Class.forName(
+                "net.unfamily.another_dynamics.integration.jei.JeiRuntimeState"
+            );
+            return (boolean) c
+                .getMethod("jeiHasKeyboardFocusOrRecipesGuiOpen")
+                .invoke(null);
         } catch (Throwable ignored) {
             return false;
         }
@@ -3372,29 +4615,45 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0
-                && subView != SubView.HOW_TO_USE
-                && !isMouseOverAnyVisibleTextField(mouseX, mouseY)) {
+        if (
+            button == 0 &&
+            subView != SubView.HOW_TO_USE &&
+            !isMouseOverAnyVisibleTextField(mouseX, mouseY)
+        ) {
             unfocusAllTextFields();
         }
         // Right-click on Mode cycles backward.
         if (button == 1 && nodeModeButton != null && nodeModeButton.visible) {
-            if (mouseX >= nodeModeButton.getX()
-                    && mouseX < nodeModeButton.getX() + nodeModeButton.getWidth()
-                    && mouseY >= nodeModeButton.getY()
-                    && mouseY < nodeModeButton.getY() + nodeModeButton.getHeight()) {
-                NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-                boolean inHybridPanel = nm.isHybrid() && hybridPanel != HybridPanel.NONE;
+            if (
+                mouseX >= nodeModeButton.getX() &&
+                mouseX < nodeModeButton.getX() + nodeModeButton.getWidth() &&
+                mouseY >= nodeModeButton.getY() &&
+                mouseY < nodeModeButton.getY() + nodeModeButton.getHeight()
+            ) {
+                NodeMode nm = NodeMode.fromOrdinal(
+                    menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+                );
+                boolean inHybridPanel =
+                    nm.isHybrid() && hybridPanel != HybridPanel.NONE;
                 // In hybrid sub-panels, right-click behaves like Back.
                 handleMenuButton(inHybridPanel ? 0 : 10);
                 return true;
             }
         }
-        if (button == 1 && routingModeButton != null && routingModeButton.visible && routingModeButton.active) {
-            if (mouseX >= routingModeButton.getX()
-                    && mouseX < routingModeButton.getX() + routingModeButton.getWidth()
-                    && mouseY >= routingModeButton.getY()
-                    && mouseY < routingModeButton.getY() + routingModeButton.getHeight()) {
+        if (
+            button == 1 &&
+            routingModeButton != null &&
+            routingModeButton.visible &&
+            routingModeButton.active
+        ) {
+            if (
+                mouseX >= routingModeButton.getX() &&
+                mouseX <
+                routingModeButton.getX() + routingModeButton.getWidth() &&
+                mouseY >= routingModeButton.getY() &&
+                mouseY <
+                routingModeButton.getY() + routingModeButton.getHeight()
+            ) {
                 handleMenuButton(11);
                 return true;
             }
@@ -3403,10 +4662,18 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             for (ExampleData exampleData : exampleDataList) {
                 int sx = this.leftPos + exampleData.x;
                 int sy = this.topPos + exampleData.y;
-                if (mouseX >= sx && mouseX <= sx + exampleData.width
-                        && mouseY >= sy && mouseY <= sy + this.font.lineHeight) {
-                    if (minecraft != null && minecraft.keyboardHandler != null) {
-                        minecraft.keyboardHandler.setClipboard(exampleData.example);
+                if (
+                    mouseX >= sx &&
+                    mouseX <= sx + exampleData.width &&
+                    mouseY >= sy &&
+                    mouseY <= sy + this.font.lineHeight
+                ) {
+                    if (
+                        minecraft != null && minecraft.keyboardHandler != null
+                    ) {
+                        minecraft.keyboardHandler.setClipboard(
+                            exampleData.example
+                        );
                         playClickSound();
                     }
                     return true;
@@ -3415,22 +4682,39 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         if (subView == SubView.HOW_TO_USE) {
             routeHowToUseInputToWidgetsOnly(
-                    HowToUseInput.MOUSE_CLICK, mouseX, mouseY, button, 0.0, 0.0, 0, 0, 0, '\0');
+                HowToUseInput.MOUSE_CLICK,
+                mouseX,
+                mouseY,
+                button,
+                0.0,
+                0.0,
+                0,
+                0,
+                0,
+                '\0'
+            );
             return true;
         }
         if (inEditMode() && button == 0) {
             int slotX = editModeSlotX();
             int slotY = editModeSlotY();
-            if (mouseX >= slotX && mouseX < slotX + 18 && mouseY >= slotY && mouseY < slotY + 18) {
+            if (
+                mouseX >= slotX &&
+                mouseX < slotX + 18 &&
+                mouseY >= slotY &&
+                mouseY < slotY + 18
+            ) {
                 handleGhostSlotClick();
                 return true;
             }
         }
-        if ((button == 0 || button == 1)
-                && mouseX >= redstoneButtonScreenX
-                && mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE
-                && mouseY >= redstoneButtonScreenY
-                && mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE) {
+        if (
+            (button == 0 || button == 1) &&
+            mouseX >= redstoneButtonScreenX &&
+            mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE &&
+            mouseY >= redstoneButtonScreenY &&
+            mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE
+        ) {
             handleMenuButton(button == 0 ? 2 : 12);
             return true;
         }
@@ -3451,7 +4735,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+    public boolean mouseScrolled(
+        double mouseX,
+        double mouseY,
+        double deltaX,
+        double deltaY
+    ) {
         if (isAllowOrDenyFilterListContext()) {
             if (deltaY > 0) {
                 if (scrollUpSilent()) {
@@ -3470,21 +4759,41 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    public boolean mouseDragged(
+        double mouseX,
+        double mouseY,
+        int button,
+        double dragX,
+        double dragY
+    ) {
         if (subView == SubView.HOW_TO_USE) {
             routeHowToUseInputToWidgetsOnly(
-                    HowToUseInput.MOUSE_DRAG, mouseX, mouseY, button, dragX, dragY, 0, 0, 0, '\0');
+                HowToUseInput.MOUSE_DRAG,
+                mouseX,
+                mouseY,
+                button,
+                dragX,
+                dragY,
+                0,
+                0,
+                0,
+                '\0'
+            );
             return true;
         }
-        if (button == 0
-                && isDraggingHandle
-                && isAllowOrDenyFilterListContext()
-                && currentFilterMaxSlots() > visibleFilterEntries()) {
+        if (
+            button == 0 &&
+            isDraggingHandle &&
+            isAllowOrDenyFilterListContext() &&
+            currentFilterMaxSlots() > visibleFilterEntries()
+        ) {
             int maxScroll = maxFilterScroll();
             if (maxScroll > 0) {
                 int deltaY = (int) mouseY - dragStartY;
-                float scrollRatio = (float) deltaY / (SCROLLBAR_HEIGHT - HANDLE_SIZE);
-                int newOffset = dragStartScrollOffset + (int) (scrollRatio * maxScroll);
+                float scrollRatio =
+                    (float) deltaY / (SCROLLBAR_HEIGHT - HANDLE_SIZE);
+                int newOffset =
+                    dragStartScrollOffset + (int) (scrollRatio * maxScroll);
                 setFilterScrollOffset(newOffset);
             }
             return true;
@@ -3500,7 +4809,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         if (subView == SubView.HOW_TO_USE) {
             routeHowToUseInputToWidgetsOnly(
-                    HowToUseInput.MOUSE_RELEASE, mouseX, mouseY, button, 0.0, 0.0, 0, 0, 0, '\0');
+                HowToUseInput.MOUSE_RELEASE,
+                mouseX,
+                mouseY,
+                button,
+                0.0,
+                0.0,
+                0,
+                0,
+                0,
+                '\0'
+            );
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
@@ -3508,20 +4827,31 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (routingPriorityBox.isFocused() && keyCode == InputConstants.KEY_RETURN) {
+        if (
+            routingPriorityBox.isFocused() &&
+            keyCode == InputConstants.KEY_RETURN
+        ) {
             commitFieldFromEditBox();
             return true;
         }
 
-        if (advCapEditBox != null && advCapEditBox.isFocused() && keyCode == InputConstants.KEY_RETURN) {
+        if (
+            advCapEditBox != null &&
+            advCapEditBox.isFocused() &&
+            keyCode == InputConstants.KEY_RETURN
+        ) {
             applyAllowCapField();
             return true;
         }
 
-        if (subView == SubView.MAIN
-                && !inEditMode()
-                && keyCode == GLFW.GLFW_KEY_M) {
-            NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        if (
+            subView == SubView.MAIN &&
+            !inEditMode() &&
+            keyCode == GLFW.GLFW_KEY_M
+        ) {
+            NodeMode nm = NodeMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+            );
             if (nm.usesExtractBatchField()) {
                 amountMaxField();
                 return true;
@@ -3530,10 +4860,12 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         boolean esc = keyCode == InputConstants.KEY_ESCAPE;
         boolean inv =
-                minecraft != null && minecraft.options.keyInventory != null
-                        && minecraft.options.keyInventory.matches(keyCode, scanCode);
+            minecraft != null &&
+            minecraft.options.keyInventory != null &&
+            minecraft.options.keyInventory.matches(keyCode, scanCode);
 
-        boolean editFilterFocused = editModeTextBox != null && editModeTextBox.isFocused();
+        boolean editFilterFocused =
+            editModeTextBox != null && editModeTextBox.isFocused();
 
         if (editFilterFocused) {
             if (editModeTextBox.keyPressed(keyCode, scanCode, modifiers)) {
@@ -3583,7 +4915,9 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             if (advCap2EditBox != null && advCap2EditBox.isFocused()) {
                 return super.keyPressed(keyCode, scanCode, modifiers);
             }
-            NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+            NodeMode nm = NodeMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+            );
             if (nm.isHybrid() && hybridPanel != HybridPanel.NONE) {
                 playClickSound();
                 hybridPanel = HybridPanel.NONE;
@@ -3601,7 +4935,17 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
 
         if (subView == SubView.HOW_TO_USE) {
             routeHowToUseInputToWidgetsOnly(
-                    HowToUseInput.KEY, 0.0, 0.0, 0, 0.0, 0.0, keyCode, scanCode, modifiers, '\0');
+                HowToUseInput.KEY,
+                0.0,
+                0.0,
+                0,
+                0.0,
+                0.0,
+                keyCode,
+                scanCode,
+                modifiers,
+                '\0'
+            );
             return true;
         }
 
@@ -3627,21 +4971,32 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         }
         if (subView == SubView.HOW_TO_USE) {
             routeHowToUseInputToWidgetsOnly(
-                    HowToUseInput.CHAR, 0.0, 0.0, 0, 0.0, 0.0, 0, 0, modifiers, codePoint);
+                HowToUseInput.CHAR,
+                0.0,
+                0.0,
+                0,
+                0.0,
+                0.0,
+                0,
+                0,
+                modifiers,
+                codePoint
+            );
             return true;
         }
         return super.charTyped(codePoint, modifiers);
     }
 
     private void renderHelpLineWithExample(
-            GuiGraphics guiGraphics,
-            String beforeKey,
-            String exampleKey,
-            String afterKey,
-            int x,
-            int y,
-            int mouseX,
-            int mouseY) {
+        GuiGraphics guiGraphics,
+        String beforeKey,
+        String exampleKey,
+        String afterKey,
+        int x,
+        int y,
+        int mouseX,
+        int mouseY
+    ) {
         Component beforeComponent = Component.translatable(beforeKey);
         Component exampleComponent = Component.translatable(exampleKey);
         Component afterComponent = Component.translatable(afterKey);
@@ -3651,23 +5006,55 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         int rowX = x;
         int rowY = y;
         int beforeWidth = this.font.width(beforeText);
-        guiGraphics.drawString(this.font, beforeComponent, rowX, rowY, 0x404040, false);
+        guiGraphics.drawString(
+            this.font,
+            beforeComponent,
+            rowX,
+            rowY,
+            0x404040,
+            false
+        );
         int exampleX = rowX + beforeWidth;
         int exampleWidth = this.font.width(exampleText);
         int sx = this.leftPos + exampleX;
         int sy = this.topPos + rowY;
         boolean hovered =
-                mouseX >= sx && mouseX <= sx + exampleWidth && mouseY >= sy && mouseY <= sy + this.font.lineHeight;
+            mouseX >= sx &&
+            mouseX <= sx + exampleWidth &&
+            mouseY >= sy &&
+            mouseY <= sy + this.font.lineHeight;
         int exampleColor = hovered ? 0x0066FF : 0x0066CC;
-        guiGraphics.drawString(this.font, exampleText, exampleX, rowY, exampleColor, false);
+        guiGraphics.drawString(
+            this.font,
+            exampleText,
+            exampleX,
+            rowY,
+            exampleColor,
+            false
+        );
         if (hovered) {
             int underlineY = rowY + this.font.lineHeight;
-            guiGraphics.fill(exampleX, underlineY, exampleX + exampleWidth, underlineY + 1, exampleColor);
+            guiGraphics.fill(
+                exampleX,
+                underlineY,
+                exampleX + exampleWidth,
+                underlineY + 1,
+                exampleColor
+            );
         }
-        exampleDataList.add(new ExampleData(exampleText, x + beforeWidth, y, exampleWidth));
+        exampleDataList.add(
+            new ExampleData(exampleText, x + beforeWidth, y, exampleWidth)
+        );
         if (!afterText.isEmpty()) {
             int afterX = exampleX + exampleWidth;
-            guiGraphics.drawString(this.font, afterComponent, afterX, rowY, 0x404040, false);
+            guiGraphics.drawString(
+                this.font,
+                afterComponent,
+                afterX,
+                rowY,
+                0x404040,
+                false
+            );
         }
     }
 
@@ -3676,17 +5063,18 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
      * on the first row, up to {@value #MACRO_HELP_NEXT_LINE_EXAMPLES} on further rows (fluid/gas: four examples → 2+2).
      */
     private int renderHelpLineWithChainedExamples(
-            GuiGraphics guiGraphics,
-            String beforeKey,
-            String middleKey,
-            String afterKey,
-            List<String> exampleKeys,
-            int maxExamplesFirstLine,
-            int maxExamplesNextLines,
-            int x,
-            int y,
-            int mouseX,
-            int mouseY) {
+        GuiGraphics guiGraphics,
+        String beforeKey,
+        String middleKey,
+        String afterKey,
+        List<String> exampleKeys,
+        int maxExamplesFirstLine,
+        int maxExamplesNextLines,
+        int x,
+        int y,
+        int mouseX,
+        int mouseY
+    ) {
         if (exampleKeys.isEmpty()) {
             return 0;
         }
@@ -3714,7 +5102,14 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             boolean isLastRow = r == rows.size() - 1;
             int cursorX = x;
             if (isFirstRow) {
-                guiGraphics.drawString(this.font, beforeC, cursorX, rowY, 0x404040, false);
+                guiGraphics.drawString(
+                    this.font,
+                    beforeC,
+                    cursorX,
+                    rowY,
+                    0x404040,
+                    false
+                );
                 cursorX += this.font.width(beforeText);
             }
             for (int i = 0; i < rowKeys.size(); i++) {
@@ -3724,25 +5119,58 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
                 int sx = this.leftPos + cursorX;
                 int sy = this.topPos + rowY;
                 boolean hovered =
-                        mouseX >= sx && mouseX <= sx + exW && mouseY >= sy && mouseY <= sy + this.font.lineHeight;
+                    mouseX >= sx &&
+                    mouseX <= sx + exW &&
+                    mouseY >= sy &&
+                    mouseY <= sy + this.font.lineHeight;
                 int color = hovered ? 0x0066FF : 0x0066CC;
-                guiGraphics.drawString(this.font, exText, cursorX, rowY, color, false);
+                guiGraphics.drawString(
+                    this.font,
+                    exText,
+                    cursorX,
+                    rowY,
+                    color,
+                    false
+                );
                 if (hovered) {
                     int uy = rowY + this.font.lineHeight;
                     guiGraphics.fill(cursorX, uy, cursorX + exW, uy + 1, color);
                 }
-                exampleDataList.add(new ExampleData(exText, cursorX, rowY, exW));
+                exampleDataList.add(
+                    new ExampleData(exText, cursorX, rowY, exW)
+                );
                 cursorX += exW;
                 boolean moreInThisRow = i < rowKeys.size() - 1;
                 if (moreInThisRow) {
-                    guiGraphics.drawString(this.font, middleC, cursorX, rowY, 0x404040, false);
+                    guiGraphics.drawString(
+                        this.font,
+                        middleC,
+                        cursorX,
+                        rowY,
+                        0x404040,
+                        false
+                    );
                     cursorX += this.font.width(middleText);
                 } else {
                     if (!isLastRow) {
-                        guiGraphics.drawString(this.font, middleC, cursorX, rowY, 0x404040, false);
+                        guiGraphics.drawString(
+                            this.font,
+                            middleC,
+                            cursorX,
+                            rowY,
+                            0x404040,
+                            false
+                        );
                         cursorX += this.font.width(middleText);
                     } else if (!afterText.isEmpty()) {
-                        guiGraphics.drawString(this.font, afterC, cursorX, rowY, 0x404040, false);
+                        guiGraphics.drawString(
+                            this.font,
+                            afterC,
+                            cursorX,
+                            rowY,
+                            0x404040,
+                            false
+                        );
                     }
                 }
             }
@@ -3753,128 +5181,230 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         return rows.size();
     }
 
-    private void renderExampleTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    private void renderExampleTooltip(
+        GuiGraphics guiGraphics,
+        int mouseX,
+        int mouseY
+    ) {
         for (ExampleData exampleData : exampleDataList) {
             int screenX = this.leftPos + exampleData.x;
             int screenY = this.topPos + exampleData.y;
-            if (mouseX >= screenX && mouseX <= screenX + exampleData.width
-                    && mouseY >= screenY && mouseY <= screenY + this.font.lineHeight) {
+            if (
+                mouseX >= screenX &&
+                mouseX <= screenX + exampleData.width &&
+                mouseY >= screenY &&
+                mouseY <= screenY + this.font.lineHeight
+            ) {
                 List<Component> tooltip = new ArrayList<>(2);
-                tooltip.add(Component.translatable("gui.another_dynamics.general_filter_text.click_to_copy"));
-                tooltip.add(Component.translatable("gui.another_dynamics.general_filter_text.paste_hint"));
-                guiGraphics.renderComponentTooltip(this.font, tooltip, mouseX, mouseY);
+                tooltip.add(
+                    Component.translatable(
+                        "gui.another_dynamics.general_filter_text.click_to_copy"
+                    )
+                );
+                tooltip.add(
+                    Component.translatable(
+                        "gui.another_dynamics.general_filter_text.paste_hint"
+                    )
+                );
+                guiGraphics.renderComponentTooltip(
+                    this.font,
+                    tooltip,
+                    mouseX,
+                    mouseY
+                );
                 return;
             }
         }
     }
 
     @Override
-    protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
-        Component titleComponent =
-                switch (subView) {
-                    case ADVANCED_FILTERING ->
-                            Component.translatable("gui.another_dynamics.duct_node.advanced_filtering.title");
-                    case DENY_FILTERS -> {
-                        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-                        if (nm.isHybrid()) {
-                            yield Component.translatable(
-                                    switch (activeFilterBank) {
-                                        case EXTRACTOR -> "gui.another_dynamics.duct_node.hybrid.title.extractor";
-                                        case RETRIEVER -> "gui.another_dynamics.duct_node.hybrid.title.retriever";
-                                        case FILTER -> "gui.another_dynamics.duct_node.hybrid.title.filter";
-                                    });
+    protected void renderLabels(
+        @NotNull GuiGraphics graphics,
+        int mouseX,
+        int mouseY
+    ) {
+        Component titleComponent = switch (subView) {
+            case ADVANCED_FILTERING -> Component.translatable(
+                "gui.another_dynamics.duct_node.advanced_filtering.title"
+            );
+            case DENY_FILTERS -> {
+                NodeMode nm = NodeMode.fromOrdinal(
+                    menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+                );
+                if (nm.isHybrid()) {
+                    yield Component.translatable(
+                        switch (activeFilterBank) {
+                            case EXTRACTOR -> "gui.another_dynamics.duct_node.hybrid.title.extractor";
+                            case RETRIEVER -> "gui.another_dynamics.duct_node.hybrid.title.retriever";
+                            case FILTER -> "gui.another_dynamics.duct_node.hybrid.title.filter";
                         }
-                        yield Component.translatable("gui.another_dynamics.duct_node.deny_list");
-                    }
-                    case ALLOW_FILTERS -> {
-                        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-                        if (nm.isHybrid()) {
-                            yield Component.translatable(
-                                    switch (activeFilterBank) {
-                                        case EXTRACTOR -> "gui.another_dynamics.duct_node.hybrid.title.extractor";
-                                        case RETRIEVER -> "gui.another_dynamics.duct_node.hybrid.title.retriever";
-                                        case FILTER -> "gui.another_dynamics.duct_node.hybrid.title.filter";
-                                    });
+                    );
+                }
+                yield Component.translatable(
+                    "gui.another_dynamics.duct_node.deny_list"
+                );
+            }
+            case ALLOW_FILTERS -> {
+                NodeMode nm = NodeMode.fromOrdinal(
+                    menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+                );
+                if (nm.isHybrid()) {
+                    yield Component.translatable(
+                        switch (activeFilterBank) {
+                            case EXTRACTOR -> "gui.another_dynamics.duct_node.hybrid.title.extractor";
+                            case RETRIEVER -> "gui.another_dynamics.duct_node.hybrid.title.retriever";
+                            case FILTER -> "gui.another_dynamics.duct_node.hybrid.title.filter";
                         }
-                        yield Component.translatable("gui.another_dynamics.duct_node.allow_list");
-                    }
-                    case HOW_TO_USE -> Component.translatable("gui.another_dynamics.duct_node.filters.how_to_use");
-                    case MAIN -> {
-                        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
-                        if (nm.isHybrid() && hybridPanel != HybridPanel.NONE) {
-                            yield Component.translatable(
-                                    switch (hybridPanel) {
-                                        case EXTRACTOR -> "gui.another_dynamics.duct_node.hybrid.title.extractor";
-                                        case FILTERING -> "gui.another_dynamics.duct_node.hybrid.title.filter";
-                                        case RETRIEVER -> "gui.another_dynamics.duct_node.hybrid.title.retriever";
-                                        default -> DuctIds.nodeScreenTranslationKey(menu.getClientDuctLogicalId());
-                                    });
+                    );
+                }
+                yield Component.translatable(
+                    "gui.another_dynamics.duct_node.allow_list"
+                );
+            }
+            case HOW_TO_USE -> Component.translatable(
+                "gui.another_dynamics.duct_node.filters.how_to_use"
+            );
+            case MAIN -> {
+                NodeMode nm = NodeMode.fromOrdinal(
+                    menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+                );
+                if (nm.isHybrid() && hybridPanel != HybridPanel.NONE) {
+                    yield Component.translatable(
+                        switch (hybridPanel) {
+                            case EXTRACTOR -> "gui.another_dynamics.duct_node.hybrid.title.extractor";
+                            case FILTERING -> "gui.another_dynamics.duct_node.hybrid.title.filter";
+                            case RETRIEVER -> "gui.another_dynamics.duct_node.hybrid.title.retriever";
+                            default -> DuctIds.nodeScreenTranslationKey(
+                                menu.getClientDuctLogicalId()
+                            );
                         }
-                        yield Component.translatable(DuctIds.nodeScreenTranslationKey(menu.getClientDuctLogicalId()));
-                    }
-                };
+                    );
+                }
+                yield Component.translatable(
+                    DuctIds.nodeScreenTranslationKey(
+                        menu.getClientDuctLogicalId()
+                    )
+                );
+            }
+        };
         int titleWidth = this.font.width(titleComponent);
         int titleX = (this.imageWidth - titleWidth) / 2;
         /* Foreground: coordinates are relative—AbstractContainerScreen applies leftPos/topPos on the pose stack. */
-        graphics.drawString(this.font, titleComponent, titleX, 7, 0x404040, false);
+        graphics.drawString(
+            this.font,
+            titleComponent,
+            titleX,
+            7,
+            0x404040,
+            false
+        );
 
         if (isAdvancedFilterCapSubview()) {
             boolean limitCtx;
             if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
                 int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
-                DuctFaceNode.EligibilityMode em = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
+                DuctFaceNode.EligibilityMode em =
+                    DuctFaceNode.EligibilityMode.fromOrdinal(ord);
                 limitCtx = em.isInsertable();
             } else {
-                limitCtx = activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
+                limitCtx =
+                    activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
             }
-            Component capLabel =
-                    Component.translatable(
-                            limitCtx
-                                    ? "gui.another_dynamics.duct_node.allow_cap.label.limit"
-                                    : "gui.another_dynamics.duct_node.allow_cap.label.keep");
+            Component capLabel = Component.translatable(
+                limitCtx
+                    ? "gui.another_dynamics.duct_node.allow_cap.label.limit"
+                    : "gui.another_dynamics.duct_node.allow_cap.label.keep"
+            );
             int lw = this.font.width(capLabel);
             boolean useKeepBox =
-                    activeFilterBank == DuctFaceNode.FilterBank.FILTER
-                            && DuctFaceNode.EligibilityMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE))
-                                    == DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
-            int capEditW = useKeepBox ? (advCap2EditBox != null ? advCap2EditBox.getWidth() : AMOUNT_EDIT_W)
-                    : (advCapEditBox != null ? advCapEditBox.getWidth() : AMOUNT_EDIT_W);
-            int labelLeft = useKeepBox ? advCap2EditBoxGuiLeft : advCapEditBoxGuiLeft;
+                activeFilterBank == DuctFaceNode.FilterBank.FILTER &&
+                DuctFaceNode.EligibilityMode.fromOrdinal(
+                    menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
+                ) ==
+                DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
+            int capEditW = useKeepBox
+                ? (advCap2EditBox != null
+                      ? advCap2EditBox.getWidth()
+                      : AMOUNT_EDIT_W)
+                : (advCapEditBox != null
+                      ? advCapEditBox.getWidth()
+                      : AMOUNT_EDIT_W);
+            int labelLeft = useKeepBox
+                ? advCap2EditBoxGuiLeft
+                : advCapEditBoxGuiLeft;
             int labelX = labelLeft + (capEditW - lw) / 2;
-            int labelY = ADVANCED_CAP_NUMERIC_ROW_GUI_Y - this.font.lineHeight - AMOUNT_LABEL_ABOVE_GAP;
-            graphics.drawString(this.font, capLabel, labelX, labelY, 0x404040, false);
+            int labelY =
+                ADVANCED_CAP_NUMERIC_ROW_GUI_Y -
+                this.font.lineHeight -
+                AMOUNT_LABEL_ABOVE_GAP;
+            graphics.drawString(
+                this.font,
+                capLabel,
+                labelX,
+                labelY,
+                0x404040,
+                false
+            );
 
-            if (activeFilterBank == DuctFaceNode.FilterBank.FILTER
-                    && DuctFaceNode.EligibilityMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE))
-                            == DuctFaceNode.EligibilityMode.BOTH) {
-                Component keepLabel = Component.translatable("gui.another_dynamics.duct_node.allow_cap.label.keep");
+            if (
+                activeFilterBank == DuctFaceNode.FilterBank.FILTER &&
+                DuctFaceNode.EligibilityMode.fromOrdinal(
+                    menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
+                ) ==
+                DuctFaceNode.EligibilityMode.BOTH
+            ) {
+                Component keepLabel = Component.translatable(
+                    "gui.another_dynamics.duct_node.allow_cap.label.keep"
+                );
                 int lw2 = this.font.width(keepLabel);
-                int keepEditW = advCap2EditBox != null ? advCap2EditBox.getWidth() : AMOUNT_EDIT_W;
+                int keepEditW =
+                    advCap2EditBox != null
+                        ? advCap2EditBox.getWidth()
+                        : AMOUNT_EDIT_W;
                 int labelX2 = advCap2EditBoxGuiLeft + (keepEditW - lw2) / 2;
                 int labelY2 = labelY;
-                graphics.drawString(this.font, keepLabel, labelX2, labelY2, 0x404040, false);
+                graphics.drawString(
+                    this.font,
+                    keepLabel,
+                    labelX2,
+                    labelY2,
+                    0x404040,
+                    false
+                );
             }
         }
 
         if (subView == SubView.MAIN) {
-            NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+            NodeMode nm = NodeMode.fromOrdinal(
+                menu.getSyncData().get(DuctMenuSync.NODE_MODE)
+            );
             // Hybrid selector: priority/quantity block is hidden there; it appears only inside hybrid sub-panels.
             if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
                 return;
             }
             boolean hubLayer =
-                    menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
-                            && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
+                menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
+                menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
             if (!hubLayer) {
-                Component amountLabel =
-                        Component.translatable(
-                                amountFieldEditsPriority()
-                                        ? "gui.another_dynamics.duct_node.amount.label.priority"
-                                        : "gui.another_dynamics.duct_node.amount.label.batch");
+                Component amountLabel = Component.translatable(
+                    amountFieldEditsPriority()
+                        ? "gui.another_dynamics.duct_node.amount.label.priority"
+                        : "gui.another_dynamics.duct_node.amount.label.batch"
+                );
                 int lw = this.font.width(amountLabel);
                 int labelX = amountEditBoxGuiLeft + (AMOUNT_EDIT_W - lw) / 2;
-                int labelY = AMOUNT_ROW_Y - this.font.lineHeight - AMOUNT_LABEL_ABOVE_GAP;
-                graphics.drawString(this.font, amountLabel, labelX, labelY, 0x404040, false);
+                int labelY =
+                    AMOUNT_ROW_Y -
+                    this.font.lineHeight -
+                    AMOUNT_LABEL_ABOVE_GAP;
+                graphics.drawString(
+                    this.font,
+                    amountLabel,
+                    labelX,
+                    labelY,
+                    0x404040,
+                    false
+                );
             }
         }
 
@@ -3885,58 +5415,114 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
             int helpLineStep = this.font.lineHeight + 4;
             int helpY = titleBaseline + this.font.lineHeight + gapBelowTitle;
             String p = filterHelpTextPrefix();
-            renderHelpLineWithExample(graphics, p + "id", p + "id.example", p + "id.after", HELP_TEXT_X, helpY, mouseX, mouseY);
+            renderHelpLineWithExample(
+                graphics,
+                p + "id",
+                p + "id.example",
+                p + "id.after",
+                HELP_TEXT_X,
+                helpY,
+                mouseX,
+                mouseY
+            );
             helpY += helpLineStep;
-            renderHelpLineWithExample(graphics, p + "modid", p + "modid.example", p + "modid.after", HELP_TEXT_X, helpY, mouseX, mouseY);
+            renderHelpLineWithExample(
+                graphics,
+                p + "modid",
+                p + "modid.example",
+                p + "modid.after",
+                HELP_TEXT_X,
+                helpY,
+                mouseX,
+                mouseY
+            );
             helpY += helpLineStep;
-            renderHelpLineWithExample(graphics, p + "tag", p + "tag.example", p + "tag.after", HELP_TEXT_X, helpY, mouseX, mouseY);
+            renderHelpLineWithExample(
+                graphics,
+                p + "tag",
+                p + "tag.example",
+                p + "tag.after",
+                HELP_TEXT_X,
+                helpY,
+                mouseX,
+                mouseY
+            );
             helpY += helpLineStep;
-            int macroRows =
-                    p.endsWith("general_filter_text.")
-                            ? renderHelpLineWithChainedExamples(
-                                    graphics,
-                                    p + "macro",
-                                    p + "macro.middle",
-                                    p + "macro.after",
-                                    List.of(p + "macro.example1", p + "macro.example2"),
-                                    MACRO_HELP_FIRST_LINE_EXAMPLES,
-                                    MACRO_HELP_NEXT_LINE_EXAMPLES,
-                                    HELP_TEXT_X,
-                                    helpY,
-                                    mouseX,
-                                    mouseY)
-                            : renderHelpLineWithChainedExamples(
-                                    graphics,
-                                    p + "macro",
-                                    p + "macro.middle",
-                                    p + "macro.after",
-                                    List.of(
-                                            p + "macro.example1",
-                                            p + "macro.example2",
-                                            p + "macro.example3",
-                                            p + "macro.example4"),
-                                    MACRO_HELP_FIRST_LINE_EXAMPLES,
-                                    MACRO_HELP_NEXT_LINE_EXAMPLES,
-                                    HELP_TEXT_X,
-                                    helpY,
-                                    mouseX,
-                                    mouseY);
+            int macroRows = p.endsWith("general_filter_text.")
+                ? renderHelpLineWithChainedExamples(
+                      graphics,
+                      p + "macro",
+                      p + "macro.middle",
+                      p + "macro.after",
+                      List.of(p + "macro.example1", p + "macro.example2"),
+                      MACRO_HELP_FIRST_LINE_EXAMPLES,
+                      MACRO_HELP_NEXT_LINE_EXAMPLES,
+                      HELP_TEXT_X,
+                      helpY,
+                      mouseX,
+                      mouseY
+                  )
+                : renderHelpLineWithChainedExamples(
+                      graphics,
+                      p + "macro",
+                      p + "macro.middle",
+                      p + "macro.after",
+                      List.of(
+                          p + "macro.example1",
+                          p + "macro.example2",
+                          p + "macro.example3",
+                          p + "macro.example4"
+                      ),
+                      MACRO_HELP_FIRST_LINE_EXAMPLES,
+                      MACRO_HELP_NEXT_LINE_EXAMPLES,
+                      HELP_TEXT_X,
+                      helpY,
+                      mouseX,
+                      mouseY
+                  );
             helpY += macroRows * helpLineStep;
             if (!p.endsWith("general_filter_text.")) {
-                graphics.drawString(this.font, Component.translatable(p + "operators"), HELP_TEXT_X, helpY, 0x404040, false);
+                graphics.drawString(
+                    this.font,
+                    Component.translatable(p + "operators"),
+                    HELP_TEXT_X,
+                    helpY,
+                    0x404040,
+                    false
+                );
                 helpY += helpLineStep;
             }
             if (!isGasFilterTransport()) {
-                graphics.drawString(this.font, Component.translatable(p + "nbt"), HELP_TEXT_X, helpY, 0x404040, false);
+                graphics.drawString(
+                    this.font,
+                    Component.translatable(p + "nbt"),
+                    HELP_TEXT_X,
+                    helpY,
+                    0x404040,
+                    false
+                );
                 helpY += helpLineStep;
                 renderHelpLineWithExample(
-                        graphics, p + "nbt.example", p + "nbt.example.text", p + "nbt.after", HELP_TEXT_X, helpY, mouseX, mouseY);
+                    graphics,
+                    p + "nbt.example",
+                    p + "nbt.example.text",
+                    p + "nbt.after",
+                    HELP_TEXT_X,
+                    helpY,
+                    mouseX,
+                    mouseY
+                );
             }
         }
     }
 
     @Override
-    public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    public void render(
+        @NotNull GuiGraphics graphics,
+        int mouseX,
+        int mouseY,
+        float partialTick
+    ) {
         lastMouseX = mouseX;
         lastMouseY = mouseY;
         if (subView == SubView.HOW_TO_USE) {
@@ -3967,15 +5553,88 @@ public final class DuctNodeScreen extends AbstractContainerScreen<DuctNodeMenu> 
         super.render(graphics, mouseX, mouseY, partialTick);
         this.renderTooltip(graphics, mouseX, mouseY);
 
-        if (mouseX >= redstoneButtonScreenX
-                && mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE
-                && mouseY >= redstoneButtonScreenY
-                && mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE) {
+        if (
+            mouseX >= redstoneButtonScreenX &&
+            mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE &&
+            mouseY >= redstoneButtonScreenY &&
+            mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE
+        ) {
             graphics.renderTooltip(
-                    this.font,
-                    Component.translatable("gui.another_dynamics.duct_node.redstone_mode." + redstoneModeStub),
-                    mouseX,
-                    mouseY);
+                this.font,
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.redstone_mode." +
+                        redstoneModeStub
+                ),
+                mouseX,
+                mouseY
+            );
         }
+    }
+
+    // ===== JEI Ghost Ingredient Integration (IAnDynamicsGhostTarget) =====
+
+    @Override
+    @Nullable
+    public IAnDynamicsGhostTarget.IGhostIngredientConsumer getGhostHandler() {
+        // Only allow drops when in edit mode and viewing filter lists
+        if (!inEditMode() || !isAllowOrDenyFilterListContext()) {
+            return null;
+        }
+
+        // Create a consumer that handles the dropped ingredient
+        return new IAnDynamicsGhostTarget.IGhostIngredientConsumer() {
+            @Override
+            @Nullable
+            public Object supportedTarget(Object ingredient) {
+                // Validate ingredient type based on transport kind
+                if (
+                    ingredient instanceof ItemStack itemStack &&
+                    !itemStack.isEmpty()
+                ) {
+                    return itemStack;
+                }
+                if (
+                    ingredient instanceof FluidStack fluidStack &&
+                    !fluidStack.isEmpty()
+                ) {
+                    return fluidStack;
+                }
+                // Check for Mekanism chemicals if loaded
+                if (MekanismChemicalCompat.isLoaded() && ingredient != null) {
+                    if (!MekanismChemicalCompat.isEmptyStack(ingredient)) {
+                        return ingredient;
+                    }
+                }
+                return null;
+            }
+
+            @Override
+            public void accept(Object ingredient) {
+                // Use the actual ingredient passed from JEI
+                handleGhostIngredientDrop(ingredient);
+            }
+        };
+    }
+
+    @Override
+    @Nullable
+    public net.minecraft.client.renderer.Rect2i getGhostTargetArea() {
+        // Only provide a drop area when in edit mode
+        if (!inEditMode()) {
+            return null;
+        }
+
+        // Return the bounding box of the ghost slot in edit mode
+        // editModeSlotX/Y already return screen-space coordinates
+        int slotX = editModeSlotX();
+        int slotY = editModeSlotY();
+        int slotSize = 18;
+
+        return new net.minecraft.client.renderer.Rect2i(
+            slotX,
+            slotY,
+            slotSize,
+            slotSize
+        );
     }
 }
