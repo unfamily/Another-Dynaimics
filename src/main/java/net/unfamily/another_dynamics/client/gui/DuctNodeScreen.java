@@ -2487,16 +2487,7 @@ public final class DuctNodeScreen
      * @param ingredient The ingredient dropped from JEI (ItemStack, FluidStack, or Mekanism chemical)
      */
     private void handleGhostIngredientDrop(Object ingredient) {
-        AnotherDynamicsMod.LOGGER.info(
-            "[JEI Ghost] Ingredient dropped: {} (type: {})",
-            ingredient,
-            ingredient != null ? ingredient.getClass().getSimpleName() : "null"
-        );
-
         if (ingredient == null) {
-            AnotherDynamicsMod.LOGGER.info(
-                "[JEI Ghost] Clearing ghost slot (null ingredient)"
-            );
             // Clear the ghost slot
             ghostSlotItem = ItemStack.EMPTY;
             ghostSlotFluid = FluidStack.EMPTY;
@@ -2515,19 +2506,11 @@ public final class DuctNodeScreen
 
         // Handle FluidStack directly from JEI
         if (ingredient instanceof FluidStack fluidStack) {
-            AnotherDynamicsMod.LOGGER.info(
-                "[JEI Ghost] Handling FluidStack: {}",
-                fluidStack
-            );
             ghostSlotGas = null;
             if (!fluidStack.isEmpty()) {
                 ghostSlotItem = ItemStack.EMPTY;
                 ghostSlotFluid = fluidStack.copy();
                 filterVariants = generateFluidFilterVariants(ghostSlotFluid);
-                AnotherDynamicsMod.LOGGER.info(
-                    "[JEI Ghost] Set ghostSlotFluid, variants: {}",
-                    filterVariants.size()
-                );
             } else {
                 ghostSlotFluid = FluidStack.EMPTY;
                 ghostSlotItem = ItemStack.EMPTY;
@@ -2549,15 +2532,7 @@ public final class DuctNodeScreen
 
         // Handle ItemStack - try to extract fluid or gas first
         if (ingredient instanceof ItemStack itemStack) {
-            AnotherDynamicsMod.LOGGER.info(
-                "[JEI Ghost] Handling ItemStack: {}",
-                itemStack.getItem()
-            );
-
             if (itemStack.isEmpty()) {
-                AnotherDynamicsMod.LOGGER.info(
-                    "[JEI Ghost] ItemStack is empty"
-                );
                 ghostSlotItem = ItemStack.EMPTY;
                 ghostSlotFluid = FluidStack.EMPTY;
                 ghostSlotGas = null;
@@ -2578,10 +2553,6 @@ public final class DuctNodeScreen
                 itemStack
             );
             if (fluidContained.isPresent() && !fluidContained.get().isEmpty()) {
-                AnotherDynamicsMod.LOGGER.info(
-                    "[JEI Ghost] Extracted FluidStack from item: {}",
-                    fluidContained.get()
-                );
                 ghostSlotGas = null;
                 ghostSlotItem = ItemStack.EMPTY;
                 ghostSlotFluid = fluidContained.get().copy();
@@ -2605,10 +2576,6 @@ public final class DuctNodeScreen
                 Object chemicalSample =
                     MekanismChemicalCompat.sampleFromItemStack(itemStack);
                 if (!MekanismChemicalCompat.isEmptyStack(chemicalSample)) {
-                    AnotherDynamicsMod.LOGGER.info(
-                        "[JEI Ghost] Extracted Mekanism chemical from item: {}",
-                        chemicalSample
-                    );
                     ghostSlotFluid = FluidStack.EMPTY;
                     ghostSlotItem = ItemStack.EMPTY;
                     ghostSlotGas = chemicalSample;
@@ -2629,10 +2596,6 @@ public final class DuctNodeScreen
             }
 
             // No fluid/gas extracted - treat as plain item
-            AnotherDynamicsMod.LOGGER.info(
-                "[JEI Ghost] No fluid/gas extracted, treating as plain item: {}",
-                itemStack.getItem()
-            );
             ghostSlotGas = null;
             ghostSlotFluid = FluidStack.EMPTY;
             ghostSlotItem = itemStack.copy();
@@ -2653,10 +2616,6 @@ public final class DuctNodeScreen
             MekanismChemicalCompat.isLoaded() &&
             !MekanismChemicalCompat.isEmptyStack(ingredient)
         ) {
-            AnotherDynamicsMod.LOGGER.info(
-                "[JEI Ghost] Handling Mekanism chemical: {}",
-                ingredient
-            );
             ghostSlotFluid = FluidStack.EMPTY;
             ghostSlotItem = ItemStack.EMPTY;
             ghostSlotGas = ingredient;
@@ -2674,12 +2633,6 @@ public final class DuctNodeScreen
             applyFilterEditDraft();
             return;
         }
-
-        AnotherDynamicsMod.LOGGER.warn(
-            "[JEI Ghost] Unhandled ingredient type: {} ({})",
-            ingredient,
-            ingredient.getClass().getName()
-        );
     }
 
     private void cycleFilterVariant(int direction) {
