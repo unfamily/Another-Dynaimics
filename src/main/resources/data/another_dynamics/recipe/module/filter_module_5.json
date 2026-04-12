@@ -1,0 +1,29 @@
+{
+  "type": "another_dynamics:declare_module",
+  "id": "another_dynamics:fil_module_5",
+  "affects": [
+    {
+      "for": "item",
+      "filter": {
+        "allow": {
+          "add": 5
+        },
+        "deny": {
+          "add": 5
+        },
+        "allow_hybrid": {
+          "add": 5
+        },
+        "deny_hybrid": {
+          "add": 5
+        }
+      }
+    }
+  ],
+  "stack": 1,
+  "max_slots": 1,
+  "incompatible_with": [
+    "#another_dynamics:filter_modules"
+  ],
+  "incompatibility_activation": 2
+}
