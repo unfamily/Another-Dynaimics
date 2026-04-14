@@ -1,4 +1,10 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    }
+  ],
   "type": "another_dynamics:declare_duct",
   "id": "another_dynamics:heat_duct_adv",
   "name": "duct.another_dynamics.heat_duct_adv",
@@ -16,7 +22,7 @@
   "module_features": [],
   "rendering": {
     "always_opaque": false,
-    "default_texture": "another_dynamics:block/duct/heat/heat_duct_2",
+    "default_texture": "another_dynamics:block/duct/heat/heat_duct_2_steel",
     "model_default": "another_dynamics:block/simple_duct_default",
     "model_line": "another_dynamics:block/simple_duct_line"
   },

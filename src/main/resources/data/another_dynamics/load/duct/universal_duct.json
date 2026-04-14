@@ -1,0 +1,94 @@
+{
+  "type": "another_dynamics:declare_duct",
+  "id": "another_dynamics:universal_duct",
+  "name": "duct.another_dynamics.universal_duct",
+  "put_in_creative_menu": true,
+  "sound": "metallic",
+  "module_slots": 5,
+  "can_transport": [
+    {
+      "dec": "item",
+      "batch": {
+        "default": 8,
+        "max": -1
+      },
+      "rate": {
+        "default": 30,
+        "min": 1
+      },
+      "speed": {
+        "default": 20,
+        "min": 5
+      },
+      "filter":{
+        "deny":4,
+        "allow":4,
+        "deny_hybrid":2,
+        "allow_hybrid":2
+      }
+    },
+    {
+      "dec": "fluid",
+      "batch": {
+        "default": 4000,
+        "max": -1
+      },
+      "rate": {
+        "default": 30,
+        "min": 1
+      },
+      "speed": {
+        "default": 20,
+        "min": 1
+      },
+      "filter":{
+        "deny":4,
+        "allow":4,
+        "deny_hybrid":2,
+        "allow_hybrid":2
+      }
+    },
+    {
+      "dec": "forge_energy",
+      "ray_color": "#e30b28",
+      "extract": 1000,
+      "transfer": 8000
+    },
+    {
+      "dec": "mek_gas",
+      "move_radioactive": true,
+      "batch": {
+        "default": 4000,
+        "max": -1
+      },
+      "rate": {
+        "default": 30,
+        "min": 1
+      },
+      "speed": {
+        "default": 20,
+        "min": 1
+      },
+      "filter":{
+        "deny":4,
+        "allow":4,
+        "deny_hybrid":2,
+        "allow_hybrid":2
+      }
+    },
+    {
+      "dec": "mek_heat",
+      "insulation": 10
+    }
+  ],
+  "connect_with_compatbile": true,
+  "disabled_features":[],
+  "module_features":[],
+  "rendering": {
+    "always_opaque": false,
+    "default_texture": "another_dynamics:block/duct/universal/universal_duct_0",
+    "model_default": "another_dynamics:block/simple_duct_default",
+    "model_line": "another_dynamics:block/simple_duct_line"
+  },
+  "disabled_feathures": []
+}

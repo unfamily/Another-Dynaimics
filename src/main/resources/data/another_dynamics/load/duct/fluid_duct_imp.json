@@ -1,0 +1,41 @@
+{
+  "type": "another_dynamics:declare_duct",
+  "id": "another_dynamics:fluid_duct",
+  "name": "duct.another_dynamics.fluid_duct",
+  "put_in_creative_menu": true,
+  "sound": "copper",
+  "module_slots": 5,
+  "can_transport": [
+    {
+      "dec": "fluid",
+      "batch": {
+        "default": 4000,
+        "max": -1
+      },
+      "rate": {
+        "default": 20,
+        "min": 1
+      },
+      "speed": {
+        "default": 10,
+        "min": 1
+      },
+      "filter":{
+        "deny":4,
+        "allow":4,
+        "deny_hybrid":2,
+        "allow_hybrid":2
+      }
+    }
+  ],
+  "connect_with_compatbile": true,
+  "disabled_features":[],
+  "module_features":[],
+  "rendering": {
+    "always_opaque": false,
+    "default_texture": "another_dynamics:block/duct/fluid/fluid_duct_0_copper",
+    "model_default": "another_dynamics:block/simple_duct_default",
+    "model_line": "another_dynamics:block/simple_duct_line"
+  },
+  "disabled_feathures": []
+}
