@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "another_dynamics:item/resonanting_conductor"
+  }
+}
+

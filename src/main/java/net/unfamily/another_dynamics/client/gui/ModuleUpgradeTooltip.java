@@ -35,7 +35,6 @@ public final class ModuleUpgradeTooltip {
             def.itemQuantityModifiers(),
             def.fluidQuantityModifiers(),
             def.gasQuantityModifiers(),
-            def.energyQuantityModifiers(),
             def.heatQuantityModifiers()
         };
         ItemQuantityModifiers[] rate = {
@@ -87,7 +86,7 @@ public final class ModuleUpgradeTooltip {
     private record QuantityEntry(String value, String suffixKey) {}
 
     private static void appendQuantityAtMostTwo(List<Component> out, ItemQuantityModifiers[] qtyLanes) {
-        String[] suffixForLane = {SUFFIX_ITEM, SUFFIX_MB, SUFFIX_MB, null, null};
+        String[] suffixForLane = {SUFFIX_ITEM, SUFFIX_MB, SUFFIX_MB, null};
         List<QuantityEntry> entries = new ArrayList<>();
         for (int i = 0; i < qtyLanes.length; i++) {
             String v = formatQuantityLane(qtyLanes[i]);

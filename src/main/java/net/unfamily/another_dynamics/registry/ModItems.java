@@ -20,6 +20,9 @@ public final class ModItems {
     public static final DeferredItem<Item> NETHERITE_NUGGET =
             ITEMS.register("netherite_nugget", () -> new Item(new Item.Properties()));
 
+    public static final DeferredItem<Item> RESONANTING_CONDUCTOR =
+            ITEMS.register("resonanting_conductor", () -> new Item(new Item.Properties()));
+
     public static final DeferredItem<DuctBlockItem> DUCT =
             ITEMS.register(
                     "duct",

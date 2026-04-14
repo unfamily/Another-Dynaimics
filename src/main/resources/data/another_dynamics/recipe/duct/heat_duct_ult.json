@@ -1,0 +1,30 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "another_dynamics:duct",
+  "pattern": ["BBB", "BAB", "BBB"],
+  "key": {
+    "A": { "tag": "c:alloys/ultimate" },
+    "B": {
+      "type": "neoforge:components",
+      "items": "another_dynamics:duct",
+      "components": {
+        "another_dynamics:duct_logical_id": "another_dynamics:heat_duct_elite"
+      },
+      "strict": false
+    }
+  },
+  "result": {
+    "id": "another_dynamics:duct",
+    "count": 8,
+    "components": {
+      "another_dynamics:duct_logical_id": "another_dynamics:heat_duct_ult"
+    }
+  }
+}

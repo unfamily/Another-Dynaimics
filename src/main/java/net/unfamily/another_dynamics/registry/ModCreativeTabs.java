@@ -46,6 +46,7 @@ public final class ModCreativeTabs {
                     output.accept(ModItems.FIL_MODULE_3.get().getDefaultInstance());
                     output.accept(ModItems.FIL_MODULE_4.get().getDefaultInstance());
                     output.accept(ModItems.NETHERITE_NUGGET.get().getDefaultInstance());
+                    output.accept(ModItems.RESONANTING_CONDUCTOR.get().getDefaultInstance());
                 })
                 .build();
     }
