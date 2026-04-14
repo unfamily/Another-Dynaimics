@@ -37,6 +37,12 @@
       "rate": {
         "mult": 0.5
       }
+    },
+    {
+      "for": "energy",
+      "extract": {
+        "mul": 500
+      }
     }
   ],
   "stack": 1,

@@ -9,8 +9,8 @@
     {
       "dec": "forge_energy",
       "ray_color": "#e30b28",
-      "extract": 1000,
-      "transfer": 8000
+      "extract": 100000,
+      "transfer": 5000000
     }
   ],
   "connect_with_compatbile": true,

@@ -86,7 +86,7 @@
   "module_features":[],
   "rendering": {
     "always_opaque": false,
-    "default_texture": "another_dynamics:block/duct/universal/universal_duct_0",
+    "default_texture": "another_dynamics:block/duct/universal/universal_0_gold",
     "model_default": "another_dynamics:block/simple_duct_default",
     "model_line": "another_dynamics:block/simple_duct_line"
   },

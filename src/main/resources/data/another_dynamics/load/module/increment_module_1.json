@@ -19,6 +19,12 @@
       "quantity": {
         "set": 16000
       }
+    },
+    {
+      "for": "energy",
+      "extract": {
+        "mul": 5
+      }
     }
   ],
   "stack": 1,
