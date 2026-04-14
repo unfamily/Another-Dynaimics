@@ -24,6 +24,7 @@ public final class ModuleUpgradeTooltip {
     private static final String LINE_FILTER = "gui.another_dynamics.module.line.filter";
     private static final String LINE_RATE = "gui.another_dynamics.module.line.rate";
     private static final String LINE_QUANTITY = "gui.another_dynamics.module.line.quantity";
+    private static final String LINE_ENERGY = "gui.another_dynamics.module.line.energy";
     private static final String SUFFIX_ITEM = "gui.another_dynamics.module.suffix.item";
     private static final String SUFFIX_MB = "gui.another_dynamics.module.suffix.mb";
 
@@ -51,10 +52,16 @@ public final class ModuleUpgradeTooltip {
             def.energySpeedModifiers(),
             def.heatSpeedModifiers()
         };
+        ItemQuantityModifiers[] energy = {
+            def.energyQuantityModifiers(),
+            def.energyRateModifiers(),
+            def.energySpeedModifiers()
+        };
 
         appendMergedSingle(out, LINE_SPEED, speed, ModuleUpgradeTooltip::formatSpeedLane);
         appendFilterAllowOnly(out, def);
         appendMergedSingle(out, LINE_RATE, rate, ModuleUpgradeTooltip::formatRateLane);
+        appendMergedSingle(out, LINE_ENERGY, energy, ModuleUpgradeTooltip::formatEnergyLane);
         appendQuantityAtMostTwo(out, qty);
     }
 
@@ -199,6 +206,31 @@ public final class ModuleUpgradeTooltip {
      * ÷.
      */
     private static String formatRateLane(ItemQuantityModifiers m) {
+        if (inactive(m)) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        double mult = m.multProduct();
+        if (Math.abs(mult - 1.0) > EPS) {
+            if (mult < 1.0 - EPS) {
+                parts.add("\u00d7" + reciprocalDisplay(mult));
+            } else {
+                parts.add("\u00d7" + formatMultPlain(mult));
+            }
+        }
+        if (m.hasSet()) {
+            parts.add(String.valueOf(m.setValue()));
+        }
+        if (m.addSum() != 0) {
+            parts.add(String.format(Locale.ROOT, "%+d", m.addSum()));
+        }
+        return parts.isEmpty() ? null : String.join(", ", parts);
+    }
+
+    /**
+     * Energy extraction: ×N style multiplier (mult &lt; 1 shown as ×reciprocal). Optional cap / add after.
+     */
+    private static String formatEnergyLane(ItemQuantityModifiers m) {
         if (inactive(m)) {
             return null;
         }

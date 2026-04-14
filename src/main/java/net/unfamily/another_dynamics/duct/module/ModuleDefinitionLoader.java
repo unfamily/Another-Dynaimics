@@ -26,8 +26,12 @@ public final class ModuleDefinitionLoader {
     private ModuleDefinitionLoader() {}
 
     public static void tryApplyPrepared(Map<ResourceLocation, JsonElement> prepared) {
+        AnotherDynamicsMod.LOGGER.info("tryApplyPrepared called with {} entries", prepared.size());
         Map<ResourceLocation, ModuleDefinition> out = new HashMap<>();
         for (Map.Entry<ResourceLocation, JsonElement> e : prepared.entrySet()) {
+            if (e.getKey().toString().contains("inc_module")) {
+                AnotherDynamicsMod.LOGGER.info("Found increment module entry: {}", e.getKey());
+            }
             if (!e.getValue().isJsonObject()) {
                 continue;
             }
@@ -67,33 +71,35 @@ public final class ModuleDefinitionLoader {
             ModuleDefinition.FilterSlotModifiers filF = parseFilterFor(o, "fluid");
             ModuleDefinition.FilterSlotModifiers filG = parseFilterFor(o, "gas");
             List<TagKey<Item>> matchTags = readMatchingItemTags(o);
-            out.put(
+            ModuleDefinition moduleDef = new ModuleDefinition(
                     id,
-                    new ModuleDefinition(
-                            id,
-                            stack,
-                            maxSlots,
-                            incompat,
-                            incompatActivation,
-                            iq,
-                            ir,
-                            is,
-                            fq,
-                            fr,
-                            fs,
-                            gq,
-                            gr,
-                            gs,
-                            eq,
-                            er,
-                            es,
-                            hq,
-                            hr,
-                            hs,
-                            filI,
-                            filF,
-                            filG,
-                            matchTags));
+                    stack,
+                    maxSlots,
+                    incompat,
+                    incompatActivation,
+                    iq,
+                    ir,
+                    is,
+                    fq,
+                    fr,
+                    fs,
+                    gq,
+                    gr,
+                    gs,
+                    eq,
+                    er,
+                    es,
+                    hq,
+                    hr,
+                    hs,
+                    filI,
+                    filF,
+                    filG,
+                    matchTags);
+            out.put(id, moduleDef);
+            if (eq.multProduct() != 1.0 || er.multProduct() != 1.0 || es.multProduct() != 1.0) {
+                AnotherDynamicsMod.LOGGER.info("Loaded module {} with energy modifiers: qty={}, rate={}, speed={}", id, eq.multProduct(), er.multProduct(), es.multProduct());
+            }
         }
         warnDuplicateMatchingTags(out);
         ModuleDefinitionRegistry.replaceAll(out);
@@ -251,8 +257,9 @@ public final class ModuleDefinitionLoader {
             if (!affectFor(fo, transportFor)) {
                 continue;
             }
-            JsonObject q = itemQuantitySection(fo);
+            JsonObject q = itemQuantitySection(fo, transportFor);
             if (q == null) {
+                AnotherDynamicsMod.LOGGER.warn("No {} found in affects section for transport {}", transportFor.equals("energy") ? "extract" : "quantity", transportFor);
                 continue;
             }
             boolean[] hs = {hasSet};
@@ -269,7 +276,15 @@ public final class ModuleDefinitionLoader {
     }
 
     @Nullable
-    private static JsonObject itemQuantitySection(JsonObject affectForItem) {
+    private static JsonObject itemQuantitySection(JsonObject affectForItem, String transportFor) {
+        // Energy uses "extract" field like ducts
+        if ("energy".equals(transportFor)) {
+            if (affectForItem.has("extract") && affectForItem.get("extract").isJsonObject()) {
+                return affectForItem.getAsJsonObject("extract");
+            }
+            return null;
+        }
+        // Item/fluid/gas use "quantity" or legacy "batch"
         if (affectForItem.has("quantity") && affectForItem.get("quantity").isJsonObject()) {
             return affectForItem.getAsJsonObject("quantity");
         }

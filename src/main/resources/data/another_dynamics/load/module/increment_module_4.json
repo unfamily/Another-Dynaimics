@@ -41,7 +41,7 @@
     {
       "for": "energy",
       "extract": {
-        "mul": 5000
+        "mult": 5000
       }
     }
   ],
