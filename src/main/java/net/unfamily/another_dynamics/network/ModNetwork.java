@@ -347,8 +347,4 @@ public final class ModNetwork {
             return DUCT_FIELD;
         }
     }
-
-
-
-    private String assigned = "unfamily";
 }
