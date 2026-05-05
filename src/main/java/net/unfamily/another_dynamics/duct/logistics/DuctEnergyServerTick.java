@@ -52,13 +52,13 @@ public final class DuctEnergyServerTick {
                 continue;
             }
             DuctFaceNode node = be.getFaceNode(dir);
-            if (node.ticksUntilAction > 0) {
-                node.ticksUntilAction--;
+            if (lanes.energyTicksUntilAction > 0) {
+                lanes.energyTicksUntilAction--;
                 be.setChanged();
                 continue;
             }
             int rateTicks = DuctModuleEffects.effectiveEnergyActionRateTicks(be, dir, 10);
-            node.ticksUntilAction = rateTicks - 1;
+            lanes.energyTicksUntilAction = rateTicks - 1;
             if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
                 RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
                 tryExtractPush(level, be, dir, spec, rm, node);
@@ -86,6 +86,7 @@ public final class DuctEnergyServerTick {
             DuctEnergyTransportSpec spec,
             RoutingMode routing,
             DuctFaceNode node) {
+        DuctFaceLanes sourceLanes = sourceBe.getFaceLanes(sourceFace);
         BlockPos srcPos = sourceBe.getBlockPos();
         IEnergyStorage src = getEnergyHandlerOnFace(level, srcPos, sourceFace);
         if (src == null || !src.canExtract()) {
@@ -160,13 +161,13 @@ public final class DuctEnergyServerTick {
                 tier.add(c);
             }
         }
-        int rr = node.roundRobinCursor;
+        int rr = sourceLanes.energyRoundRobinCursor;
         DestCandidate pick = pickWithinTier(level, tier, routing, rr);
         if (pick == null) {
             return;
         }
         if (routing == RoutingMode.ROUND_ROBIN) {
-            node.roundRobinCursor = rr + 1;
+            sourceLanes.energyRoundRobinCursor = rr + 1;
             sourceBe.setChanged();
         }
 
@@ -210,6 +211,7 @@ public final class DuctEnergyServerTick {
             DuctEnergyTransportSpec spec,
             RoutingMode routing,
             DuctFaceNode node) {
+        DuctFaceLanes retrieverLanes = retrieverBe.getFaceLanes(retrieverFace);
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         IEnergyStorage dest = getEnergyHandlerOnFace(level, retrieverPos, retrieverFace);
         if (dest == null || !dest.canReceive()) {
@@ -277,7 +279,7 @@ public final class DuctEnergyServerTick {
                 tier.add(c);
             }
         }
-        DonorCandidate pick = pickDonorWithinTier(level, tier, routing, node.roundRobinCursor);
+        DonorCandidate pick = pickDonorWithinTier(level, tier, routing, retrieverLanes.energyRoundRobinCursor);
         if (pick == null) {
             return;
         }

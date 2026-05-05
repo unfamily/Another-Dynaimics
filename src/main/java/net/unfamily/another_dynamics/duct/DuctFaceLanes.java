@@ -11,13 +11,15 @@ import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
  * Per-face transport lanes. Item, fluid, and gas keep separate filters, channels, routing fields, and amount fields.
  * <p>
  * <strong>Shared for the whole face</strong>: {@link #nodeMode}, {@link #redstoneMode}, and {@link #moduleSlots}
- * (one module column for all item/fluid/gas lanes). Each lane keeps its own copy-settings slot in
- * {@link DuctFaceNode#guiSlots}.
+ * (one module column for all lanes including energy/heat bonuses). Each lane keeps its own copy-settings slot in
+ * {@link DuctFaceNode#guiSlots}. RF and Mek heat logistics use separate throttle state on this object so hybrid ducts do
+ * not share {@link DuctFaceNode#ticksUntilAction} with the item lane.
  */
 public final class DuctFaceLanes {
     private static final byte REDSTONE_FMT_V1 = 1;
     private static final String NBT_MODULES = "Modules";
     private static final String NBT_MODULES_LEGACY = "Upgrades";
+    private static final String NBT_ENERGY_HEAT = "EnergyHeat";
 
     private final DuctBlockEntity duct;
     private final Direction face;
@@ -34,6 +36,17 @@ public final class DuctFaceLanes {
     public final DuctFaceNode item;
     public final DuctFaceNode fluid;
     public final DuctFaceNode gas;
+
+    /**
+     * RF logistics throttle / round-robin (not stored on the item {@link DuctFaceNode} — avoids clashes on hybrid
+     * ducts).
+     */
+    public int energyTicksUntilAction;
+    public int energyRoundRobinCursor;
+
+    /** Mek heat logistics throttle / round-robin (same rationale as {@link #energyTicksUntilAction}). */
+    public int heatTicksUntilAction;
+    public int heatRoundRobinCursor;
 
     public DuctFaceLanes(DuctBlockEntity duct, Direction face, int moduleSlotCount) {
         this.duct = duct;
@@ -78,6 +91,13 @@ public final class DuctFaceLanes {
         CompoundTag gasTag = new CompoundTag();
         gas.save(registries, gasTag);
         tag.put("Gas", gasTag);
+
+        CompoundTag eh = new CompoundTag();
+        eh.putInt("EnergyTicks", energyTicksUntilAction);
+        eh.putInt("EnergyRr", energyRoundRobinCursor);
+        eh.putInt("HeatTicks", heatTicksUntilAction);
+        eh.putInt("HeatRr", heatRoundRobinCursor);
+        tag.put(NBT_ENERGY_HEAT, eh);
     }
 
     public void load(HolderLookup.Provider registries, CompoundTag tag) {
@@ -110,6 +130,19 @@ public final class DuctFaceLanes {
             CompoundTag rawGas = tag.getCompound("Gas");
             gas.load(registries, stripSharedKeys(rawGas));
             applyLegacyAmountField(gas, rawGas, nodeMode);
+        }
+
+        if (tag.contains(NBT_ENERGY_HEAT, Tag.TAG_COMPOUND)) {
+            CompoundTag eh = tag.getCompound(NBT_ENERGY_HEAT);
+            energyTicksUntilAction = eh.getInt("EnergyTicks");
+            energyRoundRobinCursor = eh.getInt("EnergyRr");
+            heatTicksUntilAction = eh.getInt("HeatTicks");
+            heatRoundRobinCursor = eh.getInt("HeatRr");
+        } else {
+            energyTicksUntilAction = 0;
+            energyRoundRobinCursor = 0;
+            heatTicksUntilAction = 0;
+            heatRoundRobinCursor = 0;
         }
     }
 
@@ -156,6 +189,10 @@ public final class DuctFaceLanes {
         item.resetPipeSegmentDefaults();
         fluid.resetPipeSegmentDefaults();
         gas.resetPipeSegmentDefaults();
+        energyTicksUntilAction = 0;
+        energyRoundRobinCursor = 0;
+        heatTicksUntilAction = 0;
+        heatRoundRobinCursor = 0;
     }
 
     public void clampFilterSizes(DuctItemTransportSpec itemSpec, DuctFluidTransportSpec fluidSpec, DuctGasTransportSpec gasSpec) {

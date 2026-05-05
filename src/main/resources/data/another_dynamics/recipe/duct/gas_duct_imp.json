@@ -1,0 +1,30 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "another_dynamics:duct",
+  "pattern": ["BBB", "BAB", "BBB"],
+  "key": {
+    "A": { "tag": "c:circuits/basic" },
+    "B": {
+      "type": "neoforge:components",
+      "items": "another_dynamics:duct",
+      "components": {
+        "another_dynamics:duct_logical_id": "another_dynamics:gas_duct"
+      },
+      "strict": false
+    }
+  },
+  "result": {
+    "id": "another_dynamics:duct",
+    "count": 1,
+    "components": {
+      "another_dynamics:duct_logical_id": "another_dynamics:gas_duct_imp"
+    }
+  }
+}

@@ -248,7 +248,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
                         @Override
                         public boolean isActive() {
-                            return super.isActive() && moduleSlotsInteractive();
+                            return super.isActive();
                         }
                     });
         }
@@ -380,24 +380,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Energy/heat lanes do not use module slots; copy remains usable. Multi-transport hub uses the first sync kind
-     * ordinal until a tab is picked — treat hub as non-energy for module interaction so shared modules work.
+     * Module column is always interactive: shared modules affect energy/heat (e.g. increment modules with
+     * {@code affects[].for=energy}) as well as item/fluid/gas. Slot acceptance is still enforced by
+     * {@link net.neoforged.neoforge.items.SlotItemHandler#mayPlace(ItemStack)} / {@code isItemValid}.
      */
     public boolean moduleSlotsInteractive() {
-        if (isMultiTransportHubMainLayer()) {
-            return true;
-        }
-        return !clientEditingEnergyOrHeatLane();
-    }
-
-    private boolean isMultiTransportHubMainLayer() {
-        if (linkedBlockEntity != null
-                && linkedBlockEntity.getLevel() != null
-                && !linkedBlockEntity.getLevel().isClientSide()) {
-            return linkedBlockEntity.isMenuHubLayer() && linkedBlockEntity.orderedMenuTransportKinds().size() > 1;
-        }
-        return syncData.get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
-                && syncData.get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
+        return true;
     }
 
     /**
@@ -706,60 +694,6 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     public ItemStack quickMoveStack(Player player, int index) {
         int playerFirst = playerSlotStart();
         int playerLast = this.slots.size();
-        int copyIx = copySettingsSlotIndex();
-
-        if (!moduleSlotsInteractive()) {
-            Slot slot = this.slots.get(index);
-            if (slot == null || !slot.hasItem()) {
-                return ItemStack.EMPTY;
-            }
-            if (index >= 0 && index < moduleSlotCount) {
-                return ItemStack.EMPTY;
-            }
-            if (index == copyIx) {
-                ItemStack stack = slot.getItem();
-                ItemStack result = stack.copy();
-                if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
-                    return ItemStack.EMPTY;
-                }
-                if (stack.isEmpty()) {
-                    slot.setByPlayer(ItemStack.EMPTY);
-                } else {
-                    slot.setChanged();
-                }
-                if (stack.getCount() == result.getCount()) {
-                    return ItemStack.EMPTY;
-                }
-                slot.onTake(player, stack);
-                return result;
-            }
-            if (index < machineSlotCount) {
-                return ItemStack.EMPTY;
-            }
-            ItemStack stack = slot.getItem();
-            ItemStack result = stack.copy();
-            if (!moveItemStackTo(stack, copyIx, machineSlotCount, false)) {
-                if (index < playerFirst + 27) {
-                    if (!moveItemStackTo(stack, playerFirst + 27, playerLast, true)) {
-                        return ItemStack.EMPTY;
-                    }
-                } else {
-                    if (!moveItemStackTo(stack, playerFirst, playerFirst + 27, false)) {
-                        return ItemStack.EMPTY;
-                    }
-                }
-            }
-            if (stack.isEmpty()) {
-                slot.setByPlayer(ItemStack.EMPTY);
-            } else {
-                slot.setChanged();
-            }
-            if (stack.getCount() == result.getCount()) {
-                return ItemStack.EMPTY;
-            }
-            slot.onTake(player, stack);
-            return result;
-        }
 
         ItemStack result = ItemStack.EMPTY;
         Slot slot = this.slots.get(index);

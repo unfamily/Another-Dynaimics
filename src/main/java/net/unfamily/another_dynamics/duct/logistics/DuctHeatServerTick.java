@@ -54,13 +54,13 @@ public final class DuctHeatServerTick {
                 continue;
             }
             DuctFaceNode node = be.getFaceNode(dir);
-            if (node.ticksUntilAction > 0) {
-                node.ticksUntilAction--;
+            if (lanes.heatTicksUntilAction > 0) {
+                lanes.heatTicksUntilAction--;
                 be.setChanged();
                 continue;
             }
             int rateTicks = DuctModuleEffects.effectiveHeatActionRateTicks(be, dir, 10);
-            node.ticksUntilAction = rateTicks - 1;
+            lanes.heatTicksUntilAction = rateTicks - 1;
             if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
                 RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
                 tryExtractPush(level, be, dir, spec, rm, node);
@@ -88,6 +88,7 @@ public final class DuctHeatServerTick {
             DuctHeatTransportSpec spec,
             RoutingMode routing,
             DuctFaceNode node) {
+        DuctFaceLanes sourceLanes = sourceBe.getFaceLanes(sourceFace);
         BlockPos srcPos = sourceBe.getBlockPos();
         Object src = getHeatOnFace(level, srcPos, sourceFace);
         if (src == null) {
@@ -165,13 +166,13 @@ public final class DuctHeatServerTick {
                 tier.add(c);
             }
         }
-        int rr = node.roundRobinCursor;
+        int rr = sourceLanes.heatRoundRobinCursor;
         HeatDestCandidate pick = pickWithinTier(level, tier, routing, rr);
         if (pick == null) {
             return;
         }
         if (routing == RoutingMode.ROUND_ROBIN) {
-            node.roundRobinCursor = rr + 1;
+            sourceLanes.heatRoundRobinCursor = rr + 1;
             sourceBe.setChanged();
         }
 
@@ -199,6 +200,7 @@ public final class DuctHeatServerTick {
             DuctHeatTransportSpec spec,
             RoutingMode routing,
             DuctFaceNode node) {
+        DuctFaceLanes retrieverLanes = retrieverBe.getFaceLanes(retrieverFace);
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         Object dest = getHeatOnFace(level, retrieverPos, retrieverFace);
         if (dest == null) {
@@ -261,7 +263,7 @@ public final class DuctHeatServerTick {
                 tier.add(c);
             }
         }
-        HeatDonorCandidate pick = pickDonorWithinTier(level, tier, routing, node.roundRobinCursor);
+        HeatDonorCandidate pick = pickDonorWithinTier(level, tier, routing, retrieverLanes.heatRoundRobinCursor);
         if (pick == null) {
             return;
         }
