@@ -34,6 +34,8 @@ import java.util.Optional;
 public final class OutboundShipment {
     public ItemStack stack;
     public ItemStack registeredIncoming;
+    /** Id used to track this shipment's reservation entry in {@link DuctIncomingIndex}. */
+    public long incomingReservationId;
     public BlockPos destDuct;
     public Direction destFace;
     public int travelTicks;
@@ -71,6 +73,7 @@ public final class OutboundShipment {
             int transportChannel) {
         this.stack = plannedStack.copy();
         this.registeredIncoming = this.stack.copy();
+        this.incomingReservationId = DuctIncomingIndex.newReservationId();
         this.destDuct = destDuct.immutable();
         this.destFace = destFace;
         this.travelTicks = travelTicks;
@@ -125,6 +128,7 @@ public final class OutboundShipment {
         }
         t.put("DuctPath", plist);
         t.putBoolean("SrcXfr", sourceExtractCommitted);
+        t.putLong("InId", incomingReservationId);
         ResourceLocation itemKey = BuiltInRegistries.ITEM.getKey(stack.getItem());
         if (itemKey != null) {
             t.putString("FbItem", itemKey.toString());
@@ -177,6 +181,7 @@ public final class OutboundShipment {
         }
         sh.registeredIncoming = sh.stack.copy();
         sh.sourceExtractCommitted = t.getBoolean("SrcXfr");
+        sh.incomingReservationId = t.contains("InId", Tag.TAG_LONG) ? t.getLong("InId") : DuctIncomingIndex.newReservationId();
         return sh;
     }
 

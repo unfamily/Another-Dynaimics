@@ -8,17 +8,18 @@
   ],
   "key": {
     "A": {
-      "item": "minecraft:stone"
+      "tag": "c:end_stones"
     },
     "B": {
-      "tag": "c:gems/amethyst"
+      "item": "another_dynamics:ender_accellerant"
     },
     "C": {
-      "item": "another_dynamics:inc_module_2"
+      "item": "another_dynamics:inc_module_5"
     }
   },
   "result": {
-    "id": "another_dynamics:inc_module_3",
+    "id": "another_dynamics:inc_module_6",
     "count": 1
   }
 }
+

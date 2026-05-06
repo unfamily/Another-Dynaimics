@@ -8,17 +8,18 @@
   ],
   "key": {
     "A": {
-      "item": "minecraft:stone"
+      "tag": "c:netherracks"
     },
     "B": {
-      "tag": "c:gems/amethyst"
+      "tag": "c:nuggets/netherite"
     },
     "C": {
-      "item": "another_dynamics:inc_module_2"
+      "item": "another_dynamics:inc_module_4"
     }
   },
   "result": {
-    "id": "another_dynamics:inc_module_3",
+    "id": "another_dynamics:inc_module_5",
     "count": 1
   }
 }
+

@@ -27,7 +27,6 @@ import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctCapHelper;
-import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctFluidIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctGasIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowBuffer;
@@ -118,8 +117,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             ServerLevel level, OutboundShipment s, @Nullable Iterator<OutboundShipment> it, BlockPos... extraOverflowDucts) {
         boolean physical = s.legacyPhysicalBuffer || s.sourceExtractCommitted;
         ItemStack lump = s.stack.isEmpty() ? ItemStack.EMPTY : s.stack.copy();
-        DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
-        DuctIncomingIndex.unregister(level, s.refundDuct, s.registeredIncoming.copy());
+        // No incoming reservation tracking: compute destination space from live handler state only.
         s.stack = ItemStack.EMPTY;
         removeShipmentFromList(s, it);
         if (!lump.isEmpty() && physical) {
@@ -647,7 +645,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private void registerOutboundInIncomingIndex(ServerLevel sl) {
         for (OutboundShipment s : outboundShipments) {
             if (s.travelTicks >= 0 && !s.stack.isEmpty()) {
-                DuctIncomingIndex.register(sl, s.destDuct, s.registeredIncoming.copy());
+                // No incoming reservation tracking.
             }
         }
     }
@@ -655,7 +653,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private void unregisterOutboundFromIncomingIndex(ServerLevel sl) {
         for (OutboundShipment s : outboundShipments) {
             if (s.travelTicks >= 0 && !s.stack.isEmpty()) {
-                DuctIncomingIndex.unregister(sl, s.destDuct, s.registeredIncoming.copy());
+                // No incoming reservation tracking.
             }
         }
     }
@@ -732,7 +730,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         while (it.hasNext()) {
             OutboundShipment s = it.next();
             if (s.stack.isEmpty()) {
-                DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
+                // No incoming reservation tracking.
                 it.remove();
                 setChanged();
                 dirty = true;
@@ -755,7 +753,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             if (s.transitPhase == TransitPhase.RETURN) {
-                DuctIncomingIndex.unregister(level, s.refundDuct, s.registeredIncoming.copy());
+                // No incoming reservation tracking.
                 if (!s.stack.isEmpty()) {
                     DuctOverflowRouting.finishReturnLegAbsorb(level, s, worldPosition);
                 }
@@ -1187,7 +1185,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             cancelOutboundShipment(level, s, it);
             return false;
         }
-        DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
+        // No incoming reservation tracking.
 
         int planned = s.stack.getCount();
         boolean itemsAlreadyPulledFromSource = s.legacyPhysicalBuffer || s.sourceExtractCommitted;
@@ -1204,7 +1202,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                             : DuctCapHelper.countExtractableMatchingOnFace(
                                     level, s.refundDuct, s.sourceFace, s.stack, planned);
         }
-        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, s.destDuct);
+        List<ItemStack> prior = List.of();
         DuctItemTransportSpec srcSpec = srcBe.itemTransportSpec();
         int batchCap = tubeOperationBatchSize(srcSpec, srcBe, s.sourceFace);
         int insLimit = Math.min(planned, Math.min(capExt, batchCap));
@@ -1262,7 +1260,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             setChanged();
         }
         s.registeredIncoming = s.stack.copy();
-        DuctIncomingIndex.register(level, s.destDuct, s.registeredIncoming.copy());
         setChanged();
         return true;
     }
@@ -1334,7 +1331,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             ItemStack chunk = s.stack.copy();
             chunk.setCount(take);
             if (!s.legacyOmniFaces) {
-                List<ItemStack> priorR = DuctIncomingIndex.snapshot(level, s.destDuct);
+                List<ItemStack> priorR = List.of();
                 int maxIns =
                         DuctCapHelper.maxInsertableAfterPendingOnFace(
                                 level, s.destDuct, s.destFace, chunk, chunk.getCount(), priorR);
@@ -1348,7 +1345,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 }
                 chunk.setCount(take);
             }
-            DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
+            // No incoming reservation tracking.
             NodeMode dm = destBe.getFaceLanes(s.destFace).nodeMode;
             if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                     && !destBe.passesItemFilters(s.destFace, chunk, level, DuctFaceNode.FilterBank.FILTER)) {
@@ -1362,7 +1359,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (take < planned) {
                 s.stack.shrink(take);
                 s.registeredIncoming = s.stack.copy();
-                DuctIncomingIndex.register(level, s.destDuct, s.registeredIncoming.copy());
+                // No incoming reservation tracking.
             } else {
                 it.remove();
                 s.stack = ItemStack.EMPTY;
@@ -1374,10 +1371,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return false;
         }
 
-        DuctIncomingIndex.unregister(level, s.destDuct, s.registeredIncoming.copy());
+        // No incoming reservation tracking.
         if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe)) {
             if (ductBlockPresentButBlockEntityPending(level, s.refundDuct)) {
-                DuctIncomingIndex.register(level, s.destDuct, s.registeredIncoming.copy());
+                // No incoming reservation tracking.
                 return true;
             }
             it.remove();
@@ -1400,7 +1397,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         : DuctCapHelper.countExtractableMatchingOnFace(
                                 level, s.refundDuct, s.sourceFace, s.stack, planned);
         int insLimit = Math.min(planned, Math.min(capExt, moduleCap));
-        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, s.destDuct);
+        List<ItemStack> prior = List.of();
         int capIn =
                 s.legacyOmniFaces
                         ? DuctCapHelper.maxInsertableAfterPending(
@@ -1439,7 +1436,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         : DuctCapHelper.extractMatchingUpToOnFace(level, s.refundDuct, s.sourceFace, toExt, n);
         if (extracted.isEmpty()) {
             if (ductBlockPresentButBlockEntityPending(level, s.refundDuct)) {
-                DuctIncomingIndex.register(level, s.destDuct, s.registeredIncoming.copy());
+                // No incoming reservation tracking.
                 return true;
             }
             it.remove();
@@ -1464,7 +1461,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         } else {
             s.stack.shrink(delivered);
             s.registeredIncoming = s.stack.copy();
-            DuctIncomingIndex.register(level, s.destDuct, s.registeredIncoming.copy());
+            // No incoming reservation tracking.
         }
         ItemStack remainder =
                 s.legacyOmniFaces
@@ -1512,7 +1509,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             ItemStack chunk = s.stack.copy();
             chunk.setCount(take);
             if (!s.legacyOmniFaces) {
-                List<ItemStack> priorR = DuctIncomingIndex.snapshot(level, worldPosition);
+                List<ItemStack> priorR = List.of();
                 int maxIns =
                         DuctCapHelper.maxInsertableAfterPendingOnFace(
                                 level, worldPosition, s.destFace, chunk, chunk.getCount(), priorR);
@@ -1526,7 +1523,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 }
                 chunk.setCount(take);
             }
-            DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
+            // No incoming reservation tracking.
             NodeMode sm = getFaceLanes(s.destFace).nodeMode;
             if ((sm == NodeMode.FILTERING_INSERTION || sm == NodeMode.EXTRACTION_FILTERING)
                     && !passesItemFilters(s.destFace, chunk, level, DuctFaceNode.FilterBank.FILTER)) {
@@ -1540,7 +1537,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (take < planned) {
                 s.stack.shrink(take);
                 s.registeredIncoming = s.stack.copy();
-                DuctIncomingIndex.register(level, worldPosition, s.registeredIncoming.copy());
+                // No incoming reservation tracking.
             } else {
                 it.remove();
                 s.stack = ItemStack.EMPTY;
@@ -1552,7 +1549,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return false;
         }
 
-        DuctIncomingIndex.unregister(level, worldPosition, s.registeredIncoming.copy());
+        // No incoming reservation tracking.
         DuctItemTransportSpec transportSpec = itemTransportSpec();
         int moduleCap = tubeOperationBatchSize(transportSpec, this, s.destFace);
         int planned = s.stack.getCount();
@@ -1562,7 +1559,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         : DuctCapHelper.countExtractableMatchingOnFace(
                                 level, s.refundDuct, s.sourceFace, s.stack, planned);
         int insLimit = Math.min(planned, Math.min(capExt, moduleCap));
-        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, worldPosition);
+        List<ItemStack> prior = List.of();
         int capIn =
                 s.legacyOmniFaces
                         ? DuctCapHelper.maxInsertableAfterPending(
@@ -1601,7 +1598,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         : DuctCapHelper.extractMatchingUpToOnFace(level, s.refundDuct, s.sourceFace, toExt, n);
         if (extracted.isEmpty()) {
             if (ductBlockPresentButBlockEntityPending(level, s.refundDuct)) {
-                DuctIncomingIndex.register(level, worldPosition, s.registeredIncoming.copy());
+                // No incoming reservation tracking.
                 return true;
             }
             it.remove();
@@ -1626,7 +1623,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         } else {
             s.stack.shrink(delivered);
             s.registeredIncoming = s.stack.copy();
-            DuctIncomingIndex.register(level, worldPosition, s.registeredIncoming.copy());
+            // No incoming reservation tracking.
         }
         ItemStack remainder =
                 s.legacyOmniFaces
@@ -1711,7 +1708,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
         }
-        boolean singleDuctNetwork = DuctPathfinder.connectedDucts(level, worldPosition, DuctNetworkType.ITEM).size() == 1;
         DuctFaceLanes faceLanes = getFaceLanes(face);
         IItemHandler sourceHandler = DuctCapHelper.getHandlerOnFace(level, worldPosition, face);
         if (sourceHandler == null) {
@@ -1722,126 +1718,136 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
          * extractor on the first stack (see finishExtractionDelivery: invalid items were extracted then refunded).
          * Routing RR state is only committed when we actually schedule a shipment.
          */
-        for (int slot = 0; slot < sourceHandler.getSlots(); slot++) {
-            final int rrFrozen = node.roundRobinCursor;
-            boolean allowSelf = faceLanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
-            boolean allowSelfOrSingle = allowSelf || singleDuctNetwork;
-            RoutingMode rm =
-                    faceLanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION
-                            ? node.routingModeRetriever
-                            : faceLanes.nodeMode.isHybrid()
-                                    ? node.routingModeExtractor
-                                    : node.routingMode;
-            boolean roundRobinRouting = rm == RoutingMode.ROUND_ROBIN;
-            boolean scheduledThisSlot = false;
-            int lastSuccessfulCandIdx = 0;
-            // One outbound task per rate tick for this face: count is min(batch, source, dest, filters, allow/keep).
-            ItemStack probe = sourceHandler.extractItem(slot, 1, true);
+        final int rrFrozen = node.roundRobinCursor;
+        // Always allow destinations on this same duct (other faces). This prevents routing from ignoring local
+        // attached storage just because the network has multiple ducts.
+        boolean allowSelfOrSingle = true;
+        Direction forbidSelfDestFace =
+                (faceLanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed) ? null : face;
+        RoutingMode rm =
+                faceLanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION
+                        ? node.routingModeRetriever
+                        : faceLanes.nodeMode.isHybrid()
+                                ? node.routingModeExtractor
+                                : node.routingMode;
+        boolean roundRobinRouting = rm == RoutingMode.ROUND_ROBIN;
+
+        List<DuctTargetSelector.ExtractionCandidate> candidates =
+                DuctTargetSelector.listExtractionDeliveryCandidatesWithoutProbe(
+                        level,
+                        worldPosition,
+                        rm,
+                        rrFrozen,
+                        node.channelLetter,
+                        allowSelfOrSingle,
+                        // With self-feed enabled (EXTRACTION_FILTERING), allow selecting the same face as a destination.
+                        forbidSelfDestFace);
+        if (candidates.isEmpty()) {
+            return;
+        }
+
+        int lastSuccessfulCandIdx = 0;
+        for (int candIdx = 0; candIdx < candidates.size() && candIdx < EXTRACTION_ROUTE_RETRY_CAP; candIdx++) {
+            DuctTargetSelector.ExtractionCandidate cand = candidates.get(candIdx);
+            BlockPos dest = cand.ductPos();
+            Direction destFace = cand.face();
+
+            List<BlockPos> path;
+            if (dest.equals(worldPosition)) {
+                path = List.of(worldPosition);
+            } else {
+                Optional<List<BlockPos>> p = DuctPathfinder.shortestPath(level, worldPosition, dest, spec, DuctNetworkType.ITEM);
+                if (p.isEmpty()) {
+                    continue;
+                }
+                path = p.get();
+            }
+            if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
+                continue;
+            }
+            NodeMode destMode = destBe.getFaceLanes(destFace).nodeMode;
+
+            // For the best destination (priority+routing), find a compatible source item.
+            ItemStack probe = ItemStack.EMPTY;
+            for (int slot = 0; slot < sourceHandler.getSlots(); slot++) {
+                ItemStack p = sourceHandler.extractItem(slot, 1, true);
+                if (p.isEmpty()) {
+                    continue;
+                }
+                if (!passesItemFilters(face, p, level, DuctFaceNode.FilterBank.EXTRACTOR)) {
+                    continue;
+                }
+                if (!DuctCapHelper.canInsertIntoFace(level, dest, destFace, p)) {
+                    continue;
+                }
+                if (destMode == NodeMode.FILTERING_INSERTION || destMode == NodeMode.EXTRACTION_FILTERING) {
+                    if (!destBe.passesItemFilters(destFace, p, level, DuctFaceNode.FilterBank.FILTER)) {
+                        continue;
+                    }
+                }
+                probe = p;
+                break;
+            }
             if (probe.isEmpty()) {
                 continue;
             }
-            if (!passesItemFilters(face, probe, level, DuctFaceNode.FilterBank.EXTRACTOR)) {
+
+            int tubeBatch = tubeOperationBatchSize(spec, this, face);
+            int availTotal =
+                    DuctCapHelper.countExtractableMatchingOnFace(level, worldPosition, face, probe, Integer.MAX_VALUE);
+            if (availTotal <= 0) {
                 continue;
             }
-            int[] rrProbe = new int[] {rrFrozen};
-            List<DuctTargetSelector.ExtractionCandidate> candidates =
-                    DuctTargetSelector.listExtractionDeliveryCandidates(
-                            level,
-                            worldPosition,
-                            probe,
-                            rm,
-                            rrProbe[0],
-                            node.channelLetter,
-                            allowSelfOrSingle,
-                            allowSelf ? null : (allowSelfOrSingle ? face : null));
-            if (candidates.isEmpty()) {
+            int pendingSum = pendingPlannedExtractCountOnSource(worldPosition, face, probe);
+            int remainingInStorage = availTotal - pendingSum;
+            if (remainingInStorage <= 0) {
                 continue;
             }
-            for (int candIdx = 0; candIdx < candidates.size() && candIdx < EXTRACTION_ROUTE_RETRY_CAP; candIdx++) {
-                DuctTargetSelector.ExtractionCandidate cand = candidates.get(candIdx);
-                BlockPos dest = cand.ductPos();
-                Direction destFace = cand.face();
-                List<BlockPos> path;
-                if (dest.equals(worldPosition)) {
-                    path = List.of(worldPosition);
-                } else {
-                    Optional<List<BlockPos>> p =
-                            DuctPathfinder.shortestPath(level, worldPosition, dest, spec, DuctNetworkType.ITEM);
-                    if (p.isEmpty()) {
-                        continue;
-                    }
-                    path = p.get();
-                }
-                if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
-                    continue;
-                }
-                NodeMode destMode = destBe.getFaceLanes(destFace).nodeMode;
-                if (destMode == NodeMode.FILTERING_INSERTION || destMode == NodeMode.EXTRACTION_FILTERING) {
-                    if (!destBe.passesItemFilters(destFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
-                        continue;
-                    }
-                }
-                int tubeBatch = tubeOperationBatchSize(spec, this, face);
-                int availTotal =
-                        DuctCapHelper.countExtractableMatchingOnFace(
-                                level, worldPosition, face, probe, Integer.MAX_VALUE);
-                if (availTotal <= 0) {
-                    break;
-                }
-                int pendingSum = pendingPlannedExtractCountOnSource(worldPosition, face, probe);
-                int remainingInStorage = availTotal - pendingSum;
-                if (remainingInStorage <= 0) {
-                    break;
-                }
-                int plannedCount = Math.min(tubeBatch, remainingInStorage);
-                plannedCount =
-                        Math.min(
-                                plannedCount,
-                                capExtractableForAllowKeep(
-                                        level,
-                                        worldPosition,
-                                        face,
-                                        this,
-                                        DuctFaceNode.FilterBank.EXTRACTOR,
-                                        probe,
-                                        plannedCount));
-                if (plannedCount <= 0) {
-                    continue;
-                }
-                ItemStack planned = probe.copy();
+            int plannedCount = Math.min(tubeBatch, remainingInStorage);
+            plannedCount =
+                    Math.min(
+                            plannedCount,
+                            capExtractableForAllowKeep(
+                                    level,
+                                    worldPosition,
+                                    face,
+                                    this,
+                                    DuctFaceNode.FilterBank.EXTRACTOR,
+                                    probe,
+                                    plannedCount));
+            if (plannedCount <= 0) {
+                continue;
+            }
+            ItemStack planned = probe.copy();
+            planned.setCount(plannedCount);
+            int destCap = maxSchedulableTowardFace(level, dest, destBe, destFace, planned, plannedCount);
+            if (destCap <= 0) {
+                continue;
+            }
+            if (destCap < plannedCount) {
+                plannedCount = destCap;
                 planned.setCount(plannedCount);
-                int destCap = maxSchedulableTowardFace(level, dest, destBe, destFace, planned, plannedCount);
-                if (destCap <= 0) {
-                    continue;
-                }
-                if (destCap < plannedCount) {
-                    plannedCount = destCap;
-                    planned.setCount(plannedCount);
-                }
-                lastSuccessfulCandIdx = candIdx;
-                long edgeTicks = DuctModuleEffects.effectiveItemEdgeTravelTicks(this, face, spec);
-                long travel = DuctPathfinder.pathTravelTicks(path, edgeTicks);
-                int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
-                OutboundShipment sh =
-                        new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
-                sh.ductPath = OutboundShipment.copyPath(path);
-                sh.totalTravelTicks = travelTicks;
-                sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, edgeTicks);
-                sh.journeyStartGameTime = level.getGameTime();
-                sh.transitPhase = TransitPhase.FORWARD;
-                outboundShipments.add(sh);
-                DuctIncomingIndex.register(level, dest, sh.registeredIncoming.copy());
-                setChanged();
-                pushTransitSnapshotToClients(level);
-                scheduledThisSlot = true;
-                break;
             }
-            if (scheduledThisSlot && roundRobinRouting) {
+
+            lastSuccessfulCandIdx = candIdx;
+            long edgeTicks = DuctModuleEffects.effectiveItemEdgeTravelTicks(this, face, spec);
+            long travel = DuctPathfinder.pathTravelTicks(path, edgeTicks);
+            int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
+            OutboundShipment sh =
+                    new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
+            sh.ductPath = OutboundShipment.copyPath(path);
+            sh.totalTravelTicks = travelTicks;
+            sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, edgeTicks);
+            sh.journeyStartGameTime = level.getGameTime();
+            sh.transitPhase = TransitPhase.FORWARD;
+            outboundShipments.add(sh);
+            // No incoming reservation tracking.
+            setChanged();
+            pushTransitSnapshotToClients(level);
+            if (roundRobinRouting) {
                 node.roundRobinCursor = rrFrozen + lastSuccessfulCandIdx + 1;
             }
-            if (scheduledThisSlot) {
-                return;
-            }
+            return;
         }
     }
 
@@ -1927,7 +1933,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 if (plannedCount > 0) {
                     ItemStack template = probe.copy();
                     template.setCount(plannedCount);
-                    List<ItemStack> prior = DuctIncomingIndex.snapshot(level, worldPosition);
+                    List<ItemStack> prior = List.of();
                     int capIn =
                             DuctCapHelper.maxInsertableAfterPendingOnFace(
                                     level, worldPosition, retrieverFace, template, plannedCount, prior);
@@ -1962,7 +1968,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 sh.journeyStartGameTime = level.getGameTime();
                 sh.transitPhase = TransitPhase.FORWARD;
                 outboundShipments.add(sh);
-                DuctIncomingIndex.register(level, worldPosition, sh.registeredIncoming.copy());
+                // No incoming reservation tracking.
                 setChanged();
                 pushTransitSnapshotToClients(level);
                 if (roundRobinRetriever) {
@@ -1998,7 +2004,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         ItemStack t = template.copy();
         t.setCount(want);
-        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct);
+        List<ItemStack> prior = List.of();
         int capInsert =
                 DuctCapHelper.maxInsertableAfterPendingOnFace(
                         level, destDuct, destFace, t, want, prior);

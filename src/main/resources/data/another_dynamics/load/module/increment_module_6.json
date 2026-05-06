@@ -1,0 +1,54 @@
+{
+  "type": "another_dynamics:declare_module",
+  "id": "another_dynamics:inc_module_6",
+  "affects": [
+    {
+      "for": "item",
+      "quantity": {
+        "set": 512
+      },
+      "speed": {
+        "mult": 0.2
+      },
+      "rate": {
+        "mult": 0.2
+      }
+    },
+    {
+      "for": "fluid",
+      "quantity": {
+        "set": 2147483647
+      },
+      "speed": {
+        "mult": 0.2
+      },
+      "rate": {
+        "mult": 0.2
+      }
+    },
+    {
+      "for": "gas",
+      "quantity": {
+        "set": 2147483647
+      },
+      "speed": {
+        "mult": 0.2
+      },
+      "rate": {
+        "mult": 0.2
+      }
+    },
+    {
+      "for": "energy",
+      "extract": {
+        "set": 2147483647
+      }
+    }
+  ],
+  "stack": 1,
+  "max_slots": 1,
+  "incompatible_with": [
+    "#another_dynamics:increment_modules"
+  ]
+}
+

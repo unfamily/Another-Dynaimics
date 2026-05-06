@@ -19,6 +19,7 @@ import net.unfamily.another_dynamics.duct.module.ModuleDefinition.ItemQuantityMo
  */
 public final class ModuleUpgradeTooltip {
     private static final double EPS = 1e-9;
+    private static final int INFINITE = Integer.MAX_VALUE;
 
     private static final String LINE_SPEED = "gui.another_dynamics.module.line.speed";
     private static final String LINE_FILTER = "gui.another_dynamics.module.line.filter";
@@ -184,7 +185,7 @@ public final class ModuleUpgradeTooltip {
         }
         List<String> parts = new ArrayList<>();
         if (m.hasSet()) {
-            parts.add("\u2264" + m.setValue());
+            parts.add("\u2264" + formatSetValue(m.setValue()));
         }
         if (m.addSum() != 0) {
             parts.add(String.format(Locale.ROOT, "%+d", m.addSum()));
@@ -218,7 +219,7 @@ public final class ModuleUpgradeTooltip {
             }
         }
         if (m.hasSet()) {
-            parts.add(String.valueOf(m.setValue()));
+            parts.add(formatSetValue(m.setValue()));
         }
         if (m.addSum() != 0) {
             parts.add(String.format(Locale.ROOT, "%+d", m.addSum()));
@@ -243,7 +244,7 @@ public final class ModuleUpgradeTooltip {
             }
         }
         if (m.hasSet()) {
-            parts.add(String.valueOf(m.setValue()));
+            parts.add(formatSetValue(m.setValue()));
         }
         if (m.addSum() != 0) {
             parts.add(String.format(Locale.ROOT, "%+d", m.addSum()));
@@ -258,7 +259,7 @@ public final class ModuleUpgradeTooltip {
         }
         List<String> parts = new ArrayList<>();
         if (m.hasSet()) {
-            parts.add(String.valueOf(m.setValue()));
+            parts.add(formatSetValue(m.setValue()));
         }
         if (m.addSum() != 0) {
             parts.add(String.format(Locale.ROOT, "%+d", m.addSum()));
@@ -267,6 +268,10 @@ public final class ModuleUpgradeTooltip {
             parts.add("\u00d7" + formatMultPlain(m.multProduct()));
         }
         return parts.isEmpty() ? null : String.join(", ", parts);
+    }
+
+    private static String formatSetValue(int v) {
+        return v == INFINITE ? "\u221e" : String.valueOf(v);
     }
 
     private static boolean inactive(ItemQuantityModifiers m) {

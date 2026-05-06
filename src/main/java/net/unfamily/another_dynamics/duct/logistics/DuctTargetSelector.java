@@ -136,6 +136,53 @@ public final class DuctTargetSelector {
             int extractorFaceChannel,
             boolean allowSelfDestination,
             @Nullable Direction forbidSelfDestFace) {
+        return listExtractionDeliveryCandidatesInternal(
+                level,
+                extractorPos,
+                probe,
+                true,
+                routing,
+                roundRobinCursor,
+                extractorFaceChannel,
+                allowSelfDestination,
+                forbidSelfDestFace);
+    }
+
+    /**
+     * Lists candidate destinations ordered by priority then routing, but does not apply any {@code probe}-dependent
+     * insertability checks. Used when the scheduler wants to pick the best destination first, then find a compatible
+     * source item for it (more stable behavior with mixed inventories).
+     */
+    public static List<ExtractionCandidate> listExtractionDeliveryCandidatesWithoutProbe(
+            ServerLevel level,
+            BlockPos extractorPos,
+            RoutingMode routing,
+            int roundRobinCursor,
+            int extractorFaceChannel,
+            boolean allowSelfDestination,
+            @Nullable Direction forbidSelfDestFace) {
+        return listExtractionDeliveryCandidatesInternal(
+                level,
+                extractorPos,
+                ItemStack.EMPTY,
+                false,
+                routing,
+                roundRobinCursor,
+                extractorFaceChannel,
+                allowSelfDestination,
+                forbidSelfDestFace);
+    }
+
+    private static List<ExtractionCandidate> listExtractionDeliveryCandidatesInternal(
+            ServerLevel level,
+            BlockPos extractorPos,
+            ItemStack probe,
+            boolean requireProbeInsertable,
+            RoutingMode routing,
+            int roundRobinCursor,
+            int extractorFaceChannel,
+            boolean allowSelfDestination,
+            @Nullable Direction forbidSelfDestFace) {
         DuctItemTransportSpec spec =
                 level.getBlockEntity(extractorPos) instanceof DuctBlockEntity extractorDuct
                         ? extractorDuct.itemTransportSpec()
@@ -173,7 +220,7 @@ public final class DuctTargetSelector {
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, extractorFaceChannel)) {
                     continue;
                 }
-                if (!DuctCapHelper.canInsertIntoFace(level, p, d, probe)) {
+                if (requireProbeInsertable && !DuctCapHelper.canInsertIntoFace(level, p, d, probe)) {
                     continue;
                 }
                 OptionalLong dist =

@@ -139,10 +139,10 @@ public final class DuctNodeScreen
     /**
      * Priority / quantity block: centered, two rows (numeric then 0/A/[M]/Close-without-saving). Slightly above player inventory.
      */
-    /** +/- steps: priority uses 1 / Ctrl 10 / Alt 100. Quantity and allow-cap Limit/Keep: 1 / Ctrl+Alt 8 / Shift 64. */
+    /** +/- steps: priority uses 1 / Ctrl+Alt 10 / Shift 100. Quantity and allow-cap Limit/Keep: 1 / Ctrl+Alt 8 / Shift 64. */
     private static final int PRIORITY_STEP_PLAIN = 1;
-    private static final int PRIORITY_STEP_CTRL = 10;
-    private static final int PRIORITY_STEP_ALT = 100;
+    private static final int PRIORITY_STEP_CTRL_OR_ALT = 10;
+    private static final int PRIORITY_STEP_SHIFT = 100;
     private static final int BATCH_STEP_PLAIN = 1;
     private static final int BATCH_STEP_CTRL_OR_ALT = 8;
     private static final int BATCH_STEP_SHIFT = 64;
@@ -1197,6 +1197,9 @@ public final class DuctNodeScreen
      * priority; the extractor sub-panel edits batch.
      */
     private boolean amountFieldEditsPriority() {
+        if (isEnergyOrHeatTransport()) {
+            return true;
+        }
         NodeMode nm = NodeMode.fromOrdinal(
             menu.getSyncData().get(DuctMenuSync.NODE_MODE)
         );
@@ -3876,13 +3879,11 @@ public final class DuctNodeScreen
     }
 
     private int stepForPriorityAdjust() {
-        boolean c = hasControlDown();
-        boolean a = hasAltDown();
-        if (a) {
-            return PRIORITY_STEP_ALT;
+        if (hasShiftDown()) {
+            return PRIORITY_STEP_SHIFT;
         }
-        if (c) {
-            return PRIORITY_STEP_CTRL;
+        if (hasControlDown() || hasAltDown()) {
+            return PRIORITY_STEP_CTRL_OR_ALT;
         }
         return PRIORITY_STEP_PLAIN;
     }

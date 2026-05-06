@@ -10,11 +10,9 @@
     "A": {
       "item": "minecraft:stone"
     },
-    "B": [
-      {
-        "tag": "c:ingots/gold"
-      }
-    ],
+    "B": {
+      "item": "minecraft:lapis_lazuli"
+    },
     "C": {
       "item": "another_dynamics:inc_module_0"
     }

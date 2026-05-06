@@ -14,7 +14,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Channel selector: cycles A–Z with colored background (Pattern Crafter letter style).
  * No empty/neutral state: value is always {@code 1..26} (A red by default).
- * Left click: previous letter; right click: next; Shift+click: jump to A (red).
+ * Left click: next letter; right click: previous; Shift+click: jump to A (red).
  */
 public final class ChannelLetterButton extends AbstractWidget {
     private static final int MIN = 1;
@@ -68,12 +68,12 @@ public final class ChannelLetterButton extends AbstractWidget {
                 return true;
             }
             if (onClickNotifyServer != null) {
-                // Left = backward (previous letter), right = forward (next letter)
-                onClickNotifyServer.accept(button == 0 ? -1 : 1);
+                // Left = forward (next letter), right = backward (previous letter)
+                onClickNotifyServer.accept(button == 0 ? 1 : -1);
             } else if (button == 0) {
-                cycleBackward();
-            } else {
                 cycleForward();
+            } else {
+                cycleBackward();
             }
             return true;
         }
