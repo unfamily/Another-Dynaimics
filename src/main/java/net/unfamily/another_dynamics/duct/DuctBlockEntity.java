@@ -2356,9 +2356,24 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
 
+        // Highest priority in the sorted list. Used to prevent falling through to lower-priority
+        // destinations when a higher-priority one is only temporarily pending-full (reserved by
+        // other in-flight shipments from a concurrent extractor on the same tick).
+        int highestCandPriority = candidates.get(0).priority();
+        // Set to true when any highest-tier candidate was physically insertable (canInsertIntoFace)
+        // but returned destCap==0 due to in-flight reservations.
+        boolean pendingFullInHighestTier = false;
+
         int lastSuccessfulCandIdx = 0;
         for (int candIdx = 0; candIdx < candidates.size() && candIdx < EXTRACTION_ROUTE_RETRY_CAP; candIdx++) {
             DuctTargetSelector.ExtractionCandidate cand = candidates.get(candIdx);
+
+            // If we've entered a lower-priority tier and a higher-priority destination was
+            // physically available but pending-full, stop rather than bypassing priorities.
+            if (cand.priority() < highestCandPriority && pendingFullInHighestTier) {
+                break;
+            }
+
             BlockPos dest = cand.ductPos();
             Direction destFace = cand.face();
 
@@ -2445,6 +2460,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             planned.setCount(plannedCount);
             int destCap = maxSchedulableTowardFace(level, dest, destBe, destFace, planned, plannedCount);
             if (destCap <= 0) {
+                // probe is non-empty only if canInsertIntoFace returned true above,
+                // meaning the destination is physically available but reserved by pending shipments.
+                if (!probe.isEmpty() && cand.priority() >= highestCandPriority) {
+                    pendingFullInHighestTier = true;
+                }
                 continue;
             }
             if (destCap < plannedCount) {
@@ -2517,8 +2537,20 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (donors.isEmpty()) {
             return;
         }
+        int highestDonorPriority = donors.get(0).priority();
+        // True when a highest-tier donor had items available physically but all were already
+        // pending extraction by another retriever on the same tick.
+        boolean pendingDrainedInHighestTier = false;
+
         for (int donorIdx = 0; donorIdx < donors.size() && donorIdx < EXTRACTION_ROUTE_RETRY_CAP; donorIdx++) {
             DuctTargetSelector.DonorCandidate donorCand = donors.get(donorIdx);
+
+            // Priority barrier: don't pull from a lower-priority donor when a higher-priority donor
+            // is physically non-empty but fully reserved by other in-flight retrievals.
+            if (donorCand.priority() < highestDonorPriority && pendingDrainedInHighestTier) {
+                break;
+            }
+
             BlockPos donor = donorCand.ductPos();
             Direction donorFace = donorCand.face();
             List<BlockPos> path;
@@ -2569,6 +2601,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 int pendingSum = pendingPlannedExtractCountOnSource(donor, donorFace, probe);
                 int remainingInStorage = availTotal - pendingSum;
                 if (remainingInStorage <= 0) {
+                    // Donor is physically non-empty but all items are already reserved.
+                    if (donorCand.priority() >= highestDonorPriority) {
+                        pendingDrainedInHighestTier = true;
+                    }
                     continue;
                 }
                 int plannedCount = Math.min(tubeBatch, remainingInStorage);
