@@ -1,5 +1,7 @@
 package net.unfamily.another_dynamics.duct;
 
+import org.slf4j.Logger;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -76,6 +78,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private static final int FACE_COUNT = 6;
     /** Max alternate destinations when {@link #canScheduleTowardFace} rejects the first routing pick (pending/cap simulation). */
     private static final int EXTRACTION_ROUTE_RETRY_CAP = 32;
+    private static final Logger PRIO_LOGGER = LogUtils.getLogger();
+    /** Throttle: last game-time we printed a prio-debug line for this entity. */
+    private long lastPrioDebugTime = -999L;
 
     /**
      * After chunk load, {@link Level#getBlockState} can see an {@link AbstractDuctBlock} before the
@@ -2364,6 +2369,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         // but returned destCap==0 due to in-flight reservations.
         boolean pendingFullInHighestTier = false;
 
+        boolean prioDebugThisTick = level.getGameTime() > lastPrioDebugTime + 40L;
+        if (prioDebugThisTick) lastPrioDebugTime = level.getGameTime();
+
         int lastSuccessfulCandIdx = 0;
         for (int candIdx = 0; candIdx < candidates.size() && candIdx < EXTRACTION_ROUTE_RETRY_CAP; candIdx++) {
             DuctTargetSelector.ExtractionCandidate cand = candidates.get(candIdx);
@@ -2371,6 +2379,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             // If we've entered a lower-priority tier and a higher-priority destination was
             // physically available but pending-full, stop rather than bypassing priorities.
             if (cand.priority() < highestCandPriority && pendingFullInHighestTier) {
+                if (prioDebugThisTick) PRIO_LOGGER.info("[AD-PRIO-DBG] {} face={} BREAK tier {}->{} pendingFull=true", worldPosition, face, highestCandPriority, cand.priority());
                 break;
             }
 
@@ -2383,11 +2392,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             } else {
                 Optional<List<BlockPos>> p = DuctPathfinder.shortestPath(level, worldPosition, dest, spec, DuctNetworkType.ITEM);
                 if (p.isEmpty()) {
+                    if (prioDebugThisTick && cand.priority() >= highestCandPriority) PRIO_LOGGER.info("[AD-PRIO-DBG] {} face={} SKIP p={} df={} prio={} reason=NO_PATH", worldPosition, face, dest, destFace, cand.priority());
                     continue;
                 }
                 path = p.get();
             }
             if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
+                if (prioDebugThisTick && cand.priority() >= highestCandPriority) PRIO_LOGGER.info("[AD-PRIO-DBG] {} face={} SKIP p={} df={} prio={} reason=NO_DEST_BE", worldPosition, face, dest, destFace, cand.priority());
                 continue;
             }
             NodeMode destMode = destBe.getFaceLanes(destFace).nodeMode;
@@ -2427,6 +2438,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 break;
             }
             if (probe.isEmpty()) {
+                if (prioDebugThisTick && cand.priority() >= highestCandPriority) PRIO_LOGGER.info("[AD-PRIO-DBG] {} face={} SKIP p={} df={} prio={} reason=NO_PROBE destMode={}", worldPosition, face, dest, destFace, cand.priority(), destMode);
                 continue;
             }
 
@@ -2434,11 +2446,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int availTotal =
                     DuctCapHelper.countExtractableMatchingOnFace(level, worldPosition, face, probe, Integer.MAX_VALUE);
             if (availTotal <= 0) {
+                if (prioDebugThisTick && cand.priority() >= highestCandPriority) PRIO_LOGGER.info("[AD-PRIO-DBG] {} face={} SKIP p={} df={} prio={} reason=NO_AVAIL", worldPosition, face, dest, destFace, cand.priority());
                 continue;
             }
             int pendingSum = pendingPlannedExtractCountOnSource(worldPosition, face, probe);
             int remainingInStorage = availTotal - pendingSum;
             if (remainingInStorage <= 0) {
+                if (prioDebugThisTick && cand.priority() >= highestCandPriority) PRIO_LOGGER.info("[AD-PRIO-DBG] {} face={} SKIP p={} df={} prio={} reason=AVAIL_PENDING avail={} pending={}", worldPosition, face, dest, destFace, cand.priority(), availTotal, pendingSum);
                 continue;
             }
             int plannedCount = Math.min(tubeBatch, remainingInStorage);
@@ -2454,6 +2468,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                     probe,
                                     plannedCount));
             if (plannedCount <= 0) {
+                if (prioDebugThisTick && cand.priority() >= highestCandPriority) PRIO_LOGGER.info("[AD-PRIO-DBG] {} face={} SKIP p={} df={} prio={} reason=NO_PLANNED_KEEP", worldPosition, face, dest, destFace, cand.priority());
                 continue;
             }
             ItemStack planned = probe.copy();
@@ -2462,9 +2477,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (destCap <= 0) {
                 // probe is non-empty only if canInsertIntoFace returned true above,
                 // meaning the destination is physically available but reserved by pending shipments.
-                if (!probe.isEmpty() && cand.priority() >= highestCandPriority) {
+                if (cand.priority() >= highestCandPriority) {
                     pendingFullInHighestTier = true;
                 }
+                if (prioDebugThisTick && cand.priority() >= highestCandPriority) PRIO_LOGGER.info("[AD-PRIO-DBG] {} face={} SKIP p={} df={} prio={} reason=DEST_CAP_ZERO pendingFullSet=true probe={}", worldPosition, face, dest, destFace, cand.priority(), probe.getItem());
                 continue;
             }
             if (destCap < plannedCount) {
