@@ -46,6 +46,16 @@ public class DuctBlock extends AbstractDuctBlock {
     }
 
     @Override
+    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+        if (!level.isClientSide() && !state.is(newState.getBlock())) {
+            if (level instanceof ServerLevel sl && level.getBlockEntity(pos) instanceof DuctBlockEntity be) {
+                be.dropAllStalledItems(sl);
+            }
+        }
+        super.onRemove(state, level, pos, newState, movedByPiston);
+    }
+
+    @Override
     public EnumSet<DuctNetworkType> ductNetworkTypes() {
         // Physical block is universal; actual network membership is resolved from the BlockEntity's logical id
         // via DuctConnectable.isSameNetwork(level, pos, type).
@@ -111,30 +121,22 @@ public class DuctBlock extends AbstractDuctBlock {
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
         BlockEntity entity = level.getBlockEntity(pos);
         if (entity instanceof DuctBlockEntity duct) {
-            double[] loc = localHit(pos, hit);
             if (!level.isClientSide()) {
                 duct.refreshFromWorld();
-            }
-            if (!player.isShiftKeyDown()
-                    && DuctShapes.canReconnectFromCoreHit(
-                    duct.getPipeMask(),
-                    duct.getVisualStorageMask(),
-                    duct.getUserDisconnectedFaceMask(),
-                    loc[0],
-                    loc[1],
-                    loc[2],
-                    hit.getDirection())) {
-                if (level.isClientSide()) {
-                    return InteractionResult.SUCCESS;
-                }
-                duct.tryReconnectFace(level, hit.getDirection());
-                return InteractionResult.CONSUME;
             }
             Optional<Direction> face = nodeFaceFromHitLocation(pos, hit, duct);
             if (face.isEmpty()) {
                 return InteractionResult.PASS;
             }
             if (player.isShiftKeyDown()) {
+                if (level.isClientSide()) {
+                    return duct.hasAnyStallOnFace(face.get()) ? InteractionResult.SUCCESS : InteractionResult.PASS;
+                }
+                if (level instanceof ServerLevel sl) {
+                    return duct.tryShiftClearStalledOnFace(sl, face.get(), player, InteractionHand.MAIN_HAND)
+                            ? InteractionResult.CONSUME
+                            : InteractionResult.PASS;
+                }
                 return InteractionResult.PASS;
             }
             if (level.isClientSide()) {
@@ -166,6 +168,17 @@ public class DuctBlock extends AbstractDuctBlock {
             if (!level.isClientSide()) {
                 duct.refreshFromWorld();
             }
+            Optional<Direction> nodeFace = nodeFaceFromHitLocation(pos, hitResult, duct);
+            if (player.isShiftKeyDown() && nodeFace.isPresent() && duct.hasAnyStallOnFace(nodeFace.get())) {
+                if (level.isClientSide()) {
+                    return ItemInteractionResult.SUCCESS;
+                }
+                if (level instanceof ServerLevel sl) {
+                    return duct.tryShiftClearStalledOnFace(sl, nodeFace.get(), player, hand)
+                            ? ItemInteractionResult.CONSUME
+                            : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                }
+            }
             if (stack.is(DuctWrenchTags.WRENCH)) {
                 Optional<Direction> wFace =
                         DuctShapes.resolveWrenchDisconnectFace(
@@ -177,20 +190,21 @@ public class DuctBlock extends AbstractDuctBlock {
                     duct.applyWrenchDisconnect(level, wFace.get());
                     return ItemInteractionResult.CONSUME;
                 }
-            } else if (!player.isShiftKeyDown()
-                    && DuctShapes.canReconnectFromCoreHit(
-                            duct.getPipeMask(),
-                            duct.getVisualStorageMask(),
-                            duct.getUserDisconnectedFaceMask(),
-                            lx,
-                            ly,
-                            lz,
-                            hitResult.getDirection())) {
-                if (level.isClientSide()) {
-                    return ItemInteractionResult.SUCCESS;
+                if (!player.isShiftKeyDown()
+                        && DuctShapes.canReconnectFromCoreHit(
+                                duct.getPipeMask(),
+                                duct.getVisualStorageMask(),
+                                duct.getUserDisconnectedFaceMask(),
+                                lx,
+                                ly,
+                                lz,
+                                hitResult.getDirection())) {
+                    if (level.isClientSide()) {
+                        return ItemInteractionResult.SUCCESS;
+                    }
+                    duct.tryReconnectFace(level, hitResult.getDirection());
+                    return ItemInteractionResult.CONSUME;
                 }
-                duct.tryReconnectFace(level, hitResult.getDirection());
-                return ItemInteractionResult.SUCCESS;
             }
             if (player.isShiftKeyDown()) {
                 // Check if the item in hand is a duct (with or without logical id component).

@@ -3,9 +3,12 @@ package net.unfamily.another_dynamics.duct;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.neoforged.neoforge.fluids.FluidStack;
 import net.unfamily.another_dynamics.duct.module.DuctFaceModuleItemHandler;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
+import net.neoforged.neoforge.items.ItemStackHandler;
 
 /**
  * Per-face transport lanes. Item, fluid, and gas keep separate filters, channels, routing fields, and amount fields.
@@ -28,10 +31,30 @@ public final class DuctFaceLanes {
     /**
      * 0 = ignored (always enabled), 1 = low (enabled when NOT powered), 2 = high (enabled when powered), 3 = disabled.
      */
-    public int redstoneMode = 3;
+    public int redstoneMode = 0;
 
     /** Shared module column; size follows {@link DuctDefinition#moduleSlotCount()} (clamped). */
     public DuctFaceModuleItemHandler moduleSlots;
+
+    /** Physical buffered items that could not be refunded; when full, this face is stalled. */
+    public final ItemStackHandler stalledBuffer = new ItemStackHandler(5);
+
+    /** Physical buffered fluids (mB) that could not be refunded; up to 5 entries. */
+    public final FluidStack[] stalledFluids = new FluidStack[5];
+
+    /**
+     * Physical buffered gases ("chemicals") that could not be refunded; stored as tags to keep Mekanism optional.
+     * Each entry is a {@link CompoundTag} holding {@code ChemId}/{@code Amt}.
+     */
+    public final CompoundTag[] stalledGas = new CompoundTag[5];
+
+    /** Marker counts for stalled energy / heat (clearing deletes). */
+    public int stalledEnergyCount;
+    public int stalledHeatCount;
+
+    /** Shift+click clearing arming window (gameTime), per face. */
+    public long armedClearFluidUntilGameTime;
+    public long armedClearGasUntilGameTime;
 
     public final DuctFaceNode item;
     public final DuctFaceNode fluid;
@@ -43,6 +66,8 @@ public final class DuctFaceLanes {
      */
     public int energyTicksUntilAction;
     public int energyRoundRobinCursor;
+    /** Per-face FE buffer for external connectors (e.g. Flux Networks). */
+    public int energyBufferFe;
 
     /** Mek heat logistics throttle / round-robin (same rationale as {@link #energyTicksUntilAction}). */
     public int heatTicksUntilAction;
@@ -56,6 +81,10 @@ public final class DuctFaceLanes {
         this.item = new DuctFaceNode(duct::setChanged);
         this.fluid = new DuctFaceNode(duct::setChanged);
         this.gas = new DuctFaceNode(duct::setChanged);
+        for (int i = 0; i < stalledFluids.length; i++) {
+            stalledFluids[i] = FluidStack.EMPTY;
+            stalledGas[i] = null;
+        }
     }
 
     /**
@@ -81,6 +110,15 @@ public final class DuctFaceLanes {
         tag.put("Shared", shared);
 
         tag.put(NBT_MODULES, moduleSlots.serializeNBT(registries));
+        tag.put("StallBuf", stalledBuffer.serializeNBT(registries));
+        tag.put("StallFluids", saveStalledFluids(registries));
+        tag.put("StallGas", saveStalledGas());
+        CompoundTag stallMeta = new CompoundTag();
+        stallMeta.putInt("Energy", stalledEnergyCount);
+        stallMeta.putInt("Heat", stalledHeatCount);
+        stallMeta.putLong("ArmFluid", armedClearFluidUntilGameTime);
+        stallMeta.putLong("ArmGas", armedClearGasUntilGameTime);
+        tag.put("StallMeta", stallMeta);
 
         CompoundTag itemTag = new CompoundTag();
         item.save(registries, itemTag);
@@ -95,6 +133,7 @@ public final class DuctFaceLanes {
         CompoundTag eh = new CompoundTag();
         eh.putInt("EnergyTicks", energyTicksUntilAction);
         eh.putInt("EnergyRr", energyRoundRobinCursor);
+        eh.putInt("EnergyBuf", energyBufferFe);
         eh.putInt("HeatTicks", heatTicksUntilAction);
         eh.putInt("HeatRr", heatRoundRobinCursor);
         tag.put(NBT_ENERGY_HEAT, eh);
@@ -118,6 +157,28 @@ public final class DuctFaceLanes {
             migrateLegacyModulesFromItemNodeGui(registries, tag);
         }
 
+        if (tag.contains("StallBuf", Tag.TAG_COMPOUND)) {
+            stalledBuffer.deserializeNBT(registries, tag.getCompound("StallBuf"));
+        } else {
+            for (int i = 0; i < stalledBuffer.getSlots(); i++) {
+                stalledBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
+            }
+        }
+        loadStalledFluids(registries, tag);
+        loadStalledGas(tag);
+        if (tag.contains("StallMeta", Tag.TAG_COMPOUND)) {
+            CompoundTag meta = tag.getCompound("StallMeta");
+            stalledEnergyCount = meta.getInt("Energy");
+            stalledHeatCount = meta.getInt("Heat");
+            armedClearFluidUntilGameTime = meta.getLong("ArmFluid");
+            armedClearGasUntilGameTime = meta.getLong("ArmGas");
+        } else {
+            stalledEnergyCount = 0;
+            stalledHeatCount = 0;
+            armedClearFluidUntilGameTime = 0L;
+            armedClearGasUntilGameTime = 0L;
+        }
+
         CompoundTag rawItem = tag.contains("Item", Tag.TAG_COMPOUND) ? tag.getCompound("Item") : tag;
         item.load(registries, stripSharedKeys(rawItem));
         applyLegacyAmountField(item, rawItem, nodeMode);
@@ -136,11 +197,13 @@ public final class DuctFaceLanes {
             CompoundTag eh = tag.getCompound(NBT_ENERGY_HEAT);
             energyTicksUntilAction = eh.getInt("EnergyTicks");
             energyRoundRobinCursor = eh.getInt("EnergyRr");
+            energyBufferFe = eh.getInt("EnergyBuf");
             heatTicksUntilAction = eh.getInt("HeatTicks");
             heatRoundRobinCursor = eh.getInt("HeatRr");
         } else {
             energyTicksUntilAction = 0;
             energyRoundRobinCursor = 0;
+            energyBufferFe = 0;
             heatTicksUntilAction = 0;
             heatRoundRobinCursor = 0;
         }
@@ -185,12 +248,21 @@ public final class DuctFaceLanes {
      */
     public void resetPipeSegmentDefaults() {
         nodeMode = NodeMode.NONE;
-        redstoneMode = 3;
+        redstoneMode = 0;
         item.resetPipeSegmentDefaults();
         fluid.resetPipeSegmentDefaults();
         gas.resetPipeSegmentDefaults();
+        for (int i = 0; i < stalledFluids.length; i++) {
+            stalledFluids[i] = FluidStack.EMPTY;
+            stalledGas[i] = null;
+        }
+        stalledEnergyCount = 0;
+        stalledHeatCount = 0;
+        armedClearFluidUntilGameTime = 0L;
+        armedClearGasUntilGameTime = 0L;
         energyTicksUntilAction = 0;
         energyRoundRobinCursor = 0;
+        energyBufferFe = 0;
         heatTicksUntilAction = 0;
         heatRoundRobinCursor = 0;
     }
@@ -252,6 +324,80 @@ public final class DuctFaceLanes {
             lane.extractBatch = legacy;
         } else {
             lane.insertionPriority = legacy;
+        }
+    }
+
+    private ListTag saveStalledFluids(HolderLookup.Provider registries) {
+        ListTag list = new ListTag();
+        for (int i = 0; i < stalledFluids.length; i++) {
+            FluidStack fs = stalledFluids[i];
+            if (fs == null || fs.isEmpty()) {
+                continue;
+            }
+            CompoundTag e = new CompoundTag();
+            e.putByte("Slot", (byte) i);
+            e.put("Fluid", (CompoundTag) fs.save(registries));
+            list.add(e);
+        }
+        return list;
+    }
+
+    private void loadStalledFluids(HolderLookup.Provider registries, CompoundTag tag) {
+        for (int i = 0; i < stalledFluids.length; i++) {
+            stalledFluids[i] = FluidStack.EMPTY;
+        }
+        if (!tag.contains("StallFluids", Tag.TAG_LIST)) {
+            return;
+        }
+        ListTag list = tag.getList("StallFluids", Tag.TAG_COMPOUND);
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag e = list.getCompound(i);
+            int slot = e.getByte("Slot") & 0xFF;
+            if (slot < 0 || slot >= stalledFluids.length) {
+                continue;
+            }
+            if (e.contains("Fluid", Tag.TAG_COMPOUND)) {
+                stalledFluids[slot] = FluidStack.parse(registries, e.getCompound("Fluid")).orElse(FluidStack.EMPTY);
+            }
+        }
+    }
+
+    private ListTag saveStalledGas() {
+        ListTag list = new ListTag();
+        for (int i = 0; i < stalledGas.length; i++) {
+            CompoundTag g = stalledGas[i];
+            if (g == null || g.isEmpty()) {
+                continue;
+            }
+            CompoundTag e = new CompoundTag();
+            e.putByte("Slot", (byte) i);
+            e.put("Gas", g.copy());
+            list.add(e);
+        }
+        return list;
+    }
+
+    private void loadStalledGas(CompoundTag tag) {
+        for (int i = 0; i < stalledGas.length; i++) {
+            stalledGas[i] = null;
+        }
+        if (!tag.contains("StallGas", Tag.TAG_LIST)) {
+            return;
+        }
+        ListTag list = tag.getList("StallGas", Tag.TAG_COMPOUND);
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag e = list.getCompound(i);
+            int slot = e.getByte("Slot") & 0xFF;
+            if (slot < 0 || slot >= stalledGas.length) {
+                continue;
+            }
+            if (e.contains("Gas", Tag.TAG_COMPOUND)) {
+                CompoundTag g = e.getCompound("Gas");
+                // Sanitize: only keep if it has some payload fields.
+                if (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount")) {
+                    stalledGas[slot] = g.copy();
+                }
+            }
         }
     }
 }

@@ -16,6 +16,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -24,6 +25,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.client.model.data.ModelData;
+import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctCapHelper;
@@ -31,6 +34,7 @@ import net.unfamily.another_dynamics.duct.logistics.DuctFluidIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctGasIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowBuffer;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowRouting;
+import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.FluidTransitShipment;
 import net.unfamily.another_dynamics.duct.logistics.GasTransitShipment;
 import net.unfamily.another_dynamics.duct.logistics.DuctFluidServerTick;
@@ -121,13 +125,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         s.stack = ItemStack.EMPTY;
         removeShipmentFromList(s, it);
         if (!lump.isEmpty() && physical) {
-            DuctOverflowRouting.tryRefundToSourceNoDrop(
-                    level, s, lump, mergeScheduleOwnerWithExtras(worldPosition, extraOverflowDucts));
+            if (!tryRefundOrStall(level, s, lump)) {
+                DuctOverflowRouting.tryRefundToSourceNoDrop(
+                        level, s, lump, mergeScheduleOwnerWithExtras(worldPosition, extraOverflowDucts));
+            }
         }
         setChanged();
     }
 
     private final DuctFaceLanes[] faceLanes = new DuctFaceLanes[FACE_COUNT];
+    private final IEnergyStorage[] faceEnergyBufferCaps = new IEnergyStorage[FACE_COUNT];
 
     /** {@link DuctDefinition#logicalId()} for this placed block (item component + NBT). */
     private String logicalDuctId = DuctIds.DEFAULT_LOGICAL_ID;
@@ -154,6 +161,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     /** Client-only cached icon pack from server; avoids relying on full face-node sync for rendering. */
     private int clientPackedNodeIcons = defaultPackedNodeIcons();
+    /** Client-only cached stall mask from server (bit per face). */
+    private int clientStallMask = 0;
 
     /**
      * Server-only: {@link AbstractDuctBlockEntity#refreshFromWorld()} does not send block updates when only neighbor
@@ -243,7 +252,95 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public DuctBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.DUCT.get(), pos, state);
         for (int i = 0; i < FACE_COUNT; i++) {
-            faceLanes[i] = new DuctFaceLanes(this, Direction.values()[i], 5);
+            Direction d = Direction.values()[i];
+            faceLanes[i] = new DuctFaceLanes(this, d, 5);
+            faceEnergyBufferCaps[i] = new FaceEnergyBuffer(d);
+        }
+    }
+
+    @Nullable
+    public IEnergyStorage energyBufferCapability(@Nullable Direction side) {
+        if (side == null) {
+            return null;
+        }
+        boolean enabled =
+                ductDefinition()
+                        .map(d -> d.enabledTransportKinds().contains(DuctTransportKind.ENERGY))
+                        .orElse(false);
+        if (!enabled) {
+            return null;
+        }
+        if ((getStorageMask() & (1 << side.ordinal())) == 0) {
+            return null;
+        }
+        return faceEnergyBufferCaps[side.ordinal()];
+    }
+
+    private int energyBufferCapacityFe(Direction face) {
+        DuctEnergyTransportSpec spec = energyTransportSpec();
+        long baseTransfer = spec.clampedTransfer();
+        long effectiveExtract = DuctModuleEffects.effectiveEnergyExtractPerAction(this, face, spec);
+        long cap = Math.max(1L, Math.max(baseTransfer, effectiveExtract));
+        cap = Math.min(cap, (long) Integer.MAX_VALUE);
+        return (int) cap;
+    }
+
+    private final class FaceEnergyBuffer implements IEnergyStorage {
+        private final Direction face;
+
+        private FaceEnergyBuffer(Direction face) {
+            this.face = face;
+        }
+
+        @Override
+        public int receiveEnergy(int maxReceive, boolean simulate) {
+            if (maxReceive <= 0) {
+                return 0;
+            }
+            DuctFaceLanes lanes = getFaceLanes(face);
+            int cap = energyBufferCapacityFe(face);
+            int stored = Math.max(0, lanes.energyBufferFe);
+            int accept = Math.min(maxReceive, Math.max(0, cap - stored));
+            if (!simulate && accept > 0) {
+                lanes.energyBufferFe = stored + accept;
+                setChanged();
+            }
+            return accept;
+        }
+
+        @Override
+        public int extractEnergy(int maxExtract, boolean simulate) {
+            if (maxExtract <= 0) {
+                return 0;
+            }
+            DuctFaceLanes lanes = getFaceLanes(face);
+            int stored = Math.max(0, lanes.energyBufferFe);
+            int take = Math.min(maxExtract, stored);
+            if (!simulate && take > 0) {
+                lanes.energyBufferFe = stored - take;
+                setChanged();
+            }
+            return take;
+        }
+
+        @Override
+        public int getEnergyStored() {
+            return Math.max(0, getFaceLanes(face).energyBufferFe);
+        }
+
+        @Override
+        public int getMaxEnergyStored() {
+            return energyBufferCapacityFe(face);
+        }
+
+        @Override
+        public boolean canExtract() {
+            return true;
+        }
+
+        @Override
+        public boolean canReceive() {
+            return true;
         }
     }
 
@@ -663,6 +760,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         refreshFromWorld();
+        // Opportunistically drain any stalled buffers back into their source handlers (items/fluids/gas).
+        // This keeps ducts from staying visually/physically stalled when the attached storage becomes available again.
+        drainFaceStallsToSource(serverLevel);
         tickRedstoneVisualSync(serverLevel);
         tickOutboundShipments(serverLevel);
         tickFluidTransitShipments(serverLevel);
@@ -705,6 +805,72 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctGasServerTick.tick(this, serverLevel);
         DuctEnergyServerTick.tick(this, serverLevel);
         DuctHeatServerTick.tick(this, serverLevel);
+    }
+
+    private void drainFaceStallsToSource(ServerLevel level) {
+        boolean changed = false;
+        for (Direction face : Direction.values()) {
+            DuctFaceLanes lanes = getFaceLanes(face);
+            // Items.
+            for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+                ItemStack st = lanes.stalledBuffer.getStackInSlot(i);
+                if (st.isEmpty()) continue;
+                ItemStack left = DuctCapHelper.insertIntoFace(level, worldPosition, face, st.copy());
+                if (left.isEmpty()) {
+                    lanes.stalledBuffer.setStackInSlot(i, ItemStack.EMPTY);
+                    changed = true;
+                } else if (left.getCount() != st.getCount()) {
+                    lanes.stalledBuffer.setStackInSlot(i, left);
+                    changed = true;
+                }
+            }
+            // Fluids.
+            if (lanes.stalledFluids != null) {
+                BlockPos npos = worldPosition.relative(face);
+                IFluidHandler cap = level.getCapability(Capabilities.FluidHandler.BLOCK, npos, face.getOpposite());
+                if (cap != null) {
+                    for (int i = 0; i < lanes.stalledFluids.length; i++) {
+                        FluidStack fs = lanes.stalledFluids[i];
+                        if (fs == null || fs.isEmpty() || fs.getAmount() <= 0) continue;
+                        int filled = cap.fill(fs.copy(), IFluidHandler.FluidAction.EXECUTE);
+                        if (filled > 0) {
+                            fs.shrink(filled);
+                            changed = true;
+                            if (fs.isEmpty() || fs.getAmount() <= 0) {
+                                lanes.stalledFluids[i] = FluidStack.EMPTY;
+                            }
+                        }
+                    }
+                }
+            }
+            // Gas.
+            if (MekanismChemicalCompat.isLoaded() && lanes.stalledGas != null) {
+                Object handler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, worldPosition, face);
+                if (handler != null) {
+                    for (int i = 0; i < lanes.stalledGas.length; i++) {
+                        CompoundTag tag = lanes.stalledGas[i];
+                        if (tag == null || tag.isEmpty()) continue;
+                        Object g = MekanismChemicalCompat.loadGasStackFromTag(tag, level.registryAccess());
+                        if (g == null || MekanismChemicalCompat.isEmptyStack(g) || MekanismChemicalCompat.getAmount(g) <= 0) continue;
+                        Object left = MekanismChemicalCompat.insertExecute(handler, g);
+                        if (left == null || MekanismChemicalCompat.isEmptyStack(left) || MekanismChemicalCompat.getAmount(left) <= 0) {
+                            lanes.stalledGas[i] = new CompoundTag();
+                            changed = true;
+                        } else if (MekanismChemicalCompat.getAmount(left) != MekanismChemicalCompat.getAmount(g)) {
+                            CompoundTag nt = new CompoundTag();
+                            MekanismChemicalCompat.saveGasStackToTag(left, nt);
+                            lanes.stalledGas[i] = nt;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+        if (changed) {
+            requestModelDataUpdate();
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            setChanged();
+        }
     }
 
     private void resolveNegativeTravelShipments(ServerLevel level) {
@@ -881,12 +1047,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             if (s.travelTicks > 0) {
                 if (DuctTransitTopology.firstBrokenFluidPathEdge(level, s.ductPath).isPresent()) {
+                    refundBufferedFluidToSourceOrStall(level, s.sourceFace, s.fluid);
                     DuctFluidIncomingIndex.unregister(level, s.destDuct, s.fluid);
                     it.remove();
                     dirty = true;
                     continue;
                 }
                 if (!DuctFluidServerTick.fluidShipmentMidTransitValid(level, this, s)) {
+                    refundBufferedFluidToSourceOrStall(level, s.sourceFace, s.fluid);
                     DuctFluidIncomingIndex.unregister(level, s.destDuct, s.fluid);
                     it.remove();
                     dirty = true;
@@ -972,6 +1140,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
             if (s.travelTicks > 0) {
                 if (DuctTransitTopology.firstBrokenGasPathEdge(level, s.ductPath).isPresent()) {
+                    refundBufferedGasToSourceOrStall(level, s.sourceFace, s.stack);
                     DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
                     it.remove();
                     syncGasTransitToClientsNow(level);
@@ -979,6 +1148,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 }
                 if (MekanismChemicalCompat.isRadioactive(s.stack)
                         && !DuctPathfinder.gasPathAllowsRadioactive(level, s.ductPath)) {
+                    refundBufferedGasToSourceOrStall(level, s.sourceFace, s.stack);
                     DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
                     it.remove();
                     syncGasTransitToClientsNow(level);
@@ -991,12 +1161,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     continue;
                 }
                 if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity)) {
+                    refundBufferedGasToSourceOrStall(level, s.sourceFace, s.stack);
                     DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
                     it.remove();
                     syncGasTransitToClientsNow(level);
                     continue;
                 }
                 if (!DuctGasServerTick.gasShipmentMidTransitValid(level, this, s)) {
+                    refundBufferedGasToSourceOrStall(level, s.sourceFace, s.stack);
                     DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
                     it.remove();
                     syncGasTransitToClientsNow(level);
@@ -1026,11 +1198,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private static void tryExecutePlannedGasTransfer(ServerLevel level, DuctBlockEntity sourceBe, GasTransitShipment s) {
         if (!MekanismChemicalCompat.isLoaded() || s.stack == null || MekanismChemicalCompat.isEmptyStack(s.stack)) {
-            return;
-        }
-        BlockPos srcPos = sourceBe.getBlockPos();
-        Object srcHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, srcPos, s.sourceFace);
-        if (srcHandler == null) {
             return;
         }
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
@@ -1063,35 +1230,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
         long want = MekanismChemicalCompat.getAmount(s.stack);
         if (want <= 0) {
-            return;
-        }
-
-        DuctFaceNode srcNodeGas = sourceBe.getFaceLanes(s.sourceFace).gas;
-        NodeMode sm = sourceBe.getFaceLanes(s.sourceFace).nodeMode;
-        boolean donorSource = sm == NodeMode.NONE || sm == NodeMode.FILTERING_INSERTION;
-        DuctFaceNode.FilterBank srcCapBank =
-                donorSource ? DuctFaceNode.FilterBank.FILTER : DuctFaceNode.FilterBank.EXTRACTOR;
-        if (!donorSource
-                && !DuctGasFilterLogic.passesGasFiltersForBank(
-                        srcNodeGas, DuctFaceNode.FilterBank.EXTRACTOR, s.stack, level)) {
-            return;
-        }
-        if (donorSource
-                && sm == NodeMode.FILTERING_INSERTION
-                && !DuctGasFilterLogic.passesGasFiltersForBank(
-                        srcNodeGas, DuctFaceNode.FilterBank.FILTER, s.stack, level)) {
-            return;
-        }
-
-        Object toMoveProbe = MekanismChemicalCompat.copyWithAmount(s.stack, want);
-        long keepCap =
-                DuctGasAllowLimitLogic.maxExtractRespectingKeep(
-                        srcHandler,
-                        srcNodeGas.bankAllowFilters(srcCapBank),
-                        srcNodeGas.bankAllowCaps(srcCapBank),
-                        toMoveProbe,
-                        level.registryAccess());
-        if (keepCap != Long.MAX_VALUE && MekanismChemicalCompat.getAmount(toMoveProbe) > keepCap) {
             return;
         }
 
@@ -1130,14 +1268,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         long take = Math.min(want, canInsert);
 
-        // Execute extraction then insertion; if insertion leaves remainder, attempt to re-insert into source.
-        Object extracted = MekanismChemicalCompat.extractAny(srcHandler, take);
-        if (MekanismChemicalCompat.isEmptyStack(extracted)) {
-            return;
-        }
-        Object left = MekanismChemicalCompat.insertExecute(destHandler, extracted);
+        Object payload = MekanismChemicalCompat.copyWithAmount(s.stack, take);
+        Object left = MekanismChemicalCompat.insertExecute(destHandler, payload);
         if (!MekanismChemicalCompat.isEmptyStack(left) && MekanismChemicalCompat.getAmount(left) > 0) {
-            MekanismChemicalCompat.insertExecute(srcHandler, left);
+            sourceBe.refundBufferedGasToSourceOrStall(level, s.sourceFace, left);
         }
         sourceBe.setChanged();
         destBe.setChanged();
@@ -1202,7 +1336,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                             : DuctCapHelper.countExtractableMatchingOnFace(
                                     level, s.refundDuct, s.sourceFace, s.stack, planned);
         }
-        List<ItemStack> prior = List.of();
+        List<ItemStack> prior =
+                itemsAlreadyPulledFromSource
+                        ? List.of()
+                        : DuctIncomingIndex.snapshot(level, s.destDuct, s.destFace);
         DuctItemTransportSpec srcSpec = srcBe.itemTransportSpec();
         int batchCap = tubeOperationBatchSize(srcSpec, srcBe, s.sourceFace);
         int insLimit = Math.min(planned, Math.min(capExt, batchCap));
@@ -1260,6 +1397,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             setChanged();
         }
         s.registeredIncoming = s.stack.copy();
+        syncIncomingReservation(level, s);
         setChanged();
         return true;
     }
@@ -1275,10 +1413,54 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void removeShipmentFromList(OutboundShipment s, @Nullable Iterator<OutboundShipment> removalIt) {
+        if (level instanceof ServerLevel sl) {
+            DuctIncomingIndex.unregister(sl, s.destDuct, s.destFace, s.incomingReservationId);
+        }
         if (removalIt != null) {
             removalIt.remove();
         } else {
             outboundShipments.remove(s);
+        }
+    }
+
+    private void removeShipmentFromList(ServerLevel level, OutboundShipment s, @Nullable Iterator<OutboundShipment> removalIt) {
+        DuctIncomingIndex.unregister(level, s.destDuct, s.destFace, s.incomingReservationId);
+        if (removalIt != null) {
+            removalIt.remove();
+        } else {
+            outboundShipments.remove(s);
+        }
+    }
+
+    private static void syncIncomingReservation(ServerLevel level, OutboundShipment s) {
+        if (level == null || s == null) {
+            return;
+        }
+        DuctIncomingIndex.unregister(level, s.destDuct, s.destFace, s.incomingReservationId);
+        if (s.stack != null && !s.stack.isEmpty()) {
+            DuctIncomingIndex.register(level, s.destDuct, s.destFace, s.incomingReservationId, s.stack);
+        }
+    }
+
+    public void dropAllStalledItems(ServerLevel level) {
+        boolean any = false;
+        for (Direction d : Direction.values()) {
+            DuctFaceLanes lanes = getFaceLanes(d);
+            for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+                ItemStack st = lanes.stalledBuffer.getStackInSlot(i);
+                if (st.isEmpty()) {
+                    continue;
+                }
+                net.minecraft.world.Containers.dropItemStack(
+                        level, worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5, st.copy());
+                lanes.stalledBuffer.setStackInSlot(i, ItemStack.EMPTY);
+                any = true;
+            }
+        }
+        if (any) {
+            requestModelDataUpdate();
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            setChanged();
         }
     }
 
@@ -1289,10 +1471,430 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void refundStackToSource(ServerLevel level, OutboundShipment s, ItemStack excess) {
-        DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, excess, worldPosition);
-        if (level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe) {
-            srcBe.setChanged();
+        if (tryRefundOrStall(level, s, excess)) {
+            return;
         }
+    }
+
+    /**
+     * Refunds toward the source inventory only. If anything remains, buffers it in the source face stall buffer.
+     * Returns true when the stack was fully handled (refunded or stalled).
+     */
+    private boolean tryRefundOrStall(ServerLevel level, OutboundShipment s, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return true;
+        }
+        if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity srcBe)) {
+            return false;
+        }
+        ItemStack left =
+                s.legacyOmniFaces
+                        ? DuctCapHelper.insertIntoStorageFaces(level, s.refundDuct, srcBe, stack.copy())
+                        : DuctCapHelper.insertIntoFace(level, s.refundDuct, s.sourceFace, stack.copy());
+        if (left.isEmpty()) {
+            srcBe.setChanged();
+            return true;
+        }
+        // Could not refund: buffer into stall slots on the source face.
+        DuctFaceLanes lanes = srcBe.getFaceLanes(s.sourceFace);
+        for (int i = 0; i < lanes.stalledBuffer.getSlots() && !left.isEmpty(); i++) {
+            if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
+                continue;
+            }
+            lanes.stalledBuffer.setStackInSlot(i, left.copy());
+            left = ItemStack.EMPTY;
+        }
+        srcBe.setChanged();
+        srcBe.requestModelDataUpdate();
+        if (srcBe.level != null && !srcBe.level.isClientSide()) {
+            srcBe.level.sendBlockUpdated(srcBe.getBlockPos(), srcBe.getBlockState(), srcBe.getBlockState(), 3);
+        }
+        return left.isEmpty();
+    }
+
+    /**
+     * Attempts to resolve one or more stalled item stacks on this face.
+     *
+     * <p>Order: refund back into the attached source storage (same face). If that still can't accept,
+     * try re-sending along the network as an already-extracted shipment.</p>
+     *
+     * @return true if any stalled content changed (refunded/scheduled).
+     */
+    private boolean tryDrainItemStallForFace(ServerLevel level, DuctItemTransportSpec spec, Direction face, DuctFaceNode node) {
+        DuctFaceLanes lanes = getFaceLanes(face);
+        boolean changed = false;
+
+        // 1) Refund to source handler on this face.
+        for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+            ItemStack st = lanes.stalledBuffer.getStackInSlot(i);
+            if (st.isEmpty()) continue;
+            ItemStack left = DuctCapHelper.insertIntoFace(level, worldPosition, face, st.copy());
+            if (left.isEmpty()) {
+                lanes.stalledBuffer.setStackInSlot(i, ItemStack.EMPTY);
+                changed = true;
+            } else if (left.getCount() != st.getCount()) {
+                lanes.stalledBuffer.setStackInSlot(i, left);
+                changed = true;
+            }
+        }
+
+        // 2) If still stalled, try schedule a resend from the stalled buffer.
+        // Only attempt if we still have stalled stacks and we're allowed to schedule.
+        if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
+            return changed;
+        }
+        if (isFaceStalled(lanes)) {
+            // Stall is full; do not schedule new pulls, but we can still schedule re-sends.
+        }
+
+        RoutingMode rm =
+                lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION
+                        ? node.routingModeRetriever
+                        : lanes.nodeMode.isHybrid()
+                                ? node.routingModeExtractor
+                                : node.routingMode;
+        final int rrFrozen = node.roundRobinCursor;
+        boolean allowSelfOrSingle = true;
+        Direction forbidSelfDestFace = (lanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed) ? null : face;
+        List<DuctTargetSelector.ExtractionCandidate> candidates =
+                DuctTargetSelector.listExtractionDeliveryCandidatesWithoutProbe(
+                        level,
+                        worldPosition,
+                        rm,
+                        rrFrozen,
+                        node.channelLetter,
+                        allowSelfOrSingle,
+                        forbidSelfDestFace);
+        if (candidates.isEmpty()) {
+            return changed;
+        }
+
+        for (int slot = 0; slot < lanes.stalledBuffer.getSlots(); slot++) {
+            ItemStack st = lanes.stalledBuffer.getStackInSlot(slot);
+            if (st.isEmpty()) continue;
+            int remaining = st.getCount();
+            if (remaining <= 0) continue;
+
+            // Try a few best candidates and send a batch.
+            int lastSuccessfulCandIdx = 0;
+            for (int candIdx = 0; candIdx < candidates.size() && candIdx < EXTRACTION_ROUTE_RETRY_CAP; candIdx++) {
+                DuctTargetSelector.ExtractionCandidate cand = candidates.get(candIdx);
+                BlockPos dest = cand.ductPos();
+                Direction destFace = cand.face();
+                if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
+                    continue;
+                }
+                int plannedCount = Math.min(remaining, tubeOperationBatchSize(spec, this, face));
+                int destCap = maxSchedulableTowardFace(level, dest, destBe, destFace, st, plannedCount);
+                if (destCap <= 0) {
+                    continue;
+                }
+
+                List<BlockPos> path;
+                if (dest.equals(worldPosition)) {
+                    path = List.of(worldPosition);
+                } else {
+                    Optional<List<BlockPos>> p = DuctPathfinder.shortestPath(level, worldPosition, dest, spec, DuctNetworkType.ITEM);
+                    if (p.isEmpty()) {
+                        continue;
+                    }
+                    path = p.get();
+                }
+                long edgeTicks = DuctModuleEffects.effectiveItemEdgeTravelTicks(this, face, spec);
+                long travel = DuctPathfinder.pathTravelTicks(path, edgeTicks);
+                int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
+
+                ItemStack payload = st.copy();
+                payload.setCount(destCap);
+                OutboundShipment sh =
+                        new OutboundShipment(payload, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
+                sh.stack = payload.copy();
+                sh.registeredIncoming = sh.stack.copy();
+                sh.sourceExtractCommitted = true;
+                sh.legacyPhysicalBuffer = true;
+                sh.ductPath = OutboundShipment.copyPath(path);
+                sh.totalTravelTicks = travelTicks;
+                sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, edgeTicks);
+                sh.journeyStartGameTime = level.getGameTime();
+                sh.transitPhase = TransitPhase.FORWARD;
+                outboundShipments.add(sh);
+                DuctIncomingIndex.register(level, sh.destDuct, sh.destFace, sh.incomingReservationId, sh.stack);
+
+                // Remove from stall slot.
+                st.shrink(destCap);
+                lanes.stalledBuffer.setStackInSlot(slot, st.isEmpty() ? ItemStack.EMPTY : st);
+                changed = true;
+                lastSuccessfulCandIdx = candIdx;
+                pushTransitSnapshotToClients(level);
+
+                if (rm == RoutingMode.ROUND_ROBIN) {
+                    node.roundRobinCursor = rrFrozen + lastSuccessfulCandIdx + 1;
+                }
+                // Send at most one payload per tick from stall, per face.
+                return true;
+            }
+        }
+
+        return changed;
+    }
+
+    public void refundBufferedFluidToSourceOrStall(ServerLevel level, Direction sourceFace, FluidStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        BlockPos srcPos = getBlockPos();
+        IFluidHandler srcCap =
+                level.getCapability(Capabilities.FluidHandler.BLOCK, srcPos.relative(sourceFace), sourceFace.getOpposite());
+        FluidStack left = stack.copy();
+        if (srcCap != null) {
+            int filled = srcCap.fill(left.copy(), IFluidHandler.FluidAction.EXECUTE);
+            if (filled > 0) {
+                left.shrink(filled);
+            }
+        }
+        if (!left.isEmpty()) {
+            DuctFaceLanes lanes = getFaceLanes(sourceFace);
+            left = addToFluidStallBuffer(lanes, left);
+        }
+        requestModelDataUpdate();
+        level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+        setChanged();
+    }
+
+    public void refundBufferedGasToSourceOrStall(ServerLevel level, Direction sourceFace, Object stack) {
+        if (!MekanismChemicalCompat.isLoaded()
+                || stack == null
+                || MekanismChemicalCompat.isEmptyStack(stack)
+                || MekanismChemicalCompat.getAmount(stack) <= 0) {
+            return;
+        }
+        Object left = stack;
+        BlockPos srcPos = getBlockPos();
+        Object srcHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, srcPos, sourceFace);
+        if (srcHandler != null) {
+            left = MekanismChemicalCompat.insertExecute(srcHandler, left);
+        }
+        if (!MekanismChemicalCompat.isEmptyStack(left) && MekanismChemicalCompat.getAmount(left) > 0) {
+            DuctFaceLanes lanes = getFaceLanes(sourceFace);
+            left = addToGasStallBuffer(level, lanes, left);
+        }
+        requestModelDataUpdate();
+        level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+        setChanged();
+    }
+
+    private static FluidStack addToFluidStallBuffer(DuctFaceLanes lanes, FluidStack stack) {
+        if (lanes == null || stack == null || stack.isEmpty()) {
+            return FluidStack.EMPTY;
+        }
+        FluidStack left = stack.copy();
+        for (int i = 0; i < lanes.stalledFluids.length && !left.isEmpty(); i++) {
+            FluidStack cur = lanes.stalledFluids[i];
+            if (cur == null || cur.isEmpty()) {
+                lanes.stalledFluids[i] = left.copy();
+                return FluidStack.EMPTY;
+            }
+            if (cur.isFluidEqual(left) && cur.getAmount() < Integer.MAX_VALUE) {
+                int canAdd = Integer.MAX_VALUE - cur.getAmount();
+                int add = Math.min(canAdd, left.getAmount());
+                if (add > 0) {
+                    lanes.stalledFluids[i].grow(add);
+                    left.shrink(add);
+                }
+            }
+        }
+        return left;
+    }
+
+    private static Object addToGasStallBuffer(ServerLevel level, DuctFaceLanes lanes, Object stack) {
+        if (!MekanismChemicalCompat.isLoaded()
+                || lanes == null
+                || stack == null
+                || MekanismChemicalCompat.isEmptyStack(stack)
+                || MekanismChemicalCompat.getAmount(stack) <= 0) {
+            return MekanismChemicalCompat.emptyStack();
+        }
+        Object left = stack;
+        HolderLookup.Provider regs = level.registryAccess();
+        for (int i = 0; i < lanes.stalledGas.length && !MekanismChemicalCompat.isEmptyStack(left); i++) {
+            if (lanes.stalledGas[i] == null || lanes.stalledGas[i].isEmpty()) {
+                CompoundTag tag = new CompoundTag();
+                MekanismChemicalCompat.saveGasStackToTag(left, tag);
+                if (!tag.isEmpty()) {
+                    lanes.stalledGas[i] = tag;
+                    return MekanismChemicalCompat.emptyStack();
+                }
+                return left;
+            }
+            Object cur = MekanismChemicalCompat.loadGasStackFromTag(lanes.stalledGas[i], regs);
+            if (MekanismChemicalCompat.isEmptyStack(cur)) {
+                CompoundTag tag = new CompoundTag();
+                MekanismChemicalCompat.saveGasStackToTag(left, tag);
+                if (!tag.isEmpty()) {
+                    lanes.stalledGas[i] = tag;
+                    return MekanismChemicalCompat.emptyStack();
+                }
+                return left;
+            }
+            String cid = MekanismChemicalCompat.getTypeRegistryName(cur);
+            String lid = MekanismChemicalCompat.getTypeRegistryName(left);
+            if (cid != null && cid.equals(lid)) {
+                long curAmt = MekanismChemicalCompat.getAmount(cur);
+                long leftAmt = MekanismChemicalCompat.getAmount(left);
+                long add = Math.min(leftAmt, Long.MAX_VALUE - curAmt);
+                if (add > 0) {
+                    Object merged = MekanismChemicalCompat.copyWithAmount(left, curAmt + add);
+                    CompoundTag tag = new CompoundTag();
+                    MekanismChemicalCompat.saveGasStackToTag(merged, tag);
+                    lanes.stalledGas[i] = tag;
+                    left = MekanismChemicalCompat.copyWithAmount(left, leftAmt - add);
+                }
+            }
+        }
+        return left;
+    }
+
+    public boolean hasAnyStallOnFace(Direction face) {
+        DuctFaceLanes lanes = getFaceLanes(face);
+        for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+            if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
+                return true;
+            }
+        }
+        for (var fs : lanes.stalledFluids) {
+            if (fs != null && !fs.isEmpty() && fs.getAmount() > 0) {
+                return true;
+            }
+        }
+        for (var g : lanes.stalledGas) {
+            if (g != null && !g.isEmpty() && (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount"))) {
+                return true;
+            }
+        }
+        return lanes.stalledEnergyCount > 0 || lanes.stalledHeatCount > 0;
+    }
+
+    /**
+     * Shift+right-click on a node face: clear any buffered/stalled content on that face.
+     *
+     * <p>Items drop, energy/heat delete immediately; fluids/gases try to fill held containers, otherwise arm empty-hand
+     * destruction for 5 seconds.</p>
+     *
+     * @return true if an action was performed (consume interaction).
+     */
+    public boolean tryShiftClearStalledOnFace(ServerLevel level, Direction face, Player player, InteractionHand hand) {
+        DuctFaceLanes lanes = getFaceLanes(face);
+        boolean didAnything = false;
+
+        // Items: drop everything immediately.
+        for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+            ItemStack st = lanes.stalledBuffer.getStackInSlot(i);
+            if (st.isEmpty()) {
+                continue;
+            }
+            net.minecraft.world.Containers.dropItemStack(level, worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5, st.copy());
+            lanes.stalledBuffer.setStackInSlot(i, ItemStack.EMPTY);
+            didAnything = true;
+        }
+
+        // Energy/Heat: do not clear on shift-click (buffering is not user-clearable and never refunds to source).
+
+        // Fluids: try fill into held container; otherwise arm empty-hand destruction.
+        didAnything |= tryClearFluidBuffer(level, lanes, player, hand);
+
+        // Gas: same pattern (Mekanism optional).
+        didAnything |= tryClearGasBuffer(level, lanes, player, hand);
+
+        if (didAnything) {
+            requestModelDataUpdate();
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            setChanged();
+        }
+        return didAnything;
+    }
+
+    private boolean tryClearFluidBuffer(ServerLevel level, DuctFaceLanes lanes, Player player, InteractionHand hand) {
+        boolean hasAny = false;
+        for (FluidStack fs : lanes.stalledFluids) {
+            if (fs != null && !fs.isEmpty() && fs.getAmount() > 0) {
+                hasAny = true;
+                break;
+            }
+        }
+        if (!hasAny) {
+            lanes.armedClearFluidUntilGameTime = 0L;
+            return false;
+        }
+        // Fluids: shift-click always destroys buffered content immediately (no container extraction).
+        for (int i = 0; i < lanes.stalledFluids.length; i++) {
+            lanes.stalledFluids[i] = FluidStack.EMPTY;
+        }
+        lanes.armedClearFluidUntilGameTime = 0L;
+        return true;
+    }
+
+    private boolean tryClearGasBuffer(ServerLevel level, DuctFaceLanes lanes, Player player, InteractionHand hand) {
+        boolean hasAny = false;
+        for (var g : lanes.stalledGas) {
+            if (g != null && !g.isEmpty() && (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount"))) {
+                hasAny = true;
+                break;
+            }
+        }
+        if (!hasAny) {
+            lanes.armedClearGasUntilGameTime = 0L;
+            return false;
+        }
+
+        ItemStack held = player.getItemInHand(hand);
+        Object itemHandler = MekanismChemicalCompat.getChemicalHandlerItem(held);
+        if (itemHandler != null) {
+            boolean filledSomething = false;
+            HolderLookup.Provider regs = level.registryAccess();
+            for (int i = 0; i < lanes.stalledGas.length; i++) {
+                CompoundTag tag = lanes.stalledGas[i];
+                if (tag == null || tag.isEmpty()) {
+                    continue;
+                }
+                Object payload = MekanismChemicalCompat.loadGasStackFromTag(tag, regs);
+                if (payload == null || MekanismChemicalCompat.isEmptyStack(payload) || MekanismChemicalCompat.getAmount(payload) <= 0) {
+                    lanes.stalledGas[i] = null;
+                    continue;
+                }
+                Object left = MekanismChemicalCompat.insertExecute(itemHandler, payload);
+                long leftAmt = MekanismChemicalCompat.isEmptyStack(left) ? 0L : MekanismChemicalCompat.getAmount(left);
+                long before = MekanismChemicalCompat.getAmount(payload);
+                long inserted = Math.max(0L, before - leftAmt);
+                if (inserted > 0) {
+                    filledSomething = true;
+                    if (leftAmt <= 0) {
+                        lanes.stalledGas[i] = null;
+                    } else {
+                        CompoundTag nt = new CompoundTag();
+                        MekanismChemicalCompat.saveGasStackToTag(left, nt);
+                        lanes.stalledGas[i] = nt.isEmpty() ? null : nt;
+                    }
+                }
+            }
+            if (filledSomething) {
+                lanes.armedClearGasUntilGameTime = 0L;
+            }
+            return filledSomething;
+        }
+
+        long now = level.getGameTime();
+        boolean emptyHand = held.isEmpty();
+        if (emptyHand && lanes.armedClearGasUntilGameTime > 0 && now <= lanes.armedClearGasUntilGameTime) {
+            for (int i = 0; i < lanes.stalledGas.length; i++) {
+                lanes.stalledGas[i] = null;
+            }
+            lanes.armedClearGasUntilGameTime = 0L;
+            return true;
+        }
+
+        lanes.armedClearGasUntilGameTime = now + 100L;
+        player.displayClientMessage(Component.literal("Buffered gas: use a tank/cell to extract, or empty-hand within 5s to destroy."), true);
+        return true;
     }
 
     /**
@@ -1323,8 +1925,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int planned = s.stack.getCount();
             int take = Math.min(planned, chunkCap);
             if (take <= 0) {
-                it.remove();
                 s.stack = ItemStack.EMPTY;
+                removeShipmentFromList(level, s, it);
                 setChanged();
                 return false;
             }
@@ -1359,10 +1961,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (take < planned) {
                 s.stack.shrink(take);
                 s.registeredIncoming = s.stack.copy();
-                // No incoming reservation tracking.
+                syncIncomingReservation(level, s);
             } else {
-                it.remove();
                 s.stack = ItemStack.EMPTY;
+                removeShipmentFromList(level, s, it);
             }
             if (!remainder.isEmpty()) {
                 DuctOverflowRouting.absorbExtractionDestRemainder(level, s, destBe, remainder, worldPosition);
@@ -1377,14 +1979,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 // No incoming reservation tracking.
                 return true;
             }
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
             setChanged();
             return false;
         }
         if (!DuctChannelPolicy.faceMatchesShipment(srcBe.getFaceNode(s.sourceFace).channelLetter, s)) {
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
             setChanged();
             return false;
         }
@@ -1423,8 +2025,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int n = Math.min(planned, Math.min(capExt, capIn));
         n = Math.min(n, moduleCap);
         if (n <= 0) {
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
             setChanged();
             return false;
         }
@@ -1439,8 +2041,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 // No incoming reservation tracking.
                 return true;
             }
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
             setChanged();
             return false;
         }
@@ -1448,20 +2050,20 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if ((dm2 == NodeMode.FILTERING_INSERTION || dm2 == NodeMode.EXTRACTION_FILTERING)
                 && !destBe.passesItemFilters(s.destFace, extracted, level, DuctFaceNode.FilterBank.FILTER)) {
             DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, extracted, worldPosition);
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
             setChanged();
             return false;
         }
         int delivered = extracted.getCount();
         boolean partialRemainder = delivered < planned;
         if (!partialRemainder) {
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
         } else {
             s.stack.shrink(delivered);
             s.registeredIncoming = s.stack.copy();
-            // No incoming reservation tracking.
+            syncIncomingReservation(level, s);
         }
         ItemStack remainder =
                 s.legacyOmniFaces
@@ -1501,8 +2103,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int planned = s.stack.getCount();
             int take = Math.min(planned, chunkCap);
             if (take <= 0) {
-                it.remove();
                 s.stack = ItemStack.EMPTY;
+                removeShipmentFromList(level, s, it);
                 setChanged();
                 return false;
             }
@@ -1537,10 +2139,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (take < planned) {
                 s.stack.shrink(take);
                 s.registeredIncoming = s.stack.copy();
-                // No incoming reservation tracking.
+                syncIncomingReservation(level, s);
             } else {
-                it.remove();
                 s.stack = ItemStack.EMPTY;
+                removeShipmentFromList(level, s, it);
             }
             if (!remainder.isEmpty()) {
                 DuctOverflowRouting.absorbRetrieverDestRemainder(level, s, this, donorBe, remainder, worldPosition);
@@ -1585,8 +2187,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int n = Math.min(planned, Math.min(capExt, capIn));
         n = Math.min(n, moduleCap);
         if (n <= 0) {
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
             setChanged();
             return false;
         }
@@ -1601,8 +2203,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 // No incoming reservation tracking.
                 return true;
             }
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
             setChanged();
             return false;
         }
@@ -1610,20 +2212,20 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if ((sm2 == NodeMode.FILTERING_INSERTION || sm2 == NodeMode.EXTRACTION_FILTERING)
                 && !passesItemFilters(s.destFace, extracted, level, DuctFaceNode.FilterBank.FILTER)) {
             DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, extracted, worldPosition);
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
             setChanged();
             return false;
         }
         int delivered = extracted.getCount();
         boolean partialRemainder = delivered < planned;
         if (!partialRemainder) {
-            it.remove();
             s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
         } else {
             s.stack.shrink(delivered);
             s.registeredIncoming = s.stack.copy();
-            // No incoming reservation tracking.
+            syncIncomingReservation(level, s);
         }
         ItemStack remainder =
                 s.legacyOmniFaces
@@ -1702,13 +2304,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void tickExtractionPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction face, DuctFaceNode node) {
-        if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
+        int kinds = distinctPendingOutboundKinds();
+        if (kinds >= MAX_BLOCKED_ITEM_KINDS) {
             return;
         }
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
         }
         DuctFaceLanes faceLanes = getFaceLanes(face);
+        if (isFaceStalled(faceLanes)) {
+            return;
+        }
+        // First, try to drain any stalled content on this face (refund to source, else attempt re-send).
+        if (tryDrainItemStallForFace(level, spec, face, node)) {
+            requestModelDataUpdate();
+        }
         IItemHandler sourceHandler = DuctCapHelper.getHandlerOnFace(level, worldPosition, face);
         if (sourceHandler == null) {
             return;
@@ -1785,6 +2395,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         continue;
                     }
                 }
+                // Keep-in-storage on the source must not wedge the extractor on the first matching stack.
+                // If this item cannot be extracted at all due to Keep, try the next candidate item.
+                if (capExtractableForAllowKeep(
+                                level,
+                                worldPosition,
+                                face,
+                                this,
+                                DuctFaceNode.FilterBank.EXTRACTOR,
+                                p,
+                                1)
+                        <= 0) {
+                    continue;
+                }
                 probe = p;
                 break;
             }
@@ -1835,15 +2458,24 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
             OutboundShipment sh =
                     new OutboundShipment(planned, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
+            // Extract physically now (buffer lives on the shipment stack).
+            ItemStack extracted = DuctCapHelper.extractMatchingUpToOnFace(level, worldPosition, face, planned, plannedCount);
+            if (extracted.isEmpty() || extracted.getCount() <= 0) {
+                continue;
+            }
+            sh.stack = extracted.copy();
+            sh.registeredIncoming = sh.stack.copy();
+            sh.sourceExtractCommitted = true;
             sh.ductPath = OutboundShipment.copyPath(path);
             sh.totalTravelTicks = travelTicks;
             sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, edgeTicks);
             sh.journeyStartGameTime = level.getGameTime();
             sh.transitPhase = TransitPhase.FORWARD;
             outboundShipments.add(sh);
-            // No incoming reservation tracking.
+            DuctIncomingIndex.register(level, sh.destDuct, sh.destFace, sh.incomingReservationId, sh.stack);
             setChanged();
             pushTransitSnapshotToClients(level);
+            requestModelDataUpdate();
             if (roundRobinRouting) {
                 node.roundRobinCursor = rrFrozen + lastSuccessfulCandIdx + 1;
             }
@@ -1852,13 +2484,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void tickRetrieverPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction retrieverFace, DuctFaceNode node) {
-        if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
+        int kinds = distinctPendingOutboundKinds();
+        if (kinds >= MAX_BLOCKED_ITEM_KINDS) {
             return;
         }
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
         }
         DuctFaceLanes retrieverLanes = getFaceLanes(retrieverFace);
+        if (isFaceStalled(retrieverLanes)) {
+            return;
+        }
+        // Drain stalled items before pulling more.
+        if (tryDrainItemStallForFace(level, spec, retrieverFace, node)) {
+            requestModelDataUpdate();
+        }
         final int rrFrozen = node.roundRobinCursor;
         RoutingMode rm =
                 retrieverLanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
@@ -1899,6 +2539,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (donorHandler == null) {
                 continue;
             }
+            if (isFaceStalled(donorBe.getFaceLanes(donorFace))) {
+                continue;
+            }
             for (int slot = 0; slot < donorHandler.getSlots(); slot++) {
                 // One outbound task per rate tick on this retriever face: count is min(batch, donor, retriever caps).
                 ItemStack probe = donorHandler.extractItem(slot, 1, true);
@@ -1910,6 +2553,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 }
                 // In RETRIEVING, the destination is governed by RETRIEVER filters, while the donor is governed by FILTER caps/filters.
                 if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
+                    continue;
+                }
+                // Do not wedge retriever on an item blocked by donor Keep-in-storage.
+                if (capExtractableForFilterKeep(level, donor, donorFace, donorBe, probe, 1) <= 0) {
                     continue;
                 }
                 int tubeBatch = tubeOperationBatchSize(spec, this, retrieverFace);
@@ -1933,7 +2580,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 if (plannedCount > 0) {
                     ItemStack template = probe.copy();
                     template.setCount(plannedCount);
-                    List<ItemStack> prior = List.of();
+                    List<ItemStack> prior = DuctIncomingIndex.snapshot(level, worldPosition, retrieverFace);
                     int capIn =
                             DuctCapHelper.maxInsertableAfterPendingOnFace(
                                     level, worldPosition, retrieverFace, template, plannedCount, prior);
@@ -1962,21 +2609,39 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 OutboundShipment sh =
                         new OutboundShipment(
                                 planned, worldPosition, retrieverFace, travelTicks, donor, donorFace, node.channelLetter);
+                ItemStack extracted = DuctCapHelper.extractMatchingUpToOnFace(level, donor, donorFace, planned, plannedCount);
+                if (extracted.isEmpty() || extracted.getCount() <= 0) {
+                    continue;
+                }
+                sh.stack = extracted.copy();
+                sh.registeredIncoming = sh.stack.copy();
+                sh.sourceExtractCommitted = true;
                 sh.ductPath = OutboundShipment.copyPath(path);
                 sh.totalTravelTicks = travelTicks;
                 sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, edgeTicks);
                 sh.journeyStartGameTime = level.getGameTime();
                 sh.transitPhase = TransitPhase.FORWARD;
                 outboundShipments.add(sh);
-                // No incoming reservation tracking.
+                DuctIncomingIndex.register(level, sh.destDuct, sh.destFace, sh.incomingReservationId, sh.stack);
                 setChanged();
                 pushTransitSnapshotToClients(level);
+                requestModelDataUpdate();
                 if (roundRobinRetriever) {
                     node.roundRobinCursor = rrFrozen + donorIdx + 1;
                 }
                 return;
             }
         }
+    }
+
+    private static boolean isFaceStalled(DuctFaceLanes lanes) {
+        int filled = 0;
+        for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+            if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
+                filled++;
+            }
+        }
+        return filled >= lanes.stalledBuffer.getSlots();
     }
 
     /**
@@ -2004,12 +2669,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         ItemStack t = template.copy();
         t.setCount(want);
-        List<ItemStack> prior = List.of();
+        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct, destFace);
         int capInsert =
                 DuctCapHelper.maxInsertableAfterPendingOnFace(
                         level, destDuct, destFace, t, want, prior);
         int afterAllow = capInsertableForFilterAllowLimit(level, destDuct, destFace, destBe, t, capInsert, prior);
-        return Math.max(0, Math.min(want, afterAllow));
+        int out = Math.max(0, Math.min(want, afterAllow));
+        return out;
     }
 
     private int distinctPendingOutboundKinds() {
@@ -3463,6 +4129,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         t.putByte("LatchedFaces", (byte) latchedStorageFaceMask);
         // Pack node icon indices server-side for client rendering.
         t.putInt("PackedNodeIcons", computePackedNodeIcons());
+        // Pack stall mask server-side for client rendering.
+        t.putInt("StallMask", computeStallMask());
         ListTag transitList = new ListTag();
         for (OutboundShipment s : outboundShipments) {
             if (s.stack.isEmpty()) {
@@ -3597,6 +4265,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             }
         }
+        int prevStallMask = clientStallMask;
+        int nextStallMask = tag.contains("StallMask", Tag.TAG_INT) ? tag.getInt("StallMask") : 0;
+        clientStallMask = nextStallMask;
+        if (prevStallMask != nextStallMask) {
+            requestModelDataUpdate();
+            if (level != null && level.isClientSide) {
+                level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            }
+        }
         if (level != null && level.isClientSide) {
             // ItemStack components need the live client world registry; packet Provider often yields empty parse.
             DuctTransitClientState.onDuctUpdateTag(
@@ -3628,11 +4305,50 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         } else {
             packed = computePackedNodeIcons();
         }
+        int stallMask = (level != null && level.isClientSide) ? clientStallMask : computeStallMask();
         return ModelData.builder()
                 .with(DuctModelProperties.PIPE_MASK, getPipeMask())
                 .with(DuctModelProperties.STORAGE_MASK, getStorageMask())
                 .with(DuctModelProperties.NODE_ICONS_PACKED, packed)
                 .with(DuctModelProperties.DUCT_LOGICAL_ID, logicalDuctId)
+                .with(DuctModelProperties.HAS_STALL, stallMask != 0)
+                .with(DuctModelProperties.STALL_MASK, stallMask)
                 .build();
+    }
+
+    private int computeStallMask() {
+        int mask = 0;
+        for (Direction d : Direction.values()) {
+            if (hasAnyStallOnFace(d)) {
+                mask |= 1 << d.ordinal();
+            }
+        }
+        return mask;
+    }
+
+    private boolean hasAnyStallBuffered() {
+        for (Direction d : Direction.values()) {
+            DuctFaceLanes lanes = getFaceLanes(d);
+            var buf = lanes.stalledBuffer;
+            for (int i = 0; i < buf.getSlots(); i++) {
+                if (!buf.getStackInSlot(i).isEmpty()) {
+                    return true;
+                }
+            }
+            for (FluidStack fs : lanes.stalledFluids) {
+                if (fs != null && !fs.isEmpty() && fs.getAmount() > 0) {
+                    return true;
+                }
+            }
+            for (var g : lanes.stalledGas) {
+                if (g != null && !g.isEmpty() && (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount"))) {
+                    return true;
+                }
+            }
+            if (lanes.stalledEnergyCount > 0 || lanes.stalledHeatCount > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 }

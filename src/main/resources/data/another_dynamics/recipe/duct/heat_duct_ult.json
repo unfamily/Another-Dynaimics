@@ -22,7 +22,7 @@
   },
   "result": {
     "id": "another_dynamics:duct",
-    "count": 8,
+    "count": 16,
     "components": {
       "another_dynamics:duct_logical_id": "another_dynamics:heat_duct_ult"
     }

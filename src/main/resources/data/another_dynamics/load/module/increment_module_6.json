@@ -7,6 +7,12 @@
       "quantity": {
         "set": 512
       },
+      "filter": {
+        "allow": { "add": 100 },
+        "deny": { "add": 100 },
+        "allow_hybrid": { "add": 50 },
+        "deny_hybrid": { "add": 50 }
+      },
       "speed": {
         "mult": 0.2
       },
@@ -19,6 +25,12 @@
       "quantity": {
         "set": 2147483647
       },
+      "filter": {
+        "allow": { "add": 100 },
+        "deny": { "add": 100 },
+        "allow_hybrid": { "add": 50 },
+        "deny_hybrid": { "add": 50 }
+      },
       "speed": {
         "mult": 0.2
       },
@@ -30,6 +42,12 @@
       "for": "gas",
       "quantity": {
         "set": 2147483647
+      },
+      "filter": {
+        "allow": { "add": 100 },
+        "deny": { "add": 100 },
+        "allow_hybrid": { "add": 50 },
+        "deny_hybrid": { "add": 50 }
       },
       "speed": {
         "mult": 0.2

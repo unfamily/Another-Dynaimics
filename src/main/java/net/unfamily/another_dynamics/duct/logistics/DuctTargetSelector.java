@@ -315,7 +315,10 @@ public final class DuctTargetSelector {
                 if (!DuctCapHelper.canInsertIntoFace(level, retrieverPos, retrieverInventoryFace, sample.get())) {
                     continue;
                 }
-                OptionalLong dist = DuctPathfinder.distance(level, retrieverPos, p, spec, DuctNetworkType.ITEM);
+                OptionalLong dist =
+                        p.equals(retrieverPos)
+                                ? OptionalLong.of(0L)
+                                : DuctPathfinder.distance(level, retrieverPos, p, spec, DuctNetworkType.ITEM);
                 if (dist.isEmpty()) {
                     continue;
                 }
@@ -336,6 +339,9 @@ public final class DuctTargetSelector {
         DonorCandidate pick = pickDonorWithinTier(level, retrieverPos, tier, routing, roundRobinState);
         if (pick == null) {
             return Optional.empty();
+        }
+        if (pick.ductPos.equals(retrieverPos)) {
+            return Optional.of(new RetrieverRouting(List.of(retrieverPos), pick.ductPos, pick.face));
         }
         Optional<List<BlockPos>> path =
                 DuctPathfinder.shortestPath(level, pick.ductPos, retrieverPos, spec, DuctNetworkType.ITEM);
@@ -393,7 +399,10 @@ public final class DuctTargetSelector {
                 if (!DuctCapHelper.canInsertIntoFace(level, retrieverPos, retrieverInventoryFace, sample.get())) {
                     continue;
                 }
-                OptionalLong dist = DuctPathfinder.distance(level, retrieverPos, p, spec, DuctNetworkType.ITEM);
+                OptionalLong dist =
+                        p.equals(retrieverPos)
+                                ? OptionalLong.of(0L)
+                                : DuctPathfinder.distance(level, retrieverPos, p, spec, DuctNetworkType.ITEM);
                 if (dist.isEmpty()) {
                     continue;
                 }

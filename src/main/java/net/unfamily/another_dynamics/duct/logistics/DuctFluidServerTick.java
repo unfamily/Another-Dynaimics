@@ -79,6 +79,9 @@ public final class DuctFluidServerTick {
             DuctFaceNode node,
             DuctFluidTransportSpec spec) {
         BlockPos srcPos = sourceBe.getBlockPos();
+        if (isFluidFaceStalled(sourceBe.getFaceLanes(sourceFace))) {
+            return;
+        }
         IFluidHandler srcCap =
                 level.getCapability(Capabilities.FluidHandler.BLOCK, srcPos.relative(sourceFace), sourceFace.getOpposite());
         if (srcCap == null) {
@@ -223,6 +226,10 @@ public final class DuctFluidServerTick {
             return;
         }
         FluidStack planned = new FluidStack(available.getFluid(), movedMb);
+        FluidStack extracted = srcCap.drain(planned.copy(), IFluidHandler.FluidAction.EXECUTE);
+        if (extracted.isEmpty() || extracted.getAmount() <= 0) {
+            return;
+        }
         List<BlockPos> rawPath;
         if (pick.ductPos().equals(srcPos)) {
             rawPath = List.of(srcPos);
@@ -234,7 +241,7 @@ public final class DuctFluidServerTick {
         List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
         long edgeTicks = DuctModuleEffects.effectiveFluidEdgeTravelTicks(sourceBe, sourceFace, spec);
         sourceBe.scheduleFluidTransitPending(
-                level, planned, pathWire, sourceFace, pick.face(), pick.ductPos(), spec, edgeTicks);
+                level, extracted, pathWire, sourceFace, pick.face(), pick.ductPos(), spec, edgeTicks);
     }
 
     private static void tryRetrievePull(
@@ -289,6 +296,9 @@ public final class DuctFluidServerTick {
                 path = p.get();
             }
             if (!(level.getBlockEntity(donor) instanceof DuctBlockEntity donorBe)) {
+                continue;
+            }
+            if (isFluidFaceStalled(donorBe.getFaceLanes(donorFace))) {
                 continue;
             }
             IFluidHandler srcCap =
@@ -365,10 +375,14 @@ public final class DuctFluidServerTick {
                 node.roundRobinCursor = rr[0] + donorIdx + 1;
             }
             FluidStack planned = new FluidStack(available.getFluid(), plannedMb);
+            FluidStack extracted = srcCap.drain(planned.copy(), IFluidHandler.FluidAction.EXECUTE);
+            if (extracted.isEmpty() || extracted.getAmount() <= 0) {
+                continue;
+            }
             long edgeTicks = DuctModuleEffects.effectiveFluidEdgeTravelTicks(donorBe, donorFace, spec);
             donorBe.scheduleFluidTransitPending(
                     level,
-                    planned,
+                    extracted,
                     OutboundShipment.copyPath(path),
                     donorFace,
                     retrieverFace,
@@ -618,52 +632,14 @@ public final class DuctFluidServerTick {
         if (!srcExtract && !srcDonor) {
             return false;
         }
-        DuctFaceNode srcNode = srcLanes.fluid;
-        IFluidHandler srcCap =
-                level.getCapability(Capabilities.FluidHandler.BLOCK, srcPos.relative(s.sourceFace), s.sourceFace.getOpposite());
-        if (srcCap == null) {
-            return false;
-        }
-        if (srcExtract) {
-            if (!DuctFluidFilterLogic.passesFluidFiltersForBank(
-                    srcNode, DuctFaceNode.FilterBank.EXTRACTOR, s.fluid, level)) {
-                return false;
-            }
-            int keepCap =
-                    DuctFluidAllowLimitLogic.maxExtractRespectingKeepMb(
-                            srcCap,
-                            srcNode.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR),
-                            srcNode.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR),
-                            s.fluid,
-                            level.registryAccess());
-            if (keepCap != Integer.MAX_VALUE && s.fluid.getAmount() > keepCap) {
-                return false;
-            }
-        } else {
-            if (sm == NodeMode.FILTERING_INSERTION
-                    && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                            srcNode, DuctFaceNode.FilterBank.FILTER, s.fluid, level)) {
-                return false;
-            }
-            int keepCap =
-                    DuctFluidAllowLimitLogic.maxExtractRespectingKeepMb(
-                            srcCap,
-                            srcNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER),
-                            srcNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER),
-                            s.fluid,
-                            level.registryAccess());
-            if (keepCap != Integer.MAX_VALUE && s.fluid.getAmount() > keepCap) {
-                return false;
-            }
-        }
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
             return false;
         }
-        return pinnedFaceSimulatesOk(level, destBe, srcCap, s);
+        return pinnedFaceSimulatesOk(level, destBe, s);
     }
 
     private static boolean pinnedFaceSimulatesOk(
-            ServerLevel level, DuctBlockEntity destBe, IFluidHandler srcCap, FluidTransitShipment s) {
+            ServerLevel level, DuctBlockEntity destBe, FluidTransitShipment s) {
         BlockPos destPos = destBe.getBlockPos();
         Direction df = s.destFace;
         int dsm = destBe.getStorageMask();
@@ -709,17 +685,12 @@ public final class DuctFluidServerTick {
                 return false;
             }
         }
-        int amt = Math.min(s.fluid.getAmount(), simulated);
-        FluidStack drain = srcCap.drain(new FluidStack(s.fluid.getFluid(), amt), IFluidHandler.FluidAction.SIMULATE);
-        return !drain.isEmpty() && drain.getAmount() >= amt;
+        return simulated > 0;
     }
 
-    /** Performs drain+fill for the pinned destination face; refunds if fill accepts less than drained. */
+    /** Performs fill for the pinned destination face; refunds/stalls if fill accepts less than payload. */
     public static void tryExecutePlannedFluidTransfer(ServerLevel level, DuctBlockEntity sourceBe, FluidTransitShipment s) {
-        BlockPos srcPos = sourceBe.getBlockPos();
-        IFluidHandler srcCap =
-                level.getCapability(Capabilities.FluidHandler.BLOCK, srcPos.relative(s.sourceFace), s.sourceFace.getOpposite());
-        if (srcCap == null || s.fluid.isEmpty()) {
+        if (s.fluid.isEmpty()) {
             return;
         }
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
@@ -744,32 +715,6 @@ public final class DuctFluidServerTick {
             return;
         }
         FluidStack toMove = s.fluid.copy();
-        DuctFaceNode srcNode = sourceBe.getFaceLanes(s.sourceFace).fluid;
-        NodeMode sm = sourceBe.getFaceLanes(s.sourceFace).nodeMode;
-        boolean donorSource = sm == NodeMode.NONE || sm == NodeMode.FILTERING_INSERTION;
-        DuctFaceNode.FilterBank srcCapBank =
-                donorSource ? DuctFaceNode.FilterBank.FILTER : DuctFaceNode.FilterBank.EXTRACTOR;
-        if (!donorSource
-                && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        srcNode, DuctFaceNode.FilterBank.EXTRACTOR, toMove, level)) {
-            return;
-        }
-        if (donorSource
-                && sm == NodeMode.FILTERING_INSERTION
-                && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        srcNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
-            return;
-        }
-        int keepCap =
-                DuctFluidAllowLimitLogic.maxExtractRespectingKeepMb(
-                        srcCap,
-                        srcNode.bankAllowFilters(srcCapBank),
-                        srcNode.bankAllowCaps(srcCapBank),
-                        toMove,
-                        level.registryAccess());
-        if (keepCap != Integer.MAX_VALUE && toMove.getAmount() > keepCap) {
-            return;
-        }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
                         destLanes.fluid, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
@@ -797,22 +742,27 @@ public final class DuctFluidServerTick {
             }
         }
         int take = Math.min(toMove.getAmount(), simulated);
-        FluidStack drainSim = srcCap.drain(new FluidStack(toMove.getFluid(), take), IFluidHandler.FluidAction.SIMULATE);
-        if (drainSim.isEmpty() || drainSim.getAmount() < take) {
-            return;
-        }
-        FluidStack actually = srcCap.drain(new FluidStack(toMove.getFluid(), take), IFluidHandler.FluidAction.EXECUTE);
-        if (actually.isEmpty()) {
-            return;
-        }
-        int filled = destCap.fill(actually, IFluidHandler.FluidAction.EXECUTE);
-        if (filled < actually.getAmount()) {
-            srcCap.fill(
-                    new FluidStack(actually.getFluid(), actually.getAmount() - filled),
-                    IFluidHandler.FluidAction.EXECUTE);
+        FluidStack payload = new FluidStack(toMove.getFluid(), take);
+        int filled = destCap.fill(payload.copy(), IFluidHandler.FluidAction.EXECUTE);
+        int left = payload.getAmount() - Math.max(0, filled);
+        if (left > 0) {
+            sourceBe.refundBufferedFluidToSourceOrStall(level, s.sourceFace, new FluidStack(payload.getFluid(), left));
         }
         sourceBe.setChanged();
         destBe.setChanged();
+    }
+
+    private static boolean isFluidFaceStalled(DuctFaceLanes lanes) {
+        if (lanes == null) {
+            return false;
+        }
+        int filled = 0;
+        for (FluidStack fs : lanes.stalledFluids) {
+            if (fs != null && !fs.isEmpty() && fs.getAmount() > 0) {
+                filled++;
+            }
+        }
+        return filled >= lanes.stalledFluids.length;
     }
 
     private static FluidStack drainProbe(IFluidHandler h, int maxMb) {

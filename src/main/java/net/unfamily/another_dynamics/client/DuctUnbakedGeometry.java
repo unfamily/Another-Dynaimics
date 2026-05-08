@@ -62,6 +62,12 @@ public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGe
                         new Material(
                                 InventoryMenu.BLOCK_ATLAS,
                                 ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/nodes")));
+        // Force-stitch node_buffer.png into the same atlas, otherwise runtime lookup may yield the missing sprite.
+        TextureAtlasSprite nodeBufferSprite =
+                spriteGetter.apply(
+                        new Material(
+                                InventoryMenu.BLOCK_ATLAS,
+                                ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/node_buffer")));
         DuctCompositeGeometry geometry = DuctCompositeGeometry.bake(modelDefault, modelLine, texStr, spriteGetter);
         var geometryById = DuctBakedModel.bakeAllGeometries(spriteGetter, geometry);
 
@@ -72,7 +78,7 @@ public final class DuctUnbakedGeometry implements IUnbakedGeometry<DuctUnbakedGe
             base = EmptyModel.BAKED;
         }
         TextureAtlasSprite particle = spriteGetter.apply(context.getMaterial("particle"));
-        return new DuctBakedModel(base, geometry, particle, nodesSprite, ductLogicalId, geometryById);
+        return new DuctBakedModel(base, geometry, particle, nodesSprite, nodeBufferSprite, ductLogicalId, geometryById);
     }
 
     @Override

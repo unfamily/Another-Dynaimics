@@ -91,6 +91,7 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
     private final Map<String, DuctBakedModel> itemModelsByLogicalId = new HashMap<>();
     private final TextureAtlasSprite particleSprite;
     private final TextureAtlasSprite nodesSprite;
+    private final TextureAtlasSprite nodeBufferSprite;
     private final String ductLogicalId;
 
     public DuctBakedModel(
@@ -98,9 +99,10 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
             DuctCompositeGeometry geometry,
             TextureAtlasSprite particleSprite,
             TextureAtlasSprite nodesSprite,
+            TextureAtlasSprite nodeBufferSprite,
             String ductLogicalId,
             Map<String, DuctCompositeGeometry> geometryByLogicalId) {
-        this(original, geometry, particleSprite, nodesSprite, ductLogicalId, geometryByLogicalId, false, null);
+        this(original, geometry, particleSprite, nodesSprite, nodeBufferSprite, ductLogicalId, geometryByLogicalId, false, null);
     }
 
     private DuctBakedModel(
@@ -108,6 +110,7 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
             DuctCompositeGeometry geometry,
             TextureAtlasSprite particleSprite,
             TextureAtlasSprite nodesSprite,
+            TextureAtlasSprite nodeBufferSprite,
             String ductLogicalId,
             Map<String, DuctCompositeGeometry> geometryByLogicalId,
             boolean itemForceDefinitionOpaqueOnly,
@@ -116,6 +119,7 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
         this.geometry = geometry;
         this.particleSprite = particleSprite;
         this.nodesSprite = nodesSprite;
+        this.nodeBufferSprite = nodeBufferSprite;
         this.ductLogicalId = ductLogicalId;
         this.geometryByLogicalIdRef = new AtomicReference<>(geometryByLogicalId);
         this.itemForceDefinitionOpaqueOnly = itemForceDefinitionOpaqueOnly;
@@ -204,7 +208,7 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
                 }
                 return itemModelsByLogicalId.computeIfAbsent(
                         id,
-                        k -> new DuctBakedModel(originalModel, g, particleSprite, nodesSprite, ductLogicalId, gMap, true, k));
+                        k -> new DuctBakedModel(originalModel, g, particleSprite, nodesSprite, nodeBufferSprite, ductLogicalId, gMap, true, k));
             }
         };
     }
@@ -324,6 +328,12 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
         }
         effectiveGeometry.appendForWorldWithNodeIcons(
                 built, pm, sm, pi, nodesSprite, includeBase, includeOverlays, ductVShift);
+        // Stall overlay should behave like node icons, but some render pipelines may skip the translucent pass.
+        // Render it on both overlay and base passes to ensure visibility.
+        if ((includeOverlays || includeBase) && modelData != null && Boolean.TRUE.equals(modelData.get(DuctModelProperties.HAS_STALL))) {
+            Integer stallMask = modelData.get(DuctModelProperties.STALL_MASK);
+            appendStallOverlayOnNodes(built, effectiveGeometry, stallMask != null ? stallMask : sm);
+        }
         if (side != null) {
             List<BakedQuad> culled = new ArrayList<>();
             for (BakedQuad q : built) {
@@ -334,6 +344,30 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
             return culled;
         }
         return built;
+    }
+
+    private void appendStallOverlayOnNodes(List<BakedQuad> out, DuctCompositeGeometry geo, int faceMask) {
+        // Render node_buffer.png on the same node faces as nodes.png overlays.
+        TextureAtlasSprite sprite = nodeBufferSprite;
+        if (sprite == null) {
+            return;
+        }
+        for (Direction face : Direction.values()) {
+            if ((faceMask & (1 << face.ordinal())) == 0) {
+                continue;
+            }
+            List<BakedQuad> src = geo.quadsNamed(DuctCompositeGeometry.nodePiece(face));
+            for (BakedQuad q : src) {
+                Direction qDir = q.getDirection();
+                if (qDir == face || qDir == face.getOpposite()) {
+                    continue;
+                }
+                BakedQuad overlay = DuctCompositeGeometry.buildFullSpriteOverlay(q, sprite);
+                if (overlay != null) {
+                    out.add(overlay);
+                }
+            }
+        }
     }
 
     /**

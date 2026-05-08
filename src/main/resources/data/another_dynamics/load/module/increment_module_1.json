@@ -6,18 +6,36 @@
       "for": "item",
       "quantity": {
         "set": 32
+      },
+      "filter": {
+        "allow": { "add": 8 },
+        "deny": { "add": 8 },
+        "allow_hybrid": { "add": 4 },
+        "deny_hybrid": { "add": 4 }
       }
     },
     {
       "for": "fluid",
       "quantity": {
         "set": 16000
+      },
+      "filter": {
+        "allow": { "add": 8 },
+        "deny": { "add": 8 },
+        "allow_hybrid": { "add": 4 },
+        "deny_hybrid": { "add": 4 }
       }
     },
     {
       "for": "gas",
       "quantity": {
         "set": 16000
+      },
+      "filter": {
+        "allow": { "add": 8 },
+        "deny": { "add": 8 },
+        "allow_hybrid": { "add": 4 },
+        "deny_hybrid": { "add": 4 }
       }
     },
     {

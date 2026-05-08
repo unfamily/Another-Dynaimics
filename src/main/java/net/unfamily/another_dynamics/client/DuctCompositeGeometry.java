@@ -483,7 +483,7 @@ public final class DuctCompositeGeometry {
      *
      * NeoForge note: do not assume vertex layout indices; use {@link IQuadTransformer} offsets/stride.
      */
-    private static @Nullable BakedQuad buildNodeIconOverlay(BakedQuad q, int iconIdx, TextureAtlasSprite nodesSprite) {
+    static @Nullable BakedQuad buildNodeIconOverlay(BakedQuad q, int iconIdx, TextureAtlasSprite nodesSprite) {
         if (nodesSprite == null) {
             return null;
         }
@@ -560,5 +560,58 @@ public final class DuctCompositeGeometry {
         // Make the icon readable even in darkness.
         overlay = QuadTransformers.settingMaxEmissivity().process(overlay);
         return overlay;
+    }
+
+    /**
+     * Builds an overlay quad using the full UV range of {@code sprite}, preserving the original quad's
+     * UV orientation (min/max) as a normalized mapping.
+     */
+    static @Nullable BakedQuad buildFullSpriteOverlay(BakedQuad q, TextureAtlasSprite sprite) {
+        if (sprite == null) {
+            return null;
+        }
+        int[] v = q.getVertices();
+        if (v == null || v.length < IQuadTransformer.STRIDE * 4) {
+            return null;
+        }
+        int stride = IQuadTransformer.STRIDE;
+        int uv0 = IQuadTransformer.UV0;
+        float uMin = Float.POSITIVE_INFINITY;
+        float uMax = Float.NEGATIVE_INFINITY;
+        float vMin = Float.POSITIVE_INFINITY;
+        float vMax = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < 4; i++) {
+            int base = i * stride;
+            float u = Float.intBitsToFloat(v[base + uv0]);
+            float vv = Float.intBitsToFloat(v[base + uv0 + 1]);
+            uMin = Math.min(uMin, u);
+            uMax = Math.max(uMax, u);
+            vMin = Math.min(vMin, vv);
+            vMax = Math.max(vMax, vv);
+        }
+        float w = uMax - uMin;
+        float h = vMax - vMin;
+        if (w <= 1e-6f || h <= 1e-6f) {
+            return null;
+        }
+        float su0 = sprite.getU0();
+        float su1 = sprite.getU1();
+        float sv0 = sprite.getV0();
+        float sv1 = sprite.getV1();
+
+        int[] nv = v.clone();
+        for (int i = 0; i < 4; i++) {
+            int base = i * stride;
+            float ou = Float.intBitsToFloat(v[base + uv0]);
+            float ov = Float.intBitsToFloat(v[base + uv0 + 1]);
+            float nu = (ou - uMin) / w;
+            float nv01 = (ov - vMin) / h;
+            float mu = su0 + (su1 - su0) * nu;
+            float mv = sv0 + (sv1 - sv0) * nv01;
+            nv[base + uv0] = Float.floatToRawIntBits(mu);
+            nv[base + uv0 + 1] = Float.floatToRawIntBits(mv);
+        }
+        // Match node icon overlays: no tint, no shading, so the sprite renders consistently.
+        return new BakedQuad(nv, -1, q.getDirection(), sprite, false);
     }
 }

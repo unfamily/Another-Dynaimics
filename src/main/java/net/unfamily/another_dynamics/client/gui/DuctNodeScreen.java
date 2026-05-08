@@ -3120,9 +3120,57 @@ public final class DuctNodeScreen
         syncAllowCapEditBoxDisplay();
     }
 
+    private void adjustAdvCapWithStep(int sign, int step) {
+        playClickSound();
+        step = Math.max(1, step);
+        if (sign < 0) {
+            if (editModeAllowCapValue <= 0) {
+                return;
+            }
+            editModeAllowCapValue = Math.max(0, editModeAllowCapValue - step);
+        } else {
+            if (editModeAllowCapValue <= 0) {
+                editModeAllowCapValue = step;
+            } else {
+                editModeAllowCapValue = (int) Mth.clamp(
+                    (long) editModeAllowCapValue + (long) step,
+                    1L,
+                    Integer.MAX_VALUE
+                );
+            }
+        }
+        syncAllowCapEditBoxDisplay();
+    }
+
     private void adjustAdvCap2(int sign) {
         playClickSound();
         int step = stepForBatchAdjust();
+        if (sign < 0) {
+            if (editModeAllowCap2Value <= 0) {
+                editModeAllowCap2Value = 0;
+            } else {
+                editModeAllowCap2Value = Math.max(
+                    0,
+                    editModeAllowCap2Value - step
+                );
+            }
+        } else {
+            if (editModeAllowCap2Value <= 0) {
+                editModeAllowCap2Value = step;
+            } else {
+                editModeAllowCap2Value = (int) Mth.clamp(
+                    (long) editModeAllowCap2Value + (long) step,
+                    1L,
+                    Integer.MAX_VALUE
+                );
+            }
+        }
+        syncAllowCap2EditBoxDisplay();
+    }
+
+    private void adjustAdvCap2WithStep(int sign, int step) {
+        playClickSound();
+        step = Math.max(1, step);
         if (sign < 0) {
             if (editModeAllowCap2Value <= 0) {
                 editModeAllowCap2Value = 0;
@@ -3896,6 +3944,11 @@ public final class DuctNodeScreen
             return BATCH_STEP_CTRL_OR_ALT;
         }
         return BATCH_STEP_PLAIN;
+    }
+
+    private int stackStepForCapAdjust() {
+        int kind = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
+        return kind == DuctTransportKind.ITEM.ordinal() ? 64 : 1000;
     }
 
     private void adjustAmountField(int sign) {
@@ -4795,6 +4848,24 @@ public final class DuctNodeScreen
             keyCode == InputConstants.KEY_RETURN
         ) {
             applyAllowCapField();
+            return true;
+        }
+
+        if (
+            keyCode == GLFW.GLFW_KEY_S &&
+            isAdvancedFilterCapSubview() &&
+            (
+                (advCapEditBox != null && advCapEditBox.isFocused()) ||
+                (advCap2EditBox != null && advCap2EditBox.isFocused())
+            )
+        ) {
+            int sign = hasShiftDown() ? -1 : 1;
+            int step = stackStepForCapAdjust();
+            if (advCap2EditBox != null && advCap2EditBox.isFocused()) {
+                adjustAdvCap2WithStep(sign, step);
+            } else {
+                adjustAdvCapWithStep(sign, step);
+            }
             return true;
         }
 
