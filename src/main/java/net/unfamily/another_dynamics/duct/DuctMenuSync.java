@@ -43,7 +43,13 @@ public final class DuctMenuSync {
      * 0 = hub (transport-kind picker only), 1 = detail (full node UI). Only used when {@link #TRANSPORT_KIND_COUNT} &gt; 1.
      */
     public static final int MENU_VIEW_LAYER = 21;
-    public static final int COUNT = 22;
+    /**
+     * High 16 bits of {@link #PRIORITY}. ContainerData syncs values as signed 16-bit shorts, so a 32-bit priority
+     * is split: low 16 bits go in PRIORITY, high 16 bits go here. Reconstruct with:
+     * {@code (syncData.get(PRIORITY_HI) << 16) | (syncData.get(PRIORITY) & 0xFFFF)}.
+     */
+    public static final int PRIORITY_HI = 22;
+    public static final int COUNT = 23;
 
     /** FLAGS bit: routing row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesRouting()}). */
     public static final int FLAG_ROUTING_ACTIVE = 1;

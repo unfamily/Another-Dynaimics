@@ -545,7 +545,7 @@ public final class DuctNodeScreen
             BTN_H,
             Component.empty()
         );
-        routingPriorityBox.setMaxLength(6);
+        routingPriorityBox.setMaxLength(11);
         routingPriorityBox.setResponder(s -> {
             if (!syncingAmountBoxFromServer) {
                 amountFieldsDirty = true;
@@ -3280,7 +3280,7 @@ public final class DuctNodeScreen
                     case RETRIEVE_ONLY -> DuctFaceNode.EligibilityMode.BOTH;
                 };
                 pushAmountFields(
-                    menu.getSyncData().get(DuctMenuSync.PRIORITY),
+                    syncedInsertionPriority(),
                     menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD),
                     next.ordinal()
                 );
@@ -3807,7 +3807,7 @@ public final class DuctNodeScreen
         }
         if (!routingPriorityBox.isFocused() && !amountFieldsDirty) {
             int v = amountIsPriority
-                ? menu.getSyncData().get(DuctMenuSync.PRIORITY)
+                ? syncedInsertionPriority()
                 : menu.getSyncData().get(DuctMenuSync.AMOUNT_FIELD);
             syncingAmountBoxFromServer = true;
             routingPriorityBox.setValue(Integer.toString(v));
@@ -3861,7 +3861,9 @@ public final class DuctNodeScreen
     }
 
     private int syncedInsertionPriority() {
-        return menu.getSyncData().get(DuctMenuSync.PRIORITY);
+        int lo = menu.getSyncData().get(DuctMenuSync.PRIORITY) & 0xFFFF;
+        int hi = menu.getSyncData().get(DuctMenuSync.PRIORITY_HI) & 0xFFFF;
+        return (hi << 16) | lo;
     }
 
     private int syncedExtractBatch() {
