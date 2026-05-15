@@ -22,7 +22,9 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.ItemTags;
@@ -127,6 +129,7 @@ public final class DuctNodeScreen
     private static final int REDSTONE_ICON_SIZE = 12;
 
     private static final int CENTER_X = 38;
+
     private static final int ROW1_Y = 32;
     private static final int ROW2_Y = 50;
     private static final int ROW3_Y = 70;
@@ -134,6 +137,10 @@ public final class DuctNodeScreen
 
     private static final int ROW_BTN_W = 76;
     private static final int ROW_GAP = 4;
+    /** Universal hub: enabled/disabled row above each transport-kind picker. */
+    private static final int HUB_TRANSPORT_TOGGLE_ROW_Y = ROW2_Y;
+    private static final int HUB_TRANSPORT_PICKER_ROW_Y = HUB_TRANSPORT_TOGGLE_ROW_Y + BTN_H + ROW_GAP;
+    private static final int HUB_BACK_ROW_Y = HUB_TRANSPORT_PICKER_ROW_Y + BTN_H + ROW_GAP;
     private static final int ADJACENT_BTN_GAP = 2;
 
     /**
@@ -238,6 +245,7 @@ public final class DuctNodeScreen
     private Button amountDiscardButton;
     private ChannelLetterButton channelButton;
     private final List<Button> transportKindPickerButtons = new ArrayList<>();
+    private final List<Button> transportToggleButtons = new ArrayList<>();
     private Button hubBackButton;
     private EditBox routingPriorityBox;
 
@@ -967,10 +975,24 @@ public final class DuctNodeScreen
             addRenderableWidget(b);
         }
 
+        transportToggleButtons.clear();
+        for (DuctTransportKind k : DuctTransportKind.values()) {
+            final int kindOrdinal = k.ordinal();
+            Button b = Button.builder(Component.empty(), btn ->
+                handleMenuButton(
+                    DuctBlockEntity.MENU_BUTTON_TRANSPORT_TOGGLE_BASE + kindOrdinal
+                )
+            )
+                .bounds(0, 0, ROW_BTN_W, BTN_H)
+                .build();
+            transportToggleButtons.add(b);
+            addRenderableWidget(b);
+        }
+
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         rebuildFilterEntryWidgets();
         layoutMainChromeRowsForHubOrDetail();
-        layoutTransportKindPickers();
+        layoutHubTransportGrid();
         layoutHubBackButton();
         applySubViewVisibility();
 
@@ -1014,47 +1036,151 @@ public final class DuctNodeScreen
         opaqueRenderingButton.setHeight(BTN_H);
     }
 
-    private void layoutTransportKindPickers() {
-        int n = transportKindPickerButtons.size();
-        if (n == 0) {
-            return;
-        }
+    /**
+     * Universal duct hub: each column stacks enabled/disabled toggle (top) and transport-kind entry (bottom).
+     * Detail view keeps a single horizontal picker row without toggles.
+     */
+    private void layoutHubTransportGrid() {
+        EnumSet<DuctTransportKind> ductKinds =
+            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
+                .map(DuctDefinition::enabledTransportKinds)
+                .orElse(EnumSet.of(DuctTransportKind.ITEM));
         boolean hubMain =
             menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
             menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0 &&
             subView == SubView.MAIN;
-        int baseY = hubMain ? ROW2_Y : TRANSPORT_KIND_BUTTON_Y;
-        // Same cell size as deny/list/allow (3*(w+g) matches texture chrome width).
         int startX = this.leftPos + CENTER_X;
         if (hubMain) {
-            int rowStride = BTN_H + ROW_GAP;
-            for (int i = 0; i < n; i++) {
-                Button b = transportKindPickerButtons.get(i);
-                int col = i % HUB_TRANSPORT_KIND_COLUMNS;
-                int row = i / HUB_TRANSPORT_KIND_COLUMNS;
-                b.setX(startX + col * (ROW_BTN_W + ROW_GAP));
-                b.setY(this.topPos + baseY + row * rowStride);
-                b.setWidth(ROW_BTN_W);
-                b.setHeight(BTN_H);
+            int cellStride = BTN_H + ROW_GAP;
+            int gridRowStride = 2 * cellStride;
+            int idx = 0;
+            for (DuctTransportKind k : DuctTransportKind.values()) {
+                if (!ductKinds.contains(k)) {
+                    if (k.ordinal() < transportToggleButtons.size()) {
+                        transportToggleButtons.get(k.ordinal()).setWidth(0);
+                        transportToggleButtons.get(k.ordinal()).setHeight(0);
+                    }
+                    if (k.ordinal() < transportKindPickerButtons.size()) {
+                        transportKindPickerButtons.get(k.ordinal()).setWidth(0);
+                        transportKindPickerButtons.get(k.ordinal()).setHeight(0);
+                    }
+                    continue;
+                }
+                int col = idx % HUB_TRANSPORT_KIND_COLUMNS;
+                int gridRow = idx / HUB_TRANSPORT_KIND_COLUMNS;
+                int cellX = startX + col * (ROW_BTN_W + ROW_GAP);
+                int toggleY = this.topPos + HUB_TRANSPORT_TOGGLE_ROW_Y + gridRow * gridRowStride;
+                int pickerY = this.topPos + HUB_TRANSPORT_PICKER_ROW_Y + gridRow * gridRowStride;
+                if (k.ordinal() < transportToggleButtons.size()) {
+                    Button toggle = transportToggleButtons.get(k.ordinal());
+                    toggle.setX(cellX);
+                    toggle.setY(toggleY);
+                    toggle.setWidth(ROW_BTN_W);
+                    toggle.setHeight(BTN_H);
+                }
+                if (k.ordinal() < transportKindPickerButtons.size()) {
+                    Button picker = transportKindPickerButtons.get(k.ordinal());
+                    picker.setX(cellX);
+                    picker.setY(pickerY);
+                    picker.setWidth(ROW_BTN_W);
+                    picker.setHeight(BTN_H);
+                }
+                idx++;
             }
         } else {
-            int y = this.topPos + baseY;
-            for (int i = 0; i < n; i++) {
-                Button b = transportKindPickerButtons.get(i);
-                b.setX(startX + i * (ROW_BTN_W + ROW_GAP));
-                b.setY(y);
+            int y = this.topPos + TRANSPORT_KIND_BUTTON_Y;
+            int rowStride = BTN_H + ROW_GAP;
+            int idx = 0;
+            for (DuctTransportKind k : DuctTransportKind.values()) {
+                if (k.ordinal() >= transportKindPickerButtons.size()) {
+                    break;
+                }
+                Button b = transportKindPickerButtons.get(k.ordinal());
+                if (!ductKinds.contains(k)) {
+                    b.setWidth(0);
+                    b.setHeight(0);
+                    continue;
+                }
+                int col = idx % HUB_TRANSPORT_KIND_COLUMNS;
+                int row = idx / HUB_TRANSPORT_KIND_COLUMNS;
+                b.setX(startX + col * (ROW_BTN_W + ROW_GAP));
+                b.setY(y + row * rowStride);
                 b.setWidth(ROW_BTN_W);
                 b.setHeight(BTN_H);
+                idx++;
+            }
+            for (Button toggle : transportToggleButtons) {
+                toggle.setWidth(0);
+                toggle.setHeight(0);
             }
         }
+    }
+
+    private boolean isUniversalDetailMain() {
+        return (
+            menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
+            menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0 &&
+            subView == SubView.MAIN
+        );
+    }
+
+    private static int amountActionRowWidth(boolean includeMax) {
+        int w = AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+        if (includeMax) {
+            w += AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+        }
+        return w + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+    }
+
+    private void positionAmountActionButton(Button button, int screenX, int screenY) {
+        button.setPosition(screenX, screenY);
+        button.setWidth(AMOUNT_ACTION_BTN);
+        button.setHeight(BTN_H);
+    }
+
+    private boolean isTransportKindEnabledInMask(DuctTransportKind kind) {
+        int mask = menu.getSyncData().get(DuctMenuSync.TRANSPORT_ENABLED_MASK);
+        if (mask < 0) {
+            return true;
+        }
+        return (mask & (1 << kind.ordinal())) != 0;
+    }
+
+    /** Accent per transport column in the universal hub (toggle + picker share this hue). */
+    private static ChatFormatting hubTransportColumnColor(DuctTransportKind kind) {
+        return switch (kind) {
+            case ITEM -> ChatFormatting.YELLOW;
+            case FLUID -> ChatFormatting.AQUA;
+            case GAS -> ChatFormatting.LIGHT_PURPLE;
+            case ENERGY -> ChatFormatting.RED;
+            case HEAT -> ChatFormatting.GOLD;
+        };
+    }
+
+    private static Component hubToggleLabel(boolean laneOn) {
+        return Component.translatable(
+                        laneOn
+                                ? "gui.another_dynamics.duct_node.transport_toggle.enabled"
+                                : "gui.another_dynamics.duct_node.transport_toggle.disabled")
+                .withStyle(laneOn ? ChatFormatting.GREEN : ChatFormatting.RED)
+                .withStyle(Style.EMPTY.withBold(true));
+    }
+
+    private static Component hubPickerLabel(DuctTransportKind kind, boolean laneOn) {
+        return Component.translatable(
+                        "gui.another_dynamics.duct_node.transport." + kind.name().toLowerCase())
+                .withStyle(laneOn ? hubTransportColumnColor(kind) : ChatFormatting.DARK_GRAY);
     }
 
     private void layoutHubBackButton() {
         if (hubBackButton == null) {
             return;
         }
+        boolean hubMain =
+            menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
+            menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
         int ox = CENTER_X + ROW_BTN_W + ROW_GAP;
-        int oy = ROW3_Y;
+        int oy = hubMain ? HUB_BACK_ROW_Y : ROW3_Y;
         hubBackButton.setX(this.leftPos + ox);
         hubBackButton.setY(this.topPos + oy);
         hubBackButton.setWidth(ROW_BTN_W);
@@ -1187,8 +1313,10 @@ public final class DuctNodeScreen
         );
     }
 
-    private static int amountBlockLayoutKey(NodeMode nm, HybridPanel hybrid) {
-        return nm.ordinal() * 32 + hybrid.ordinal();
+    private int amountBlockLayoutKey(NodeMode nm, HybridPanel hybrid) {
+        int transport = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
+        int mode = amountFieldEditsPriority() ? 1 : 0;
+        return (nm.ordinal() << 10) | (hybrid.ordinal() << 6) | (transport << 1) | mode;
     }
 
     /**
@@ -1217,8 +1345,8 @@ public final class DuctNodeScreen
         NodeMode nm = NodeMode.fromOrdinal(
             menu.getSyncData().get(DuctMenuSync.NODE_MODE)
         );
-        boolean showMax =
-            nm.usesExtractBatchField() && !amountFieldEditsPriority();
+        boolean priorityField = amountFieldEditsPriority();
+        boolean showMax = nm.usesExtractBatchField() && !priorityField;
 
         int numericRowW =
             AMOUNT_STEPPER_W +
@@ -1226,40 +1354,42 @@ public final class DuctNodeScreen
             AMOUNT_EDIT_W +
             AMOUNT_INNER_GAP +
             AMOUNT_STEPPER_W;
-        int actionRowW = AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
-        if (showMax) {
-            actionRowW += AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
-        }
-        actionRowW += AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+        int actionRowW = amountActionRowWidth(showMax);
 
         int blockW = Math.max(numericRowW, actionRowW);
         int blockGuiX = (TEXTURE_WIDTH - blockW) / 2;
         int numericGuiX = blockGuiX + (blockW - numericRowW) / 2;
-        int actionGuiX = blockGuiX + (blockW - actionRowW) / 2;
 
         int amX = this.leftPos + numericGuiX;
         int amY = this.topPos + AMOUNT_ROW_Y;
         routingMinusButton.setPosition(amX, amY);
+        routingMinusButton.setWidth(AMOUNT_STEPPER_W);
+        routingMinusButton.setHeight(BTN_H);
 
         int boxX = amX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
         amountEditBoxGuiLeft =
             numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
         routingPriorityBox.setPosition(boxX, amY);
+        routingPriorityBox.setWidth(AMOUNT_EDIT_W);
+        routingPriorityBox.setHeight(BTN_H);
 
         int plusX = boxX + AMOUNT_EDIT_W + AMOUNT_INNER_GAP;
         routingPlusButton.setPosition(plusX, amY);
+        routingPlusButton.setWidth(AMOUNT_STEPPER_W);
+        routingPlusButton.setHeight(BTN_H);
 
+        // Center 0 / A / (M) / ✕ under the edit field (same rule as advanced cap editors).
         int actY = amY + BTN_H + AMOUNT_ROWS_GAP;
-        int ax = this.leftPos + actionGuiX;
-        amountClearButton.setPosition(ax, actY);
+        int ax = boxX + (AMOUNT_EDIT_W - actionRowW) / 2;
+        positionAmountActionButton(amountClearButton, ax, actY);
         ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
-        amountApplyButton.setPosition(ax, actY);
+        positionAmountActionButton(amountApplyButton, ax, actY);
         ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
         if (showMax) {
-            amountMaxButton.setPosition(ax, actY);
+            positionAmountActionButton(amountMaxButton, ax, actY);
             ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
         }
-        amountDiscardButton.setPosition(ax, actY);
+        positionAmountActionButton(amountDiscardButton, ax, actY);
     }
 
     /** Centered Limit/Keep editor (same geometry as {@link #layoutAmountBlock}). */
@@ -1472,6 +1602,11 @@ public final class DuctNodeScreen
             menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
         boolean detailMain = main && !hubLayer;
 
+        boolean showHubTransportToggles = hubLayer && main;
+        for (Button b : transportToggleButtons) {
+            b.visible = showHubTransportToggles;
+        }
+
         denyNavButton.visible = detailMain;
         listLogicButton.visible = detailMain;
         allowNavButton.visible = detailMain;
@@ -1643,7 +1778,7 @@ public final class DuctNodeScreen
 
         layoutFilterNavAndHelpButtons();
         layoutMainChromeRowsForHubOrDetail();
-        layoutTransportKindPickers();
+        layoutHubTransportGrid();
         layoutHubBackButton();
         if (
             (subView == SubView.ADVANCED_FILTERING ||
@@ -3259,17 +3394,38 @@ public final class DuctNodeScreen
         syncAllowCap2EditBoxDisplay();
     }
 
+    private int resolveHybridRoutingButtonId(boolean forward) {
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        if (nm == NodeMode.EXTRACTION_FILTERING && hybridPanel == HybridPanel.EXTRACTOR) {
+            return forward
+                    ? DuctBlockEntity.MENU_BUTTON_ROUTING_EXTRACTOR_FORWARD
+                    : DuctBlockEntity.MENU_BUTTON_ROUTING_EXTRACTOR_BACK;
+        }
+        if (nm == NodeMode.RETRIEVING_EXTRACTION) {
+            if (hybridPanel == HybridPanel.RETRIEVER) {
+                return forward
+                        ? DuctBlockEntity.MENU_BUTTON_ROUTING_RETRIEVER_FORWARD
+                        : DuctBlockEntity.MENU_BUTTON_ROUTING_RETRIEVER_BACK;
+            }
+            if (hybridPanel == HybridPanel.EXTRACTOR) {
+                return forward
+                        ? DuctBlockEntity.MENU_BUTTON_ROUTING_EXTRACTOR_FORWARD
+                        : DuctBlockEntity.MENU_BUTTON_ROUTING_EXTRACTOR_BACK;
+            }
+        }
+        return forward ? 1 : 11;
+    }
+
     private void handleMenuButton(int id) {
-        if (id == 1) {
+        if (id == 1 || id == 11) {
             NodeMode nm = NodeMode.fromOrdinal(
                 menu.getSyncData().get(DuctMenuSync.NODE_MODE)
             );
-            boolean inHybridPanel =
-                nm.isHybrid() && hybridPanel != HybridPanel.NONE;
             boolean eligibilityCtx =
                 nm == NodeMode.NONE ||
                 nm == NodeMode.FILTERING_INSERTION ||
-                (nm == NodeMode.EXTRACTION_FILTERING && inHybridPanel);
+                (nm == NodeMode.EXTRACTION_FILTERING &&
+                    hybridPanel == HybridPanel.FILTERING);
             if (eligibilityCtx) {
                 playClickSound();
                 int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
@@ -3286,6 +3442,7 @@ public final class DuctNodeScreen
                 );
                 return;
             }
+            id = resolveHybridRoutingButtonId(id == 1);
         }
         playClickSound();
         ModNetwork.sendDuctMenuButton(menu, id);
@@ -3433,22 +3590,18 @@ public final class DuctNodeScreen
         boolean hybridAllowsRoutingUi =
             !nm.isHybrid() ||
             (nm == NodeMode.EXTRACTION_FILTERING &&
-                (hybridPanel == HybridPanel.NONE ||
-                    hybridPanel == HybridPanel.EXTRACTOR ||
-                    hybridPanel == HybridPanel.FILTERING)) ||
+                hybridPanel == HybridPanel.EXTRACTOR) ||
             (nm == NodeMode.RETRIEVING_EXTRACTION &&
-                hybridPanel == HybridPanel.RETRIEVER);
-        boolean routingMovedUi =
-            (nm == NodeMode.RETRIEVING_EXTRACTION &&
-                hybridPanel != HybridPanel.RETRIEVER) ||
-            (nm == NodeMode.EXTRACTION_FILTERING &&
-                hybridPanel == HybridPanel.NONE);
+                (hybridPanel == HybridPanel.EXTRACTOR ||
+                    hybridPanel == HybridPanel.RETRIEVER));
+        boolean routingMovedUi = nm.isHybrid() && hybridPanel == HybridPanel.NONE;
         boolean routingActive = routingUsable && hybridAllowsRoutingUi;
 
         boolean eligibilityCtx =
             nm == NodeMode.NONE ||
             nm == NodeMode.FILTERING_INSERTION ||
-            (nm == NodeMode.EXTRACTION_FILTERING && inHybridPanel);
+            (nm == NodeMode.EXTRACTION_FILTERING &&
+                hybridPanel == HybridPanel.FILTERING);
 
         if (routingMovedUi) {
             routingModeButton.active = false;
@@ -3499,15 +3652,13 @@ public final class DuctNodeScreen
             );
         } else {
             routingModeButton.active = true;
-            int rmOrd = nm.isHybrid()
-                ? (hybridPanel == HybridPanel.RETRIEVER
-                      ? menu
-                            .getSyncData()
-                            .get(DuctMenuSync.ROUTING_MODE_RETRIEVER)
-                      : menu
-                            .getSyncData()
-                            .get(DuctMenuSync.ROUTING_MODE_EXTRACTOR))
-                : menu.getSyncData().get(DuctMenuSync.ROUTING_MODE);
+            int rmOrd =
+                nm == NodeMode.RETRIEVING_EXTRACTION &&
+                    hybridPanel == HybridPanel.RETRIEVER
+                    ? menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_RETRIEVER)
+                    : nm.isHybrid()
+                            ? menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_EXTRACTOR)
+                            : menu.getSyncData().get(DuctMenuSync.ROUTING_MODE);
             RoutingMode rm = RoutingMode.fromOrdinal(rmOrd);
             routingModeButton.setMessage(
                 Component.translatable(
@@ -3742,22 +3893,61 @@ public final class DuctNodeScreen
             DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
                 .map(DuctDefinition::enabledTransportKinds)
                 .orElse(EnumSet.of(DuctTransportKind.ITEM));
-        DuctTransportKind[] kinds = DuctTransportKind.values();
-        for (
-            int i = 0;
-            i < transportKindPickerButtons.size() && i < kinds.length;
-            i++
-        ) {
-            DuctTransportKind k = kinds[i];
-            Button b = transportKindPickerButtons.get(i);
-            b.setMessage(
-                Component.translatable(
-                    "gui.another_dynamics.duct_node.transport." +
-                        k.name().toLowerCase()
-                )
-            );
-            b.active = enabledKinds.contains(k);
+        boolean hubMain =
+            menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
+            menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0 &&
+            subView == SubView.MAIN;
+        for (DuctTransportKind k : DuctTransportKind.values()) {
+            if (k.ordinal() >= transportKindPickerButtons.size()) {
+                break;
+            }
+            Button picker = transportKindPickerButtons.get(k.ordinal());
+            boolean inDuct = enabledKinds.contains(k);
+            boolean laneOn = inDuct && isTransportKindEnabledInMask(k);
+            if (hubMain && inDuct) {
+                picker.setMessage(hubPickerLabel(k, laneOn));
+            } else {
+                picker.setMessage(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.transport." + k.name().toLowerCase()
+                    )
+                );
+            }
+            picker.active = inDuct && (!hubMain || laneOn);
+            if (k.ordinal() < transportToggleButtons.size()) {
+                Button toggle = transportToggleButtons.get(k.ordinal());
+                if (!inDuct) {
+                    continue;
+                }
+                if (hubMain) {
+                    toggle.setMessage(hubToggleLabel(laneOn));
+                    ChatFormatting accent = hubTransportColumnColor(k);
+                    toggle.setTooltip(
+                        Tooltip.create(
+                            Component.translatable(
+                                            laneOn
+                                                    ? "gui.another_dynamics.duct_node.transport_toggle.tooltip.enabled"
+                                                    : "gui.another_dynamics.duct_node.transport_toggle.tooltip.disabled")
+                                    .append(
+                                            Component.literal(" — ")
+                                                    .withStyle(ChatFormatting.GRAY))
+                                    .append(
+                                            Component.translatable(
+                                                            "gui.another_dynamics.duct_node.transport."
+                                                                    + k.name().toLowerCase())
+                                                    .withStyle(accent))));
+                } else {
+                    toggle.setMessage(
+                        Component.translatable(
+                            laneOn
+                                ? "gui.another_dynamics.duct_node.transport_toggle.enabled"
+                                : "gui.another_dynamics.duct_node.transport_toggle.disabled"
+                        )
+                    );
+                }
+            }
         }
+        layoutHubTransportGrid();
 
         int layoutKey = amountBlockLayoutKey(nm, hybridPanel);
         if (amountBlockLayoutCache != layoutKey) {
@@ -3823,7 +4013,7 @@ public final class DuctNodeScreen
         // Server can change MENU_VIEW_LAYER / ACTIVE_TRANSPORT_KIND without node-mode layout key changing; keep hub vs detail visibility and positions in sync.
         applySubViewVisibility();
         layoutMainChromeRowsForHubOrDetail();
-        layoutTransportKindPickers();
+        layoutHubTransportGrid();
         layoutHubBackButton();
     }
 

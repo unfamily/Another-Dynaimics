@@ -8,12 +8,13 @@ import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.unfamily.another_dynamics.client.transit.DuctTransitPathGeometry;
 import net.unfamily.another_dynamics.network.EnergyRayPathPayload;
 import net.unfamily.another_dynamics.registry.ModAttachments;
 import org.joml.Vector3f;
-
 /**
- * Client handler for energy path packets: spawns tinted dust along the duct path (see {@link DustParticleOptions}).
+ * Client handler for energy/heat path packets: tinted dust along the duct polyline, with endpoints pulled into
+ * source/destination node faces (same geometry as item/fluid transit).
  */
 public final class EnergyRayClient {
     private EnergyRayClient() {}
@@ -39,31 +40,41 @@ public final class EnergyRayClient {
         var dust = new DustParticleOptions(new Vector3f(r, g, b), scale);
         var rand = level.random;
 
-        if (path.size() == 1) {
-            Vec3 c = Vec3.atCenterOf(path.getFirst());
-            burstAt(level, dust, rand, c, 10);
+        DuctTransitPathGeometry.OrthogonalTransitPath ortho =
+                DuctTransitPathGeometry.buildOrthogonalTransitPath(
+                        path, path.getFirst(), payload.sourceAttachFace(), payload.destAttachFace());
+        Vec3[] pts = ortho.points();
+        if (pts.length == 0) {
             return;
         }
-        for (int i = 0; i < path.size() - 1; i++) {
-            Vec3 va = Vec3.atCenterOf(path.get(i));
-            Vec3 vb = Vec3.atCenterOf(path.get(i + 1));
-            double len = va.distanceTo(vb);
-            int steps = Math.max(3, Mth.ceil(len * 8.0));
-            for (int s = 0; s <= steps; s++) {
-                double t = s / (double) steps;
-                double x = Mth.lerp(t, va.x, vb.x) + (rand.nextDouble() - 0.5) * 0.06;
-                double y = Mth.lerp(t, va.y, vb.y) + (rand.nextDouble() - 0.5) * 0.06;
-                double z = Mth.lerp(t, va.z, vb.z) + (rand.nextDouble() - 0.5) * 0.06;
-                level.addParticle(dust, x, y, z, 0.0, 0.0, 0.0);
-            }
+        if (pts.length == 1) {
+            burstAt(level, dust, rand, pts[0], 12);
+            return;
+        }
+        for (int i = 0; i < pts.length - 1; i++) {
+            spawnAlongSegment(level, dust, rand, pts[i], pts[i + 1]);
+        }
+        burstAt(level, dust, rand, pts[0], 8);
+        burstAt(level, dust, rand, pts[pts.length - 1], 8);
+    }
+
+    private static void spawnAlongSegment(Level level, DustParticleOptions dust, net.minecraft.util.RandomSource rand, Vec3 va, Vec3 vb) {
+        double len = va.distanceTo(vb);
+        int steps = Math.max(4, Mth.ceil(len * 10.0));
+        for (int s = 0; s <= steps; s++) {
+            double t = s / (double) steps;
+            double x = Mth.lerp(t, va.x, vb.x) + (rand.nextDouble() - 0.5) * 0.06;
+            double y = Mth.lerp(t, va.y, vb.y) + (rand.nextDouble() - 0.5) * 0.06;
+            double z = Mth.lerp(t, va.z, vb.z) + (rand.nextDouble() - 0.5) * 0.06;
+            level.addParticle(dust, x, y, z, 0.0, 0.0, 0.0);
         }
     }
 
     private static void burstAt(Level level, DustParticleOptions dust, net.minecraft.util.RandomSource rand, Vec3 c, int count) {
         for (int k = 0; k < count; k++) {
-            double ox = (rand.nextDouble() - 0.5) * 0.12;
-            double oy = (rand.nextDouble() - 0.5) * 0.12;
-            double oz = (rand.nextDouble() - 0.5) * 0.12;
+            double ox = (rand.nextDouble() - 0.5) * 0.14;
+            double oy = (rand.nextDouble() - 0.5) * 0.14;
+            double oz = (rand.nextDouble() - 0.5) * 0.14;
             level.addParticle(dust, c.x + ox, c.y + oy, c.z + oz, 0.0, 0.0, 0.0);
         }
     }

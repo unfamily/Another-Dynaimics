@@ -60,6 +60,18 @@
       "for": "energy",
       "extract": {
         "set": 2147483647
+      },
+      "rate": {
+        "mult": 0.2
+      }
+    },
+    {
+      "for": "heat",
+      "quantity": {
+        "set": 2147483647
+      },
+      "rate": {
+        "mult": 0.2
       }
     }
   ],

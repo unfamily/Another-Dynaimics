@@ -26,7 +26,8 @@ import net.unfamily.another_dynamics.network.ModNetwork;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Mekanism heat logistics: instant heat redistribution between adjacent {@code IHeatHandler}s through duct paths.
+ * Mekanism heat logistics: runs every server tick (instant transport). Throughput is capped only at the
+ * extracting/retrieving face; intermediate ducts do not bottleneck. Increment {@code rate} modifiers do not apply.
  */
 public final class DuctHeatServerTick {
     private static final double HEAT_EPS = 1e-4;
@@ -49,18 +50,15 @@ public final class DuctHeatServerTick {
             if ((sm & (1 << dir.ordinal())) == 0) {
                 continue;
             }
+            if (!be.isTransportKindEnabled(dir, DuctTransportKind.HEAT)) {
+                continue;
+            }
             DuctFaceLanes lanes = be.getFaceLanes(dir);
             if (!DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), lanes.redstoneMode)) {
                 continue;
             }
             DuctFaceNode node = be.getFaceNode(dir);
-            if (lanes.heatTicksUntilAction > 0) {
-                lanes.heatTicksUntilAction--;
-                be.setChanged();
-                continue;
-            }
-            int rateTicks = DuctModuleEffects.effectiveHeatActionRateTicks(be, dir, 10);
-            lanes.heatTicksUntilAction = rateTicks - 1;
+            lanes.heatTicksUntilAction = 0;
             if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
                 RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
                 tryExtractPush(level, be, dir, spec, rm, node);
@@ -72,6 +70,62 @@ public final class DuctHeatServerTick {
                 RoutingMode rmE = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
                 tryRetrievePull(level, be, dir, spec, rmR, node);
                 tryExtractPush(level, be, dir, spec, rmE, node);
+            } else if (lanes.nodeMode == NodeMode.NONE || lanes.nodeMode == NodeMode.FILTERING_INSERTION) {
+                tryLocalHeatEquilibrium(level, be, dir, spec);
+            }
+        }
+    }
+
+    /** Direct heat push/pull toward the adjacent handler when this face accepts inserts. */
+    private static void tryLocalHeatEquilibrium(
+            ServerLevel level, DuctBlockEntity be, Direction face, DuctHeatTransportSpec spec) {
+        Object local = getHeatOnFace(level, be.getBlockPos(), face);
+        if (local == null) {
+            return;
+        }
+        ArrayList<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, be.getBlockPos(), DuctNetworkType.HEAT));
+        if (ducts.size() > 1) {
+            ducts.remove(be.getBlockPos());
+        }
+        for (BlockPos destPos : ducts) {
+            if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
+                continue;
+            }
+            int dsm = destBe.getStorageMask();
+            for (Direction df : Direction.values()) {
+                if ((dsm & (1 << df.ordinal())) == 0) {
+                    continue;
+                }
+                if (!destBe.isTransportKindEnabled(df, DuctTransportKind.HEAT)) {
+                    continue;
+                }
+                DuctFaceLanes destLanes = destBe.getFaceLanes(df);
+                if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
+                    continue;
+                }
+                NodeMode dm = destLanes.nodeMode;
+                if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION) {
+                    continue;
+                }
+                Object dest = getHeatOnFace(level, destPos, df);
+                if (dest == null) {
+                    continue;
+                }
+                double tLocal = MekanismHeatCompat.getTotalTemperature(local);
+                double tDst = MekanismHeatCompat.getTotalTemperature(dest);
+                if (tLocal <= tDst + HEAT_EPS) {
+                    continue;
+                }
+                double cap = DuctModuleEffects.effectiveHeatExtractPerAction(be, face, spec);
+                double qEq = equilibriumTransfer(local, dest);
+                double q = Math.min(cap, qEq);
+                if (q <= HEAT_EPS) {
+                    continue;
+                }
+                MekanismHeatCompat.handleHeat(local, -q);
+                MekanismHeatCompat.handleHeat(dest, q);
+                sendHeatRayIfVisible(level, be.getBlockPos(), destPos, Math.max(tLocal, tDst), face, df);
+                return;
             }
         }
     }
@@ -141,12 +195,7 @@ public final class DuctHeatServerTick {
                 if (tSrc0 <= tDst + HEAT_EPS) {
                     continue;
                 }
-                double bot = bottleneckHeatAlongPath(level, srcPos, destPos);
-                if (bot <= 0.0) {
-                    continue;
-                }
-                double cap =
-                        Math.min(DuctModuleEffects.effectiveHeatExtractPerAction(sourceBe, sourceFace, spec), bot);
+                double cap = DuctModuleEffects.effectiveHeatExtractPerAction(sourceBe, sourceFace, spec);
                 double qEq = equilibriumTransfer(src, dest);
                 if (Math.min(cap, qEq) <= HEAT_EPS) {
                     continue;
@@ -180,8 +229,7 @@ public final class DuctHeatServerTick {
         if (dest == null) {
             return;
         }
-        double bot = bottleneckHeatAlongPath(level, srcPos, pick.ductPos());
-        double cap = Math.min(DuctModuleEffects.effectiveHeatExtractPerAction(sourceBe, sourceFace, spec), bot);
+        double cap = DuctModuleEffects.effectiveHeatExtractPerAction(sourceBe, sourceFace, spec);
         double qEq = equilibriumTransfer(src, dest);
         double q = Math.min(cap, qEq);
         if (q <= HEAT_EPS) {
@@ -190,7 +238,7 @@ public final class DuctHeatServerTick {
         double tHot = Math.max(MekanismHeatCompat.getTotalTemperature(src), MekanismHeatCompat.getTotalTemperature(dest));
         MekanismHeatCompat.handleHeat(src, -q);
         MekanismHeatCompat.handleHeat(dest, q);
-        sendHeatRayIfVisible(level, srcPos, pick.ductPos(), tHot);
+        sendHeatRayIfVisible(level, srcPos, pick.ductPos(), tHot, sourceFace, pick.face());
     }
 
     private static void tryRetrievePull(
@@ -272,8 +320,7 @@ public final class DuctHeatServerTick {
         if (src == null) {
             return;
         }
-        double bot = bottleneckHeatAlongPath(level, pick.ductPos(), retrieverPos);
-        double cap = Math.min(DuctModuleEffects.effectiveHeatExtractPerAction(retrieverBe, retrieverFace, spec), bot);
+        double cap = DuctModuleEffects.effectiveHeatExtractPerAction(retrieverBe, retrieverFace, spec);
         double qEq = equilibriumTransfer(src, dest);
         double q = Math.min(cap, qEq);
         if (q <= HEAT_EPS) {
@@ -282,7 +329,7 @@ public final class DuctHeatServerTick {
         double tHot = Math.max(MekanismHeatCompat.getTotalTemperature(src), MekanismHeatCompat.getTotalTemperature(dest));
         MekanismHeatCompat.handleHeat(src, -q);
         MekanismHeatCompat.handleHeat(dest, q);
-        sendHeatRayIfVisible(level, pick.ductPos(), retrieverPos, tHot);
+        sendHeatRayIfVisible(level, pick.ductPos(), retrieverPos, tHot, pick.face(), retrieverFace);
     }
 
     private static double equilibriumTransfer(Object src, Object dst) {
@@ -299,7 +346,13 @@ public final class DuctHeatServerTick {
         return (cSrc * cDst / (cSrc + cDst)) * (tSrc - tDst);
     }
 
-    private static void sendHeatRayIfVisible(ServerLevel level, BlockPos fromDuct, BlockPos toDuct, double visualTempKelvin) {
+    private static void sendHeatRayIfVisible(
+            ServerLevel level,
+            BlockPos fromDuct,
+            BlockPos toDuct,
+            double visualTempKelvin,
+            @Nullable Direction sourceAttachFace,
+            @Nullable Direction destAttachFace) {
         Optional<List<BlockPos>> pathOpt =
                 fromDuct.equals(toDuct)
                         ? Optional.of(List.of(fromDuct))
@@ -318,7 +371,7 @@ public final class DuctHeatServerTick {
         if (((argb >>> 24) & 0xFF) < 8) {
             return;
         }
-        ModNetwork.sendEnergyRayPath(level, path, argb, midOf(path));
+        ModNetwork.sendEnergyRayPath(level, path, argb, midOf(path), sourceAttachFace, destAttachFace);
     }
 
     private static Vec3 midOf(List<BlockPos> path) {
@@ -336,32 +389,6 @@ public final class DuctHeatServerTick {
             return OptionalLong.empty();
         }
         return OptionalLong.of(Math.max(0L, path.get().size()));
-    }
-
-    private static double bottleneckHeatAlongPath(ServerLevel level, BlockPos fromDuct, BlockPos toDuct) {
-        if (fromDuct.equals(toDuct)) {
-            if (!(level.getBlockEntity(fromDuct) instanceof DuctBlockEntity be)) {
-                return 0.0;
-            }
-            return be.heatTransportSpec().clampedInsulation();
-        }
-        Optional<List<BlockPos>> pathOpt =
-                DuctPathfinder.shortestPath(level, fromDuct, toDuct, 1L, DuctNetworkType.HEAT);
-        if (pathOpt.isEmpty()) {
-            return 0.0;
-        }
-        double min = Double.MAX_VALUE;
-        for (BlockPos p : pathOpt.get()) {
-            if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
-                return 0.0;
-            }
-            double tr = be.heatTransportSpec().clampedInsulation();
-            min = Math.min(min, tr);
-            if (min <= 0.0) {
-                return 0.0;
-            }
-        }
-        return min == Double.MAX_VALUE ? 0.0 : min;
     }
 
     private static @Nullable HeatDestCandidate pickWithinTier(

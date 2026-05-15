@@ -47,8 +47,15 @@ public final class DuctFluidServerTick {
             if ((sm & (1 << dir.ordinal())) == 0) {
                 continue;
             }
+            if (!be.isTransportKindEnabled(dir, DuctTransportKind.FLUID)) {
+                continue;
+            }
             DuctFaceLanes lanes = be.getFaceLanes(dir);
             DuctFaceNode node = lanes.fluid;
+            if (hasStalledFluid(lanes) && tryDrainFluidStallForFace(be, level, dir, lanes.nodeMode, node, spec)) {
+                be.syncStallVisualIfNeeded();
+                continue;
+            }
             if (!DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), lanes.redstoneMode)) {
                 continue;
             }
@@ -750,6 +757,199 @@ public final class DuctFluidServerTick {
         }
         sourceBe.setChanged();
         destBe.setChanged();
+    }
+
+  /**
+     * Try to deliver stalled fluid into the network (respecting filters, channel, routing) instead of only refunding to
+     * the source block.
+     *
+     * @return true if any stall slot changed this tick
+     */
+    public static boolean tryDrainFluidStallForFace(
+            DuctBlockEntity sourceBe,
+            ServerLevel level,
+            Direction sourceFace,
+            NodeMode sourceMode,
+            DuctFaceNode node,
+            DuctFluidTransportSpec spec) {
+        DuctFaceLanes lanes = sourceBe.getFaceLanes(sourceFace);
+        if (!hasStalledFluid(lanes)) {
+            return false;
+        }
+        for (int slot = 0; slot < lanes.stalledFluids.length; slot++) {
+            FluidStack stalled = lanes.stalledFluids[slot];
+            if (stalled == null || stalled.isEmpty() || stalled.getAmount() <= 0) {
+                continue;
+            }
+            int movedMb = tryDeliverStalledFluid(level, sourceBe, sourceFace, sourceMode, node, spec, stalled.copy());
+            if (movedMb > 0) {
+                stalled.shrink(movedMb);
+                lanes.stalledFluids[slot] = stalled.isEmpty() ? FluidStack.EMPTY : stalled;
+                sourceBe.setChanged();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int tryDeliverStalledFluid(
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            NodeMode sourceMode,
+            DuctFaceNode node,
+            DuctFluidTransportSpec spec,
+            FluidStack available) {
+        if (available.isEmpty()) {
+            return 0;
+        }
+        if (!DuctFluidFilterLogic.passesFluidFiltersForBank(node, DuctFaceNode.FilterBank.EXTRACTOR, available, level)) {
+            return 0;
+        }
+        BlockPos srcPos = sourceBe.getBlockPos();
+        List<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.FLUID));
+        boolean allowSelf = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+        if (ducts.size() > 1 && !allowSelf) {
+            ducts.remove(srcPos);
+        }
+        if (ducts.isEmpty()) {
+            return 0;
+        }
+        ArrayList<DestCandidate> cands = new ArrayList<>();
+        for (BlockPos destPos : ducts) {
+            if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
+                continue;
+            }
+            OptionalLong dist =
+                    destPos.equals(srcPos)
+                            ? OptionalLong.of(0L)
+                            : DuctPathfinder.distance(level, srcPos, destPos, spec, DuctNetworkType.FLUID);
+            if (dist.isEmpty()) {
+                continue;
+            }
+            int dsm = destBe.getStorageMask();
+            for (Direction df : Direction.values()) {
+                if ((dsm & (1 << df.ordinal())) == 0) {
+                    continue;
+                }
+                DuctFaceLanes destLanes = destBe.getFaceLanes(df);
+                DuctFaceNode destNode = destLanes.fluid;
+                if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
+                    continue;
+                }
+                NodeMode dm = destLanes.nodeMode;
+                if (dm != NodeMode.NONE
+                        && dm != NodeMode.FILTERING_INSERTION
+                        && dm != NodeMode.EXTRACTION_FILTERING
+                        && dm != NodeMode.RETRIEVING
+                        && dm != NodeMode.RETRIEVING_EXTRACTION) {
+                    continue;
+                }
+                if (!destNode.eligibilityMode.isInsertable()) {
+                    continue;
+                }
+                if (!allowSelf && destPos.equals(srcPos) && df == sourceFace) {
+                    continue;
+                }
+                if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {
+                    continue;
+                }
+                IFluidHandler destCap =
+                        level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
+                if (destCap == null) {
+                    continue;
+                }
+                FluidStack toMove = available.copy();
+                int simulated = destCap.fill(toMove, IFluidHandler.FluidAction.SIMULATE);
+                if (simulated <= 0) {
+                    continue;
+                }
+                if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
+                        && !DuctFluidFilterLogic.passesFluidFiltersForBank(
+                                destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
+                    continue;
+                }
+                if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
+                        && !DuctFluidFilterLogic.passesFluidFiltersForBank(
+                                destNode, DuctFaceNode.FilterBank.RETRIEVER, toMove, level)) {
+                    continue;
+                }
+                if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
+                    List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
+                    List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
+                    int idx = DuctFluidAllowLimitLogic.firstMatchingAllowLineIndex(allowLines, toMove, level.registryAccess());
+                    if (idx >= 0 && idx < caps.size()) {
+                        int lim = caps.get(idx);
+                        if (lim > 0) {
+                            String line = allowLines.get(idx);
+                            int current = DuctFluidAllowLimitLogic.countMatchingInHandlerMb(destCap, line, level.registryAccess());
+                            int pending =
+                                    DuctFluidAllowLimitLogic.countMatchingInStacksMb(
+                                            DuctFluidIncomingIndex.snapshot(level, destPos), line, level.registryAccess());
+                            int maxAdd = Math.max(0, lim - (current + pending));
+                            simulated = Math.min(simulated, maxAdd);
+                            if (simulated <= 0) {
+                                continue;
+                            }
+                        }
+                    }
+                }
+                if (dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION) {
+                    simulated =
+                            capFillMbForRetrieverDestinationLimits(level, destBe, df, toMove, destCap, simulated);
+                    if (simulated <= 0) {
+                        continue;
+                    }
+                }
+                cands.add(new DestCandidate(destPos, df, destNode.insertionPriority, dist.getAsLong(), simulated));
+            }
+        }
+        if (cands.isEmpty()) {
+            return 0;
+        }
+        cands.sort(Comparator.comparingInt((DestCandidate c) -> c.priority()).reversed());
+        int maxP = cands.getFirst().priority();
+        ArrayList<DestCandidate> tier = new ArrayList<>();
+        for (DestCandidate c : cands) {
+            if (c.priority() == maxP) {
+                tier.add(c);
+            }
+        }
+        int[] rr = new int[] {node.roundRobinCursor};
+        DestCandidate pick = pickWithinTier(level, tier, node.routingMode, rr);
+        if (pick == null) {
+            return 0;
+        }
+        node.roundRobinCursor = rr[0];
+        int movedMb = Math.min(available.getAmount(), pick.movedMb());
+        if (movedMb <= 0) {
+            return 0;
+        }
+        FluidStack planned = new FluidStack(available.getFluid(), movedMb);
+        List<BlockPos> rawPath;
+        if (pick.ductPos().equals(srcPos)) {
+            rawPath = List.of(srcPos);
+        } else {
+            rawPath =
+                    DuctPathfinder.shortestPath(level, srcPos, pick.ductPos(), spec, DuctNetworkType.FLUID)
+                            .orElseGet(() -> List.of(srcPos, pick.ductPos()));
+        }
+        long edgeTicks = DuctModuleEffects.effectiveFluidEdgeTravelTicks(sourceBe, sourceFace, spec);
+        sourceBe.scheduleFluidTransitPending(
+                level, planned, OutboundShipment.copyPath(rawPath), sourceFace, pick.face(), pick.ductPos(), spec, edgeTicks);
+        return movedMb;
+    }
+
+    private static boolean hasStalledFluid(DuctFaceLanes lanes) {
+        if (lanes == null) {
+            return false;
+        }
+        for (FluidStack fs : lanes.stalledFluids) {
+            if (fs != null && !fs.isEmpty() && fs.getAmount() > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isFluidFaceStalled(DuctFaceLanes lanes) {

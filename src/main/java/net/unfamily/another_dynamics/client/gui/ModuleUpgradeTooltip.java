@@ -38,25 +38,18 @@ public final class ModuleUpgradeTooltip {
             def.gasQuantityModifiers(),
             def.heatQuantityModifiers()
         };
+        // Energy/heat ducts tick every server tick; rate/speed modifiers do not apply in logistics.
         ItemQuantityModifiers[] rate = {
             def.itemRateModifiers(),
             def.fluidRateModifiers(),
-            def.gasRateModifiers(),
-            def.energyRateModifiers(),
-            def.heatRateModifiers()
+            def.gasRateModifiers()
         };
         ItemQuantityModifiers[] speed = {
             def.itemSpeedModifiers(),
             def.fluidSpeedModifiers(),
-            def.gasSpeedModifiers(),
-            def.energySpeedModifiers(),
-            def.heatSpeedModifiers()
+            def.gasSpeedModifiers()
         };
-        ItemQuantityModifiers[] energy = {
-            def.energyQuantityModifiers(),
-            def.energyRateModifiers(),
-            def.energySpeedModifiers()
-        };
+        ItemQuantityModifiers[] energy = {def.energyQuantityModifiers()};
 
         appendMergedSingle(out, LINE_SPEED, speed, ModuleUpgradeTooltip::formatSpeedLane);
         appendFilterAllowOnly(out, def);

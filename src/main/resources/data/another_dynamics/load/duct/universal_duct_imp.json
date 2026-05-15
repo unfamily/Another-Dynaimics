@@ -51,8 +51,8 @@
     {
       "dec": "forge_energy",
       "ray_color": "#e30b28",
-      "extract": 1000,
-      "transfer": 8000
+      "extract": 100000,
+      "transfer": 2147483647
     },
     {
       "dec": "mek_gas",
@@ -78,7 +78,7 @@
     },
     {
       "dec": "mek_heat",
-      "insulation": 50
+      "insulation": 500
     }
   ],
   "connect_with_compatbile": true,

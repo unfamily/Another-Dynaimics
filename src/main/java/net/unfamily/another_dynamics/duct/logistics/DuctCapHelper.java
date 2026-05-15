@@ -13,6 +13,7 @@ import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctFaceNode;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -50,6 +51,42 @@ public final class DuctCapHelper {
             if (!sim.isEmpty()) {
                 return Optional.of(sim);
             }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * First stack on {@code donorFace} that can be retrieved: passes retriever/donor filter banks and can insert into the
+     * retriever inventory face. Unlike {@link #simulateExtractOneOnFace}, skips slots that only fail filter rules.
+     */
+    public static Optional<ItemStack> findRetrievableProbeOnFace(
+            Level level,
+            BlockPos donorPos,
+            Direction donorFace,
+            DuctBlockEntity donorBe,
+            BlockPos retrieverPos,
+            Direction retrieverInventoryFace,
+            DuctBlockEntity retrieverBe) {
+        IItemHandler h = getHandlerOnFace(level, donorPos, donorFace);
+        if (h == null) {
+            return Optional.empty();
+        }
+        for (int slot = 0; slot < h.getSlots(); slot++) {
+            ItemStack probe = h.extractItem(slot, 1, true);
+            if (probe.isEmpty()) {
+                continue;
+            }
+            if (!retrieverBe.passesItemFilters(
+                    retrieverInventoryFace, probe, level, DuctFaceNode.FilterBank.RETRIEVER)) {
+                continue;
+            }
+            if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
+                continue;
+            }
+            if (!canInsertIntoFace(level, retrieverPos, retrieverInventoryFace, probe)) {
+                continue;
+            }
+            return Optional.of(probe);
         }
         return Optional.empty();
     }

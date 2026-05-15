@@ -308,11 +308,10 @@ public final class DuctTargetSelector {
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, retrieverFaceChannel)) {
                     continue;
                 }
-                Optional<ItemStack> sample = DuctCapHelper.simulateExtractOneOnFace(level, p, d);
+                Optional<ItemStack> sample =
+                        DuctCapHelper.findRetrievableProbeOnFace(
+                                level, p, d, be, retrieverPos, retrieverInventoryFace, retrieverBe);
                 if (sample.isEmpty()) {
-                    continue;
-                }
-                if (!DuctCapHelper.canInsertIntoFace(level, retrieverPos, retrieverInventoryFace, sample.get())) {
                     continue;
                 }
                 OptionalLong dist =
@@ -392,11 +391,10 @@ public final class DuctTargetSelector {
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, retrieverFaceChannel)) {
                     continue;
                 }
-                Optional<ItemStack> sample = DuctCapHelper.simulateExtractOneOnFace(level, p, d);
+                Optional<ItemStack> sample =
+                        DuctCapHelper.findRetrievableProbeOnFace(
+                                level, p, d, be, retrieverPos, retrieverInventoryFace, retrieverBe);
                 if (sample.isEmpty()) {
-                    continue;
-                }
-                if (!DuctCapHelper.canInsertIntoFace(level, retrieverPos, retrieverInventoryFace, sample.get())) {
                     continue;
                 }
                 OptionalLong dist =

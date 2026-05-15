@@ -236,9 +236,27 @@ public final class DuctModuleEffects {
         return false;
     }
 
+    private static boolean ductHasAnyModule(DuctBlockEntity duct) {
+        for (Direction d : Direction.values()) {
+            if (faceHasNonEmptyModule(duct, d)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean faceModuleEffectsEnabled(DuctBlockEntity duct, Direction face) {
         return DuctFeaturePolicy.isUsable(
                 duct.ductDefinition().orElse(null), DuctFeatureKeys.SPECIAL_MODULES, faceHasNonEmptyModule(duct, face));
+    }
+
+    /**
+     * Energy/heat increment modules apply to the whole duct block (GUI module column is shared across lanes on that
+     * face, and players often configure modules on a different face than the energy-connected side).
+     */
+    private static boolean ductEnergyOrHeatModuleEffectsEnabled(DuctBlockEntity duct) {
+        return DuctFeaturePolicy.isUsable(
+                duct.ductDefinition().orElse(null), DuctFeatureKeys.SPECIAL_MODULES, ductHasAnyModule(duct));
     }
 
     private static ModuleDefinition.ItemQuantityModifiers aggregateTimingLike(
@@ -270,6 +288,42 @@ public final class DuctModuleEffects {
             }
             addSum += m.addSum();
             mult *= m.multProduct();
+        }
+        return new ModuleDefinition.ItemQuantityModifiers(anySet, bestSet, addSum, mult);
+    }
+
+    /** Same stacking rules as {@link #aggregateTimingLike}, but every module slot on every face of the block. */
+    private static ModuleDefinition.ItemQuantityModifiers aggregateTimingLikeAllFaces(
+            DuctBlockEntity duct, Function<ModuleDefinition, ModuleDefinition.ItemQuantityModifiers> pick) {
+        boolean anySet = false;
+        int bestSet = 0;
+        int addSum = 0;
+        double mult = 1.0;
+        for (Direction face : Direction.values()) {
+            var handler = duct.getFaceLanes(face).moduleSlots;
+            for (int i = 0; i < handler.getSlots(); i++) {
+                ItemStack s = handler.getStackInSlot(i);
+                if (s.isEmpty()) {
+                    continue;
+                }
+                var id = DuctModuleHelper.resolvedDeclarationId(s);
+                if (id.isEmpty()) {
+                    continue;
+                }
+                ModuleDefinition def = ModuleDefinitionRegistry.get(id.get()).orElse(null);
+                if (def == null) {
+                    continue;
+                }
+                ModuleDefinition.ItemQuantityModifiers m = pick.apply(def);
+                if (m.hasSet()) {
+                    if (!anySet || m.setValue() > bestSet) {
+                        anySet = true;
+                        bestSet = m.setValue();
+                    }
+                }
+                addSum += m.addSum();
+                mult *= m.multProduct();
+            }
         }
         return new ModuleDefinition.ItemQuantityModifiers(anySet, bestSet, addSum, mult);
     }
@@ -334,46 +388,50 @@ public final class DuctModuleEffects {
         return Math.max(0L, applyStackedTimingToBase(agg, baseTicks));
     }
 
-    /** Throttle interval for energy logistics on {@code face} (base {@code defaultTicks} when no modules). */
+    /**
+     * Energy ducts run every server tick; increment {@code rate} modifiers do not apply.
+     *
+     * @deprecated kept for API compatibility; always {@code 1}.
+     */
+    @Deprecated
     public static int effectiveEnergyActionRateTicks(DuctBlockEntity duct, Direction face, int defaultTicks) {
-        if (!faceModuleEffectsEnabled(duct, face)) {
-            return Math.max(1, defaultTicks);
-        }
-        ModuleDefinition.ItemQuantityModifiers agg = aggregateTimingLike(duct, face, ModuleDefinition::energyRateModifiers);
-        int raw = applyStackedTimingToBase(agg, defaultTicks);
-        return Math.max(1, raw);
-    }
-
-    /** Max FE attempted per energy action after {@code affects[].for=energy.quantity}. */
-    public static int effectiveEnergyExtractPerAction(DuctBlockEntity duct, Direction face, DuctEnergyTransportSpec spec) {
-        if (!faceModuleEffectsEnabled(duct, face)) {
-            return (int) Math.min(spec.clampedExtract(), Integer.MAX_VALUE);
-        }
-        ModuleDefinition.ItemQuantityModifiers agg =
-                aggregateTimingLike(duct, face, ModuleDefinition::energyQuantityModifiers);
-        int base = (int) Math.min(spec.clampedExtract(), Integer.MAX_VALUE);
-        return Math.max(0, applyStackedTimingToBase(agg, base));
-    }
-
-    public static int effectiveHeatActionRateTicks(DuctBlockEntity duct, Direction face, int defaultTicks) {
-        if (!faceModuleEffectsEnabled(duct, face)) {
-            return Math.max(1, defaultTicks);
-        }
-        ModuleDefinition.ItemQuantityModifiers agg = aggregateTimingLike(duct, face, ModuleDefinition::heatRateModifiers);
-        int raw = applyStackedTimingToBase(agg, defaultTicks);
-        return Math.max(1, raw);
+        return 1;
     }
 
     /**
-     * Max heat moved per heat action (Mek units), after {@code affects[].for=heat.quantity}. {@code heatSpeedModifiers}
-     * are parsed but not applied to heat logistics yet.
+     * Max FE per energy action: datapack {@code extract} scaled by {@code affects[].for=energy.extract} modules on any
+     * face of this duct block. Datapack {@code transfer} is not used as a gameplay cap.
+     */
+    public static int effectiveEnergyExtractPerAction(DuctBlockEntity duct, Direction face, DuctEnergyTransportSpec spec) {
+        int baseExtract = (int) Math.min(spec.clampedExtract(), Integer.MAX_VALUE);
+        if (!ductEnergyOrHeatModuleEffectsEnabled(duct)) {
+            return baseExtract;
+        }
+        ModuleDefinition.ItemQuantityModifiers agg =
+                aggregateTimingLikeAllFaces(duct, ModuleDefinition::energyQuantityModifiers);
+        int raw = applyStackedTimingToBase(agg, baseExtract);
+        return Math.max(0, Math.min(raw, Integer.MAX_VALUE));
+    }
+
+    /**
+     * Heat ducts run every server tick; increment {@code rate} modifiers do not apply.
+     *
+     * @deprecated kept for API compatibility; always {@code 1}.
+     */
+    @Deprecated
+    public static int effectiveHeatActionRateTicks(DuctBlockEntity duct, Direction face, int defaultTicks) {
+        return 1;
+    }
+
+    /**
+     * Max heat moved per heat action (Mek units), after {@code affects[].for=heat.quantity} from modules on any face.
      */
     public static double effectiveHeatExtractPerAction(DuctBlockEntity duct, Direction face, DuctHeatTransportSpec spec) {
-        if (!faceModuleEffectsEnabled(duct, face)) {
+        if (!ductEnergyOrHeatModuleEffectsEnabled(duct)) {
             return spec.clampedInsulation();
         }
         ModuleDefinition.ItemQuantityModifiers agg =
-                aggregateTimingLike(duct, face, ModuleDefinition::heatQuantityModifiers);
+                aggregateTimingLikeAllFaces(duct, ModuleDefinition::heatQuantityModifiers);
         double base = spec.clampedInsulation();
         double v = (agg.hasSet() ? agg.setValue() : base) + agg.addSum();
         v *= agg.multProduct();

@@ -276,11 +276,17 @@ public final class ModNetwork {
                 new DuctMenuButtonPayload(menu.getDuctBlockPos(), menu.getAccessFace().ordinal(), buttonId));
     }
 
-    public static void sendEnergyRayPath(ServerLevel level, List<BlockPos> ductPath, int argb, Vec3 mid) {
+    public static void sendEnergyRayPath(
+            ServerLevel level,
+            List<BlockPos> ductPath,
+            int argb,
+            Vec3 mid,
+            @org.jetbrains.annotations.Nullable net.minecraft.core.Direction sourceAttachFace,
+            @org.jetbrains.annotations.Nullable net.minecraft.core.Direction destAttachFace) {
         if (level == null || ductPath == null || ductPath.isEmpty()) {
             return;
         }
-        var payload = new EnergyRayPathPayload(ductPath, argb);
+        var payload = new EnergyRayPathPayload(ductPath, argb, sourceAttachFace, destAttachFace);
         double r2 = 64.0 * 64.0;
         for (ServerPlayer p : level.players()) {
             if (p.distanceToSqr(mid) <= r2) {

@@ -11,8 +11,8 @@ public record DuctEnergyTransportSpec(
          */
         long extract,
         /**
-         * Maximum transfer supported by this duct type. Effective transfer across a multi-duct path is the minimum
-         * {@code transfer} value across all ducts in the chosen route (bottleneck rule).
+         * Legacy datapack field (kept for pack compatibility). Throughput is not capped by this value; use
+         * {@code extract} and increment modules instead.
          */
         long transfer,
         /**
@@ -24,7 +24,7 @@ public record DuctEnergyTransportSpec(
          */
         float rayAlpha) {
     public static DuctEnergyTransportSpec fallback() {
-        return new DuctEnergyTransportSpec(1000, 8000, "#e30b28", 0.85f);
+        return new DuctEnergyTransportSpec(1000, Integer.MAX_VALUE, "#e30b28", 0.85f);
     }
 
     public long clampedExtract() {

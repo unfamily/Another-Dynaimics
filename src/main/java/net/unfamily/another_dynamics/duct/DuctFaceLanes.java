@@ -10,6 +10,8 @@ import net.unfamily.another_dynamics.duct.module.DuctFaceModuleItemHandler;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.neoforged.neoforge.items.ItemStackHandler;
 
+import java.util.EnumSet;
+
 /**
  * Per-face transport lanes. Item, fluid, and gas keep separate filters, channels, routing fields, and amount fields.
  * <p>
@@ -32,6 +34,12 @@ public final class DuctFaceLanes {
      * 0 = ignored (always enabled), 1 = low (enabled when NOT powered), 2 = high (enabled when powered), 3 = disabled.
      */
     public int redstoneMode = 0;
+
+    /**
+     * Per-face enable mask for {@link DuctTransportKind} (bit {@code 1 << kind.ordinal()}). Universal ducts can disable
+     * individual transport lanes without changing datapack {@code can_transport}.
+     */
+    public int transportEnabledMask = -1;
 
     /** Shared module column; size follows {@link DuctDefinition#moduleSlotCount()} (clamped). */
     public DuctFaceModuleItemHandler moduleSlots;
@@ -102,11 +110,49 @@ public final class DuctFaceLanes {
         }
     }
 
+    public static int defaultTransportEnabledMask(EnumSet<DuctTransportKind> enabledKinds) {
+        int mask = 0;
+        if (enabledKinds != null) {
+            for (DuctTransportKind k : enabledKinds) {
+                mask |= 1 << k.ordinal();
+            }
+        }
+        if (mask == 0) {
+            mask = 1 << DuctTransportKind.ITEM.ordinal();
+        }
+        return mask;
+    }
+
+    public void ensureTransportEnabledMask(EnumSet<DuctTransportKind> enabledKinds) {
+        if (transportEnabledMask < 0) {
+            transportEnabledMask = defaultTransportEnabledMask(enabledKinds);
+        }
+    }
+
+    public boolean isTransportKindEnabled(DuctTransportKind kind, EnumSet<DuctTransportKind> ductKinds) {
+        ensureTransportEnabledMask(ductKinds);
+        if (ductKinds == null || !ductKinds.contains(kind)) {
+            return false;
+        }
+        return (transportEnabledMask & (1 << kind.ordinal())) != 0;
+    }
+
+    public void toggleTransportKind(DuctTransportKind kind, EnumSet<DuctTransportKind> ductKinds) {
+        ensureTransportEnabledMask(ductKinds);
+        if (ductKinds == null || !ductKinds.contains(kind)) {
+            return;
+        }
+        int bit = 1 << kind.ordinal();
+        transportEnabledMask ^= bit;
+        duct.setChanged();
+    }
+
     public void save(HolderLookup.Provider registries, CompoundTag tag) {
         CompoundTag shared = new CompoundTag();
         shared.putByte("NodeMode", (byte) nodeMode.ordinal());
         shared.putByte("RedstoneMode", (byte) redstoneMode);
         shared.putByte("RsFmt", REDSTONE_FMT_V1);
+        shared.putInt("TransportMask", transportEnabledMask);
         tag.put("Shared", shared);
 
         tag.put(NBT_MODULES, moduleSlots.serializeNBT(registries));
@@ -265,6 +311,7 @@ public final class DuctFaceLanes {
         energyBufferFe = 0;
         heatTicksUntilAction = 0;
         heatRoundRobinCursor = 0;
+        transportEnabledMask = -1;
     }
 
     public void clampFilterSizes(DuctItemTransportSpec itemSpec, DuctFluidTransportSpec fluidSpec, DuctGasTransportSpec gasSpec) {
@@ -277,6 +324,7 @@ public final class DuctFaceLanes {
     private void loadShared(CompoundTag tag) {
         nodeMode = NodeMode.fromOrdinal(tag.getByte("NodeMode"));
         redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
+        transportEnabledMask = tag.contains("TransportMask", Tag.TAG_INT) ? tag.getInt("TransportMask") : -1;
         int rsFmt = tag.contains("RsFmt") ? tag.getByte("RsFmt") & 0xFF : 0;
         if (rsFmt < REDSTONE_FMT_V1) {
             // Legacy saves without RsFmt: only clamp invalid ordinals. Do not map 3 -> 0 (that turned "disabled" into

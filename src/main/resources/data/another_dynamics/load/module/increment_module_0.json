@@ -12,7 +12,9 @@
         "deny": { "add": 6 },
         "allow_hybrid": { "add": 3 },
         "deny_hybrid": { "add": 3 }
-      }
+      },
+      "speed": { "mult": 0.9 },
+      "rate": { "mult": 0.9 }
     },
     {
       "for": "fluid",
@@ -24,7 +26,9 @@
         "deny": { "add": 6 },
         "allow_hybrid": { "add": 3 },
         "deny_hybrid": { "add": 3 }
-      }
+      },
+      "speed": { "mult": 0.9 },
+      "rate": { "mult": 0.9 }
     },
     {
       "for": "gas",
@@ -36,12 +40,26 @@
         "deny": { "add": 6 },
         "allow_hybrid": { "add": 3 },
         "deny_hybrid": { "add": 3 }
-      }
+      },
+      "speed": { "mult": 0.9 },
+      "rate": { "mult": 0.9 }
     },
     {
       "for": "energy",
       "extract": {
         "mult": 2.5
+      },
+      "rate": {
+        "mult": 0.9
+      }
+    },
+    {
+      "for": "heat",
+      "quantity": {
+        "mult": 2.5
+      },
+      "rate": {
+        "mult": 0.9
       }
     }
   ],

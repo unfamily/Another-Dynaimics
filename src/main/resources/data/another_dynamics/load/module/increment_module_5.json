@@ -60,6 +60,18 @@
       "for": "energy",
       "extract": {
         "mult": 500000
+      },
+      "rate": {
+        "mult": 0.25
+      }
+    },
+    {
+      "for": "heat",
+      "quantity": {
+        "mult": 500000
+      },
+      "rate": {
+        "mult": 0.25
       }
     }
   ],

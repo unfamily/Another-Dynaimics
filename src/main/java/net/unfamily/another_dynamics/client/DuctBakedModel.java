@@ -332,7 +332,10 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
         // Render it on both overlay and base passes to ensure visibility.
         if ((includeOverlays || includeBase) && modelData != null && Boolean.TRUE.equals(modelData.get(DuctModelProperties.HAS_STALL))) {
             Integer stallMask = modelData.get(DuctModelProperties.STALL_MASK);
-            appendStallOverlayOnNodes(built, effectiveGeometry, stallMask != null ? stallMask : sm);
+            int effectiveStall = stallMask != null ? stallMask : 0;
+            // Never draw buffer overlay on faces without a live storage node (disabled / disconnected / latched-only).
+            effectiveStall &= sm;
+            appendStallOverlayOnNodes(built, effectiveGeometry, effectiveStall);
         }
         if (side != null) {
             List<BakedQuad> culled = new ArrayList<>();

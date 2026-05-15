@@ -42,8 +42,15 @@ public final class DuctGasServerTick {
             if ((sm & (1 << dir.ordinal())) == 0) {
                 continue;
             }
+            if (!be.isTransportKindEnabled(dir, DuctTransportKind.GAS)) {
+                continue;
+            }
             DuctFaceLanes lanes = be.getFaceLanes(dir);
             DuctFaceNode node = lanes.gas;
+            if (hasStalledGas(lanes) && tryDrainGasStallForFace(be, level, dir, lanes.nodeMode, node, spec)) {
+                be.syncStallVisualIfNeeded();
+                continue;
+            }
             if (!DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), lanes.redstoneMode)) {
                 continue;
             }
@@ -430,6 +437,183 @@ public final class DuctGasServerTick {
             retrieverBe.setChanged();
             return;
         }
+    }
+
+    public static boolean tryDrainGasStallForFace(
+            DuctBlockEntity sourceBe,
+            ServerLevel level,
+            Direction sourceFace,
+            NodeMode sourceMode,
+            DuctFaceNode node,
+            DuctGasTransportSpec spec) {
+        if (!MekanismChemicalCompat.isLoaded()) {
+            return false;
+        }
+        DuctFaceLanes lanes = sourceBe.getFaceLanes(sourceFace);
+        if (!hasStalledGas(lanes)) {
+            return false;
+        }
+        for (int slot = 0; slot < lanes.stalledGas.length; slot++) {
+            var tag = lanes.stalledGas[slot];
+            if (tag == null || tag.isEmpty()) {
+                continue;
+            }
+            Object stalled = MekanismChemicalCompat.loadGasStackFromTag(tag, level.registryAccess());
+            if (stalled == null || MekanismChemicalCompat.isEmptyStack(stalled) || MekanismChemicalCompat.getAmount(stalled) <= 0) {
+                continue;
+            }
+            long moved = tryDeliverStalledGas(level, sourceBe, sourceFace, sourceMode, node, spec, stalled);
+            if (moved > 0) {
+                long left = MekanismChemicalCompat.getAmount(stalled) - moved;
+                if (left <= 0) {
+                    lanes.stalledGas[slot] = new net.minecraft.nbt.CompoundTag();
+                } else {
+                    Object rem = MekanismChemicalCompat.copyWithAmount(stalled, left);
+                    net.minecraft.nbt.CompoundTag nt = new net.minecraft.nbt.CompoundTag();
+                    MekanismChemicalCompat.saveGasStackToTag(rem, nt);
+                    lanes.stalledGas[slot] = nt;
+                }
+                sourceBe.setChanged();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static long tryDeliverStalledGas(
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            NodeMode sourceMode,
+            DuctFaceNode node,
+            DuctGasTransportSpec spec,
+            Object available) {
+        if (MekanismChemicalCompat.isEmptyStack(available) || MekanismChemicalCompat.getAmount(available) <= 0) {
+            return 0L;
+        }
+        if (!DuctGasFilterLogic.passesGasFiltersForBank(node, DuctFaceNode.FilterBank.EXTRACTOR, available, level)) {
+            return 0L;
+        }
+        BlockPos srcPos = sourceBe.getBlockPos();
+        boolean radioactivePayload = MekanismChemicalCompat.isRadioactive(available);
+        List<BlockPos> ducts =
+                new ArrayList<>(
+                        radioactivePayload
+                                ? DuctPathfinder.connectedRadioactiveGasDucts(level, srcPos)
+                                : DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.GAS));
+        boolean allowSelf = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+        if (ducts.size() > 1 && !allowSelf) {
+            ducts.remove(srcPos);
+        }
+        if (ducts.isEmpty()) {
+            return 0L;
+        }
+        ArrayList<DestCandidate> cands = new ArrayList<>();
+        for (BlockPos destPos : ducts) {
+            if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
+                continue;
+            }
+            OptionalLong dist =
+                    destPos.equals(srcPos)
+                            ? OptionalLong.of(0L)
+                            : DuctPathfinder.distance(level, srcPos, destPos, spec, DuctNetworkType.GAS, radioactivePayload);
+            if (dist.isEmpty()) {
+                continue;
+            }
+            int dsm = destBe.getStorageMask();
+            for (Direction df : Direction.values()) {
+                if ((dsm & (1 << df.ordinal())) == 0) {
+                    continue;
+                }
+                DuctFaceLanes destLanes = destBe.getFaceLanes(df);
+                DuctFaceNode destNode = destLanes.gas;
+                if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
+                    continue;
+                }
+                NodeMode dm = destLanes.nodeMode;
+                if (dm != NodeMode.NONE
+                        && dm != NodeMode.FILTERING_INSERTION
+                        && dm != NodeMode.EXTRACTION_FILTERING
+                        && dm != NodeMode.RETRIEVING
+                        && dm != NodeMode.RETRIEVING_EXTRACTION) {
+                    continue;
+                }
+                if (!destNode.eligibilityMode.isInsertable()) {
+                    continue;
+                }
+                if (!allowSelf && destPos.equals(srcPos) && df == sourceFace) {
+                    continue;
+                }
+                if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {
+                    continue;
+                }
+                Object destHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, destPos, df);
+                if (destHandler == null) {
+                    continue;
+                }
+                Object tryStack = MekanismChemicalCompat.copyWithAmount(available, MekanismChemicalCompat.getAmount(available));
+                long simulated = MekanismChemicalCompat.simulateInsert(destHandler, tryStack);
+                if (simulated <= 0) {
+                    continue;
+                }
+                if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
+                        && !DuctGasFilterLogic.passesGasFiltersForBank(destNode, DuctFaceNode.FilterBank.FILTER, tryStack, level)) {
+                    continue;
+                }
+                if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
+                        && !DuctGasFilterLogic.passesGasFiltersForBank(destNode, DuctFaceNode.FilterBank.RETRIEVER, tryStack, level)) {
+                    continue;
+                }
+                cands.add(new DestCandidate(destPos, df, destNode.insertionPriority, dist.getAsLong(), simulated));
+            }
+        }
+        if (cands.isEmpty()) {
+            return 0L;
+        }
+        cands.sort(Comparator.comparingInt((DestCandidate c) -> c.priority()).reversed());
+        int maxP = cands.getFirst().priority();
+        ArrayList<DestCandidate> tier = new ArrayList<>();
+        for (DestCandidate c : cands) {
+            if (c.priority() == maxP) {
+                tier.add(c);
+            }
+        }
+        int[] rr = new int[] {node.roundRobinCursor};
+        DestCandidate pick = pickWithinTier(level, tier, node.routingMode, rr);
+        if (pick == null) {
+            return 0L;
+        }
+        node.roundRobinCursor = rr[0];
+        long moved = Math.min(MekanismChemicalCompat.getAmount(available), pick.moved());
+        if (moved <= 0) {
+            return 0L;
+        }
+        Object planned = MekanismChemicalCompat.copyWithAmount(available, moved);
+        List<BlockPos> rawPath;
+        if (pick.ductPos().equals(srcPos)) {
+            rawPath = List.of(srcPos);
+        } else {
+            Optional<List<BlockPos>> pathOpt =
+                    DuctPathfinder.shortestPath(
+                            level, srcPos, pick.ductPos(), spec, DuctNetworkType.GAS, radioactivePayload);
+            rawPath = pathOpt.orElseGet(() -> List.of(srcPos, pick.ductPos()));
+        }
+        long edgeTicks = DuctModuleEffects.effectiveGasEdgeTravelTicks(sourceBe, sourceFace, spec);
+        sourceBe.scheduleGasTransitPending(
+                level, planned, OutboundShipment.copyPath(rawPath), sourceFace, pick.face(), pick.ductPos(), spec, edgeTicks);
+        return moved;
+    }
+
+    private static boolean hasStalledGas(DuctFaceLanes lanes) {
+        if (lanes == null) {
+            return false;
+        }
+        for (var g : lanes.stalledGas) {
+            if (g != null && !g.isEmpty() && (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isGasFaceStalled(DuctFaceLanes lanes) {

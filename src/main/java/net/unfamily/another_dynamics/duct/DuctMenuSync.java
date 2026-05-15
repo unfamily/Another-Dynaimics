@@ -49,7 +49,9 @@ public final class DuctMenuSync {
      * {@code (syncData.get(PRIORITY_HI) << 16) | (syncData.get(PRIORITY) & 0xFFFF)}.
      */
     public static final int PRIORITY_HI = 22;
-    public static final int COUNT = 23;
+    /** {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#transportEnabledMask} for the edited face. */
+    public static final int TRANSPORT_ENABLED_MASK = 23;
+    public static final int COUNT = 24;
 
     /** FLAGS bit: routing row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesRouting()}). */
     public static final int FLAG_ROUTING_ACTIVE = 1;

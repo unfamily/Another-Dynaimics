@@ -64,6 +64,8 @@ public final class DuctFaceNode {
     public int lastExtractBatchSettingCapApplied;
     public int channelLetter = 1;
     public int roundRobinCursor;
+    /** Retriever: next donor inventory slot index to probe (round-robin across slots). */
+    public int retrieverPullSlotCursor;
     /** Per transport kind; not shared with the sibling lane (item vs fluid may use different duct rates). */
     public int ticksUntilAction;
 
@@ -162,6 +164,7 @@ public final class DuctFaceNode {
         extractBatch = 0;
         lastExtractBatchSettingCapApplied = 0;
         roundRobinCursor = 0;
+        retrieverPullSlotCursor = 0;
         selfFeed = false;
         ticksUntilAction = 0;
     }
@@ -175,6 +178,7 @@ public final class DuctFaceNode {
         tag.putInt("ExtractBatchCapMemo", lastExtractBatchSettingCapApplied);
         tag.putByte("Channel", (byte) channelLetter);
         tag.putInt("RrCursor", roundRobinCursor);
+        tag.putInt("RtrPullSlot", retrieverPullSlotCursor);
         tag.putInt("TicksAct", ticksUntilAction);
         tag.putBoolean("SelfFeed", selfFeed);
         tag.putByte("EligMode", (byte) eligibilityMode.ordinal());
@@ -206,6 +210,7 @@ public final class DuctFaceNode {
                 tag.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? tag.getInt("ExtractBatchCapMemo") : 0;
         channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
         roundRobinCursor = tag.getInt("RrCursor");
+        retrieverPullSlotCursor = tag.contains("RtrPullSlot", Tag.TAG_INT) ? tag.getInt("RtrPullSlot") : 0;
         ticksUntilAction = tag.contains("TicksAct") ? tag.getInt("TicksAct") : 0;
         selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
         eligibilityMode =

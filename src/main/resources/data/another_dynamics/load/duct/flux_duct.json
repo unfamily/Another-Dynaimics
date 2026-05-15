@@ -10,7 +10,7 @@
       "dec": "forge_energy",
       "ray_color": "#e30b28",
       "extract": 1000,
-      "transfer": 500000
+      "transfer": 2147483647
     }
   ],
   "connect_with_compatbile": true,
