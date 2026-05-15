@@ -59,7 +59,7 @@
     {
       "for": "energy",
       "extract": {
-        "mult": 250
+        "mult": 100
       },
       "rate": {
         "mult": 0.33
