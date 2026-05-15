@@ -305,6 +305,9 @@ public final class DuctEnergyServerTick {
                     continue;
                 }
                 int recvEst = estimateReceivableOnFace(level, destBe, df, attemptCeiling);
+                if (recvEst <= 0) {
+                    continue;
+                }
                 int priority = destBe.getFaceNode(df).insertionPriority;
                 cands.add(new DestCandidate(destPos, df, priority, dist.orElse(Long.MAX_VALUE), recvEst));
             }
@@ -499,30 +502,40 @@ public final class DuctEnergyServerTick {
         }
     }
 
-    private static void refundEnergyToSource(
-            ServerLevel level,
-            DuctBlockEntity be,
-            Direction face,
-            IEnergyStorage extractedFrom,
-            int amount) {
+    /**
+     * Put energy back after a failed insert: same storage we extracted from first (usually the duct face buffer), then
+     * face buffer, then adjacent handler. Never assume {@code canReceive()} means space — handlers often stay
+     * {@code true} when full.
+     */
+    private static void refundExtractedEnergy(
+            ServerLevel level, DuctBlockEntity be, Direction face, IEnergyStorage extractedFrom, int amount) {
         if (amount <= 0) {
             return;
         }
-        IEnergyStorage ext = getExternalEnergyHandlerOnFace(level, be.getBlockPos(), face);
-        if (ext != null && ext.canReceive() && ext != extractedFrom) {
-            ext.receiveEnergy(amount, false);
-            return;
+        int left = amount;
+        if (extractedFrom != null && extractedFrom.canReceive()) {
+            left -= extractedFrom.receiveEnergy(left, false);
         }
-        refundEnergyRemainder(level, be, face, amount);
+        if (left > 0) {
+            refundEnergyRemainder(level, be, face, left);
+        }
     }
 
     private static void refundEnergyRemainder(ServerLevel level, DuctBlockEntity be, Direction face, int amount) {
         if (amount <= 0) {
             return;
         }
+        int left = amount;
+        IEnergyStorage buf = be.energyBufferCapability(face);
+        if (buf != null && buf.canReceive()) {
+            left -= buf.receiveEnergy(left, false);
+        }
+        if (left <= 0) {
+            return;
+        }
         IEnergyStorage ext = getExternalEnergyHandlerOnFace(level, be.getBlockPos(), face);
         if (ext != null && ext.canReceive()) {
-            ext.receiveEnergy(amount, false);
+            ext.receiveEnergy(left, false);
         }
     }
 
@@ -566,7 +579,7 @@ public final class DuctEnergyServerTick {
         }
         int inserted = dest.receiveEnergy(extracted, false);
         if (inserted <= 0) {
-            refundEnergyToSource(level, be, face, src, extracted);
+            refundExtractedEnergy(level, be, face, src, extracted);
             return false;
         }
         if (inserted < extracted) {
@@ -588,20 +601,18 @@ public final class DuctEnergyServerTick {
         return true;
     }
 
-    /** Whether this face can receive an energy insert attempt (machine or duct buffer with free space). */
+    /** Whether this face can accept any FE right now ({@code canReceive()} alone is often true even when full). */
     private static boolean canAttemptEnergyInsertOnFace(ServerLevel level, DuctBlockEntity be, Direction face) {
+        int probe = 1;
         IEnergyStorage ext = getExternalEnergyHandlerOnFace(level, be.getBlockPos(), face);
-        if (ext != null && ext.canReceive()) {
+        if (ext != null && ext.canReceive() && simulateMaxReceivable(ext, probe) > 0) {
             return true;
         }
         IEnergyStorage buf = be.energyBufferCapability(face);
-        return buf != null && buf.canReceive() && buf.getEnergyStored() < buf.getMaxEnergyStored();
+        return buf != null && buf.canReceive() && simulateMaxReceivable(buf, probe) > 0;
     }
 
-    /**
-     * Routing hint for destination priority only — not a hard transfer cap. When simulate is unreliable, returns
-     * {@code attemptCeiling} so modules still raise the per-action attempt limit.
-     */
+    /** Routing weight: actual simulated receivable cap (0 if both machine and buffer are full). */
     private static int estimateReceivableOnFace(
             ServerLevel level, DuctBlockEntity be, Direction face, int attemptCeiling) {
         if (!canAttemptEnergyInsertOnFace(level, be, face) || attemptCeiling <= 0) {
@@ -616,20 +627,31 @@ public final class DuctEnergyServerTick {
         if (buf != null && buf.canReceive()) {
             best = Math.max(best, simulateMaxReceivable(buf, attemptCeiling));
         }
-        return best > 0 ? best : attemptCeiling;
+        return best;
     }
 
     /**
-     * Pick an insert target on a duct face: prefer adjacent machine when it can receive, else face buffer.
+     * Pick an insert target: adjacent machine if it has space, else duct face buffer. Avoids always preferring a full
+     * machine while the duct buffer could still accept.
      */
     private static @Nullable IEnergyStorage resolveEnergyInsertTarget(
             ServerLevel level, DuctBlockEntity be, Direction face, int maxWant) {
+        if (maxWant <= 0) {
+            return null;
+        }
         IEnergyStorage ext = getExternalEnergyHandlerOnFace(level, be.getBlockPos(), face);
-        if (ext != null && ext.canReceive()) {
+        IEnergyStorage buf = be.energyBufferCapability(face);
+        int extRecv =
+                ext != null && ext.canReceive() ? simulateMaxReceivable(ext, maxWant) : 0;
+        int bufRecv =
+                buf != null && buf.canReceive() ? simulateMaxReceivable(buf, maxWant) : 0;
+        if (extRecv <= 0 && bufRecv <= 0) {
+            return null;
+        }
+        if (extRecv > 0) {
             return ext;
         }
-        IEnergyStorage buf = be.energyBufferCapability(face);
-        return (buf != null && buf.canReceive()) ? buf : null;
+        return buf;
     }
 
     /**
