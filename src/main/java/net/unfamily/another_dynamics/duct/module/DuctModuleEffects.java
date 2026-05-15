@@ -4,7 +4,6 @@ import java.util.function.Function;
 
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.ItemStack;
-import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctEnergyTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctFeatureKeys;
@@ -389,11 +388,11 @@ public final class DuctModuleEffects {
         return Math.max(0L, applyStackedTimingToBase(agg, baseTicks));
     }
 
-    /**
-     * Ticks between energy logistics actions; from common config. Increment {@code energy.rate} modules do not apply.
-     */
+    /** Ticks between energy logistics actions; increment {@code energy.rate} modules do not apply. */
+    public static final int ENERGY_ACTION_RATE_TICKS = 5;
+
     public static int effectiveEnergyActionRateTicks(DuctBlockEntity duct, Direction face, DuctEnergyTransportSpec spec) {
-        return Config.energyActionRateTicks();
+        return ENERGY_ACTION_RATE_TICKS;
     }
 
     /**
@@ -411,11 +410,11 @@ public final class DuctModuleEffects {
         return Math.max(0, Math.min(raw, Integer.MAX_VALUE));
     }
 
-    /**
-     * Ticks between heat logistics actions; from common config. Increment {@code heat.rate} modules do not apply.
-     */
+    /** Ticks between heat logistics actions; increment {@code heat.rate} modules do not apply. */
+    public static final int HEAT_ACTION_RATE_TICKS = 5;
+
     public static int effectiveHeatActionRateTicks(DuctBlockEntity duct, Direction face, DuctHeatTransportSpec spec) {
-        return Config.heatActionRateTicks();
+        return HEAT_ACTION_RATE_TICKS;
     }
 
     /**

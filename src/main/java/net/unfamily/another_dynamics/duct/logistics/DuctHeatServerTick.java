@@ -10,7 +10,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
-import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
@@ -28,7 +27,8 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Mekanism heat logistics: instant transport between actions. Per-face action interval is set in common config
- * ({@code heatActionRateTicks}). Throughput is capped at extracting/retrieving faces; increment {@code rate}
+ * ({@link DuctModuleEffects#HEAT_ACTION_RATE_TICKS} ticks). Throughput is
+ * capped at extracting/retrieving faces; increment {@code rate}
  * modules do not apply.
  */
 public final class DuctHeatServerTick {
@@ -56,7 +56,6 @@ public final class DuctHeatServerTick {
                 continue;
             }
             DuctFaceLanes lanes = be.getFaceLanes(dir);
-            Config.applyLogisticsRateStamp(lanes);
             if (!DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), lanes.redstoneMode)) {
                 continue;
             }

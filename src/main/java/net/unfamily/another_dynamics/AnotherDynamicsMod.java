@@ -6,9 +6,7 @@ import com.mojang.logging.LogUtils;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
@@ -38,9 +36,6 @@ public final class AnotherDynamicsMod {
 
     public AnotherDynamicsMod(IEventBus modEventBus, ModContainer modContainer) {
         LOGGER.debug("Loading {}", MOD_ID);
-        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
-        modEventBus.addListener(AnotherDynamicsMod::onConfigEvent);
-
         ModBlocks.BLOCKS.register(modEventBus);
         ModDataComponents.TYPES.register(modEventBus);
         ModItems.ITEMS.register(modEventBus);
@@ -53,12 +48,6 @@ public final class AnotherDynamicsMod {
         modEventBus.addListener(AnotherDynamicsMod::onRegisterCapabilities);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
-    }
-
-    private static void onConfigEvent(ModConfigEvent event) {
-        if (event.getConfig().getSpec() == Config.SPEC && event instanceof ModConfigEvent.Reloading) {
-            Config.onLogisticsRateConfigChanged();
-        }
     }
 
     private static void onAddReloadListeners(AddReloadListenerEvent event) {

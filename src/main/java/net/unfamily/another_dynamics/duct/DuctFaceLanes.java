@@ -83,12 +83,6 @@ public final class DuctFaceLanes {
     public int heatTicksUntilAction;
     public int heatRoundRobinCursor;
 
-    /**
-     * Not persisted: last seen {@link net.unfamily.another_dynamics.Config} logistics rate stamp so throttle
-     * resets immediately when common config changes.
-     */
-    public transient int logisticsRateStampSeen = -1;
-
     public DuctFaceLanes(DuctBlockEntity duct, Direction face, int moduleSlotCount) {
         this.duct = duct;
         this.face = face;

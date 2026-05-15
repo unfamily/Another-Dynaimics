@@ -38,7 +38,7 @@ public final class ModuleUpgradeTooltip {
             def.gasQuantityModifiers(),
             def.heatQuantityModifiers()
         };
-        // Energy/heat ducts tick every server tick; rate/speed modifiers do not apply in logistics.
+        // Energy/heat action interval is fixed in code; rate/speed module modifiers do not apply in logistics.
         ItemQuantityModifiers[] rate = {
             def.itemRateModifiers(),
             def.fluidRateModifiers(),

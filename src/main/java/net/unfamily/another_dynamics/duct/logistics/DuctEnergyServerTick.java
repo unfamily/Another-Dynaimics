@@ -12,7 +12,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
-import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctEnergyTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
@@ -28,7 +27,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Energy (Forge Energy / RF) logistics: instant transfer only (no in-duct transit shipments).
  *
- * <p>Per-face action rate uses common config ({@code energyActionRateTicks}, default 10). Per action,
+ * <p>Per-face action rate is {@link DuctModuleEffects#ENERGY_ACTION_RATE_TICKS} ticks. Per action,
  * the amount moved is bounded by module-scaled {@code extract} and adjacent {@link IEnergyStorage} acceptance.
  * Network topology queries are cached per level per tick ({@link DuctEnergyNetworkCache}).</p>
  */
@@ -56,7 +55,6 @@ public final class DuctEnergyServerTick {
                 continue;
             }
             DuctFaceLanes drainLanes = be.getFaceLanes(dir);
-            Config.applyLogisticsRateStamp(drainLanes);
             if (drainLanes.energyBufferFe > 0) {
                 boolean redstoneActive =
                         DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), drainLanes.redstoneMode);
@@ -75,7 +73,6 @@ public final class DuctEnergyServerTick {
                 continue;
             }
             DuctFaceLanes lanes = be.getFaceLanes(dir);
-            Config.applyLogisticsRateStamp(lanes);
             if (!DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), lanes.redstoneMode)) {
                 continue;
             }
@@ -148,12 +145,12 @@ public final class DuctEnergyServerTick {
     /** Push duct buffer / surplus into the adjacent machine on this face every tick (no destination buffer). */
     private static void tryFlushLocalEnergyToNeighbor(
             ServerLevel level, DuctBlockEntity be, Direction face, DuctEnergyTransportSpec spec) {
-        IEnergyStorage dest = getEnergyDestOnFace(level, be, face);
-        if (dest == null) {
-            return;
-        }
         int want = DuctModuleEffects.effectiveEnergyExtractPerAction(be, face, spec);
         if (want <= 0) {
+            return;
+        }
+        IEnergyStorage dest = resolveEnergyInsertTarget(level, be, face, want);
+        if (dest == null) {
             return;
         }
         pushBufferToLocalDest(level, be, face, dest, want);
@@ -346,34 +343,8 @@ public final class DuctEnergyServerTick {
             if (dest == null) {
                 return;
             }
-            int recv = simulateMaxReceivable(dest, cap);
-            if (recv <= 0) {
+            if (!transferEnergyFromSource(level, sourceBe, sourceFace, src, dest, cap)) {
                 return;
-            }
-            int extracted = src.extractEnergy(recv, false);
-            if (extracted <= 0) {
-                return;
-            }
-            int inserted = dest.receiveEnergy(extracted, false);
-            if (inserted <= 0) {
-                refundEnergyToSource(level, sourceBe, sourceFace, src, extracted);
-                return;
-            }
-            if (inserted < extracted) {
-                int rem = extracted - inserted;
-                DuctFaceLanes lanes = sourceBe.getFaceLanes(sourceFace);
-                IEnergyStorage bufCap = sourceBe.energyBufferCapability(sourceFace);
-                int capBuf = bufCap != null ? bufCap.getMaxEnergyStored() : Integer.MAX_VALUE;
-                int stored = Math.max(0, lanes.energyBufferFe);
-                int accept = Math.min(rem, Math.max(0, capBuf - stored));
-                if (accept > 0) {
-                    lanes.energyBufferFe = stored + accept;
-                    sourceBe.setChanged();
-                    rem -= accept;
-                }
-                if (rem > 0) {
-                    refundEnergyRemainder(level, sourceBe, sourceFace, rem);
-                }
             }
             trySendEnergyRay(level, sourceLanes, srcPos, pick.ductPos(), sourceBe.energyTransportSpec(), sourceFace, pick.face());
             if (sourceLanes.energyBufferFe <= 0) {
@@ -391,7 +362,12 @@ public final class DuctEnergyServerTick {
             DuctFaceNode node) {
         DuctFaceLanes retrieverLanes = retrieverBe.getFaceLanes(retrieverFace);
         BlockPos retrieverPos = retrieverBe.getBlockPos();
-        IEnergyStorage dest = getEnergyDestOnFace(level, retrieverBe, retrieverFace);
+        long wantL = Math.min(DuctModuleEffects.effectiveEnergyExtractPerAction(retrieverBe, retrieverFace, spec), (long) Integer.MAX_VALUE);
+        int want = (int) Math.max(0L, wantL);
+        if (want <= 0) {
+            return;
+        }
+        IEnergyStorage dest = resolveEnergyInsertTarget(level, retrieverBe, retrieverFace, want);
         if (dest == null) {
             return;
         }
@@ -399,8 +375,6 @@ public final class DuctEnergyServerTick {
         int bufCap = buf != null ? buf.getMaxEnergyStored() : 0;
         int stored = Math.max(0, retrieverLanes.energyBufferFe);
         int free = Math.max(0, bufCap - stored);
-        long wantL = Math.min(DuctModuleEffects.effectiveEnergyExtractPerAction(retrieverBe, retrieverFace, spec), (long) Integer.MAX_VALUE);
-        int want = (int) Math.max(0L, wantL);
         // If we have no buffer space and the destination can't accept anything, nothing to do.
         int needSim = maxReceivableOnFace(level, retrieverBe, retrieverFace, want);
         if (free <= 0 && needSim <= 0) {
@@ -564,19 +538,58 @@ public final class DuctEnergyServerTick {
         if (bufSrc == null) {
             return;
         }
-        int avail = simulateMaxExtractable(bufSrc, want);
-        if (avail <= 0) {
-            return;
+        transferEnergyFromSource(level, be, face, bufSrc, dest, want);
+    }
+
+    /**
+     * Move up to {@code cap} FE from {@code src} into {@code dest}, using simulate hints when available but always
+     * attempting a real insert so handlers that reject large simulate packets still receive partial amounts.
+     */
+    private static boolean transferEnergyFromSource(
+            ServerLevel level,
+            DuctBlockEntity be,
+            Direction face,
+            IEnergyStorage src,
+            IEnergyStorage dest,
+            int cap) {
+        if (cap <= 0) {
+            return false;
         }
-        int recvSim = simulateMaxReceivable(dest, avail);
-        if (recvSim <= 0) {
-            return;
+        int hint = simulateMaxReceivable(dest, cap);
+        int move = hint > 0 ? Math.min(cap, hint) : cap;
+        move = Math.min(move, simulateMaxExtractable(src, move));
+        if (move <= 0) {
+            move = Math.min(cap, src.getEnergyStored());
         }
-        int extracted = bufSrc.extractEnergy(recvSim, false);
+        if (move <= 0) {
+            return false;
+        }
+        int extracted = src.extractEnergy(move, false);
         if (extracted <= 0) {
-            return;
+            return false;
         }
-        dest.receiveEnergy(extracted, false);
+        int inserted = dest.receiveEnergy(extracted, false);
+        if (inserted <= 0) {
+            refundEnergyToSource(level, be, face, src, extracted);
+            return false;
+        }
+        if (inserted < extracted) {
+            int rem = extracted - inserted;
+            DuctFaceLanes lanes = be.getFaceLanes(face);
+            IEnergyStorage bufCap = be.energyBufferCapability(face);
+            int capBuf = bufCap != null ? bufCap.getMaxEnergyStored() : Integer.MAX_VALUE;
+            int stored = Math.max(0, lanes.energyBufferFe);
+            int accept = Math.min(rem, Math.max(0, capBuf - stored));
+            if (accept > 0) {
+                lanes.energyBufferFe = stored + accept;
+                be.setChanged();
+                rem -= accept;
+            }
+            if (rem > 0) {
+                refundEnergyRemainder(level, be, face, rem);
+            }
+        }
+        return true;
     }
 
     /**
@@ -587,6 +600,10 @@ public final class DuctEnergyServerTick {
         IEnergyStorage ext = getExternalEnergyHandlerOnFace(level, be.getBlockPos(), face);
         if (ext != null && ext.canReceive()) {
             best = Math.max(best, simulateMaxReceivable(ext, maxWant));
+            // Some handlers simulate 0 for any packet size but still accept partial amounts on execute.
+            if (best <= 0) {
+                best = 1;
+            }
         }
         IEnergyStorage buf = be.energyBufferCapability(face);
         if (buf != null && buf.canReceive()) {
@@ -596,19 +613,16 @@ public final class DuctEnergyServerTick {
     }
 
     /**
-     * Pick an insert target on a duct face: prefer external handler when it can accept, else face buffer.
+     * Pick an insert target on a duct face: prefer adjacent machine when it can receive, else face buffer.
      */
     private static @Nullable IEnergyStorage resolveEnergyInsertTarget(
             ServerLevel level, DuctBlockEntity be, Direction face, int maxWant) {
         IEnergyStorage ext = getExternalEnergyHandlerOnFace(level, be.getBlockPos(), face);
-        if (ext != null && ext.canReceive() && simulateMaxReceivable(ext, maxWant) > 0) {
+        if (ext != null && ext.canReceive()) {
             return ext;
         }
         IEnergyStorage buf = be.energyBufferCapability(face);
-        if (buf != null && buf.canReceive() && simulateMaxReceivable(buf, maxWant) > 0) {
-            return buf;
-        }
-        return null;
+        return (buf != null && buf.canReceive()) ? buf : null;
     }
 
     /**
@@ -638,7 +652,24 @@ public final class DuctEnergyServerTick {
         if (got > 0) {
             return got;
         }
-        return dest.receiveEnergy(1, true);
+        int one = dest.receiveEnergy(1, true);
+        if (one <= 0) {
+            return 0;
+        }
+        int best = one;
+        int lo = 2;
+        int hi = maxWant;
+        while (lo <= hi) {
+            int mid = lo + ((hi - lo) >>> 1);
+            int r = dest.receiveEnergy(mid, true);
+            if (r > 0) {
+                best = Math.max(best, r);
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return best;
     }
 
     private static void trySendEnergyRay(
