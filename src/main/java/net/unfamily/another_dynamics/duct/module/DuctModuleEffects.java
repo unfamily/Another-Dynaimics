@@ -220,10 +220,16 @@ public final class DuctModuleEffects {
             addSum += m.addSum();
             mult *= m.multProduct();
         }
-        int base = anySet ? bestSet : batchDefault;
-        int afterAdd = base + addSum;
-        int afterMult = (int) Math.round(afterAdd * mult);
-        return Math.max(0, afterMult - batchDefault);
+        long base = anySet ? (long) bestSet : (long) batchDefault;
+        long afterMult = Math.round((base + (long) addSum) * mult);
+        long bonus = afterMult - base;
+        if (bonus <= 0L) {
+            return 0;
+        }
+        if (bonus >= Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return (int) bonus;
     }
 
     private static boolean faceHasNonEmptyModule(DuctBlockEntity duct, Direction face) {
@@ -328,9 +334,24 @@ public final class DuctModuleEffects {
         return new ModuleDefinition.ItemQuantityModifiers(anySet, bestSet, addSum, mult);
     }
 
+    /**
+     * Applies module quantity modifiers without {@code int} overflow (e.g. {@code inc_module_5} {@code mult: 500000}
+     * on high datapack {@code extract} values).
+     */
+    private static int applyStackedQuantityToBase(ModuleDefinition.ItemQuantityModifiers m, int datapackDefault) {
+        long base = m.hasSet() ? (long) m.setValue() : (long) datapackDefault;
+        long raw = Math.round((base + (long) m.addSum()) * m.multProduct());
+        if (raw <= 0L) {
+            return 0;
+        }
+        if (raw >= Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return (int) raw;
+    }
+
     private static int applyStackedTimingToBase(ModuleDefinition.ItemQuantityModifiers m, int datapackDefault) {
-        int base = m.hasSet() ? m.setValue() : datapackDefault;
-        return Math.max(0, (int) Math.round((base + m.addSum()) * m.multProduct()));
+        return applyStackedQuantityToBase(m, datapackDefault);
     }
 
     public static int effectiveItemActionRateTicks(DuctBlockEntity duct, Direction face, DuctItemTransportSpec spec) {
@@ -406,8 +427,7 @@ public final class DuctModuleEffects {
         }
         ModuleDefinition.ItemQuantityModifiers agg =
                 aggregateTimingLikeAllFaces(duct, ModuleDefinition::energyQuantityModifiers);
-        int raw = applyStackedTimingToBase(agg, baseExtract);
-        return Math.max(0, Math.min(raw, Integer.MAX_VALUE));
+        return applyStackedQuantityToBase(agg, baseExtract);
     }
 
     /** Ticks between heat logistics actions; increment {@code heat.rate} modules do not apply. */
