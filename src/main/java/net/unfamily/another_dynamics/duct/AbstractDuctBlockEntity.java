@@ -5,7 +5,9 @@ import java.util.EnumSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.unfamily.another_dynamics.duct.logistics.DuctEnergyNetworkCache;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -91,6 +93,9 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
         if (masksChanged) {
             requestModelDataUpdate();
             if (!level.isClientSide()) {
+                if (level instanceof ServerLevel serverLevel) {
+                    DuctEnergyNetworkCache.invalidate(serverLevel);
+                }
                 setChanged();
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             }

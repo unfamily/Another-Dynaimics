@@ -388,14 +388,11 @@ public final class DuctModuleEffects {
         return Math.max(0L, applyStackedTimingToBase(agg, baseTicks));
     }
 
-    /**
-     * Energy ducts run every server tick; increment {@code rate} modifiers do not apply.
-     *
-     * @deprecated kept for API compatibility; always {@code 1}.
-     */
-    @Deprecated
-    public static int effectiveEnergyActionRateTicks(DuctBlockEntity duct, Direction face, int defaultTicks) {
-        return 1;
+    /** Ticks between energy logistics actions; fixed — increment {@code energy.rate} does not apply. */
+    public static final int ENERGY_ACTION_RATE_TICKS = 10;
+
+    public static int effectiveEnergyActionRateTicks(DuctBlockEntity duct, Direction face, DuctEnergyTransportSpec spec) {
+        return ENERGY_ACTION_RATE_TICKS;
     }
 
     /**

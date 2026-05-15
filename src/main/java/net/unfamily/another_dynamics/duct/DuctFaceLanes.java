@@ -76,6 +76,8 @@ public final class DuctFaceLanes {
     public int energyRoundRobinCursor;
     /** Per-face FE buffer for external connectors (e.g. Flux Networks). */
     public int energyBufferFe;
+    /** Last game time an energy ray was sent for this face (visual throttle; not persisted). */
+    public long lastEnergyRayGameTime = -1L;
 
     /** Mek heat logistics throttle / round-robin (same rationale as {@link #energyTicksUntilAction}). */
     public int heatTicksUntilAction;

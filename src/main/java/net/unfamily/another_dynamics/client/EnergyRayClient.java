@@ -48,19 +48,19 @@ public final class EnergyRayClient {
             return;
         }
         if (pts.length == 1) {
-            burstAt(level, dust, rand, pts[0], 12);
+            burstAt(level, dust, rand, pts[0], 4);
             return;
         }
         for (int i = 0; i < pts.length - 1; i++) {
             spawnAlongSegment(level, dust, rand, pts[i], pts[i + 1]);
         }
-        burstAt(level, dust, rand, pts[0], 8);
-        burstAt(level, dust, rand, pts[pts.length - 1], 8);
+        burstAt(level, dust, rand, pts[0], 3);
+        burstAt(level, dust, rand, pts[pts.length - 1], 3);
     }
 
     private static void spawnAlongSegment(Level level, DustParticleOptions dust, net.minecraft.util.RandomSource rand, Vec3 va, Vec3 vb) {
         double len = va.distanceTo(vb);
-        int steps = Math.max(4, Mth.ceil(len * 10.0));
+        int steps = Math.max(2, Mth.ceil(len * 3.0));
         for (int s = 0; s <= steps; s++) {
             double t = s / (double) steps;
             double x = Mth.lerp(t, va.x, vb.x) + (rand.nextDouble() - 0.5) * 0.06;

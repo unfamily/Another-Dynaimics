@@ -398,6 +398,14 @@ public final class DuctPathfinder {
         return OptionalLong.of(pathTravelTicks(path.get(), spec));
     }
 
+    public static boolean isEnergyNetworkMember(Level level, BlockPos pos) {
+        return DuctConnectable.isSameNetwork(level, pos, DuctNetworkType.ENERGY);
+    }
+
+    public static boolean isEnergyPipeEdge(Level level, BlockPos from, BlockPos to) {
+        return isPipeNeighbor(level, from, to, DuctNetworkType.ENERGY);
+    }
+
     private static boolean isPipeNeighbor(Level level, BlockPos from, BlockPos to, DuctNetworkType network) {
         if (network == DuctNetworkType.ITEM) {
             return DuctPipeAdjacency.areItemPipeNeighbors(level, from, to);

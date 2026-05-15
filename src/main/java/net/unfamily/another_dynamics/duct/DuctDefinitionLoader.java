@@ -421,8 +421,19 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
     private static DuctEnergyTransportSpec parseEnergyTransport(JsonObject to) {
         long extract = 1000;
         long transfer = 8000;
+        int rateDefault = DuctEnergyTransportSpec.fallback().rateDefaultTicks();
+        int rateMin = DuctEnergyTransportSpec.fallback().rateMinTicks();
         String rayColor = "#e30b28";
         float rayAlpha = DuctEnergyTransportSpec.fallback().rayAlpha();
+        if (to.has("rate") && to.get("rate").isJsonObject()) {
+            JsonObject r = to.getAsJsonObject("rate");
+            if (r.has("default")) {
+                rateDefault = r.get("default").getAsInt();
+            }
+            if (r.has("min")) {
+                rateMin = r.get("min").getAsInt();
+            }
+        }
         if (to.has("extract") && to.get("extract").isJsonPrimitive()) {
             extract = to.get("extract").getAsLong();
         }
@@ -453,7 +464,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             } catch (NumberFormatException ignored) {
             }
         }
-        return new DuctEnergyTransportSpec(extract, transfer, rayColor, rayAlpha);
+        return new DuctEnergyTransportSpec(extract, transfer, rateDefault, rateMin, rayColor, rayAlpha);
     }
 
     private static DuctHeatTransportSpec parseHeatTransport(JsonObject to) {

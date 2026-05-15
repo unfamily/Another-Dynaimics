@@ -16,7 +16,6 @@ import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctEnergyTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
-import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
@@ -28,11 +27,14 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Energy (Forge Energy / RF) logistics: instant transfer only (no in-duct transit shipments).
  *
- * <p>Logistics run every server tick (instant transport). Per action, the amount moved is bounded only by the
- * extracting/retrieving face's module-scaled {@code extract} and by what adjacent {@link IEnergyStorage} handlers
- * accept — intermediate ducts in the path do not bottleneck throughput. Increment {@code rate} modifiers do not apply.</p>
+ * <p>Per-face action rate uses datapack {@code rate.default} (10 ticks by default). Per action,
+ * the amount moved is bounded by module-scaled {@code extract} and adjacent {@link IEnergyStorage} acceptance.
+ * Network topology queries are cached per level per tick ({@link DuctEnergyNetworkCache}).</p>
  */
 public final class DuctEnergyServerTick {
+    /** Minimum ticks between energy ray packets per face (sustained transfers). */
+    private static final int ENERGY_RAY_COOLDOWN_TICKS = 40;
+
     private DuctEnergyServerTick() {}
 
     public static void tick(DuctBlockEntity be, ServerLevel level) {
@@ -52,8 +54,15 @@ public final class DuctEnergyServerTick {
             if (!be.isTransportKindEnabled(dir, DuctTransportKind.ENERGY)) {
                 continue;
             }
-            if (be.getFaceLanes(dir).energyBufferFe > 0) {
-                tryDrainEnergyBufferForFace(be, level, dir, spec);
+            DuctFaceLanes drainLanes = be.getFaceLanes(dir);
+            if (drainLanes.energyBufferFe > 0) {
+                boolean redstoneActive =
+                        DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), drainLanes.redstoneMode);
+                if (!redstoneActive || drainLanes.energyTicksUntilAction <= 0) {
+                    tryDrainEnergyBufferForFace(be, level, dir, spec);
+                } else {
+                    tryFlushLocalEnergyToNeighbor(level, be, dir, spec);
+                }
             }
         }
         for (Direction dir : Direction.values()) {
@@ -68,7 +77,14 @@ public final class DuctEnergyServerTick {
                 continue;
             }
             DuctFaceNode node = be.getFaceNode(dir);
-            lanes.energyTicksUntilAction = 0;
+            if (lanes.energyTicksUntilAction > 0) {
+                lanes.energyTicksUntilAction--;
+                be.setChanged();
+                tryFlushLocalEnergyToNeighbor(level, be, dir, spec);
+                continue;
+            }
+            int rate = DuctModuleEffects.effectiveEnergyActionRateTicks(be, dir, spec);
+            lanes.energyTicksUntilAction = rate - 1;
             if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
                 RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
                 // Always pull into the duct buffer first, then push from buffer.
@@ -235,7 +251,7 @@ public final class DuctEnergyServerTick {
             return;
         }
 
-        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.ENERGY);
+        java.util.Set<BlockPos> ducts = DuctEnergyNetworkCache.connectedDucts(level, srcPos);
         if (ducts.isEmpty()) {
             return;
         }
@@ -249,7 +265,7 @@ public final class DuctEnergyServerTick {
             OptionalLong dist =
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
-                            : hopDistance(level, srcPos, destPos);
+                            : DuctEnergyNetworkCache.hopDistance(level, srcPos, destPos);
             if (dist.isEmpty()) {
                 continue;
             }
@@ -281,7 +297,7 @@ public final class DuctEnergyServerTick {
                     continue;
                 }
 
-                int recvSim = dest.receiveEnergy(availableSim, true);
+                int recvSim = simulateMaxReceivable(dest, Math.min(availableSim, want));
                 if (recvSim <= 0) {
                     continue;
                 }
@@ -323,7 +339,7 @@ public final class DuctEnergyServerTick {
             if (dest == null) {
                 return;
             }
-            int recv = dest.receiveEnergy(cap, true);
+            int recv = simulateMaxReceivable(dest, cap);
             if (recv <= 0) {
                 return;
             }
@@ -352,7 +368,7 @@ public final class DuctEnergyServerTick {
                     refundEnergyRemainder(level, sourceBe, sourceFace, rem);
                 }
             }
-            sendRayIfVisible(level, srcPos, pick.ductPos(), sourceBe.energyTransportSpec(), sourceFace, pick.face());
+            trySendEnergyRay(level, sourceLanes, srcPos, pick.ductPos(), sourceBe.energyTransportSpec(), sourceFace, pick.face());
             if (sourceLanes.energyBufferFe <= 0) {
                 sourceBe.syncStallVisualIfNeeded();
             }
@@ -379,12 +395,12 @@ public final class DuctEnergyServerTick {
         long wantL = Math.min(DuctModuleEffects.effectiveEnergyExtractPerAction(retrieverBe, retrieverFace, spec), (long) Integer.MAX_VALUE);
         int want = (int) Math.max(0L, wantL);
         // If we have no buffer space and the destination can't accept anything, nothing to do.
-        int needSim = dest.receiveEnergy(want, true);
+        int needSim = simulateMaxReceivable(dest, want);
         if (free <= 0 && needSim <= 0) {
             return;
         }
 
-        List<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.ENERGY));
+        List<BlockPos> ducts = new ArrayList<>(DuctEnergyNetworkCache.connectedDucts(level, retrieverPos));
         if (ducts.isEmpty()) {
             return;
         }
@@ -419,7 +435,7 @@ public final class DuctEnergyServerTick {
                 OptionalLong dist =
                         donorPos.equals(retrieverPos)
                                 ? OptionalLong.of(0L)
-                                : hopDistance(level, retrieverPos, donorPos);
+                                : DuctEnergyNetworkCache.hopDistance(level, retrieverPos, donorPos);
                 if (dist.isEmpty()) {
                     continue;
                 }
@@ -497,7 +513,7 @@ public final class DuctEnergyServerTick {
         // Always try to flush buffer into the local destination right away.
         pushBufferToLocalDest(level, retrieverBe, retrieverFace, dest, want);
         if (level.getBlockEntity(pick.ductPos()) instanceof DuctBlockEntity donor) {
-            sendRayIfVisible(level, pick.ductPos(), retrieverPos, donor.energyTransportSpec(), pick.face(), retrieverFace);
+            trySendEnergyRay(level, retrieverLanes, pick.ductPos(), retrieverPos, donor.energyTransportSpec(), pick.face(), retrieverFace);
         }
     }
 
@@ -542,7 +558,7 @@ public final class DuctEnergyServerTick {
         if (avail <= 0) {
             return;
         }
-        int recvSim = dest.receiveEnergy(avail, true);
+        int recvSim = simulateMaxReceivable(dest, avail);
         if (recvSim <= 0) {
             return;
         }
@@ -553,7 +569,41 @@ public final class DuctEnergyServerTick {
         dest.receiveEnergy(extracted, false);
     }
 
-    private static void sendRayIfVisible(
+    /**
+     * Some {@link IEnergyStorage} handlers return 0 from simulate when they cannot accept the full requested packet.
+     * Probe with 1 FE so partial inserts still work (e.g. void miners with limited receive rate).
+     */
+    private static int simulateMaxReceivable(@Nullable IEnergyStorage dest, int maxWant) {
+        if (dest == null || maxWant <= 0 || !dest.canReceive()) {
+            return 0;
+        }
+        int got = dest.receiveEnergy(maxWant, true);
+        if (got > 0) {
+            return got;
+        }
+        return dest.receiveEnergy(1, true);
+    }
+
+    private static void trySendEnergyRay(
+            ServerLevel level,
+            DuctFaceLanes rayLanes,
+            BlockPos fromDuct,
+            BlockPos toDuct,
+            DuctEnergyTransportSpec spec,
+            @Nullable Direction sourceAttachFace,
+            @Nullable Direction destAttachFace) {
+        long now = level.getGameTime();
+        if (rayLanes.lastEnergyRayGameTime >= 0
+                && now - rayLanes.lastEnergyRayGameTime < ENERGY_RAY_COOLDOWN_TICKS) {
+            return;
+        }
+        if (sendRayIfVisible(level, fromDuct, toDuct, spec, sourceAttachFace, destAttachFace)) {
+            rayLanes.lastEnergyRayGameTime = now;
+        }
+    }
+
+    /** @return {@code true} if a ray packet was sent */
+    private static boolean sendRayIfVisible(
             ServerLevel level,
             BlockPos fromDuct,
             BlockPos toDuct,
@@ -561,25 +611,25 @@ public final class DuctEnergyServerTick {
             @Nullable Direction sourceAttachFace,
             @Nullable Direction destAttachFace) {
         if (level == null) {
-            return;
+            return false;
         }
         Optional<List<BlockPos>> pathOpt =
                 fromDuct.equals(toDuct)
                         ? Optional.of(List.of(fromDuct))
-                        : DuctPathfinder.shortestPath(level, fromDuct, toDuct, 1L, DuctNetworkType.ENERGY);
+                        : DuctEnergyNetworkCache.shortestPath(level, fromDuct, toDuct);
         if (pathOpt.isEmpty()) {
-            return;
+            return false;
         }
         List<BlockPos> path = pathOpt.get();
         // If any duct is always-opaque, skip the ray.
         for (BlockPos p : path) {
             if (level.getBlockEntity(p) instanceof DuctBlockEntity be && be.ductAlwaysOpaqueRendering()) {
-                return;
+                return false;
             }
         }
         int alphaByte = Math.min(255, Math.max(0, Math.round(Math.clamp(spec.rayAlpha(), 0f, 1f) * 255f)));
         if (alphaByte <= 0) {
-            return;
+            return false;
         }
         String rayColor = spec.rayColor();
         if (rayColor == null || rayColor.isBlank()) {
@@ -589,20 +639,22 @@ public final class DuctEnergyServerTick {
             int rgb = level.random.nextInt(0x1000000);
             int argb = (alphaByte << 24) | (rgb & 0xFFFFFF);
             ModNetwork.sendEnergyRayPath(level, path, argb, midOf(path), sourceAttachFace, destAttachFace);
-            return;
+            return true;
         }
         String s = rayColor.trim();
         if (s.startsWith("#")) {
             s = s.substring(1);
         }
         if (s.length() != 6) {
-            return;
+            return false;
         }
         try {
             int rgb = Integer.parseInt(s, 16) & 0xFFFFFF;
             int argb = (alphaByte << 24) | rgb;
             ModNetwork.sendEnergyRayPath(level, path, argb, midOf(path), sourceAttachFace, destAttachFace);
+            return true;
         } catch (NumberFormatException ignored) {
+            return false;
         }
     }
 
@@ -610,17 +662,6 @@ public final class DuctEnergyServerTick {
         BlockPos a = path.getFirst();
         BlockPos b = path.getLast();
         return new Vec3((a.getX() + b.getX()) / 2.0 + 0.5, (a.getY() + b.getY()) / 2.0 + 0.5, (a.getZ() + b.getZ()) / 2.0 + 0.5);
-    }
-
-    private static OptionalLong hopDistance(ServerLevel level, BlockPos from, BlockPos to) {
-        if (from.equals(to)) {
-            return OptionalLong.of(0L);
-        }
-        Optional<List<BlockPos>> path = DuctPathfinder.shortestPath(level, from, to, 1L, DuctNetworkType.ENERGY);
-        if (path.isEmpty()) {
-            return OptionalLong.empty();
-        }
-        return OptionalLong.of(Math.max(0L, path.get().size()));
     }
 
     private static @Nullable DestCandidate pickWithinTier(ServerLevel level, List<DestCandidate> tier, RoutingMode routing, int roundRobinCursor) {

@@ -3,7 +3,7 @@ package net.unfamily.another_dynamics.duct;
 /**
  * Energy transport parameters from datapack {@code can_transport} (dec {@code forge_energy}).
  *
- * <p>Amounts are in FE/RF units (long).</p>
+ * <p>Amounts are in FE/RF units (long). {@code rate} is ticks between network logistics actions per face.</p>
  */
 public record DuctEnergyTransportSpec(
         /**
@@ -16,6 +16,14 @@ public record DuctEnergyTransportSpec(
          */
         long transfer,
         /**
+         * Default ticks between energy logistics actions on a face (lower = faster).
+         */
+        int rateDefaultTicks,
+        /**
+         * Minimum ticks between actions after module scaling.
+         */
+        int rateMinTicks,
+        /**
          * Ray color: {@code #RRGGBB} or {@code random} (server picks RGB per pulse).
          */
         String rayColor,
@@ -24,7 +32,7 @@ public record DuctEnergyTransportSpec(
          */
         float rayAlpha) {
     public static DuctEnergyTransportSpec fallback() {
-        return new DuctEnergyTransportSpec(1000, Integer.MAX_VALUE, "#e30b28", 0.85f);
+        return new DuctEnergyTransportSpec(1000, Integer.MAX_VALUE, 10, 10, "#e30b28", 0.85f);
     }
 
     public long clampedExtract() {
@@ -34,5 +42,9 @@ public record DuctEnergyTransportSpec(
     public long clampedTransfer() {
         return Math.max(0L, transfer);
     }
-}
 
+    public int clampedRateTicks(int requested) {
+        int r = requested <= 0 ? rateDefaultTicks : requested;
+        return Math.max(rateMinTicks, r);
+    }
+}
