@@ -26,7 +26,9 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
+import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
@@ -109,12 +111,62 @@ public class DuctBlock extends AbstractDuctBlock {
         double lx = l.x - pos.getX();
         double ly = l.y - pos.getY();
         double lz = l.z - pos.getZ();
-        return DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
+        int settingsMask = duct.getSettingsFaceMask();
+        Optional<Direction> fromShape =
+                DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), settingsMask, lx, ly, lz);
+        if (fromShape.isPresent()) {
+            return fromShape;
+        }
+        Direction hitFace = hit.getDirection();
+        if ((settingsMask & (1 << hitFace.ordinal())) != 0) {
+            return Optional.of(hitFace);
+        }
+        return Optional.empty();
     }
 
     private static double[] localHit(BlockPos pos, BlockHitResult hit) {
         Vec3 l = hit.getLocation();
         return new double[] {l.x - pos.getX(), l.y - pos.getY(), l.z - pos.getZ()};
+    }
+
+    /**
+     * Shift+click paste from a Settings Copier. {@link ItemInteractionResult#PASS_TO_DEFAULT_BLOCK_INTERACTION}
+     * when the copier is empty or no storage/settings face was targeted.
+     */
+    public static ItemInteractionResult attemptSettingsCopierPaste(
+            Level level,
+            BlockPos pos,
+            Player player,
+            ItemStack usedStack,
+            BlockHitResult hit) {
+        BlockEntity entity = level.getBlockEntity(pos);
+        if (!(entity instanceof DuctBlockEntity duct)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        Optional<ItemStack> copierOpt = DuctFaceSettingsSnapshot.findCopierWithData(player, usedStack);
+        if (copierOpt.isEmpty()) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        Optional<Direction> nodeFace = nodeFaceFromHitLocation(pos, hit, duct);
+        if (nodeFace.isEmpty()) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (level.isClientSide()) {
+            return ItemInteractionResult.SUCCESS;
+        }
+        if (level instanceof ServerLevel sl) {
+            ItemStack copier = copierOpt.get();
+            var data = DuctFaceSettingsSnapshot.readFromCopier(copier);
+            if (data.isPresent()
+                    && DuctFaceSettingsSnapshot.apply(
+                            duct, nodeFace.get(), data.get(), sl.registryAccess(), player)) {
+                SettingsCopierFeedback.notifyPasted(player);
+                return ItemInteractionResult.CONSUME;
+            }
+            SettingsCopierFeedback.notifyPasteFailed(player);
+            return ItemInteractionResult.CONSUME;
+        }
+        return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 
     @Override
@@ -168,6 +220,14 @@ public class DuctBlock extends AbstractDuctBlock {
             if (!level.isClientSide()) {
                 duct.refreshFromWorld();
             }
+            if (player.isShiftKeyDown() && stack.getItem() instanceof SettingsCopierItem) {
+                ItemInteractionResult copierResult =
+                        attemptSettingsCopierPaste(level, pos, player, stack, hitResult);
+                if (copierResult != ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
+                    return copierResult;
+                }
+                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            }
             Optional<Direction> nodeFace = nodeFaceFromHitLocation(pos, hitResult, duct);
             if (player.isShiftKeyDown() && nodeFace.isPresent() && duct.hasAnyStallOnFace(nodeFace.get())) {
                 if (level.isClientSide()) {
@@ -179,7 +239,7 @@ public class DuctBlock extends AbstractDuctBlock {
                             : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
                 }
             }
-            if (stack.is(DuctWrenchTags.WRENCH)) {
+            if (DuctWrenchTags.isWrench(stack)) {
                 Optional<Direction> wFace =
                         DuctShapes.resolveWrenchDisconnectFace(
                                 duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
@@ -207,30 +267,35 @@ public class DuctBlock extends AbstractDuctBlock {
                 }
             }
             if (player.isShiftKeyDown()) {
-                // Check if the item in hand is a duct (with or without logical id component).
-                String newLogicalId = stack.get(ModDataComponents.DUCT_LOGICAL_ID.get());
-                if (newLogicalId != null && !newLogicalId.isEmpty()) {
-                    if (level.isClientSide()) {
-                        return ItemInteractionResult.SUCCESS;
-                    }
-                    return DuctReplaceHelper.tryReplace(player, level, pos, duct, newLogicalId, hand);
+                if (!DuctReplaceHelper.isDuctReplacementCandidate(stack)) {
+                    return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
                 }
-                // If the item is a DuctBlockItem without a component, use its default logical id.
-                if (stack.getItem() instanceof DuctBlockItem ductItem) {
-                    if (level.isClientSide()) {
-                        return ItemInteractionResult.SUCCESS;
-                    }
-                    // DuctBlockItem has a defaultLogicalId; we need to extract it.
-                    ItemStack defaultInstance = ductItem.getDefaultInstance();
-                    String defaultLogicalId = defaultInstance.get(ModDataComponents.DUCT_LOGICAL_ID.get());
-                    if (defaultLogicalId != null && !defaultLogicalId.isEmpty()) {
-                        return DuctReplaceHelper.tryReplace(player, level, pos, duct, defaultLogicalId, hand);
-                    }
+                if (DuctReplaceHelper.isSameDuctType(duct, stack)) {
+                    return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
                 }
+                if (level.isClientSide()) {
+                    return ItemInteractionResult.SUCCESS;
+                }
+                String newLogicalId = DuctReplaceHelper.logicalIdFromReplacementItem(stack);
+                if (newLogicalId == null) {
+                    return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                }
+                return DuctReplaceHelper.tryReplace(player, level, pos, duct, newLogicalId, hand);
             }
             Optional<Direction> face = nodeFaceFromHitLocation(pos, hitResult, duct);
             if (face.isEmpty()) {
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            }
+            if (!player.isShiftKeyDown()
+                    && duct.faceHasStalledFluidOrGas(face.get())
+                    && duct.heldItemCanExtractStalledMedia(stack)) {
+                if (level.isClientSide()) {
+                    return ItemInteractionResult.SUCCESS;
+                }
+                if (level instanceof ServerLevel sl
+                        && duct.tryExtractStalledMediaToHand(sl, face.get(), player, hand)) {
+                    return ItemInteractionResult.CONSUME;
+                }
             }
             if (player.isShiftKeyDown()) {
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;

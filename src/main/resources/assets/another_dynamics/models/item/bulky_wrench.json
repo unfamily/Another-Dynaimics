@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/handheld",
+  "textures": {
+    "layer0": "another_dynamics:item/bulky_wrench"
+  }
+}

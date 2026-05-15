@@ -122,11 +122,8 @@ public final class DuctFluidServerTick {
         }
 
         // Build candidate insertion faces across the fluid network: priority first, then routing tie-break.
-        List<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.FLUID));
-        boolean allowSelf = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
-        if (ducts.size() > 1 && !allowSelf) {
-            ducts.remove(srcPos);
-        }
+        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.FLUID);
+        boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         if (ducts.isEmpty()) {
             return;
         }
@@ -161,7 +158,7 @@ public final class DuctFluidServerTick {
                 if (!destNode.eligibilityMode.isInsertable()) {
                     continue;
                 }
-                if (!allowSelf && destPos.equals(srcPos) && df == sourceFace) {
+                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, sourceFace, destPos, df, allowSelfFeed)) {
                     continue;
                 }
                 if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {
@@ -270,8 +267,6 @@ public final class DuctFluidServerTick {
         RoutingMode rm = retrieverLanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
         boolean roundRobinRetriever = rm == RoutingMode.ROUND_ROBIN;
         int[] rr = new int[] {node.roundRobinCursor};
-        boolean singleDuctNetwork =
-                DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.FLUID).size() == 1;
         List<DuctTargetSelector.DonorCandidate> donors =
                 listFluidRetrievingDonorCandidates(
                         level,
@@ -281,8 +276,8 @@ public final class DuctFluidServerTick {
                         rm,
                         rr[0],
                         node.channelLetter,
-                        singleDuctNetwork,
-                        singleDuctNetwork ? retrieverFace : null,
+                        true,
+                        retrieverFace,
                         spec);
         if (donors.isEmpty()) {
             return;
@@ -807,11 +802,8 @@ public final class DuctFluidServerTick {
             return 0;
         }
         BlockPos srcPos = sourceBe.getBlockPos();
-        List<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.FLUID));
-        boolean allowSelf = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
-        if (ducts.size() > 1 && !allowSelf) {
-            ducts.remove(srcPos);
-        }
+        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.FLUID);
+        boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         if (ducts.isEmpty()) {
             return 0;
         }
@@ -848,7 +840,7 @@ public final class DuctFluidServerTick {
                 if (!destNode.eligibilityMode.isInsertable()) {
                     continue;
                 }
-                if (!allowSelf && destPos.equals(srcPos) && df == sourceFace) {
+                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, sourceFace, destPos, df, allowSelfFeed)) {
                     continue;
                 }
                 if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {

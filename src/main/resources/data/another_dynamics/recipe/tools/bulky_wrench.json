@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " C ",
+    " BC",
+    "A  "
+  ],
+  "key": {
+    "A": {
+      "tag": "c:cobblestones" 
+    },
+    "B": {
+      "tag": "c:rods/wooden"
+    },
+    "C": {
+      "item": "minecraft:flint" 
+    }
+  },
+  "result": {
+    "id": "another_dynamics:bulky_wrench",
+    "count": 1
+  }
+}

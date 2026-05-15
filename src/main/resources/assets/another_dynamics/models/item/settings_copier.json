@@ -1,0 +1,14 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "another_dynamics:item/settings_copier_0"
+  },
+  "overrides": [
+    {
+      "predicate": {
+        "another_dynamics:stored": 1
+      },
+      "model": "another_dynamics:item/settings_copier_full"
+    }
+  ]
+}

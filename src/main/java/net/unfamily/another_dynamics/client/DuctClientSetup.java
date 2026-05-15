@@ -4,7 +4,9 @@ import java.util.Map;
 import java.util.function.Function;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.item.ItemProperties;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.client.resources.model.Material;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.resources.ResourceLocation;
@@ -21,7 +23,9 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctDefinitionsReloadedEvent;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
+import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
+import net.unfamily.another_dynamics.registry.ModItems;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
 /**
@@ -34,6 +38,13 @@ public final class DuctClientSetup {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         NeoForge.EVENT_BUS.addListener(DuctClientSetup::onDuctDefinitionsReloaded);
+        event.enqueueWork(
+                () ->
+                        ItemProperties.register(
+                                ModItems.SETTINGS_COPIER.get(),
+                                ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "stored"),
+                                (ItemStack stack, net.minecraft.client.multiplayer.ClientLevel level, net.minecraft.world.entity.LivingEntity entity, int seed) ->
+                                        DuctFaceSettingsSnapshot.hasStoredSettings(stack) ? 1.0F : 0.0F));
     }
 
     private static void onDuctDefinitionsReloaded(DuctDefinitionsReloadedEvent event) {

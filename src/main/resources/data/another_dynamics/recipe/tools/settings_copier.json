@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:paper"
+    },
+    {
+      "tag": "c:dyes/black"
+    },
+    [
+      {"item": "minecraft:glow_ink_sac"}, 
+      {"tag": "c:dyes/blue"}
+    ]
+  ],
+  "result": {
+    "id": "another_dynamics:settings_copier",
+    "count": 1
+  }
+}
+

@@ -130,10 +130,7 @@ public final class DuctGasServerTick {
                         radioactivePayload
                                 ? DuctPathfinder.connectedRadioactiveGasDucts(level, srcPos)
                                 : DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.GAS));
-        boolean allowSelf = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
-        if (ducts.size() > 1 && !allowSelf) {
-            ducts.remove(srcPos);
-        }
+        boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         if (ducts.isEmpty()) {
             return;
         }
@@ -175,7 +172,7 @@ public final class DuctGasServerTick {
                 if (!destNode.eligibilityMode.isInsertable()) {
                     continue;
                 }
-                if (!allowSelf && destPos.equals(srcPos) && df == sourceFace) {
+                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, sourceFace, destPos, df, allowSelfFeed)) {
                     continue;
                 }
                 if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {
@@ -299,10 +296,7 @@ public final class DuctGasServerTick {
         RoutingMode rm = retrieverLanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
         boolean roundRobinRetriever = rm == RoutingMode.ROUND_ROBIN;
         int[] rr = new int[] {node.roundRobinCursor};
-        boolean singleDuctNetwork =
-                DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.GAS).size() == 1;
         Set<BlockPos> radioactiveGasSubnet = DuctPathfinder.connectedRadioactiveGasDucts(level, retrieverPos);
-        boolean singleRadioactiveGasNetwork = radioactiveGasSubnet.size() == 1;
         List<DuctTargetSelector.DonorCandidate> donors =
                 listGasRetrievingDonorCandidates(
                         level,
@@ -312,8 +306,8 @@ public final class DuctGasServerTick {
                         rm,
                         rr[0],
                         node.channelLetter,
-                        singleDuctNetwork,
-                        (singleDuctNetwork || singleRadioactiveGasNetwork) ? retrieverFace : null,
+                        true,
+                        retrieverFace,
                         spec,
                         radioactiveGasSubnet);
         if (donors.isEmpty()) {
@@ -501,10 +495,7 @@ public final class DuctGasServerTick {
                         radioactivePayload
                                 ? DuctPathfinder.connectedRadioactiveGasDucts(level, srcPos)
                                 : DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.GAS));
-        boolean allowSelf = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
-        if (ducts.size() > 1 && !allowSelf) {
-            ducts.remove(srcPos);
-        }
+        boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         if (ducts.isEmpty()) {
             return 0L;
         }
@@ -541,7 +532,7 @@ public final class DuctGasServerTick {
                 if (!destNode.eligibilityMode.isInsertable()) {
                     continue;
                 }
-                if (!allowSelf && destPos.equals(srcPos) && df == sourceFace) {
+                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, sourceFace, destPos, df, allowSelfFeed)) {
                     continue;
                 }
                 if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {

@@ -69,8 +69,11 @@ public final class DuctBlockItem extends BlockItem {
                 BlockEntity entity = level.getBlockEntity(pos);
                 if (entity instanceof DuctBlockEntity ductBE) {
                     ItemStack stack = context.getItemInHand();
-                    String newLogicalId = stack.get(ModDataComponents.DUCT_LOGICAL_ID.get());
-                    if (newLogicalId == null || newLogicalId.isEmpty()) {
+                    if (DuctReplaceHelper.isSameDuctType(ductBE, stack)) {
+                        return super.useOn(context);
+                    }
+                    String newLogicalId = DuctReplaceHelper.logicalIdFromReplacementItem(stack);
+                    if (newLogicalId == null) {
                         newLogicalId = defaultLogicalId;
                     }
                     if (level.isClientSide()) {
@@ -78,8 +81,8 @@ public final class DuctBlockItem extends BlockItem {
                     }
                     ductBE.refreshFromWorld();
                     return DuctReplaceHelper.tryReplace(
-                            context.getPlayer(), level, pos, ductBE, newLogicalId, context.getHand()
-                    ).result();
+                                    context.getPlayer(), level, pos, ductBE, newLogicalId, context.getHand())
+                            .result();
                 }
             }
         }

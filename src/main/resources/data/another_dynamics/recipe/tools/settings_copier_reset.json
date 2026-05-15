@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "another_dynamics:settings_copier"
+    }
+  ],
+  "result": {
+    "id": "another_dynamics:settings_copier",
+    "count": 1
+  }
+}
+

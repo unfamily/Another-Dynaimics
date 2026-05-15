@@ -12,6 +12,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlockItem;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctModuleItem;
+import net.unfamily.another_dynamics.item.SettingsCopierItem;
 
 public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(AnotherDynamicsMod.MOD_ID);
@@ -25,6 +26,12 @@ public final class ModItems {
 
     public static final DeferredItem<Item> ENDER_ACCELERANT =
             ITEMS.register("ender_accellerant", () -> new Item(new Item.Properties()));
+
+    public static final DeferredItem<SettingsCopierItem> SETTINGS_COPIER =
+            ITEMS.register("settings_copier", () -> new SettingsCopierItem(new Item.Properties().stacksTo(1)));
+
+    public static final DeferredItem<Item> BULKY_WRENCH =
+            ITEMS.register("bulky_wrench", () -> new Item(new Item.Properties().stacksTo(1)));
 
     public static final DeferredItem<DuctBlockItem> DUCT =
             ITEMS.register(

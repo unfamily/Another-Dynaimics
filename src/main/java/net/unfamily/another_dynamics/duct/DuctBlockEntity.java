@@ -54,6 +54,9 @@ import net.unfamily.another_dynamics.client.transit.DuctGasTransitClientState;
 import net.unfamily.another_dynamics.client.transit.DuctTransitClientState;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.fluids.FluidStack;
+import net.neoforged.neoforge.fluids.FluidUtil;
+import net.neoforged.neoforge.fluids.capability.IFluidHandler;
+import net.neoforged.neoforge.fluids.capability.IFluidHandlerItem;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
@@ -232,23 +235,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 ductDefinition().map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
         for (Direction d : Direction.values()) {
             getFaceLanes(d).ensureTransportEnabledMask(kinds);
-        }
-    }
-
-    /**
-     * Universal duct only: when opening the energy/heat menu tab, default eligibility to insert-only if still at
-     * legacy BOTH (does not override user-configured retrieve/both).
-     */
-    private void applyUniversalEnergyHeatEligibilityDefault(Direction face, DuctTransportKind kind) {
-        if (orderedMenuTransportKinds().size() <= 1) {
-            return;
-        }
-        if (kind != DuctTransportKind.ENERGY && kind != DuctTransportKind.HEAT) {
-            return;
-        }
-        DuctFaceNode n = getFaceNode(face);
-        if (n.eligibilityMode == DuctFaceNode.EligibilityMode.BOTH) {
-            n.eligibilityMode = DuctFaceNode.EligibilityMode.INSERT_ONLY;
         }
     }
 
@@ -508,18 +494,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     out.add(s.copy());
                 }
             }
-            appendNonEmptyGuiSlots(lanes.item.guiSlots, out);
-            appendNonEmptyGuiSlots(lanes.fluid.guiSlots, out);
-            appendNonEmptyGuiSlots(lanes.gas.guiSlots, out);
-        }
-    }
-
-    private static void appendNonEmptyGuiSlots(ItemStackHandler gui, List<ItemStack> out) {
-        for (int i = 0; i < gui.getSlots(); i++) {
-            ItemStack s = gui.getStackInSlot(i);
-            if (!s.isEmpty()) {
-                out.add(s.copy());
-            }
         }
     }
 
@@ -598,7 +572,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         menuTransportKindIndex = idx;
         menuUiLayer = 1;
-        applyUniversalEnergyHeatEligibilityDefault(accessFace, kind);
         setChanged();
         refreshMenuData(accessFace);
         ModNetwork.sendFilterSyncToPlayer(player, this, accessFace);
@@ -1860,6 +1833,42 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return faceHasBufferedContent(face);
     }
 
+    /** Stalled fluid or gas on this face (not items / energy / heat). */
+    public boolean faceHasStalledFluidOrGas(Direction face) {
+        DuctFaceLanes lanes = getFaceLanes(face);
+        return hasStalledFluidInLanes(lanes) || hasStalledGasInLanes(lanes);
+    }
+
+    /** {@code true} when the held stack can receive stalled fluid (NeoForge) or gas (Mekanism). */
+    public boolean heldItemCanExtractStalledMedia(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        if (FluidUtil.getFluidHandler(stack).isPresent()) {
+            return true;
+        }
+        return MekanismChemicalCompat.isLoaded() && MekanismChemicalCompat.getChemicalHandlerItem(stack) != null;
+    }
+
+    /**
+     * Transfer stalled fluid/gas from a face into the held tank, bucket, or cell (partial fills supported).
+     *
+     * @return {@code true} if any amount was moved into the held container.
+     */
+    public boolean tryExtractStalledMediaToHand(
+            ServerLevel level, Direction face, Player player, InteractionHand hand) {
+        DuctFaceLanes lanes = getFaceLanes(face);
+        boolean fluid = tryClearFluidBuffer(level, lanes, player, hand, false);
+        boolean gas = tryClearGasBuffer(level, lanes, player, hand, false);
+        if (fluid || gas) {
+            requestModelDataUpdate();
+            syncStallVisualIfNeeded();
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            setChanged();
+        }
+        return fluid || gas;
+    }
+
     /** Any physical stall/buffer on this face (independent of redstone / transport toggles). */
     public boolean faceHasBufferedContent(Direction face) {
         DuctFaceLanes lanes = getFaceLanes(face);
@@ -1962,11 +1971,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
         // Energy/Heat: do not clear on shift-click (buffering is not user-clearable and never refunds to source).
 
-        // Fluids: try fill into held container; otherwise arm empty-hand destruction.
-        didAnything |= tryClearFluidBuffer(level, lanes, player, hand);
-
-        // Gas: same pattern (Mekanism optional).
-        didAnything |= tryClearGasBuffer(level, lanes, player, hand);
+        // Fluids / gas: fill held tank or bucket when possible; otherwise arm empty-hand destruction.
+        didAnything |= tryClearFluidBuffer(level, lanes, player, hand, true);
+        didAnything |= tryClearGasBuffer(level, lanes, player, hand, true);
 
         if (didAnything) {
             requestModelDataUpdate();
@@ -1976,78 +1983,82 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return didAnything;
     }
 
-    private boolean tryClearFluidBuffer(ServerLevel level, DuctFaceLanes lanes, Player player, InteractionHand hand) {
-        boolean hasAny = false;
+    private static boolean hasStalledFluidInLanes(DuctFaceLanes lanes) {
         for (FluidStack fs : lanes.stalledFluids) {
             if (fs != null && !fs.isEmpty() && fs.getAmount() > 0) {
-                hasAny = true;
-                break;
+                return true;
             }
         }
-        if (!hasAny) {
+        return false;
+    }
+
+    private static boolean hasStalledGasInLanes(DuctFaceLanes lanes) {
+        for (var g : lanes.stalledGas) {
+            if (g != null && !g.isEmpty() && (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @param allowEmptyHandDestroy when {@code true} (shift-click), empty-hand can arm then destroy buffered fluid.
+     */
+    private boolean tryClearFluidBuffer(
+            ServerLevel level, DuctFaceLanes lanes, Player player, InteractionHand hand, boolean allowEmptyHandDestroy) {
+        if (!hasStalledFluidInLanes(lanes)) {
             lanes.armedClearFluidUntilGameTime = 0L;
             return false;
         }
-        // Fluids: shift-click always destroys buffered content immediately (no container extraction).
-        for (int i = 0; i < lanes.stalledFluids.length; i++) {
-            lanes.stalledFluids[i] = FluidStack.EMPTY;
-        }
-        lanes.armedClearFluidUntilGameTime = 0L;
-        return true;
-    }
 
-    private boolean tryClearGasBuffer(ServerLevel level, DuctFaceLanes lanes, Player player, InteractionHand hand) {
-        boolean hasAny = false;
-        for (var g : lanes.stalledGas) {
-            if (g != null && !g.isEmpty() && (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount"))) {
-                hasAny = true;
-                break;
-            }
+        if (tryFillHeldFromStalledFluids(player, hand, lanes)) {
+            lanes.armedClearFluidUntilGameTime = 0L;
+            return true;
         }
-        if (!hasAny) {
-            lanes.armedClearGasUntilGameTime = 0L;
+
+        if (!allowEmptyHandDestroy) {
             return false;
         }
 
         ItemStack held = player.getItemInHand(hand);
-        Object itemHandler = MekanismChemicalCompat.getChemicalHandlerItem(held);
-        if (itemHandler != null) {
-            boolean filledSomething = false;
-            HolderLookup.Provider regs = level.registryAccess();
-            for (int i = 0; i < lanes.stalledGas.length; i++) {
-                CompoundTag tag = lanes.stalledGas[i];
-                if (tag == null || tag.isEmpty()) {
-                    continue;
-                }
-                Object payload = MekanismChemicalCompat.loadGasStackFromTag(tag, regs);
-                if (payload == null || MekanismChemicalCompat.isEmptyStack(payload) || MekanismChemicalCompat.getAmount(payload) <= 0) {
-                    lanes.stalledGas[i] = null;
-                    continue;
-                }
-                Object left = MekanismChemicalCompat.insertExecute(itemHandler, payload);
-                long leftAmt = MekanismChemicalCompat.isEmptyStack(left) ? 0L : MekanismChemicalCompat.getAmount(left);
-                long before = MekanismChemicalCompat.getAmount(payload);
-                long inserted = Math.max(0L, before - leftAmt);
-                if (inserted > 0) {
-                    filledSomething = true;
-                    if (leftAmt <= 0) {
-                        lanes.stalledGas[i] = null;
-                    } else {
-                        CompoundTag nt = new CompoundTag();
-                        MekanismChemicalCompat.saveGasStackToTag(left, nt);
-                        lanes.stalledGas[i] = nt.isEmpty() ? null : nt;
-                    }
-                }
+        long now = level.getGameTime();
+        if (held.isEmpty() && lanes.armedClearFluidUntilGameTime > 0 && now <= lanes.armedClearFluidUntilGameTime) {
+            for (int i = 0; i < lanes.stalledFluids.length; i++) {
+                lanes.stalledFluids[i] = FluidStack.EMPTY;
             }
-            if (filledSomething) {
-                lanes.armedClearGasUntilGameTime = 0L;
-            }
-            return filledSomething;
+            lanes.armedClearFluidUntilGameTime = 0L;
+            return true;
         }
 
+        lanes.armedClearFluidUntilGameTime = now + 100L;
+        player.displayClientMessage(
+                Component.literal("Buffered fluid: use a tank/bucket to extract, or empty-hand within 5s to destroy."),
+                true);
+        return true;
+    }
+
+    /**
+     * @param allowEmptyHandDestroy when {@code true} (shift-click), empty-hand can arm then destroy buffered gas.
+     */
+    private boolean tryClearGasBuffer(
+            ServerLevel level, DuctFaceLanes lanes, Player player, InteractionHand hand, boolean allowEmptyHandDestroy) {
+        if (!hasStalledGasInLanes(lanes)) {
+            lanes.armedClearGasUntilGameTime = 0L;
+            return false;
+        }
+
+        if (tryFillHeldFromStalledGas(level, player, hand, lanes)) {
+            lanes.armedClearGasUntilGameTime = 0L;
+            return true;
+        }
+
+        if (!allowEmptyHandDestroy) {
+            return false;
+        }
+
+        ItemStack held = player.getItemInHand(hand);
         long now = level.getGameTime();
-        boolean emptyHand = held.isEmpty();
-        if (emptyHand && lanes.armedClearGasUntilGameTime > 0 && now <= lanes.armedClearGasUntilGameTime) {
+        if (held.isEmpty() && lanes.armedClearGasUntilGameTime > 0 && now <= lanes.armedClearGasUntilGameTime) {
             for (int i = 0; i < lanes.stalledGas.length; i++) {
                 lanes.stalledGas[i] = null;
             }
@@ -2056,8 +2067,101 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
 
         lanes.armedClearGasUntilGameTime = now + 100L;
-        player.displayClientMessage(Component.literal("Buffered gas: use a tank/cell to extract, or empty-hand within 5s to destroy."), true);
+        player.displayClientMessage(
+                Component.literal("Buffered gas: use a tank/cell to extract, or empty-hand within 5s to destroy."),
+                true);
         return true;
+    }
+
+    /**
+     * Moves as much stalled fluid as fits into the held {@link IFluidHandlerItem} (buckets, tanks, etc.).
+     */
+    private static boolean tryFillHeldFromStalledFluids(Player player, InteractionHand hand, DuctFaceLanes lanes) {
+        boolean filledSomething = false;
+        for (int i = 0; i < lanes.stalledFluids.length; i++) {
+            while (true) {
+                FluidStack stalled = lanes.stalledFluids[i];
+                if (stalled == null || stalled.isEmpty() || stalled.getAmount() <= 0) {
+                    break;
+                }
+                ItemStack held = player.getItemInHand(hand);
+                if (held.isEmpty()) {
+                    break;
+                }
+                IFluidHandlerItem handler = FluidUtil.getFluidHandler(held).orElse(null);
+                if (handler == null) {
+                    break;
+                }
+                int filled = handler.fill(stalled.copy(), IFluidHandler.FluidAction.EXECUTE);
+                if (filled <= 0) {
+                    break;
+                }
+                stalled.shrink(filled);
+                if (stalled.isEmpty()) {
+                    lanes.stalledFluids[i] = FluidStack.EMPTY;
+                }
+                applyFilledContainerToPlayer(player, hand, held, handler.getContainer());
+                filledSomething = true;
+            }
+        }
+        return filledSomething;
+    }
+
+    /** Mekanism chemical tanks / cells on the held stack. */
+    private static boolean tryFillHeldFromStalledGas(
+            ServerLevel level, Player player, InteractionHand hand, DuctFaceLanes lanes) {
+        boolean filledSomething = false;
+        HolderLookup.Provider regs = level.registryAccess();
+        for (int i = 0; i < lanes.stalledGas.length; i++) {
+            CompoundTag tag = lanes.stalledGas[i];
+            if (tag == null || tag.isEmpty()) {
+                continue;
+            }
+            while (tag != null && !tag.isEmpty()) {
+                ItemStack held = player.getItemInHand(hand);
+                Object itemHandler = MekanismChemicalCompat.getChemicalHandlerItem(held);
+                if (itemHandler == null) {
+                    break;
+                }
+                Object payload = MekanismChemicalCompat.loadGasStackFromTag(tag, regs);
+                if (payload == null || MekanismChemicalCompat.isEmptyStack(payload) || MekanismChemicalCompat.getAmount(payload) <= 0) {
+                    lanes.stalledGas[i] = null;
+                    tag = null;
+                    break;
+                }
+                Object left = MekanismChemicalCompat.insertExecute(itemHandler, payload);
+                long leftAmt = MekanismChemicalCompat.isEmptyStack(left) ? 0L : MekanismChemicalCompat.getAmount(left);
+                long before = MekanismChemicalCompat.getAmount(payload);
+                long inserted = Math.max(0L, before - leftAmt);
+                if (inserted <= 0) {
+                    break;
+                }
+                filledSomething = true;
+                ItemStack after = MekanismChemicalCompat.getContainerItem(itemHandler, held);
+                applyFilledContainerToPlayer(player, hand, held, after);
+                if (leftAmt <= 0) {
+                    lanes.stalledGas[i] = null;
+                    tag = null;
+                } else {
+                    CompoundTag nt = new CompoundTag();
+                    MekanismChemicalCompat.saveGasStackToTag(left, nt);
+                    lanes.stalledGas[i] = nt.isEmpty() ? null : nt;
+                    tag = lanes.stalledGas[i];
+                }
+            }
+        }
+        return filledSomething;
+    }
+
+    private static void applyFilledContainerToPlayer(Player player, InteractionHand hand, ItemStack before, ItemStack after) {
+        if (before.getCount() == 1) {
+            player.setItemInHand(hand, after);
+            return;
+        }
+        before.shrink(1);
+        if (!player.getInventory().add(after)) {
+            player.drop(after, false);
+        }
     }
 
     /**
@@ -3212,6 +3316,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 ductDefinition().map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
         faceLanes.ensureTransportEnabledMask(kinds);
         menuData.set(DuctMenuSync.TRANSPORT_ENABLED_MASK, faceLanes.transportEnabledMask);
+    }
+
+    /** After face settings were restored outside normal menu buttons (e.g. settings copier paste). */
+    public void finishFaceSettingsRestore(Direction face) {
+        clampFaceFiltersToSpec();
+        clampAllTransportExtractBatchesForFace(face);
+        setChanged();
+        refreshMenuData(face);
+        syncVisualGeometryToClients();
     }
 
     public boolean passesItemFilters(Direction face, ItemStack stack, Level level) {

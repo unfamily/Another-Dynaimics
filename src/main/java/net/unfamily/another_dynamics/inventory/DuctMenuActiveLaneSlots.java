@@ -6,8 +6,8 @@ import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.module.DuctFaceModuleItemHandler;
 
 /**
- * Virtual menu handler: module indices map to {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#moduleSlots};
- * the last index is the per-lane copy slot ({@link net.unfamily.another_dynamics.duct.DuctFaceNode#guiSlots} slot 0).
+ * Virtual menu handler: module indices map to {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#moduleSlots}.
+ * The copy-settings slot is a separate {@link CopySettingsSlot} in {@link DuctNodeMenu}.
  */
 public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
     private final DuctBlockEntity duct;
@@ -15,7 +15,7 @@ public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
     private final int moduleSlotCount;
 
     public DuctMenuActiveLaneSlots(DuctBlockEntity duct, net.minecraft.core.Direction face, int moduleSlotCount) {
-        super(Math.max(0, moduleSlotCount) + 1);
+        super(Math.max(0, moduleSlotCount));
         this.duct = duct;
         this.face = face;
         this.moduleSlotCount = Math.max(0, moduleSlotCount);
@@ -29,27 +29,15 @@ public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
         return duct.getFaceLanes(face).moduleSlots;
     }
 
-    private ItemStackHandler copyHandler() {
-        // On the multi-transport hub, {@code menuActiveTransportKind} is the first tab until the player picks one; the
-        // copy slot must still target a stable lane so inserts/extracts and sync stay consistent with server logic.
-        if (duct.isMenuHubLayer()) {
-            return duct.getFaceNode(face).guiSlots;
-        }
-        return duct.activeMenuFaceNode(face).guiSlots;
-    }
-
     @Override
     public int getSlots() {
-        return moduleSlotCount + 1;
+        return moduleSlotCount;
     }
 
     @Override
     public ItemStack getStackInSlot(int slot) {
         if (slot >= 0 && slot < moduleSlotCount) {
             return moduleHandler().getStackInSlot(slot);
-        }
-        if (slot == moduleSlotCount) {
-            return copyHandler().getStackInSlot(0);
         }
         return ItemStack.EMPTY;
     }
@@ -58,8 +46,6 @@ public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
     public void setStackInSlot(int slot, ItemStack stack) {
         if (slot >= 0 && slot < moduleSlotCount) {
             moduleHandler().setStackInSlot(slot, stack);
-        } else if (slot == moduleSlotCount) {
-            copyHandler().setStackInSlot(0, stack);
         }
     }
 
@@ -67,9 +53,6 @@ public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
     public int getSlotLimit(int slot) {
         if (slot >= 0 && slot < moduleSlotCount) {
             return moduleHandler().getSlotLimit(slot);
-        }
-        if (slot == moduleSlotCount) {
-            return copyHandler().getSlotLimit(0);
         }
         return 0;
     }
@@ -82,10 +65,6 @@ public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
         if (slot >= 0 && slot < moduleSlotCount) {
             return moduleHandler().stackInsertLimit(slot, stack);
         }
-        if (slot == moduleSlotCount) {
-            // Copy slot is extract-only in the GUI; do not suggest large merge limits for inserts.
-            return 0;
-        }
         return 0;
     }
 
@@ -93,10 +72,6 @@ public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
     public boolean isItemValid(int slot, ItemStack stack) {
         if (slot >= 0 && slot < moduleSlotCount) {
             return moduleHandler().isItemValid(slot, stack);
-        }
-        if (slot == moduleSlotCount) {
-            // Copy/reference slot: no player insertion (extraction still works).
-            return false;
         }
         return false;
     }
@@ -106,9 +81,6 @@ public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
         if (slot >= 0 && slot < moduleSlotCount) {
             return moduleHandler().insertItem(slot, stack, simulate);
         }
-        if (slot == moduleSlotCount) {
-            return stack;
-        }
         return stack;
     }
 
@@ -116,9 +88,6 @@ public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
     public ItemStack extractItem(int slot, int amount, boolean simulate) {
         if (slot >= 0 && slot < moduleSlotCount) {
             return moduleHandler().extractItem(slot, amount, simulate);
-        }
-        if (slot == moduleSlotCount) {
-            return copyHandler().extractItem(0, amount, simulate);
         }
         return ItemStack.EMPTY;
     }

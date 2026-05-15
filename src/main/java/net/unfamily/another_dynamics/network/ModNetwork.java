@@ -208,6 +208,10 @@ public final class ModNetwork {
                     });
         });
 
+        reg.playToClient(DuctGuiFeedbackPayload.TYPE, DuctGuiFeedbackPayload.STREAM_CODEC, (payload, ctx) -> {
+            ctx.enqueueWork(() -> DuctNodeScreen.showSettingsCopierFeedback(payload.messageId()));
+        });
+
     }
 
     /**
@@ -274,6 +278,10 @@ public final class ModNetwork {
     public static void sendDuctMenuButton(DuctNodeMenu menu, int buttonId) {
         PacketDistributor.sendToServer(
                 new DuctMenuButtonPayload(menu.getDuctBlockPos(), menu.getAccessFace().ordinal(), buttonId));
+    }
+
+    public static void sendDuctGuiFeedback(ServerPlayer player, int messageId) {
+        PacketDistributor.sendToPlayer(player, new DuctGuiFeedbackPayload(messageId));
     }
 
     public static void sendEnergyRayPath(

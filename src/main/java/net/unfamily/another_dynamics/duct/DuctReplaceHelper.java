@@ -35,6 +35,40 @@ import java.util.Optional;
 public final class DuctReplaceHelper {
     private DuctReplaceHelper() {}
 
+    public static boolean isDuctReplacementCandidate(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        String id = stack.get(ModDataComponents.DUCT_LOGICAL_ID.get());
+        if (id != null && !id.isEmpty()) {
+            return true;
+        }
+        return stack.getItem() instanceof DuctBlockItem;
+    }
+
+    @org.jetbrains.annotations.Nullable
+    public static String logicalIdFromReplacementItem(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return null;
+        }
+        String id = stack.get(ModDataComponents.DUCT_LOGICAL_ID.get());
+        if (id != null && !id.isEmpty()) {
+            return DuctIds.normalize(id);
+        }
+        if (stack.getItem() instanceof DuctBlockItem ductItem) {
+            id = ductItem.getDefaultInstance().get(ModDataComponents.DUCT_LOGICAL_ID.get());
+            if (id != null && !id.isEmpty()) {
+                return DuctIds.normalize(id);
+            }
+        }
+        return null;
+    }
+
+    public static boolean isSameDuctType(DuctBlockEntity duct, ItemStack stack) {
+        String incoming = logicalIdFromReplacementItem(stack);
+        return incoming != null && duct.getLogicalDuctId().equals(incoming);
+    }
+
     /**
      * Entry point called from {@link DuctBlock#useItemOn} on the server side only.
      *
@@ -62,9 +96,9 @@ public final class DuctReplaceHelper {
             newLogicalId = DuctIds.DEFAULT_LOGICAL_ID;
         }
 
-        // Replacing with the same type is a no-op; treat as success so vanilla placement is still blocked.
+        // Same duct type: let vanilla place against this block (shift-click placement).
         if (currentLogicalId.equals(newLogicalId)) {
-            return ItemInteractionResult.SUCCESS;
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
 
         Optional<DuctDefinition> newDefOpt = DuctDefinitionRegistry.getByLogicalId(newLogicalId);

@@ -169,6 +169,53 @@ public final class DuctFaceNode {
         ticksUntilAction = 0;
     }
 
+    /** Settings copier: lane configuration without {@code NodeGui} or per-tick cursors. */
+    public void saveSettings(HolderLookup.Provider registries, CompoundTag tag) {
+        tag.putByte("RoutingMode", (byte) routingMode.ordinal());
+        tag.putByte("RoutingModeEx", (byte) routingModeExtractor.ordinal());
+        tag.putByte("RoutingModeRe", (byte) routingModeRetriever.ordinal());
+        tag.putInt("InsertionPriority", insertionPriority);
+        tag.putInt("ExtractBatch", extractBatch);
+        tag.putInt("ExtractBatchCapMemo", lastExtractBatchSettingCapApplied);
+        tag.putByte("Channel", (byte) channelLetter);
+        tag.putBoolean("SelfFeed", selfFeed);
+        tag.putByte("EligMode", (byte) eligibilityMode.ordinal());
+        saveFilters(tag);
+    }
+
+    /** Restores {@link #saveSettings} data; resets routing cursors and does not touch {@link #guiSlots}. */
+    public void loadSettings(HolderLookup.Provider registries, CompoundTag tag) {
+        routingMode = RoutingMode.fromOrdinal(tag.getByte("RoutingMode"));
+        routingModeExtractor =
+                tag.contains("RoutingModeEx")
+                        ? RoutingMode.fromOrdinal(tag.getByte("RoutingModeEx"))
+                        : routingMode;
+        routingModeRetriever =
+                tag.contains("RoutingModeRe")
+                        ? RoutingMode.fromOrdinal(tag.getByte("RoutingModeRe"))
+                        : routingMode;
+        insertionPriority = 0;
+        extractBatch = 0;
+        if (tag.contains("InsertionPriority")) {
+            insertionPriority = tag.getInt("InsertionPriority");
+        } else if (tag.contains("InsPriority")) {
+            insertionPriority = tag.getInt("InsPriority");
+        }
+        if (tag.contains("ExtractBatch")) {
+            extractBatch = tag.getInt("ExtractBatch");
+        }
+        lastExtractBatchSettingCapApplied =
+                tag.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? tag.getInt("ExtractBatchCapMemo") : 0;
+        channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
+        selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
+        eligibilityMode =
+                tag.contains("EligMode") ? EligibilityMode.fromOrdinal(tag.getByte("EligMode")) : EligibilityMode.BOTH;
+        roundRobinCursor = 0;
+        retrieverPullSlotCursor = 0;
+        ticksUntilAction = 0;
+        loadFilters(tag);
+    }
+
     public void save(HolderLookup.Provider registries, CompoundTag tag) {
         tag.putByte("RoutingMode", (byte) routingMode.ordinal());
         tag.putByte("RoutingModeEx", (byte) routingModeExtractor.ordinal());

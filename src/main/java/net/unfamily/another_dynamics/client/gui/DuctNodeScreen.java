@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -40,6 +41,8 @@ import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.FluidUtil;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.unfamily.another_dynamics.network.DuctGuiFeedbackPayload;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
@@ -339,6 +342,13 @@ public final class DuctNodeScreen
     private int editGhostSlotScreenY;
     private int lastMouseX;
     private int lastMouseY;
+
+    private static final long TRANSIENT_FEEDBACK_MS = 2000L;
+
+    @Nullable
+    private Component transientFeedback;
+    private long transientFeedbackHideAt;
+    private int transientFeedbackColor = 0xFFFFFF;
 
     /**
      * Ghost ingredient consumer for JEI drag-and-drop into the filter calibration slot.
@@ -4694,7 +4704,12 @@ public final class DuctNodeScreen
         if (subView == SubView.HOW_TO_USE) {
             return;
         }
-        if (slot.index >= 0 && slot.index < menu.machineSlotCount()) {
+        if (slot.index == menu.copySettingsSlotIndex()) {
+            ItemStack icon = SettingsCopierItem.copySlotDisplayStack();
+            graphics.renderItem(icon, slot.x, slot.y);
+            return;
+        }
+        if (slot.index >= 0 && slot.index < menu.copySettingsSlotIndex()) {
             ItemStack stack = slot.getItem();
             // AbstractContainerScreen has already translated the pose by (leftPos, topPos); slot x/y are GUI-local
             // (same space as {@link #renderLabels}). Do not add leftPos/topPos again or the stack shifts by ~2× panel.
@@ -4707,6 +4722,47 @@ public final class DuctNodeScreen
             return;
         }
         super.renderSlot(graphics, slot);
+    }
+
+    public static void showSettingsCopierFeedback(int messageId) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof DuctNodeScreen screen) {
+            screen.applyTransientFeedback(messageId);
+        }
+    }
+
+    private void applyTransientFeedback(int messageId) {
+        transientFeedback =
+                switch (messageId) {
+                    case DuctGuiFeedbackPayload.COPIED ->
+                            Component.translatable("message.another_dynamics.settings_copier.copied")
+                                    .withStyle(ChatFormatting.GREEN);
+                    case DuctGuiFeedbackPayload.PASTED ->
+                            Component.translatable("message.another_dynamics.settings_copier.pasted")
+                                    .withStyle(ChatFormatting.GREEN);
+                    case DuctGuiFeedbackPayload.PASTE_FAILED ->
+                            Component.translatable("message.another_dynamics.settings_copier.paste_failed")
+                                    .withStyle(ChatFormatting.RED);
+                    default -> null;
+                };
+        if (transientFeedback != null) {
+            transientFeedbackColor =
+                    messageId == DuctGuiFeedbackPayload.PASTE_FAILED ? 0xFF5555 : 0x55FF55;
+            transientFeedbackHideAt = Util.getMillis() + TRANSIENT_FEEDBACK_MS;
+        }
+    }
+
+    private void renderTransientFeedback(GuiGraphics graphics) {
+        if (transientFeedback == null) {
+            return;
+        }
+        if (Util.getMillis() >= transientFeedbackHideAt) {
+            transientFeedback = null;
+            return;
+        }
+        int cx = leftPos + imageWidth / 2;
+        int cy = topPos + DuctNodeMenu.PLAYER_SLOTS_Y - 12;
+        graphics.drawCenteredString(this.font, transientFeedback, cx, cy, transientFeedbackColor);
     }
 
     private static void renderScaledItem(
@@ -5769,6 +5825,17 @@ public final class DuctNodeScreen
 
         super.render(graphics, mouseX, mouseY, partialTick);
         this.renderTooltip(graphics, mouseX, mouseY);
+        renderTransientFeedback(graphics);
+
+        if (hoveredSlot != null && hoveredSlot.index == menu.copySettingsSlotIndex()) {
+            graphics.renderComponentTooltip(
+                    this.font,
+                    List.of(
+                            Component.translatable("gui.another_dynamics.duct_node.copy_slot.tooltip.line1"),
+                            Component.translatable("gui.another_dynamics.duct_node.copy_slot.tooltip.line2")),
+                    mouseX,
+                    mouseY);
+        }
 
         if (
             mouseX >= redstoneButtonScreenX &&

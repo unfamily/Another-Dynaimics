@@ -50,6 +50,8 @@ public final class ModCreativeTabs {
                     output.accept(ModItems.NETHERITE_NUGGET.get().getDefaultInstance());
                     output.accept(ModItems.RESONANTING_CONDUCTOR.get().getDefaultInstance());
                     output.accept(ModItems.ENDER_ACCELERANT.get().getDefaultInstance());
+                    output.accept(ModItems.SETTINGS_COPIER.get().getDefaultInstance());
+                    output.accept(ModItems.BULKY_WRENCH.get().getDefaultInstance());
                 })
                 .build();
     }

@@ -3,6 +3,7 @@ package net.unfamily.another_dynamics.registry;
 import com.mojang.serialization.Codec;
 
 import net.minecraft.core.component.DataComponentType;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.ResourceLocation;
@@ -34,6 +35,16 @@ public final class ModDataComponents {
                             DataComponentType.<ResourceLocation>builder()
                                     .persistent(ResourceLocation.CODEC)
                                     .networkSynchronized(ResourceLocation.STREAM_CODEC)
+                                    .build());
+
+    /** Serialized {@link net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot} on {@link net.unfamily.another_dynamics.item.SettingsCopierItem}. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<CompoundTag>> DUCT_FACE_SETTINGS =
+            TYPES.register(
+                    "duct_face_settings",
+                    () ->
+                            DataComponentType.<CompoundTag>builder()
+                                    .persistent(CompoundTag.CODEC)
+                                    .networkSynchronized(net.minecraft.network.codec.ByteBufCodecs.COMPOUND_TAG)
                                     .build());
 
     private ModDataComponents() {}

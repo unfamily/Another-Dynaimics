@@ -96,6 +96,21 @@ public final class MekanismChemicalCompat {
         }
     }
 
+    /** Stack to put back in the player's hand after a chemical fill (tanks, cells, etc.). */
+    public static ItemStack getContainerItem(Object handler, ItemStack fallback) {
+        if (handler == null || fallback == null) {
+            return fallback;
+        }
+        try {
+            Object container = handler.getClass().getMethod("getContainer").invoke(handler);
+            if (container instanceof ItemStack stack && !stack.isEmpty()) {
+                return stack;
+            }
+        } catch (Throwable ignored) {
+        }
+        return fallback;
+    }
+
     /**
      * Non-destructive sample of the first non-empty chemical stored in an item (tanks, cells, etc.).
      * Returns a Mek {@code ChemicalStack} copy with amount 1, or {@link #emptyStack()}.

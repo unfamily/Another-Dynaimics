@@ -141,6 +141,9 @@ public final class DuctEnergyServerTick {
     }
 
     private static void pullExternalEnergyIntoBuffer(ServerLevel level, DuctBlockEntity be, Direction face, DuctEnergyTransportSpec spec) {
+        if (!be.getFaceNode(face).eligibilityMode.isRetrievable()) {
+            return;
+        }
         IEnergyStorage ext = getExternalEnergyHandlerOnFace(level, be.getBlockPos(), face);
         if (ext == null || !ext.canExtract()) {
             return;
@@ -232,10 +235,7 @@ public final class DuctEnergyServerTick {
             return;
         }
 
-        ArrayList<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.ENERGY));
-        if (ducts.size() > 1) {
-            ducts.remove(srcPos);
-        }
+        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.ENERGY);
         if (ducts.isEmpty()) {
             return;
         }
@@ -250,8 +250,14 @@ public final class DuctEnergyServerTick {
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
                             : hopDistance(level, srcPos, destPos);
+            if (dist.isEmpty()) {
+                continue;
+            }
             for (Direction df : Direction.values()) {
                 if ((dsm & (1 << df.ordinal())) == 0) {
+                    continue;
+                }
+                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, sourceFace, destPos, df, false)) {
                     continue;
                 }
                 DuctFaceLanes destLanes = destBe.getFaceLanes(df);
@@ -264,6 +270,9 @@ public final class DuctEnergyServerTick {
                         && dm != NodeMode.EXTRACTION_FILTERING
                         && dm != NodeMode.RETRIEVING
                         && dm != NodeMode.RETRIEVING_EXTRACTION) {
+                    continue;
+                }
+                if (!destBe.getFaceNode(df).eligibilityMode.isInsertable()) {
                     continue;
                 }
 
@@ -387,6 +396,9 @@ public final class DuctEnergyServerTick {
             int sm = donorBe.getStorageMask();
             for (Direction donorFace : Direction.values()) {
                 if ((sm & (1 << donorFace.ordinal())) == 0) {
+                    continue;
+                }
+                if (DuctSameBlockRouting.skipSameBlockDonorFace(retrieverPos, retrieverFace, donorPos, donorFace)) {
                     continue;
                 }
                 DuctFaceLanes donorLanes = donorBe.getFaceLanes(donorFace);

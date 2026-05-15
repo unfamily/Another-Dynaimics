@@ -83,10 +83,8 @@ public final class DuctHeatServerTick {
         if (local == null) {
             return;
         }
-        ArrayList<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, be.getBlockPos(), DuctNetworkType.HEAT));
-        if (ducts.size() > 1) {
-            ducts.remove(be.getBlockPos());
-        }
+        BlockPos srcPos = be.getBlockPos();
+        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.HEAT);
         for (BlockPos destPos : ducts) {
             if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
                 continue;
@@ -94,6 +92,9 @@ public final class DuctHeatServerTick {
             int dsm = destBe.getStorageMask();
             for (Direction df : Direction.values()) {
                 if ((dsm & (1 << df.ordinal())) == 0) {
+                    continue;
+                }
+                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, face, destPos, df, false)) {
                     continue;
                 }
                 if (!destBe.isTransportKindEnabled(df, DuctTransportKind.HEAT)) {
@@ -105,6 +106,9 @@ public final class DuctHeatServerTick {
                 }
                 NodeMode dm = destLanes.nodeMode;
                 if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION) {
+                    continue;
+                }
+                if (!destBe.getFaceNode(df).eligibilityMode.isInsertable()) {
                     continue;
                 }
                 Object dest = getHeatOnFace(level, destPos, df);
@@ -144,6 +148,9 @@ public final class DuctHeatServerTick {
             DuctFaceNode node) {
         DuctFaceLanes sourceLanes = sourceBe.getFaceLanes(sourceFace);
         BlockPos srcPos = sourceBe.getBlockPos();
+        if (!node.eligibilityMode.isRetrievable()) {
+            return;
+        }
         Object src = getHeatOnFace(level, srcPos, sourceFace);
         if (src == null) {
             return;
@@ -153,10 +160,7 @@ public final class DuctHeatServerTick {
             return;
         }
 
-        ArrayList<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.HEAT));
-        if (ducts.size() > 1) {
-            ducts.remove(srcPos);
-        }
+        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.HEAT);
         if (ducts.isEmpty()) {
             return;
         }
@@ -171,8 +175,14 @@ public final class DuctHeatServerTick {
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
                             : hopDistance(level, srcPos, destPos);
+            if (dist.isEmpty()) {
+                continue;
+            }
             for (Direction df : Direction.values()) {
                 if ((dsm & (1 << df.ordinal())) == 0) {
+                    continue;
+                }
+                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, sourceFace, destPos, df, false)) {
                     continue;
                 }
                 DuctFaceLanes destLanes = destBe.getFaceLanes(df);
@@ -185,6 +195,9 @@ public final class DuctHeatServerTick {
                         && dm != NodeMode.EXTRACTION_FILTERING
                         && dm != NodeMode.RETRIEVING
                         && dm != NodeMode.RETRIEVING_EXTRACTION) {
+                    continue;
+                }
+                if (!destBe.getFaceNode(df).eligibilityMode.isInsertable()) {
                     continue;
                 }
                 Object dest = getHeatOnFace(level, destPos, df);
@@ -268,6 +281,9 @@ public final class DuctHeatServerTick {
             int sm = donorBe.getStorageMask();
             for (Direction donorFace : Direction.values()) {
                 if ((sm & (1 << donorFace.ordinal())) == 0) {
+                    continue;
+                }
+                if (DuctSameBlockRouting.skipSameBlockDonorFace(retrieverPos, retrieverFace, donorPos, donorFace)) {
                     continue;
                 }
                 DuctFaceLanes donorLanes = donorBe.getFaceLanes(donorFace);
