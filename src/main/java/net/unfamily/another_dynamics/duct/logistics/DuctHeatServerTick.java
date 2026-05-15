@@ -10,6 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
+import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
@@ -26,8 +27,9 @@ import net.unfamily.another_dynamics.network.ModNetwork;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Mekanism heat logistics: runs every server tick (instant transport). Throughput is capped only at the
- * extracting/retrieving face; intermediate ducts do not bottleneck. Increment {@code rate} modifiers do not apply.
+ * Mekanism heat logistics: instant transport between actions. Per-face action interval is set in common config
+ * ({@code heatActionRateTicks}). Throughput is capped at extracting/retrieving faces; increment {@code rate}
+ * modules do not apply.
  */
 public final class DuctHeatServerTick {
     private static final double HEAT_EPS = 1e-4;
@@ -54,11 +56,18 @@ public final class DuctHeatServerTick {
                 continue;
             }
             DuctFaceLanes lanes = be.getFaceLanes(dir);
+            Config.applyLogisticsRateStamp(lanes);
             if (!DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), lanes.redstoneMode)) {
                 continue;
             }
             DuctFaceNode node = be.getFaceNode(dir);
-            lanes.heatTicksUntilAction = 0;
+            if (lanes.heatTicksUntilAction > 0) {
+                lanes.heatTicksUntilAction--;
+                be.setChanged();
+                continue;
+            }
+            int rate = DuctModuleEffects.effectiveHeatActionRateTicks(be, dir, spec);
+            lanes.heatTicksUntilAction = rate - 1;
             if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
                 RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
                 tryExtractPush(level, be, dir, spec, rm, node);

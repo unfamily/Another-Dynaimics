@@ -12,6 +12,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctEnergyTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
@@ -27,7 +28,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Energy (Forge Energy / RF) logistics: instant transfer only (no in-duct transit shipments).
  *
- * <p>Per-face action rate uses datapack {@code rate.default} (10 ticks by default). Per action,
+ * <p>Per-face action rate uses common config ({@code energyActionRateTicks}, default 10). Per action,
  * the amount moved is bounded by module-scaled {@code extract} and adjacent {@link IEnergyStorage} acceptance.
  * Network topology queries are cached per level per tick ({@link DuctEnergyNetworkCache}).</p>
  */
@@ -55,6 +56,7 @@ public final class DuctEnergyServerTick {
                 continue;
             }
             DuctFaceLanes drainLanes = be.getFaceLanes(dir);
+            Config.applyLogisticsRateStamp(drainLanes);
             if (drainLanes.energyBufferFe > 0) {
                 boolean redstoneActive =
                         DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), drainLanes.redstoneMode);
@@ -73,6 +75,7 @@ public final class DuctEnergyServerTick {
                 continue;
             }
             DuctFaceLanes lanes = be.getFaceLanes(dir);
+            Config.applyLogisticsRateStamp(lanes);
             if (!DuctRedstoneLogic.isFaceTransportActive(level, be.getBlockPos(), lanes.redstoneMode)) {
                 continue;
             }
@@ -181,7 +184,11 @@ public final class DuctEnergyServerTick {
         if (pull <= 0) {
             return;
         }
-        int extracted = ext.extractEnergy(pull, false);
+        int canPull = simulateMaxExtractable(ext, pull);
+        if (canPull <= 0) {
+            return;
+        }
+        int extracted = ext.extractEnergy(Math.min(canPull, pull), false);
         if (extracted <= 0) {
             return;
         }
@@ -246,7 +253,7 @@ public final class DuctEnergyServerTick {
         if (want <= 0) {
             return;
         }
-        int availableSim = src.extractEnergy(want, true);
+        int availableSim = simulateMaxExtractable(src, want);
         if (availableSim <= 0) {
             return;
         }
@@ -295,12 +302,7 @@ public final class DuctEnergyServerTick {
                     continue;
                 }
 
-                IEnergyStorage dest = getEnergyDestOnFace(level, destBe, df);
-                if (dest == null) {
-                    continue;
-                }
-
-                int recvSim = simulateMaxReceivable(dest, Math.min(availableSim, want));
+                int recvSim = maxReceivableOnFace(level, destBe, df, Math.min(availableSim, want));
                 if (recvSim <= 0) {
                     continue;
                 }
@@ -335,10 +337,12 @@ public final class DuctEnergyServerTick {
             if (cap <= 0) {
                 return;
             }
-            IEnergyStorage dest =
-                    level.getBlockEntity(pick.ductPos()) instanceof DuctBlockEntity destBe2
-                            ? getEnergyDestOnFace(level, destBe2, pick.face())
-                            : null;
+            DuctBlockEntity destBe2 =
+                    level.getBlockEntity(pick.ductPos()) instanceof DuctBlockEntity be2 ? be2 : null;
+            if (destBe2 == null) {
+                return;
+            }
+            IEnergyStorage dest = resolveEnergyInsertTarget(level, destBe2, pick.face(), cap);
             if (dest == null) {
                 return;
             }
@@ -398,7 +402,7 @@ public final class DuctEnergyServerTick {
         long wantL = Math.min(DuctModuleEffects.effectiveEnergyExtractPerAction(retrieverBe, retrieverFace, spec), (long) Integer.MAX_VALUE);
         int want = (int) Math.max(0L, wantL);
         // If we have no buffer space and the destination can't accept anything, nothing to do.
-        int needSim = simulateMaxReceivable(dest, want);
+        int needSim = maxReceivableOnFace(level, retrieverBe, retrieverFace, want);
         if (free <= 0 && needSim <= 0) {
             return;
         }
@@ -481,7 +485,7 @@ public final class DuctEnergyServerTick {
         if (pullBudget <= 0) {
             return;
         }
-        int availSim = src.extractEnergy(pullBudget, true);
+        int availSim = simulateMaxExtractable(src, pullBudget);
         if (availSim <= 0) {
             return;
         }
@@ -560,7 +564,7 @@ public final class DuctEnergyServerTick {
         if (bufSrc == null) {
             return;
         }
-        int avail = bufSrc.extractEnergy(want, true);
+        int avail = simulateMaxExtractable(bufSrc, want);
         if (avail <= 0) {
             return;
         }
@@ -573,6 +577,53 @@ public final class DuctEnergyServerTick {
             return;
         }
         dest.receiveEnergy(extracted, false);
+    }
+
+    /**
+     * Max FE this duct face can accept this tick: external handler and face buffer, whichever is higher.
+     */
+    private static int maxReceivableOnFace(ServerLevel level, DuctBlockEntity be, Direction face, int maxWant) {
+        int best = 0;
+        IEnergyStorage ext = getExternalEnergyHandlerOnFace(level, be.getBlockPos(), face);
+        if (ext != null && ext.canReceive()) {
+            best = Math.max(best, simulateMaxReceivable(ext, maxWant));
+        }
+        IEnergyStorage buf = be.energyBufferCapability(face);
+        if (buf != null && buf.canReceive()) {
+            best = Math.max(best, simulateMaxReceivable(buf, maxWant));
+        }
+        return best;
+    }
+
+    /**
+     * Pick an insert target on a duct face: prefer external handler when it can accept, else face buffer.
+     */
+    private static @Nullable IEnergyStorage resolveEnergyInsertTarget(
+            ServerLevel level, DuctBlockEntity be, Direction face, int maxWant) {
+        IEnergyStorage ext = getExternalEnergyHandlerOnFace(level, be.getBlockPos(), face);
+        if (ext != null && ext.canReceive() && simulateMaxReceivable(ext, maxWant) > 0) {
+            return ext;
+        }
+        IEnergyStorage buf = be.energyBufferCapability(face);
+        if (buf != null && buf.canReceive() && simulateMaxReceivable(buf, maxWant) > 0) {
+            return buf;
+        }
+        return null;
+    }
+
+    /**
+     * Some {@link IEnergyStorage} handlers return 0 from simulate when they cannot extract the full requested packet.
+     * Probe with 1 FE so partial pulls still work (e.g. generators with per-tick output caps).
+     */
+    private static int simulateMaxExtractable(@Nullable IEnergyStorage src, int maxWant) {
+        if (src == null || maxWant <= 0 || !src.canExtract()) {
+            return 0;
+        }
+        int got = src.extractEnergy(maxWant, true);
+        if (got > 0) {
+            return got;
+        }
+        return src.extractEnergy(1, true);
     }
 
     /**
