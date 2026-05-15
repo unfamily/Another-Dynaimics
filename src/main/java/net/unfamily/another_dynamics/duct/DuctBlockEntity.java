@@ -347,11 +347,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return faceEnergyBufferCaps[side.ordinal()];
     }
 
+    /** Internal FE buffer cap per face: datapack {@code extract} only (modules raise per-action ceiling, not buffer size). */
     private int energyBufferCapacityFe(Direction face) {
         DuctEnergyTransportSpec spec = energyTransportSpec();
-        long cap = DuctModuleEffects.effectiveEnergyExtractPerAction(this, face, spec);
-        cap = Math.max(1L, Math.min(cap, (long) Integer.MAX_VALUE));
-        return (int) cap;
+        long cap = spec.clampedExtract();
+        return (int) Math.max(1L, Math.min(cap, (long) Integer.MAX_VALUE));
     }
 
     private final class FaceEnergyBuffer implements IEnergyStorage {

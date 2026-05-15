@@ -396,8 +396,8 @@ public final class DuctModuleEffects {
     }
 
     /**
-     * Max FE per energy action: datapack {@code extract} scaled by {@code affects[].for=energy.extract} modules on any
-     * face of this duct block. Datapack {@code transfer} is not used as a gameplay cap.
+     * Per-action FE attempt ceiling: datapack {@code extract} scaled by {@code affects[].for=energy.extract} modules on
+     * any face of this duct block. Logistics may insert less when the destination accepts a smaller amount.
      */
     public static int effectiveEnergyExtractPerAction(DuctBlockEntity duct, Direction face, DuctEnergyTransportSpec spec) {
         int baseExtract = (int) Math.min(spec.clampedExtract(), Integer.MAX_VALUE);
