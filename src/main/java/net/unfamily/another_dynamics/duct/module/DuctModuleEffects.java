@@ -222,7 +222,8 @@ public final class DuctModuleEffects {
         }
         long base = anySet ? (long) bestSet : (long) batchDefault;
         long afterMult = Math.round((base + (long) addSum) * mult);
-        long bonus = afterMult - base;
+        // Bonus is gain over datapack default, not over module set base (set replaces working base for the formula).
+        long bonus = afterMult - (long) batchDefault;
         if (bonus <= 0L) {
             return 0;
         }
