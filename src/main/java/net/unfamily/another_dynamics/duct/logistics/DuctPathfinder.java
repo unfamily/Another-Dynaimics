@@ -403,7 +403,19 @@ public final class DuctPathfinder {
     }
 
     public static boolean isEnergyPipeEdge(Level level, BlockPos from, BlockPos to) {
-        return isPipeNeighbor(level, from, to, DuctNetworkType.ENERGY);
+        return isPipeEdge(level, from, to, DuctNetworkType.ENERGY);
+    }
+
+    public static boolean isPipeEdge(Level level, BlockPos from, BlockPos to, DuctNetworkType network) {
+        return isPipeNeighbor(level, from, to, network);
+    }
+
+    public static boolean isRadioactiveGasPipeEdge(Level level, BlockPos from, BlockPos to) {
+        return isPipeNeighbor(level, from, to, DuctNetworkType.GAS) && gasHopAllowsRadioactive(level, from, to);
+    }
+
+    public static boolean gasDuctAllowsRadioactiveAt(Level level, BlockPos pos) {
+        return gasDuctPositionAllowsRadioactive(level, pos);
     }
 
     private static boolean isPipeNeighbor(Level level, BlockPos from, BlockPos to, DuctNetworkType network) {

@@ -92,7 +92,7 @@ public final class DuctHeatServerTick {
             return;
         }
         BlockPos srcPos = be.getBlockPos();
-        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.HEAT);
+        java.util.Set<BlockPos> ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.HEAT);
         for (BlockPos destPos : ducts) {
             if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
                 continue;
@@ -168,7 +168,7 @@ public final class DuctHeatServerTick {
             return;
         }
 
-        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.HEAT);
+        java.util.Set<BlockPos> ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.HEAT);
         if (ducts.isEmpty()) {
             return;
         }
@@ -277,7 +277,7 @@ public final class DuctHeatServerTick {
         }
         double tDest0 = MekanismHeatCompat.getTotalTemperature(dest);
 
-        List<BlockPos> ducts = new ArrayList<>(DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.HEAT));
+        List<BlockPos> ducts = new ArrayList<>(DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.HEAT));
         if (ducts.isEmpty()) {
             return;
         }
@@ -380,7 +380,7 @@ public final class DuctHeatServerTick {
         Optional<List<BlockPos>> pathOpt =
                 fromDuct.equals(toDuct)
                         ? Optional.of(List.of(fromDuct))
-                        : DuctPathfinder.shortestPath(level, fromDuct, toDuct, 1L, DuctNetworkType.HEAT);
+                        : DuctNetworkCache.shortestPath(level, fromDuct, toDuct, DuctNetworkType.HEAT);
         if (pathOpt.isEmpty()) {
             return;
         }
@@ -405,14 +405,7 @@ public final class DuctHeatServerTick {
     }
 
     private static OptionalLong hopDistance(ServerLevel level, BlockPos from, BlockPos to) {
-        if (from.equals(to)) {
-            return OptionalLong.of(0L);
-        }
-        Optional<List<BlockPos>> path = DuctPathfinder.shortestPath(level, from, to, 1L, DuctNetworkType.HEAT);
-        if (path.isEmpty()) {
-            return OptionalLong.empty();
-        }
-        return OptionalLong.of(Math.max(0L, path.get().size()));
+        return DuctNetworkCache.hopDistance(level, from, to, DuctNetworkType.HEAT);
     }
 
     private static @Nullable HeatDestCandidate pickWithinTier(

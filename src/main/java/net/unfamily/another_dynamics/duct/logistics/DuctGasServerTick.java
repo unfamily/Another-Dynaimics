@@ -128,8 +128,8 @@ public final class DuctGasServerTick {
         List<BlockPos> ducts =
                 new ArrayList<>(
                         radioactivePayload
-                                ? DuctPathfinder.connectedRadioactiveGasDucts(level, srcPos)
-                                : DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.GAS));
+                                ? DuctNetworkCache.connectedRadioactiveGasDucts(level, srcPos)
+                                : DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.GAS));
         boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         if (ducts.isEmpty()) {
             return;
@@ -148,8 +148,13 @@ public final class DuctGasServerTick {
             OptionalLong dist =
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
-                            : DuctPathfinder.distance(
-                                    level, srcPos, destPos, spec, DuctNetworkType.GAS, radioactivePayload);
+                            : DuctNetworkCache.routingTravelTicks(
+                                    level,
+                                    srcPos,
+                                    destPos,
+                                    spec.edgeTravelTicks(),
+                                    DuctNetworkType.GAS,
+                                    radioactivePayload);
             if (dist.isEmpty()) {
                 continue;
             }
@@ -268,8 +273,8 @@ public final class DuctGasServerTick {
             rawPath = List.of(srcPos);
         } else {
             Optional<List<BlockPos>> pathOpt =
-                    DuctPathfinder.shortestPath(
-                            level, srcPos, pick.ductPos(), spec, DuctNetworkType.GAS, radioactivePayload);
+                    DuctNetworkCache.shortestPath(
+                            level, srcPos, pick.ductPos(), DuctNetworkType.GAS, radioactivePayload);
             if (pathOpt.isPresent()) {
                 rawPath = pathOpt.get();
             } else if (radioactivePayload) {
@@ -299,7 +304,7 @@ public final class DuctGasServerTick {
         RoutingMode rm = retrieverLanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
         boolean roundRobinRetriever = rm == RoutingMode.ROUND_ROBIN;
         int[] rr = new int[] {node.roundRobinCursor};
-        Set<BlockPos> radioactiveGasSubnet = DuctPathfinder.connectedRadioactiveGasDucts(level, retrieverPos);
+        Set<BlockPos> radioactiveGasSubnet = DuctNetworkCache.connectedRadioactiveGasDucts(level, retrieverPos);
         List<DuctTargetSelector.DonorCandidate> donors =
                 listGasRetrievingDonorCandidates(
                         level,
@@ -350,8 +355,8 @@ public final class DuctGasServerTick {
                 path = List.of(retrieverPos);
             } else {
                 Optional<List<BlockPos>> p =
-                        DuctPathfinder.shortestPath(
-                                level, donor, retrieverPos, spec, DuctNetworkType.GAS, radioactivePayload);
+                        DuctNetworkCache.shortestPath(
+                                level, donor, retrieverPos, DuctNetworkType.GAS, radioactivePayload);
                 if (p.isEmpty()) {
                     continue;
                 }
@@ -496,8 +501,8 @@ public final class DuctGasServerTick {
         List<BlockPos> ducts =
                 new ArrayList<>(
                         radioactivePayload
-                                ? DuctPathfinder.connectedRadioactiveGasDucts(level, srcPos)
-                                : DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.GAS));
+                                ? DuctNetworkCache.connectedRadioactiveGasDucts(level, srcPos)
+                                : DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.GAS));
         boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         if (ducts.isEmpty()) {
             return 0L;
@@ -510,7 +515,13 @@ public final class DuctGasServerTick {
             OptionalLong dist =
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
-                            : DuctPathfinder.distance(level, srcPos, destPos, spec, DuctNetworkType.GAS, radioactivePayload);
+                            : DuctNetworkCache.routingTravelTicks(
+                                    level,
+                                    srcPos,
+                                    destPos,
+                                    spec.edgeTravelTicks(),
+                                    DuctNetworkType.GAS,
+                                    radioactivePayload);
             if (dist.isEmpty()) {
                 continue;
             }
@@ -591,8 +602,8 @@ public final class DuctGasServerTick {
             rawPath = List.of(srcPos);
         } else {
             Optional<List<BlockPos>> pathOpt =
-                    DuctPathfinder.shortestPath(
-                            level, srcPos, pick.ductPos(), spec, DuctNetworkType.GAS, radioactivePayload);
+                    DuctNetworkCache.shortestPath(
+                            level, srcPos, pick.ductPos(), DuctNetworkType.GAS, radioactivePayload);
             rawPath = pathOpt.orElseGet(() -> List.of(srcPos, pick.ductPos()));
         }
         long edgeTicks = DuctModuleEffects.effectiveGasEdgeTravelTicks(sourceBe, sourceFace, spec);
@@ -639,7 +650,7 @@ public final class DuctGasServerTick {
             DuctGasTransportSpec spec,
             Set<BlockPos> radioactiveGasSubnet) {
         ArrayList<DuctTargetSelector.DonorCandidate> cands = new ArrayList<>();
-        for (BlockPos p : DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.GAS)) {
+        for (BlockPos p : DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.GAS)) {
             if (!allowSelfDonor && p.equals(retrieverPos)) {
                 continue;
             }
@@ -696,8 +707,13 @@ public final class DuctGasServerTick {
                 OptionalLong dist =
                         p.equals(retrieverPos)
                                 ? OptionalLong.of(0L)
-                                : DuctPathfinder.distance(
-                                        level, retrieverPos, p, spec, DuctNetworkType.GAS, radioactiveSample);
+                                : DuctNetworkCache.routingTravelTicks(
+                                        level,
+                                        retrieverPos,
+                                        p,
+                                        spec.edgeTravelTicks(),
+                                        DuctNetworkType.GAS,
+                                        radioactiveSample);
                 if (dist.isEmpty()) {
                     continue;
                 }

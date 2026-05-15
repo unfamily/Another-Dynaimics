@@ -35,6 +35,7 @@ import net.unfamily.another_dynamics.duct.logistics.DuctGasIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowBuffer;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowRouting;
 import net.unfamily.another_dynamics.duct.logistics.DuctIncomingIndex;
+import net.unfamily.another_dynamics.duct.logistics.DuctNetworkCache;
 import net.unfamily.another_dynamics.duct.logistics.FluidTransitShipment;
 import net.unfamily.another_dynamics.duct.logistics.GasTransitShipment;
 import net.unfamily.another_dynamics.duct.logistics.DuctFluidServerTick;
@@ -4250,6 +4251,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         setChanged();
         refreshFromWorld();
+        if (level instanceof ServerLevel serverLevel) {
+            DuctNetworkCache.invalidate(serverLevel);
+        }
         syncStallVisualIfNeeded();
         propagateNeighborRefreshAfterWrench(level, npos);
     }
@@ -4266,6 +4270,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         setChanged();
         refreshFromWorld();
+        if (level instanceof ServerLevel serverLevel) {
+            DuctNetworkCache.invalidate(serverLevel);
+        }
         syncStallVisualIfNeeded();
         propagateNeighborRefreshAfterWrench(level, npos);
     }

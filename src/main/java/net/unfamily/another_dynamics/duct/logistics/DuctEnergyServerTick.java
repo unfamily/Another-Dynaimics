@@ -13,6 +13,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctEnergyTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
@@ -29,7 +30,7 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>Per-face action rate is {@link DuctModuleEffects#ENERGY_ACTION_RATE_TICKS} ticks. Per action,
  * the amount moved is bounded by module-scaled {@code extract} and adjacent {@link IEnergyStorage} acceptance.
- * Network topology queries are cached per level per tick ({@link DuctEnergyNetworkCache}).</p>
+ * Network topology queries are cached per level ({@link DuctNetworkCache}).</p>
  */
 public final class DuctEnergyServerTick {
     /** Minimum ticks between energy ray packets per face (sustained transfers). */
@@ -255,7 +256,7 @@ public final class DuctEnergyServerTick {
             return;
         }
 
-        java.util.Set<BlockPos> ducts = DuctEnergyNetworkCache.connectedDucts(level, srcPos);
+        java.util.Set<BlockPos> ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.ENERGY);
         if (ducts.isEmpty()) {
             return;
         }
@@ -269,7 +270,7 @@ public final class DuctEnergyServerTick {
             OptionalLong dist =
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
-                            : DuctEnergyNetworkCache.hopDistance(level, srcPos, destPos);
+                            : DuctNetworkCache.hopDistance(level, srcPos, destPos, DuctNetworkType.ENERGY);
             if (dist.isEmpty()) {
                 continue;
             }
@@ -379,7 +380,7 @@ public final class DuctEnergyServerTick {
             return;
         }
 
-        List<BlockPos> ducts = new ArrayList<>(DuctEnergyNetworkCache.connectedDucts(level, retrieverPos));
+        List<BlockPos> ducts = new ArrayList<>(DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.ENERGY));
         if (ducts.isEmpty()) {
             return;
         }
@@ -417,7 +418,7 @@ public final class DuctEnergyServerTick {
                 OptionalLong dist =
                         donorPos.equals(retrieverPos)
                                 ? OptionalLong.of(0L)
-                                : DuctEnergyNetworkCache.hopDistance(level, retrieverPos, donorPos);
+                                : DuctNetworkCache.hopDistance(level, retrieverPos, donorPos, DuctNetworkType.ENERGY);
                 if (dist.isEmpty()) {
                     continue;
                 }
@@ -710,7 +711,7 @@ public final class DuctEnergyServerTick {
         Optional<List<BlockPos>> pathOpt =
                 fromDuct.equals(toDuct)
                         ? Optional.of(List.of(fromDuct))
-                        : DuctEnergyNetworkCache.shortestPath(level, fromDuct, toDuct);
+                        : DuctNetworkCache.shortestPath(level, fromDuct, toDuct, DuctNetworkType.ENERGY);
         if (pathOpt.isEmpty()) {
             return false;
         }

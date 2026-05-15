@@ -122,7 +122,7 @@ public final class DuctFluidServerTick {
         }
 
         // Build candidate insertion faces across the fluid network: priority first, then routing tie-break.
-        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.FLUID);
+        java.util.Set<BlockPos> ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.FLUID);
         boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         if (ducts.isEmpty()) {
             return;
@@ -135,7 +135,8 @@ public final class DuctFluidServerTick {
             OptionalLong dist =
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
-                            : DuctPathfinder.distance(level, srcPos, destPos, spec, DuctNetworkType.FLUID);
+                            : DuctNetworkCache.routingTravelTicks(
+                                    level, srcPos, destPos, spec.edgeTravelTicks(), DuctNetworkType.FLUID);
             if (dist.isEmpty()) {
                 continue;
             }
@@ -242,7 +243,7 @@ public final class DuctFluidServerTick {
             rawPath = List.of(srcPos);
         } else {
             rawPath =
-                    DuctPathfinder.shortestPath(level, srcPos, pick.ductPos(), spec, DuctNetworkType.FLUID)
+                    DuctNetworkCache.shortestPath(level, srcPos, pick.ductPos(), DuctNetworkType.FLUID)
                             .orElseGet(() -> List.of(srcPos, pick.ductPos()));
         }
         List<BlockPos> pathWire = OutboundShipment.copyPath(rawPath);
@@ -294,7 +295,7 @@ public final class DuctFluidServerTick {
                 path = List.of(retrieverPos);
             } else {
                 Optional<List<BlockPos>> p =
-                        DuctPathfinder.shortestPath(level, donor, retrieverPos, spec, DuctNetworkType.FLUID);
+                        DuctNetworkCache.shortestPath(level, donor, retrieverPos, DuctNetworkType.FLUID);
                 if (p.isEmpty()) {
                     continue;
                 }
@@ -411,7 +412,7 @@ public final class DuctFluidServerTick {
             @Nullable Direction forbidSelfDonorFace,
             DuctFluidTransportSpec spec) {
         ArrayList<DuctTargetSelector.DonorCandidate> cands = new ArrayList<>();
-        for (BlockPos p : DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.FLUID)) {
+        for (BlockPos p : DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.FLUID)) {
             if (!allowSelfDonor && p.equals(retrieverPos)) {
                 continue;
             }
@@ -465,7 +466,8 @@ public final class DuctFluidServerTick {
                 OptionalLong dist =
                         p.equals(retrieverPos)
                                 ? OptionalLong.of(0L)
-                                : DuctPathfinder.distance(level, retrieverPos, p, spec, DuctNetworkType.FLUID);
+                                : DuctNetworkCache.routingTravelTicks(
+                                        level, retrieverPos, p, spec.edgeTravelTicks(), DuctNetworkType.FLUID);
                 if (dist.isEmpty()) {
                     continue;
                 }
@@ -808,7 +810,7 @@ public final class DuctFluidServerTick {
             return 0;
         }
         BlockPos srcPos = sourceBe.getBlockPos();
-        java.util.Set<BlockPos> ducts = DuctPathfinder.connectedDucts(level, srcPos, DuctNetworkType.FLUID);
+        java.util.Set<BlockPos> ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.FLUID);
         boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         if (ducts.isEmpty()) {
             return 0;
@@ -821,7 +823,8 @@ public final class DuctFluidServerTick {
             OptionalLong dist =
                     destPos.equals(srcPos)
                             ? OptionalLong.of(0L)
-                            : DuctPathfinder.distance(level, srcPos, destPos, spec, DuctNetworkType.FLUID);
+                            : DuctNetworkCache.routingTravelTicks(
+                                    level, srcPos, destPos, spec.edgeTravelTicks(), DuctNetworkType.FLUID);
             if (dist.isEmpty()) {
                 continue;
             }
@@ -932,7 +935,7 @@ public final class DuctFluidServerTick {
             rawPath = List.of(srcPos);
         } else {
             rawPath =
-                    DuctPathfinder.shortestPath(level, srcPos, pick.ductPos(), spec, DuctNetworkType.FLUID)
+                    DuctNetworkCache.shortestPath(level, srcPos, pick.ductPos(), DuctNetworkType.FLUID)
                             .orElseGet(() -> List.of(srcPos, pick.ductPos()));
         }
         long edgeTicks = DuctModuleEffects.effectiveFluidEdgeTravelTicks(sourceBe, sourceFace, spec);

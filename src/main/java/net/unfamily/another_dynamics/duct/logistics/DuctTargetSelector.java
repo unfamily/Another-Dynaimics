@@ -61,7 +61,7 @@ public final class DuctTargetSelector {
                 level.getBlockEntity(extractorPos) instanceof DuctBlockEntity extractorDuct
                         ? extractorDuct.itemTransportSpec()
                         : DuctDefinitionRegistry.itemDuctTransportSpec();
-        Set<BlockPos> net = DuctPathfinder.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
+        Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
         List<ExtractionCandidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
             if (!allowSelfDestination && p.equals(extractorPos)) {
@@ -101,7 +101,10 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 OptionalLong dist =
-                        p.equals(extractorPos) ? OptionalLong.of(0L) : DuctPathfinder.distance(level, extractorPos, p, spec, DuctNetworkType.ITEM);
+                        p.equals(extractorPos)
+                                ? OptionalLong.of(0L)
+                                : DuctNetworkCache.routingTravelTicks(
+                                        level, extractorPos, p, DuctPathfinder.edgeTravelTicks(spec), DuctNetworkType.ITEM);
                 if (dist.isEmpty()) {
                     continue;
                 }
@@ -127,7 +130,7 @@ public final class DuctTargetSelector {
             return Optional.of(new ExtractionRouting(List.of(extractorPos), pick.face));
         }
         Optional<List<BlockPos>> path =
-                DuctPathfinder.shortestPath(level, extractorPos, pick.ductPos, spec, DuctNetworkType.ITEM);
+                DuctNetworkCache.shortestPath(level, extractorPos, pick.ductPos, DuctNetworkType.ITEM);
         return path.map(positions -> new ExtractionRouting(positions, pick.face));
     }
 
@@ -191,7 +194,7 @@ public final class DuctTargetSelector {
                 level.getBlockEntity(extractorPos) instanceof DuctBlockEntity extractorDuct
                         ? extractorDuct.itemTransportSpec()
                         : DuctDefinitionRegistry.itemDuctTransportSpec();
-        Set<BlockPos> net = DuctPathfinder.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
+        Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
         List<ExtractionCandidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
             if (!allowSelfDestination && p.equals(extractorPos)) {
@@ -233,7 +236,8 @@ public final class DuctTargetSelector {
                 OptionalLong dist =
                         p.equals(extractorPos)
                                 ? OptionalLong.of(0L)
-                                : DuctPathfinder.distance(level, extractorPos, p, spec, DuctNetworkType.ITEM);
+                                : DuctNetworkCache.routingTravelTicks(
+                                        level, extractorPos, p, DuctPathfinder.edgeTravelTicks(spec), DuctNetworkType.ITEM);
                 if (dist.isEmpty()) {
                     continue;
                 }
@@ -284,7 +288,7 @@ public final class DuctTargetSelector {
             return Optional.empty();
         }
         DuctItemTransportSpec spec = retrieverBe.itemTransportSpec();
-        Set<BlockPos> net = DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
+        Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
         List<DonorCandidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
             if (!allowSelfDonor && p.equals(retrieverPos)) {
@@ -327,7 +331,8 @@ public final class DuctTargetSelector {
                 OptionalLong dist =
                         p.equals(retrieverPos)
                                 ? OptionalLong.of(0L)
-                                : DuctPathfinder.distance(level, retrieverPos, p, spec, DuctNetworkType.ITEM);
+                                : DuctNetworkCache.routingTravelTicks(
+                                        level, retrieverPos, p, DuctPathfinder.edgeTravelTicks(spec), DuctNetworkType.ITEM);
                 if (dist.isEmpty()) {
                     continue;
                 }
@@ -353,7 +358,7 @@ public final class DuctTargetSelector {
             return Optional.of(new RetrieverRouting(List.of(retrieverPos), pick.ductPos, pick.face));
         }
         Optional<List<BlockPos>> path =
-                DuctPathfinder.shortestPath(level, pick.ductPos, retrieverPos, spec, DuctNetworkType.ITEM);
+                DuctNetworkCache.shortestPath(level, pick.ductPos, retrieverPos, DuctNetworkType.ITEM);
         return path.map(positions -> new RetrieverRouting(positions, pick.ductPos, pick.face));
     }
 
@@ -370,7 +375,7 @@ public final class DuctTargetSelector {
             return List.of();
         }
         DuctItemTransportSpec spec = retrieverBe.itemTransportSpec();
-        Set<BlockPos> net = DuctPathfinder.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
+        Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
         List<DonorCandidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
             if (!allowSelfDonor && p.equals(retrieverPos)) {
@@ -413,7 +418,8 @@ public final class DuctTargetSelector {
                 OptionalLong dist =
                         p.equals(retrieverPos)
                                 ? OptionalLong.of(0L)
-                                : DuctPathfinder.distance(level, retrieverPos, p, spec, DuctNetworkType.ITEM);
+                                : DuctNetworkCache.routingTravelTicks(
+                                        level, retrieverPos, p, DuctPathfinder.edgeTravelTicks(spec), DuctNetworkType.ITEM);
                 if (dist.isEmpty()) {
                     continue;
                 }
