@@ -158,6 +158,9 @@ public final class DuctGasServerTick {
                 if ((dsm & (1 << df.ordinal())) == 0) {
                     continue;
                 }
+                if (!destBe.isTransportKindEnabled(df, DuctTransportKind.GAS)) {
+                    continue;
+                }
                 DuctFaceLanes destLanes = destBe.getFaceLanes(df);
                 DuctFaceNode destNode = destLanes.gas;
                 if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
@@ -516,6 +519,9 @@ public final class DuctGasServerTick {
                 if ((dsm & (1 << df.ordinal())) == 0) {
                     continue;
                 }
+                if (!destBe.isTransportKindEnabled(df, DuctTransportKind.GAS)) {
+                    continue;
+                }
                 DuctFaceLanes destLanes = destBe.getFaceLanes(df);
                 DuctFaceNode destNode = destLanes.gas;
                 if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
@@ -646,6 +652,9 @@ public final class DuctGasServerTick {
                     continue;
                 }
                 if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
+                    continue;
+                }
+                if (!be.isTransportKindEnabled(d, DuctTransportKind.GAS)) {
                     continue;
                 }
                 DuctFaceLanes donorLanes = be.getFaceLanes(d);

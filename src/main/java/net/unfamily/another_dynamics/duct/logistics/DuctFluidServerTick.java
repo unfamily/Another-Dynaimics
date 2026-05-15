@@ -144,6 +144,9 @@ public final class DuctFluidServerTick {
                 if ((dsm & (1 << df.ordinal())) == 0) {
                     continue;
                 }
+                if (!destBe.isTransportKindEnabled(df, DuctTransportKind.FLUID)) {
+                    continue;
+                }
                 DuctFaceLanes destLanes = destBe.getFaceLanes(df);
                 DuctFaceNode destNode = destLanes.fluid;
                 if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
@@ -421,6 +424,9 @@ public final class DuctFluidServerTick {
                     continue;
                 }
                 if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
+                    continue;
+                }
+                if (!be.isTransportKindEnabled(d, DuctTransportKind.FLUID)) {
                     continue;
                 }
                 DuctFaceLanes donorLanes = be.getFaceLanes(d);
@@ -822,6 +828,9 @@ public final class DuctFluidServerTick {
             int dsm = destBe.getStorageMask();
             for (Direction df : Direction.values()) {
                 if ((dsm & (1 << df.ordinal())) == 0) {
+                    continue;
+                }
+                if (!destBe.isTransportKindEnabled(df, DuctTransportKind.FLUID)) {
                     continue;
                 }
                 DuctFaceLanes destLanes = destBe.getFaceLanes(df);

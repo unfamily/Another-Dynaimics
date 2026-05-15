@@ -276,6 +276,9 @@ public final class DuctEnergyServerTick {
                 if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, sourceFace, destPos, df, false)) {
                     continue;
                 }
+                if (!destBe.isTransportKindEnabled(df, DuctTransportKind.ENERGY)) {
+                    continue;
+                }
                 DuctFaceLanes destLanes = destBe.getFaceLanes(df);
                 if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
                     continue;
@@ -415,6 +418,9 @@ public final class DuctEnergyServerTick {
                     continue;
                 }
                 if (DuctSameBlockRouting.skipSameBlockDonorFace(retrieverPos, retrieverFace, donorPos, donorFace)) {
+                    continue;
+                }
+                if (!donorBe.isTransportKindEnabled(donorFace, DuctTransportKind.ENERGY)) {
                     continue;
                 }
                 DuctFaceLanes donorLanes = donorBe.getFaceLanes(donorFace);

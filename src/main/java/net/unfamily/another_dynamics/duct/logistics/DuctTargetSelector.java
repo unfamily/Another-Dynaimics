@@ -19,6 +19,7 @@ import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.NodeMode;
+import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 
 import org.jetbrains.annotations.Nullable;
@@ -75,6 +76,9 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 if (p.equals(extractorPos) && forbidSelfDestFace != null && d == forbidSelfDestFace) {
+                    continue;
+                }
+                if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {
                     continue;
                 }
                 DuctFaceNode node = be.getFaceNode(d);
@@ -204,6 +208,9 @@ public final class DuctTargetSelector {
                 if (p.equals(extractorPos) && forbidSelfDestFace != null && d == forbidSelfDestFace) {
                     continue;
                 }
+                if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {
+                    continue;
+                }
                 DuctFaceNode node = be.getFaceNode(d);
                 if (!DuctRedstoneLogic.isFaceTransportActive(level, p, be.getFaceLanes(d).redstoneMode)) {
                     continue;
@@ -294,6 +301,9 @@ public final class DuctTargetSelector {
                 if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
                     continue;
                 }
+                if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {
+                    continue;
+                }
                 DuctFaceNode node = be.getFaceNode(d);
                 if (!DuctRedstoneLogic.isFaceTransportActive(level, p, be.getFaceLanes(d).redstoneMode)) {
                     continue;
@@ -375,6 +385,9 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
+                    continue;
+                }
+                if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {
                     continue;
                 }
                 DuctFaceNode node = be.getFaceNode(d);

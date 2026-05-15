@@ -208,7 +208,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         case EXTRACTION, FILTERING_INSERTION, RETRIEVING, NONE -> 0;
                         case EXTRACTION_FILTERING, RETRIEVING_EXTRACTION -> 2;
                     };
-            boolean off = !isFaceTransportEnabled(d);
+            boolean off = !isFaceTransportEnabled(d) || !faceShowsTransportIconForEnabledKinds(d);
             int row = rowBase + (off ? 1 : 0);
             int idx = row * 4 + col; // 0..15
             packed |= (idx & 0xF) << (d.ordinal() * 4);
@@ -228,6 +228,54 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         EnumSet<DuctTransportKind> kinds =
                 ductDefinition().map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
         return getFaceLanes(face).isTransportKindEnabled(kind, kinds);
+    }
+
+    private boolean isMultiTransportDuct() {
+        return ductDefinition().map(d -> d.enabledTransportKinds().size() > 1).orElse(false);
+    }
+
+    /**
+     * Whether the node icon for this face should reflect the configured mode. On multi-transport ducts, a face still
+     * touching a machine only shows destination/extract/retrieve when at least one <em>enabled</em> transport kind matches
+     * the neighbor capability (e.g. energy disabled on an FE port must not show a destination icon).
+     */
+    private boolean faceShowsTransportIconForEnabledKinds(Direction face) {
+        if (!isMultiTransportDuct()) {
+            return true;
+        }
+        if (level == null || (getVisualStorageMask() & (1 << face.ordinal())) == 0) {
+            return false;
+        }
+        EnumSet<DuctTransportKind> ductKinds =
+                ductDefinition().map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
+        BlockPos neighborPos = worldPosition.relative(face);
+        BlockState neighborState = level.getBlockState(neighborPos);
+        if (neighborState.isAir()) {
+            return false;
+        }
+        DuctFaceLanes lanes = getFaceLanes(face);
+        for (DuctTransportKind kind : ductKinds) {
+            if (!lanes.isTransportKindEnabled(kind, ductKinds)) {
+                continue;
+            }
+            if (attachmentMaskForTransportKind(face, neighborState, neighborPos, kind) != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int attachmentMaskForTransportKind(
+            Direction ductFace, BlockState neighborState, BlockPos neighborPos, DuctTransportKind kind) {
+        DuctNetworkType net =
+                switch (kind) {
+                    case ITEM -> DuctNetworkType.ITEM;
+                    case FLUID -> DuctNetworkType.FLUID;
+                    case GAS -> DuctNetworkType.GAS;
+                    case ENERGY -> DuctNetworkType.ENERGY;
+                    case HEAT -> DuctNetworkType.HEAT;
+                };
+        return attachmentMaskForNeighbor(net, ductFace, neighborState, neighborPos);
     }
 
     private void ensureAllFaceTransportMasks() {
@@ -1905,7 +1953,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if ((getUserDisconnectedFaceMask() & bit) != 0) {
             return false;
         }
-        return isFaceTransportEnabled(face);
+        return isFaceTransportEnabled(face) && faceShowsTransportIconForEnabledKinds(face);
     }
 
     /**
