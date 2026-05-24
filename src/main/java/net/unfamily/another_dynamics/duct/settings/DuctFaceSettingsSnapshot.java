@@ -25,9 +25,9 @@ import net.unfamily.another_dynamics.registry.ModDataComponents;
  * {@link SettingsCopierItem}. Cross-duct: only lanes the target definition supports are applied.
  */
 public final class DuctFaceSettingsSnapshot {
-    public static final int FORMAT_VERSION = 1;
+    public static final int FORMAT_VERSION = 2;
 
-    private static final String KEY_FMT = "Fmt";
+    static final String KEY_FMT = "Fmt";
     private static final String KEY_SHARED = "Shared";
     private static final String KEY_MODULES = "Modules";
     private static final String KEY_ITEM = "Item";
@@ -41,7 +41,24 @@ public final class DuctFaceSettingsSnapshot {
             return false;
         }
         CompoundTag tag = stack.get(ModDataComponents.DUCT_FACE_SETTINGS);
-        return tag != null && !tag.isEmpty() && tag.contains(KEY_FMT, Tag.TAG_INT);
+        return tag != null
+                && !tag.isEmpty()
+                && tag.contains(KEY_FMT, Tag.TAG_INT)
+                && tag.getInt(KEY_FMT) == FORMAT_VERSION;
+    }
+
+    public static SettingsCopierStoreKind getStoreKind(ItemStack stack) {
+        if (!hasStoredSettings(stack)) {
+            return SettingsCopierStoreKind.ALL;
+        }
+        return SettingsCopierStoreKind.fromCompound(stack.get(ModDataComponents.DUCT_FACE_SETTINGS));
+    }
+
+    public static boolean isAllPayload(CompoundTag tag) {
+        return tag != null
+                && tag.contains(KEY_FMT, Tag.TAG_INT)
+                && tag.getInt(KEY_FMT) == FORMAT_VERSION
+                && SettingsCopierStoreKind.fromCompound(tag) == SettingsCopierStoreKind.ALL;
     }
 
     /** Copier in the used hand, or the other hand if it holds stored settings. */
@@ -82,6 +99,7 @@ public final class DuctFaceSettingsSnapshot {
 
         CompoundTag root = new CompoundTag();
         root.putInt(KEY_FMT, FORMAT_VERSION);
+        root.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.ALL.toTag());
 
         CompoundTag shared = new CompoundTag();
         shared.putByte("NodeMode", (byte) lanes.nodeMode.ordinal());
@@ -111,7 +129,7 @@ public final class DuctFaceSettingsSnapshot {
         if (data == null || data.isEmpty() || !data.contains(KEY_FMT, Tag.TAG_INT)) {
             return false;
         }
-        if (data.getInt(KEY_FMT) != FORMAT_VERSION) {
+        if (!isAllPayload(data)) {
             return false;
         }
         EnumSet<DuctTransportKind> kinds =

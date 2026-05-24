@@ -1,5 +1,6 @@
 package net.unfamily.another_dynamics.item;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
@@ -12,15 +13,15 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.unfamily.another_dynamics.duct.AbstractDuctBlock;
 import net.unfamily.another_dynamics.duct.DuctBlock;
-import net.minecraft.nbt.CompoundTag;
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
-import net.unfamily.another_dynamics.registry.ModDataComponents;
-import net.unfamily.another_dynamics.registry.ModItems;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 
 import java.util.List;
 
-/** Copies duct face node settings from the GUI copy slot; paste with shift-click on a storage node face. */
+/** Copies duct face node settings via GUI Save; paste full settings with shift-click on a duct face (all mode only). */
 public class SettingsCopierItem extends Item {
+    private static final String TOOLTIP_ROOT = "item.another_dynamics.settings_copier.tooltip.";
+
     public SettingsCopierItem(Properties properties) {
         super(properties);
     }
@@ -44,19 +45,20 @@ public class SettingsCopierItem extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-        if (DuctFaceSettingsSnapshot.hasStoredSettings(stack)) {
-            tooltip.add(Component.translatable("item.another_dynamics.settings_copier.has_data"));
+        if (!DuctFaceSettingsSnapshot.hasStoredSettings(stack)) {
+            addTooltipLines(tooltip, TOOLTIP_ROOT + "empty.", 2);
+        } else if (DuctFaceSettingsSnapshot.getStoreKind(stack) == SettingsCopierStoreKind.FILTER) {
+            addTooltipLines(tooltip, TOOLTIP_ROOT + "filter.", 3);
         } else {
-            tooltip.add(Component.translatable("item.another_dynamics.settings_copier.empty"));
+            addTooltipLines(tooltip, TOOLTIP_ROOT + "all.", 4);
         }
+        tooltip.add(
+                Component.translatable(TOOLTIP_ROOT + "air_gui").withStyle(ChatFormatting.GRAY));
     }
 
-    /** Client copy-slot decoration: always uses the "full" ({@code settings_copier_1}) item model. */
-    public static ItemStack copySlotDisplayStack() {
-        ItemStack stack = new ItemStack(ModItems.SETTINGS_COPIER.get());
-        CompoundTag marker = new CompoundTag();
-        marker.putInt("Fmt", DuctFaceSettingsSnapshot.FORMAT_VERSION);
-        stack.set(ModDataComponents.DUCT_FACE_SETTINGS, marker);
-        return stack;
+    private static void addTooltipLines(List<Component> tooltip, String keyPrefix, int lineCount) {
+        for (int i = 0; i < lineCount; i++) {
+            tooltip.add(Component.translatable(keyPrefix + i));
+        }
     }
 }

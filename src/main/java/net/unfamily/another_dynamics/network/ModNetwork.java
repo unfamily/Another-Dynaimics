@@ -236,6 +236,40 @@ public final class ModNetwork {
             ctx.enqueueWork(() -> DuctNodeScreen.showSettingsCopierFeedback(payload.messageId()));
         });
 
+        reg.playToServer(
+                SettingsCopierActionPayload.TYPE,
+                SettingsCopierActionPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        if (!(player.containerMenu instanceof DuctNodeMenu menu)) {
+                            return;
+                        }
+                        DuctBlockEntity linked = menu.linkedDuctBlockEntity();
+                        if (linked == null || linked.isRemoved()) {
+                            return;
+                        }
+                        if (!menu.getDuctBlockPos().equals(payload.pos())) {
+                            return;
+                        }
+                        int fo = payload.faceOrdinal();
+                        if (fo < 0 || fo >= Direction.values().length) {
+                            return;
+                        }
+                        if (menu.getAccessFace() != Direction.values()[fo]) {
+                            return;
+                        }
+                        if (player.level().getBlockEntity(payload.pos()) != linked) {
+                            return;
+                        }
+                        if (!validateDuctGuiInteraction(player, payload.pos())) {
+                            return;
+                        }
+                        menu.handleSettingsCopierAction(player, payload);
+                        menu.broadcastChanges();
+                    });
+                });
+
     }
 
     /**
@@ -308,6 +342,24 @@ public final class ModNetwork {
     public static void sendDuctMenuButton(DuctNodeMenu menu, int buttonId) {
         PacketDistributor.sendToServer(
                 new DuctMenuButtonPayload(menu.getDuctBlockPos(), menu.getAccessFace().ordinal(), buttonId));
+    }
+
+    public static void sendSettingsCopierAction(
+            DuctNodeMenu menu,
+            int action,
+            int viewKind,
+            int transportKindOrdinal,
+            int filterBankOrdinal,
+            int allowDeny) {
+        PacketDistributor.sendToServer(
+                new SettingsCopierActionPayload(
+                        menu.getDuctBlockPos(),
+                        menu.getAccessFace().ordinal(),
+                        action,
+                        viewKind,
+                        transportKindOrdinal,
+                        filterBankOrdinal,
+                        allowDeny));
     }
 
     public static void sendDuctGuiFeedback(ServerPlayer player, int messageId) {

@@ -27,6 +27,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
@@ -157,6 +158,10 @@ public class DuctBlock extends AbstractDuctBlock {
         }
         if (level instanceof ServerLevel sl) {
             ItemStack copier = copierOpt.get();
+            if (DuctFaceSettingsSnapshot.getStoreKind(copier) != SettingsCopierStoreKind.ALL) {
+                SettingsCopierFeedback.notifyPasteFailed(player);
+                return ItemInteractionResult.CONSUME;
+            }
             var data = DuctFaceSettingsSnapshot.readFromCopier(copier);
             if (data.isPresent()
                     && DuctFaceSettingsSnapshot.apply(

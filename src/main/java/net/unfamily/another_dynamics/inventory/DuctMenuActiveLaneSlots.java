@@ -7,7 +7,7 @@ import net.unfamily.another_dynamics.duct.module.DuctFaceModuleItemHandler;
 
 /**
  * Virtual menu handler: module indices map to {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#moduleSlots}.
- * The copy-settings slot is a separate {@link CopySettingsSlot} in {@link DuctNodeMenu}.
+ * The settings copier slot is a separate {@link ItemStackHandler} in {@link DuctNodeMenu}.
  */
 public final class DuctMenuActiveLaneSlots extends ItemStackHandler {
     private final DuctBlockEntity duct;

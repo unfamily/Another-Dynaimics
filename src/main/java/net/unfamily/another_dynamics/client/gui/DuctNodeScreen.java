@@ -41,8 +41,8 @@ import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.FluidUtil;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
-import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.network.DuctGuiFeedbackPayload;
+import net.unfamily.another_dynamics.network.SettingsCopierActionPayload;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
@@ -110,6 +110,16 @@ public final class DuctNodeScreen
         ResourceLocation.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/single_slot.png"
+        );
+    private static final ResourceLocation SINGLE_SLOT_COPY =
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/single_slot_copy"
+        );
+    private static final ResourceLocation MODULE_SLOT =
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/single_slot_module.png"
         );
     private static final ResourceLocation ENTRY_ROW_TEXTURE =
         ResourceLocation.fromNamespaceAndPath(
@@ -191,12 +201,14 @@ public final class DuctNodeScreen
 
     private static final int CHANNEL_WIDGET_W = 18;
     private static final int CHANNEL_WIDGET_H = 18;
-    /** Below the copy-settings slot in the same column (slot is 18px tall). */
-    private static final int CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT = 4;
+    private static final int COPIER_ACTION_BTN_H = 12;
+    private static final int COPIER_COLUMN_GAP = 2;
+    private static final int COPIER_SAVE_BUTTON_Y =
+        DuctNodeMenu.SLOT_COPY_BACKGROUND_Y + 18 + COPIER_COLUMN_GAP;
+    private static final int COPIER_LOAD_BUTTON_Y =
+        COPIER_SAVE_BUTTON_Y + COPIER_ACTION_BTN_H + COPIER_COLUMN_GAP;
     private static final int CHANNEL_WIDGET_Y =
-        DuctNodeMenu.SLOT_COPY_BACKGROUND_Y +
-        18 +
-        CHANNEL_WIDGET_GAP_BELOW_COPY_SLOT;
+        COPIER_LOAD_BUTTON_Y + COPIER_ACTION_BTN_H + COPIER_COLUMN_GAP;
     /** Detail view: transport pickers below channel widget (hub main uses {@link #ROW2_Y} in a 3-column grid). */
     private static final int TRANSPORT_KIND_BUTTON_Y =
         CHANNEL_WIDGET_Y + CHANNEL_WIDGET_H + 4;
@@ -255,6 +267,8 @@ public final class DuctNodeScreen
     private Button amountMaxButton;
     private Button amountDiscardButton;
     private ChannelLetterButton channelButton;
+    private Button settingsCopierSaveButton;
+    private Button settingsCopierLoadButton;
     private final List<Button> transportKindPickerButtons = new ArrayList<>();
     private final List<Button> transportToggleButtons = new ArrayList<>();
     private Button hubBackButton;
@@ -1067,6 +1081,31 @@ public final class DuctNodeScreen
         filterReorderButton.visible = false;
         addRenderableWidget(filterReorderButton);
 
+        settingsCopierSaveButton =
+                Button.builder(
+                                Component.translatable(
+                                        "gui.another_dynamics.duct_node.settings_copier.save"),
+                                b -> sendSettingsCopierAction(SettingsCopierActionPayload.ACTION_SAVE))
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.duct_node.settings_copier.save.tooltip")))
+                        .bounds(0, 0, 18, COPIER_ACTION_BTN_H)
+                        .build();
+        addRenderableWidget(settingsCopierSaveButton);
+        settingsCopierLoadButton =
+                Button.builder(
+                                Component.translatable(
+                                        "gui.another_dynamics.duct_node.settings_copier.load"),
+                                b -> sendSettingsCopierAction(SettingsCopierActionPayload.ACTION_LOAD))
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.duct_node.settings_copier.load.tooltip")))
+                        .bounds(0, 0, 18, COPIER_ACTION_BTN_H)
+                        .build();
+        addRenderableWidget(settingsCopierLoadButton);
+
         int channelX =
             DuctNodeMenu.SLOT_COPY_BACKGROUND_X + (18 - CHANNEL_WIDGET_W) / 2;
         channelButton = new ChannelLetterButton(
@@ -1087,6 +1126,7 @@ public final class DuctNodeScreen
             )
         );
         addRenderableWidget(channelButton);
+        layoutCopierColumn();
 
         transportKindPickerButtons.clear();
         for (DuctTransportKind k : DuctTransportKind.values()) {
@@ -1122,6 +1162,7 @@ public final class DuctNodeScreen
         layoutMainChromeRowsForHubOrDetail();
         layoutHubTransportGrid();
         layoutHubBackButton();
+        layoutCopierColumn();
         applySubViewVisibility();
 
         // JEI (and some UI transitions) can cause a screen re-init that clears widgets.
@@ -1130,6 +1171,54 @@ public final class DuctNodeScreen
             createEditModeUI();
             applySubViewVisibility();
             reloadFilterEntryTextBoxFromList(false);
+        }
+    }
+
+    private void layoutCopierColumn() {
+        if (settingsCopierSaveButton == null || settingsCopierLoadButton == null || channelButton == null) {
+            return;
+        }
+        int colX = this.leftPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_X;
+        settingsCopierSaveButton.setX(colX);
+        settingsCopierSaveButton.setY(this.topPos + COPIER_SAVE_BUTTON_Y);
+        settingsCopierSaveButton.setWidth(18);
+        settingsCopierSaveButton.setHeight(COPIER_ACTION_BTN_H);
+        settingsCopierLoadButton.setX(colX);
+        settingsCopierLoadButton.setY(this.topPos + COPIER_LOAD_BUTTON_Y);
+        settingsCopierLoadButton.setWidth(18);
+        settingsCopierLoadButton.setHeight(COPIER_ACTION_BTN_H);
+        int channelX =
+                DuctNodeMenu.SLOT_COPY_BACKGROUND_X + (18 - CHANNEL_WIDGET_W) / 2;
+        channelButton.setX(this.leftPos + channelX);
+        channelButton.setY(this.topPos + CHANNEL_WIDGET_Y);
+    }
+
+    private void sendSettingsCopierAction(int action) {
+        playClickSound();
+        boolean filterList =
+                subView == SubView.ALLOW_FILTERS || subView == SubView.DENY_FILTERS;
+        if (filterList) {
+            flushPendingFilterEditsBeforeClose();
+            pushFiltersToServer();
+            int allowDeny =
+                    subView == SubView.ALLOW_FILTERS
+                            ? SettingsCopierActionPayload.LIST_ALLOW
+                            : SettingsCopierActionPayload.LIST_DENY;
+            ModNetwork.sendSettingsCopierAction(
+                    menu,
+                    action,
+                    SettingsCopierActionPayload.VIEW_FILTER_LIST,
+                    menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
+                    activeFilterBank.ordinal(),
+                    allowDeny);
+        } else {
+            ModNetwork.sendSettingsCopierAction(
+                    menu,
+                    action,
+                    SettingsCopierActionPayload.VIEW_MAIN,
+                    menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
+                    0,
+                    0);
         }
     }
 
@@ -2115,7 +2204,16 @@ public final class DuctNodeScreen
             (main || bufferLimits) && !howto && !advancedFiltering;
 
         closeButton.visible = true;
-        channelButton.visible = detailMain && !howto;
+        boolean showCopierColumn = !howto;
+        boolean showChannel =
+            showCopierColumn && (!hubLayer || filterList || advancedFiltering || bufferLimits);
+        if (settingsCopierSaveButton != null) {
+            settingsCopierSaveButton.visible = showCopierColumn;
+        }
+        if (settingsCopierLoadButton != null) {
+            settingsCopierLoadButton.visible = showCopierColumn;
+        }
+        channelButton.visible = showChannel;
         boolean showTransportPickers = main && hubLayer && !howto;
         for (Button b : transportKindPickerButtons) {
             b.visible = showTransportPickers;
@@ -2214,6 +2312,7 @@ public final class DuctNodeScreen
         layoutMainChromeRowsForHubOrDetail();
         layoutHubTransportGrid();
         layoutHubBackButton();
+        layoutCopierColumn();
         if (
             (subView == SubView.ADVANCED_FILTERING ||
                 subView == SubView.ALLOW_FILTERS ||
@@ -3275,9 +3374,14 @@ public final class DuctNodeScreen
         if (enchantedMacro) {
             variants.add("&enchanted");
         }
-        // Show macro only when it makes sense: "damaged" requires a damageable item.
         if (stack.isDamageableItem()) {
-            variants.add("&damaged");
+            if (stack.isDamaged()) {
+                variants.add("&damaged");
+            }
+            variants.add("&damaged>0");
+            if (stack.isDamaged()) {
+                variants.add("&damaged=" + stack.getDamageValue());
+            }
         }
         if (minecraft != null && minecraft.level != null) {
             try {
@@ -3378,9 +3482,6 @@ public final class DuctNodeScreen
             ResourceLocation id = ResourceLocation.parse(idStr);
             variants.add("@" + id.getNamespace());
         } catch (Exception ignored) {}
-        for (String tagId : MekanismChemicalCompat.getTagIds(chemicalStack)) {
-            variants.add("#" + tagId);
-        }
         if (MekanismChemicalCompat.isRadioactive(chemicalStack)) {
             variants.add("&radioactive");
         }
@@ -5186,7 +5287,7 @@ public final class DuctNodeScreen
         for (int i = 0; i < menu.moduleSlotCount(); i++) {
             int y = DuctNodeMenu.SLOT_MODULE_BACKGROUND_Y0 + i * 18;
             graphics.blit(
-                SINGLE_SLOT,
+                MODULE_SLOT,
                 this.leftPos + DuctNodeMenu.SLOT_MODULE_BACKGROUND_X,
                 this.topPos + y,
                 0,
@@ -5198,7 +5299,7 @@ public final class DuctNodeScreen
             );
         }
         graphics.blit(
-            SINGLE_SLOT,
+            SINGLE_SLOT_COPY,
             this.leftPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_X,
             this.topPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_Y,
             0,
@@ -5238,20 +5339,13 @@ public final class DuctNodeScreen
         if (subView == SubView.HOW_TO_USE) {
             return;
         }
-        if (slot.index == menu.copySettingsSlotIndex()) {
-            ItemStack icon = SettingsCopierItem.copySlotDisplayStack();
-            graphics.renderItem(icon, slot.x, slot.y);
-            return;
-        }
-        if (slot.index >= 0 && slot.index < menu.copySettingsSlotIndex()) {
+        if (slot.index >= 0 && slot.index <= menu.copySettingsSlotIndex()) {
             ItemStack stack = slot.getItem();
             // AbstractContainerScreen has already translated the pose by (leftPos, topPos); slot x/y are GUI-local
             // (same space as {@link #renderLabels}). Do not add leftPos/topPos again or the stack shifts by ~2× panel.
-            int x = slot.x;
-            int y = slot.y;
             if (!stack.isEmpty()) {
-                graphics.renderItem(stack, x, y);
-                graphics.renderItemDecorations(this.font, stack, x, y);
+                graphics.renderItem(stack, slot.x, slot.y);
+                graphics.renderItemDecorations(this.font, stack, slot.x, slot.y);
             }
             return;
         }
@@ -5277,11 +5371,17 @@ public final class DuctNodeScreen
                     case DuctGuiFeedbackPayload.PASTE_FAILED ->
                             Component.translatable("message.another_dynamics.settings_copier.paste_failed")
                                     .withStyle(ChatFormatting.RED);
+                    case DuctGuiFeedbackPayload.WRONG_MODE ->
+                            Component.translatable("message.another_dynamics.settings_copier.wrong_mode")
+                                    .withStyle(ChatFormatting.RED);
                     default -> null;
                 };
         if (transientFeedback != null) {
             transientFeedbackColor =
-                    messageId == DuctGuiFeedbackPayload.PASTE_FAILED ? 0xFF5555 : 0x55FF55;
+                    messageId == DuctGuiFeedbackPayload.PASTE_FAILED
+                                    || messageId == DuctGuiFeedbackPayload.WRONG_MODE
+                            ? 0xFF5555
+                            : 0x55FF55;
             transientFeedbackHideAt = Util.getMillis() + TRANSIENT_FEEDBACK_MS;
         }
     }
@@ -6263,42 +6363,34 @@ public final class DuctNodeScreen
                 mouseY
             );
             helpY += helpLineStep;
-            renderHelpLineWithExample(
-                graphics,
-                p + "tag",
-                p + "tag.example",
-                p + "tag.after",
-                HELP_TEXT_X,
-                helpY,
-                mouseX,
-                mouseY
-            );
-            helpY += helpLineStep;
-            int macroRows = p.endsWith("general_filter_text.")
-                ? renderHelpLineWithChainedExamples(
+            if (!isGasFilterTransport()) {
+                renderHelpLineWithExample(
+                    graphics,
+                    p + "tag",
+                    p + "tag.example",
+                    p + "tag.after",
+                    HELP_TEXT_X,
+                    helpY,
+                    mouseX,
+                    mouseY
+                );
+                helpY += helpLineStep;
+            }
+            int macroRows = renderHelpLineWithChainedExamples(
                       graphics,
                       p + "macro",
                       p + "macro.middle",
                       p + "macro.after",
-                      List.of(p + "macro.example1", p + "macro.example2"),
-                      MACRO_HELP_FIRST_LINE_EXAMPLES,
-                      MACRO_HELP_NEXT_LINE_EXAMPLES,
-                      HELP_TEXT_X,
-                      helpY,
-                      mouseX,
-                      mouseY
-                  )
-                : renderHelpLineWithChainedExamples(
-                      graphics,
-                      p + "macro",
-                      p + "macro.middle",
-                      p + "macro.after",
-                      List.of(
-                          p + "macro.example1",
-                          p + "macro.example2",
-                          p + "macro.example3",
-                          p + "macro.example4"
-                      ),
+                      p.endsWith("general_filter_text.")
+                              ? List.of(
+                                      p + "macro.example1",
+                                      p + "macro.example2",
+                                      p + "macro.example3")
+                              : List.of(
+                                      p + "macro.example1",
+                                      p + "macro.example2",
+                                      p + "macro.example3",
+                                      p + "macro.example4"),
                       MACRO_HELP_FIRST_LINE_EXAMPLES,
                       MACRO_HELP_NEXT_LINE_EXAMPLES,
                       HELP_TEXT_X,
@@ -6307,17 +6399,15 @@ public final class DuctNodeScreen
                       mouseY
                   );
             helpY += macroRows * helpLineStep;
-            if (!p.endsWith("general_filter_text.")) {
-                graphics.drawString(
+            graphics.drawString(
                     this.font,
                     Component.translatable(p + "operators"),
                     HELP_TEXT_X,
                     helpY,
                     0x404040,
                     false
-                );
-                helpY += helpLineStep;
-            }
+            );
+            helpY += helpLineStep;
             if (!isGasFilterTransport()) {
                 graphics.drawString(
                     this.font,

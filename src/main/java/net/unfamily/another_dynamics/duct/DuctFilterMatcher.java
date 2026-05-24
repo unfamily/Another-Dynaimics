@@ -13,9 +13,21 @@ import net.minecraft.world.item.ItemStack;
 
 /**
  * Single filter entry matching, ported from DeepDrawerExtractorBlockEntity.matchesFilterEntry (iska_utils).
+ *
+ * <p>Item macros ({@code &}): {@code enchanted}; {@code damaged} (any damage &gt; 0) or {@code damaged} + operators on
+ * {@link ItemStack#getDamageValue()} ({@code =, !=, <, <=, >, >=}).</p>
  */
 public final class DuctFilterMatcher {
     private DuctFilterMatcher() {}
+
+    private enum Cmp {
+        EQ,
+        NE,
+        GT,
+        GE,
+        LT,
+        LE
+    }
 
     public static boolean matchesFilterEntry(
             ItemStack stack,
@@ -40,21 +52,7 @@ public final class DuctFilterMatcher {
         }
 
         if (filter.startsWith("&")) {
-            String macroFilter = filter.substring(1).toLowerCase();
-            return switch (macroFilter) {
-                case "enchanted" -> {
-                    if (stack.isEnchanted()) {
-                        yield true;
-                    }
-                    if (stack.is(Items.ENCHANTED_BOOK)) {
-                        // Treat enchanted books as enchanted for filters (even if the book stores enchants via components).
-                        yield true;
-                    }
-                    yield false;
-                }
-                case "damaged" -> stack.isDamaged();
-                default -> false;
-            };
+            return matchesItemMacro(stack, filter.substring(1));
         }
 
         if (filter.startsWith("#")) {
@@ -83,6 +81,83 @@ public final class DuctFilterMatcher {
         }
 
         return itemIdStr.equals(filter);
+    }
+
+    private static boolean matchesItemMacro(ItemStack stack, String macro) {
+        if (macro.isEmpty()) {
+            return false;
+        }
+        String lower = macro.toLowerCase();
+        if (lower.equals("enchanted")) {
+            if (stack.isEnchanted()) {
+                return true;
+            }
+            return stack.is(Items.ENCHANTED_BOOK);
+        }
+        if (lower.startsWith("damaged")) {
+            if (!stack.isDamageableItem()) {
+                return false;
+            }
+            String rest = macro.substring("damaged".length()).trim();
+            if (rest.isEmpty()) {
+                return stack.isDamaged();
+            }
+            ParsedCmp parsed = parseCmp(rest);
+            if (parsed == null) {
+                return false;
+            }
+            int damage = stack.getDamageValue();
+            return switch (parsed.cmp) {
+                case EQ -> damage == parsed.value;
+                case NE -> damage != parsed.value;
+                case GT -> damage > parsed.value;
+                case GE -> damage >= parsed.value;
+                case LT -> damage < parsed.value;
+                case LE -> damage <= parsed.value;
+            };
+        }
+        return false;
+    }
+
+    private record ParsedCmp(Cmp cmp, int value) {}
+
+    /** Parses operator + integer, e.g. {@code ">=100"} or {@code " = 0"}. */
+    private static ParsedCmp parseCmp(String expr) {
+        if (expr == null) {
+            return null;
+        }
+        String s = expr.trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        Cmp cmp;
+        String rhs;
+        if (s.startsWith(">=")) {
+            cmp = Cmp.GE;
+            rhs = s.substring(2);
+        } else if (s.startsWith("<=")) {
+            cmp = Cmp.LE;
+            rhs = s.substring(2);
+        } else if (s.startsWith("!=")) {
+            cmp = Cmp.NE;
+            rhs = s.substring(2);
+        } else if (s.startsWith(">")) {
+            cmp = Cmp.GT;
+            rhs = s.substring(1);
+        } else if (s.startsWith("<")) {
+            cmp = Cmp.LT;
+            rhs = s.substring(1);
+        } else if (s.startsWith("=")) {
+            cmp = Cmp.EQ;
+            rhs = s.substring(1);
+        } else {
+            return null;
+        }
+        try {
+            return new ParsedCmp(cmp, Integer.parseInt(rhs.trim()));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     public static boolean matchesAnyNonEmptyEntry(ItemStack stack, String filterLine, HolderLookup.Provider registries) {

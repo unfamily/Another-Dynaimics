@@ -12,6 +12,8 @@ public record DuctGuiFeedbackPayload(int messageId) implements CustomPacketPaylo
     public static final int COPIED = 0;
     public static final int PASTED = 1;
     public static final int PASTE_FAILED = 2;
+    /** Copier holds the wrong payload kind for this GUI action (all vs filter). */
+    public static final int WRONG_MODE = 3;
 
     public static final Type<DuctGuiFeedbackPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_gui_feedback"));

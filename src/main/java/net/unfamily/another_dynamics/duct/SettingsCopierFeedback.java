@@ -23,6 +23,10 @@ public final class SettingsCopierFeedback {
         notifyPasteActionBar(player, false);
     }
 
+    public static void notifyWrongMode(ServerPlayer player) {
+        ModNetwork.sendDuctGuiFeedback(player, DuctGuiFeedbackPayload.WRONG_MODE);
+    }
+
     private static void notifyPasteActionBar(Player player, boolean success) {
         player.displayClientMessage(
                 Component.translatable(

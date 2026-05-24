@@ -24,6 +24,8 @@ import net.unfamily.another_dynamics.duct.DuctDefinitionsReloadedEvent;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
+import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModItems;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
@@ -39,12 +41,20 @@ public final class DuctClientSetup {
     public static void onClientSetup(FMLClientSetupEvent event) {
         NeoForge.EVENT_BUS.addListener(DuctClientSetup::onDuctDefinitionsReloaded);
         event.enqueueWork(
-                () ->
-                        ItemProperties.register(
-                                ModItems.SETTINGS_COPIER.get(),
-                                ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "stored"),
-                                (ItemStack stack, net.minecraft.client.multiplayer.ClientLevel level, net.minecraft.world.entity.LivingEntity entity, int seed) ->
-                                        DuctFaceSettingsSnapshot.hasStoredSettings(stack) ? 1.0F : 0.0F));
+                () -> {
+                    ItemProperties.register(
+                            ModItems.SETTINGS_COPIER.get(),
+                            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "stored"),
+                            (ItemStack stack, net.minecraft.client.multiplayer.ClientLevel level, net.minecraft.world.entity.LivingEntity entity, int seed) ->
+                                    DuctFaceSettingsSnapshot.hasStoredSettings(stack) ? 1.0F : 0.0F);
+                    ItemProperties.register(
+                            ModItems.SETTINGS_COPIER.get(),
+                            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "filter_kind"),
+                            (ItemStack stack, net.minecraft.client.multiplayer.ClientLevel level, net.minecraft.world.entity.LivingEntity entity, int seed) ->
+                                    DuctFilterListSnapshot.getStoreKind(stack) == SettingsCopierStoreKind.FILTER
+                                            ? 1.0F
+                                            : 0.0F);
+                });
     }
 
     private static void onDuctDefinitionsReloaded(DuctDefinitionsReloadedEvent event) {

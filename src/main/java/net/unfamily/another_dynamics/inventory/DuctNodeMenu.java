@@ -23,7 +23,10 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
+import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.unfamily.another_dynamics.network.SettingsCopierActionPayload;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
@@ -36,6 +39,8 @@ import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.duct.module.DuctModuleHelper;
@@ -109,6 +114,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     private final int moduleSlotCount;
     private final int machineSlotCount;
+    private final ItemStackHandler copierSlot = new ItemStackHandler(1);
 
     /** Detects module-slot changes so {@link DuctMenuSync#EXTRACT_BATCH_CAP} can be refreshed without full menu spam. */
     private int lastModuleSlotsFingerprint;
@@ -258,7 +264,13 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                         }
                     });
         }
-        addSlot(new CopySettingsSlot(SLOT_COPY_X, SLOT_COPY_Y));
+        addSlot(
+                new SlotItemHandler(copierSlot, 0, SLOT_COPY_X, SLOT_COPY_Y) {
+                    @Override
+                    public boolean mayPlace(ItemStack stack) {
+                        return !stack.isEmpty() && stack.getItem() instanceof SettingsCopierItem;
+                    }
+                });
 
         addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
         addDataSlots(syncData);
@@ -361,6 +373,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
 
     public int copySettingsSlotIndex() {
         return moduleSlotCount;
+    }
+
+    public ItemStackHandler copierSlot() {
+        return copierSlot;
     }
 
     /**
@@ -674,81 +690,136 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         return linkedBlockEntity.handleMenuButtonClick(player, id, accessFace);
     }
 
-    @Override
-    public void clicked(int slotId, int button, ClickType clickType, Player player) {
-        if (slotId == copySettingsSlotIndex()
-                && linkedBlockEntity != null
-                && linkedBlockEntity.getLevel() != null
-                && !linkedBlockEntity.getLevel().isClientSide()) {
-            var copierOpt = DuctFaceSettingsSnapshot.findCopierInHands(player, getCarried());
-            if (copierOpt.isPresent()) {
-                ItemStack copier = copierOpt.get();
-                var registries = linkedBlockEntity.getLevel().registryAccess();
-                if (player.isShiftKeyDown()) {
-                    if (DuctFaceSettingsSnapshot.hasStoredSettings(copier)) {
-                        var data = DuctFaceSettingsSnapshot.readFromCopier(copier);
-                        if (data.isPresent()
-                                && DuctFaceSettingsSnapshot.apply(
-                                        linkedBlockEntity, accessFace, data.get(), registries, player)) {
-                            syncCopierIfCarried(copier);
-                            SettingsCopierFeedback.notifyPasted(player);
-                        } else {
-                            SettingsCopierFeedback.notifyPasteFailed(player);
-                        }
-                    } else {
-                        SettingsCopierFeedback.notifyPasteFailed(player);
-                    }
-                    return;
-                }
+    /**
+     * Server: save or load the settings copier in {@link #copierSlot} for the given GUI context.
+     */
+    public boolean handleSettingsCopierAction(ServerPlayer player, SettingsCopierActionPayload payload) {
+        if (linkedBlockEntity == null
+                || linkedBlockEntity.isRemoved()
+                || linkedBlockEntity.getLevel() == null
+                || linkedBlockEntity.getLevel().isClientSide()) {
+            return false;
+        }
+        ItemStack copier = copierSlot.getStackInSlot(0);
+        if (copier.isEmpty() || !(copier.getItem() instanceof SettingsCopierItem)) {
+            SettingsCopierFeedback.notifyPasteFailed(player);
+            return false;
+        }
+        var registries = linkedBlockEntity.getLevel().registryAccess();
+        boolean save = payload.action() == SettingsCopierActionPayload.ACTION_SAVE;
+        if (payload.viewKind() == SettingsCopierActionPayload.VIEW_MAIN) {
+            if (save) {
                 CompoundTag snapshot = DuctFaceSettingsSnapshot.capture(linkedBlockEntity, accessFace, registries);
                 DuctFaceSettingsSnapshot.writeToCopier(copier, snapshot);
-                syncCopierIfCarried(copier);
-                if (player instanceof ServerPlayer serverPlayer) {
-                    SettingsCopierFeedback.notifyCopied(serverPlayer);
-                }
-                return;
+                copierSlot.setStackInSlot(0, copier);
+                SettingsCopierFeedback.notifyCopied(player);
+                return true;
             }
+            if (DuctFaceSettingsSnapshot.getStoreKind(copier) != SettingsCopierStoreKind.ALL) {
+                SettingsCopierFeedback.notifyWrongMode(player);
+                return false;
+            }
+            var data = DuctFaceSettingsSnapshot.readFromCopier(copier);
+            if (data.isEmpty()
+                    || !DuctFaceSettingsSnapshot.apply(
+                            linkedBlockEntity, accessFace, data.get(), registries, player)) {
+                SettingsCopierFeedback.notifyPasteFailed(player);
+                return false;
+            }
+            ModNetwork.sendFilterSyncToPlayer(player, linkedBlockEntity, accessFace);
+            SettingsCopierFeedback.notifyPasted(player);
+            return true;
         }
-        super.clicked(slotId, button, clickType, player);
+        if (payload.viewKind() != SettingsCopierActionPayload.VIEW_FILTER_LIST) {
+            return false;
+        }
+        DuctTransportKind[] kinds = DuctTransportKind.values();
+        DuctTransportKind laneKind =
+                kinds[Mth.clamp(payload.transportKindOrdinal(), 0, kinds.length - 1)];
+        DuctFaceNode.FilterBank bank =
+                DuctFaceNode.FilterBank.values()[
+                        Mth.clamp(
+                                payload.filterBankOrdinal(),
+                                0,
+                                DuctFaceNode.FilterBank.values().length - 1)];
+        boolean allowList = payload.allowDeny() == SettingsCopierActionPayload.LIST_ALLOW;
+        DuctFaceNode node = linkedBlockEntity.faceNodeForTransportKind(accessFace, laneKind);
+        if (save) {
+            CompoundTag snapshot = DuctFilterListSnapshot.captureList(node, bank, allowList);
+            DuctFaceSettingsSnapshot.writeToCopier(copier, snapshot);
+            copierSlot.setStackInSlot(0, copier);
+            SettingsCopierFeedback.notifyCopied(player);
+            return true;
+        }
+        if (DuctFaceSettingsSnapshot.getStoreKind(copier) != SettingsCopierStoreKind.FILTER) {
+            SettingsCopierFeedback.notifyWrongMode(player);
+            return false;
+        }
+        var data = DuctFaceSettingsSnapshot.readFromCopier(copier);
+        if (data.isEmpty() || !DuctFilterListSnapshot.applyToList(node, bank, allowList, data.get())) {
+            SettingsCopierFeedback.notifyPasteFailed(player);
+            return false;
+        }
+        linkedBlockEntity.clampFaceFiltersToSpec();
+        linkedBlockEntity.setChanged();
+        linkedBlockEntity.refreshMenuData(accessFace);
+        ModNetwork.sendFilterSyncToPlayer(player, linkedBlockEntity, accessFace);
+        SettingsCopierFeedback.notifyPasted(player);
+        return true;
     }
 
-    private void syncCopierIfCarried(ItemStack copier) {
-        ItemStack carried = getCarried();
-        if (!carried.isEmpty() && ItemStack.isSameItemSameComponents(carried, copier)) {
-            setCarried(copier);
+    @Override
+    public void removed(Player player) {
+        super.removed(player);
+        if (player.level().isClientSide()) {
+            return;
+        }
+        ItemStack copier = copierSlot.getStackInSlot(0);
+        if (!copier.isEmpty()) {
+            if (!player.getInventory().add(copier.copy())) {
+                player.drop(copier.copy(), false);
+            }
+            copierSlot.setStackInSlot(0, ItemStack.EMPTY);
         }
     }
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
-        if (index == copySettingsSlotIndex()) {
-            return ItemStack.EMPTY;
-        }
         int playerFirst = playerSlotStart();
         int playerLast = this.slots.size();
+        int copierIndex = copySettingsSlotIndex();
 
         ItemStack result = ItemStack.EMPTY;
         Slot slot = this.slots.get(index);
-        if (slot != null && slot.hasItem()) {
-            ItemStack stack = slot.getItem();
-            result = stack.copy();
-            if (index < copySettingsSlotIndex()) {
-                if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
-                    return ItemStack.EMPTY;
-                }
-            } else if (!moveItemStackTo(stack, 0, copySettingsSlotIndex(), false)) {
-                return ItemStack.EMPTY;
-            }
-            if (stack.isEmpty()) {
-                slot.setByPlayer(ItemStack.EMPTY);
-            } else {
-                slot.setChanged();
-            }
-            if (stack.getCount() == result.getCount()) {
-                return ItemStack.EMPTY;
-            }
-            slot.onTake(player, stack);
+        if (slot == null || !slot.hasItem()) {
+            return ItemStack.EMPTY;
         }
+        ItemStack stack = slot.getItem();
+        result = stack.copy();
+        if (index == copierIndex) {
+            if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
+                return ItemStack.EMPTY;
+            }
+        } else if (index < copierIndex) {
+            if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
+                return ItemStack.EMPTY;
+            }
+        } else if (stack.getItem() instanceof SettingsCopierItem) {
+            if (!moveItemStackTo(stack, copierIndex, copierIndex + 1, false)) {
+                return ItemStack.EMPTY;
+            }
+        } else if (!moveItemStackTo(stack, 0, copierIndex, false)) {
+            return ItemStack.EMPTY;
+        }
+        if (stack.isEmpty()) {
+            slot.setByPlayer(ItemStack.EMPTY);
+        } else {
+            slot.setChanged();
+        }
+        if (stack.getCount() == result.getCount()) {
+            return ItemStack.EMPTY;
+        }
+        slot.onTake(player, stack);
         return result;
     }
 }

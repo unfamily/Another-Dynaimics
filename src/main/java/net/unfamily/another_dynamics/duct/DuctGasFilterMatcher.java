@@ -11,7 +11,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Single gas ("chemical") filter entry matching.
  *
- * <p>Supports {@code -id}, {@code @mod}, {@code #tag}, and {@code &...} macros (no {@code ?} NBT matching).</p>
+ * <p>Supports {@code -id}, {@code @mod}, and {@code &...} macros (no {@code #} tags or {@code ?} NBT matching).</p>
  */
 public final class DuctGasFilterMatcher {
     private DuctGasFilterMatcher() {}
