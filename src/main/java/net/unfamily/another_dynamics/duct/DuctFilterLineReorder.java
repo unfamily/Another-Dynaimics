@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -20,31 +22,59 @@ public final class DuctFilterLineReorder {
             List<Integer> allowCaps,
             List<Integer> denyCaps,
             HolderLookup.Provider registries) {
-        sortLines(allowLines, allowCaps, registries);
-        sortLines(denyLines, denyCaps, registries);
+        sortAllowDenyRows(allowLines, denyLines, allowCaps, denyCaps, registries, null);
     }
 
-    private static void sortLines(List<String> lines, List<Integer> caps, HolderLookup.Provider registries) {
+    /** @param allowCaps2 optional per-allow-line secondary caps (FILTER keep); reordered with allow rows when set. */
+    public static void sortAllowDenyRows(
+            List<String> allowLines,
+            List<String> denyLines,
+            List<Integer> allowCaps,
+            List<Integer> denyCaps,
+            HolderLookup.Provider registries,
+            @Nullable List<Integer> allowCaps2) {
+        sortLines(allowLines, allowCaps, allowCaps2, registries);
+        sortLines(denyLines, denyCaps, null, registries);
+    }
+
+    private static void sortLines(
+            List<String> lines,
+            List<Integer> caps,
+            @Nullable List<Integer> caps2,
+            HolderLookup.Provider registries) {
         if (lines == null || lines.isEmpty()) {
             return;
         }
-        record Row(String line, int cap, int weight) {}
+        record Row(String line, int cap, int cap2, int weight) {}
         ArrayList<Row> rows = new ArrayList<>();
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
             int cap = caps != null && i < caps.size() ? caps.get(i) : 0;
-            rows.add(new Row(line == null ? "" : line, cap, weightForLine(line, registries)));
+            int cap2 = caps2 != null && i < caps2.size() ? caps2.get(i) : 0;
+            rows.add(new Row(line == null ? "" : line, cap, cap2, weightForLine(line, registries)));
         }
         rows.sort(Comparator.comparingInt(Row::weight).thenComparing(Row::line));
-        lines.clear();
-        if (caps != null) {
-            caps.clear();
-        }
+        ArrayList<String> sortedLines = new ArrayList<>(rows.size());
+        ArrayList<Integer> sortedCaps = caps != null ? new ArrayList<>(rows.size()) : null;
+        ArrayList<Integer> sortedCaps2 = caps2 != null ? new ArrayList<>(rows.size()) : null;
         for (Row r : rows) {
-            lines.add(r.line());
-            if (caps != null) {
-                caps.add(r.cap());
+            sortedLines.add(r.line());
+            if (sortedCaps != null) {
+                sortedCaps.add(r.cap());
             }
+            if (sortedCaps2 != null) {
+                sortedCaps2.add(r.cap2());
+            }
+        }
+        lines.clear();
+        lines.addAll(sortedLines);
+        if (caps != null && sortedCaps != null) {
+            caps.clear();
+            caps.addAll(sortedCaps);
+        }
+        if (caps2 != null && sortedCaps2 != null) {
+            caps2.clear();
+            caps2.addAll(sortedCaps2);
         }
     }
 

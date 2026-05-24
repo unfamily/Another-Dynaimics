@@ -167,6 +167,30 @@ public final class ModNetwork {
             });
         });
 
+        reg.playToServer(
+                DuctEnergyBufferLimitsPayload.TYPE,
+                DuctEnergyBufferLimitsPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        BlockEntity be = player.level().getBlockEntity(payload.pos());
+                        if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
+                            return;
+                        }
+                        if (!validateDuctGuiInteraction(player, payload.pos())) {
+                            return;
+                        }
+                        int fo = payload.faceOrdinal();
+                        if (fo < 0 || fo >= Direction.values().length) {
+                            return;
+                        }
+                        duct.applyEnergyBufferLimitsFromClient(
+                                Direction.values()[fo],
+                                payload.extractLimitFe(),
+                                payload.insertLimitFe());
+                    });
+                });
+
         reg.playToServer(DuctSelfFeedPayload.TYPE, DuctSelfFeedPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
@@ -264,6 +288,12 @@ public final class ModNetwork {
 
     public static void sendSelfFeedSet(BlockPos pos, Direction face, boolean enabled) {
         PacketDistributor.sendToServer(new DuctSelfFeedPayload(pos, face.ordinal(), enabled));
+    }
+
+    public static void sendEnergyBufferLimits(
+            BlockPos pos, Direction face, int extractLimitFe, int insertLimitFe) {
+        PacketDistributor.sendToServer(
+                new DuctEnergyBufferLimitsPayload(pos, face.ordinal(), extractLimitFe, insertLimitFe));
     }
 
     /** Toggles duct opaque rendering preference (player attachment); server authoritative. */

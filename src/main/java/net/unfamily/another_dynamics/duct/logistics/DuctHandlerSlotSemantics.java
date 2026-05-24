@@ -58,9 +58,28 @@ public final class DuctHandlerSlotSemantics {
         if (template.isEmpty() || handler == null || slot < 0 || slot >= handler.getSlots()) {
             return false;
         }
+        if (roleForSlot(handler, slot) == SlotRole.OUTPUT) {
+            return false;
+        }
         ItemStack probe = template.copyWithCount(1);
         ItemStack left = handler.insertItem(slot, probe, true);
         return left.isEmpty() || left.getCount() < probe.getCount();
+    }
+
+    /** Slots whose contents count toward FILTER/RETRIEVER insert limits (excludes output-only). */
+    public static boolean countsTowardInsertLimit(IItemHandler handler, int slot) {
+        if (handler == null || slot < 0 || slot >= handler.getSlots()) {
+            return false;
+        }
+        return roleForSlot(handler, slot) != SlotRole.OUTPUT;
+    }
+
+    /** Slots whose contents count toward FILTER keep on extract (excludes input-only). */
+    public static boolean countsTowardExtractKeep(IItemHandler handler, int slot) {
+        if (handler == null || slot < 0 || slot >= handler.getSlots()) {
+            return false;
+        }
+        return roleForSlot(handler, slot) != SlotRole.INPUT;
     }
 
     private static boolean canInsertOne(IItemHandler handler, int slot) {

@@ -357,13 +357,67 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return faceEnergyBufferCaps[side.ordinal()];
     }
 
-    /** Internal FE buffer cap per face: datapack {@code extract} only (modules raise per-action ceiling, not buffer size). */
-    private int energyBufferCapacityFe(Direction face) {
-        DuctEnergyTransportSpec spec = energyTransportSpec();
-        long cap = spec.clampedExtract();
-        return (int) Math.max(1L, Math.min(cap, (long) Integer.MAX_VALUE));
+    /** External push (batteries) into the input buffer; {@link NodeMode#NONE} does not accept. */
+    public static boolean canReceiveExternalEnergyOnFace(NodeMode mode) {
+        return mode != NodeMode.NONE;
     }
 
+    /** Push FE into the output buffer (network logistics only; not exposed via {@link #canReceive()}). */
+    public int depositEnergyOutputBuffer(Direction face, int maxReceive, boolean simulate) {
+        if (maxReceive <= 0) {
+            return 0;
+        }
+        DuctFaceLanes lanes = getFaceLanes(face);
+        int cap = DuctModuleEffects.effectiveEnergyOutputBufferCapFe(this, face, energyTransportSpec());
+        int stored = Math.max(0, lanes.energyOutputBufferFe);
+        int accept = Math.min(maxReceive, Math.max(0, cap - stored));
+        if (!simulate && accept > 0) {
+            lanes.energyOutputBufferFe = stored + accept;
+            setChanged();
+            refreshMenuData(face);
+            syncStallVisualIfNeeded();
+        }
+        return accept;
+    }
+
+    /** Pull FE from the input buffer (network extract / logistics). */
+    public int extractEnergyInputBuffer(Direction face, int maxExtract, boolean simulate) {
+        if (maxExtract <= 0) {
+            return 0;
+        }
+        DuctFaceLanes lanes = getFaceLanes(face);
+        int stored = Math.max(0, lanes.energyInputBufferFe);
+        int take = Math.min(maxExtract, stored);
+        if (!simulate && take > 0) {
+            lanes.energyInputBufferFe = stored - take;
+            setChanged();
+            refreshMenuData(face);
+            if (lanes.energyInputBufferFe <= 0 && lanes.energyOutputBufferFe <= 0) {
+                syncStallVisualIfNeeded();
+            }
+        }
+        return take;
+    }
+
+    public void applyEnergyBufferLimitsFromClient(Direction face, int extractLimitFe, int insertLimitFe) {
+        DuctFaceLanes lanes = getFaceLanes(face);
+        lanes.energyExtractBufferLimitFe = Math.max(0, extractLimitFe);
+        lanes.energyInsertBufferLimitFe = Math.max(0, insertLimitFe);
+        int inCap = DuctModuleEffects.effectiveEnergyInputBufferCapFe(this, face, energyTransportSpec());
+        int outCap = DuctModuleEffects.effectiveEnergyOutputBufferCapFe(this, face, energyTransportSpec());
+        if (lanes.energyInputBufferFe > inCap) {
+            lanes.energyInputBufferFe = inCap;
+        }
+        if (lanes.energyOutputBufferFe > outCap) {
+            lanes.energyOutputBufferFe = outCap;
+        }
+        setChanged();
+        refreshMenuData(face);
+    }
+
+    /**
+     * Face capability: {@code receiveEnergy} → input buffer; {@code extractEnergy} → output buffer (adjacent machines).
+     */
     private final class FaceEnergyBuffer implements IEnergyStorage {
         private final Direction face;
 
@@ -373,16 +427,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
         @Override
         public int receiveEnergy(int maxReceive, boolean simulate) {
-            if (maxReceive <= 0) {
+            if (maxReceive <= 0 || !canReceive()) {
                 return 0;
             }
             DuctFaceLanes lanes = getFaceLanes(face);
-            int cap = energyBufferCapacityFe(face);
-            int stored = Math.max(0, lanes.energyBufferFe);
+            int cap = DuctModuleEffects.effectiveEnergyInputBufferCapFe(DuctBlockEntity.this, face, energyTransportSpec());
+            int stored = Math.max(0, lanes.energyInputBufferFe);
             int accept = Math.min(maxReceive, Math.max(0, cap - stored));
             if (!simulate && accept > 0) {
-                lanes.energyBufferFe = stored + accept;
+                lanes.energyInputBufferFe = stored + accept;
                 setChanged();
+                refreshMenuData(face);
                 syncStallVisualIfNeeded();
             }
             return accept;
@@ -390,16 +445,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
         @Override
         public int extractEnergy(int maxExtract, boolean simulate) {
-            if (maxExtract <= 0) {
+            if (maxExtract <= 0 || !canExtract()) {
                 return 0;
             }
             DuctFaceLanes lanes = getFaceLanes(face);
-            int stored = Math.max(0, lanes.energyBufferFe);
+            int stored = Math.max(0, lanes.energyOutputBufferFe);
             int take = Math.min(maxExtract, stored);
             if (!simulate && take > 0) {
-                lanes.energyBufferFe = stored - take;
+                lanes.energyOutputBufferFe = stored - take;
                 setChanged();
-                if (lanes.energyBufferFe <= 0) {
+                refreshMenuData(face);
+                if (lanes.energyInputBufferFe <= 0 && lanes.energyOutputBufferFe <= 0) {
                     syncStallVisualIfNeeded();
                 }
             }
@@ -408,22 +464,22 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
         @Override
         public int getEnergyStored() {
-            return Math.max(0, getFaceLanes(face).energyBufferFe);
+            return Math.max(0, getFaceLanes(face).energyOutputBufferFe);
         }
 
         @Override
         public int getMaxEnergyStored() {
-            return energyBufferCapacityFe(face);
+            return DuctModuleEffects.effectiveEnergyOutputBufferCapFe(DuctBlockEntity.this, face, energyTransportSpec());
         }
 
         @Override
         public boolean canExtract() {
-            return true;
+            return getEnergyStored() > 0 || getMaxEnergyStored() > 0;
         }
 
         @Override
         public boolean canReceive() {
-            return true;
+            return canReceiveExternalEnergyOnFace(getFaceLanes(face).nodeMode);
         }
     }
 
@@ -597,11 +653,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             case ENERGY, HEAT -> getFaceNode(face);
             case ITEM -> getFaceNode(face);
         };
-    }
-
-    /** True when buffered FE from an external push should leave via network routing (not local extract scheduling). */
-    public static boolean isExternalEnergyBufferPassThrough(NodeMode mode) {
-        return mode == NodeMode.NONE || mode == NodeMode.FILTERING_INSERTION;
     }
 
     public RoutingMode energyRoutingForFace(Direction face, boolean extractorLane) {
@@ -967,8 +1018,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             DuctFaceLanes lanes = getFaceLanes(face);
-            if (isTransportKindEnabled(face, DuctTransportKind.ENERGY) && lanes.energyBufferFe > 0) {
-                DuctEnergyServerTick.tryDrainEnergyBufferForFace(this, level, face, energyTransportSpec());
+            if (isTransportKindEnabled(face, DuctTransportKind.ENERGY)
+                    && (lanes.energyInputBufferFe > 0 || lanes.energyOutputBufferFe > 0)) {
+                DuctEnergyServerTick.tickStallBuffersForFace(this, level, face, energyTransportSpec());
             }
             if (isTransportKindEnabled(face, DuctTransportKind.FLUID)) {
                 DuctFaceLanes fl = getFaceLanes(face);
@@ -1521,7 +1573,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 capExt =
                         Math.min(
                                 capExt,
-                                capExtractableForFilterKeep(
+                                capExtractableForSourceKeep(
                                         level, s.refundDuct, s.sourceFace, srcBe, s.stack, capExt));
             }
         }
@@ -1976,7 +2028,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 return true;
             }
         }
-        if (lanes.energyBufferFe > 0) {
+        if (lanes.energyInputBufferFe > 0 || lanes.energyOutputBufferFe > 0) {
             return true;
         }
         return lanes.stalledEnergyCount > 0 || lanes.stalledHeatCount > 0;
@@ -2375,7 +2427,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             capExt =
                     Math.min(
                             capExt,
-                            capExtractableForFilterKeep(
+                            capExtractableForSourceKeep(
                                     level, s.refundDuct, s.sourceFace, srcBe, s.stack, capExt));
         }
         int n = Math.min(planned, Math.min(capExt, capIn));
@@ -2541,7 +2593,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             capExt =
                     Math.min(
                             capExt,
-                            capExtractableForFilterKeep(
+                            capExtractableForSourceKeep(
                                     level, s.refundDuct, s.sourceFace, donorBe, s.stack, capExt));
         }
         int n = Math.min(planned, Math.min(capExt, capIn));
@@ -2761,7 +2813,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 skipReason = "keep"; skipItem = p;
                 // Keep-in-storage on the source must not wedge the extractor on the first matching stack.
                 // If this item cannot be extracted at all due to Keep, try the next candidate item.
-                if (capExtractableForFilterKeep(level, worldPosition, face, this, p, 1) <= 0) {
+                if (capExtractableForSourceKeep(level, worldPosition, face, this, p, 1) <= 0) {
                     continue;
                 }
                 probe = p;
@@ -2801,7 +2853,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             plannedCount =
                     Math.min(
                             plannedCount,
-                            capExtractableForFilterKeep(
+                            capExtractableForSourceKeep(
                                     level, worldPosition, face, this, probe, plannedCount));
             if (plannedCount <= 0) {
                 continue;
@@ -2946,7 +2998,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     continue;
                 }
                 // Do not wedge retriever on an item blocked by donor Keep-in-storage.
-                if (capExtractableForFilterKeep(level, donor, donorFace, donorBe, probe, 1) <= 0) {
+                if (capExtractableForSourceKeep(level, donor, donorFace, donorBe, probe, 1) <= 0) {
                     continue;
                 }
                 if (overflowBuffer.isSchedulingUnavailableForNewPulls()
@@ -2975,7 +3027,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 plannedCount =
                         Math.min(
                                 plannedCount,
-                                capExtractableForFilterKeep(
+                                capExtractableForSourceKeep(
                                         level, donor, donorFace, donorBe, probe, plannedCount));
                 if (plannedCount <= 0) {
                     continue;
@@ -3593,12 +3645,30 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 || faceLanes.nodeMode == NodeMode.FILTERING_INSERTION)) {
             flags |= DuctMenuSync.FLAG_ROUTING_ACTIVE;
         }
-        if (menuActiveTransportKind() != DuctTransportKind.ENERGY
-                && menuActiveTransportKind() != DuctTransportKind.HEAT
+        if (menuKind != DuctTransportKind.ENERGY
+                && menuKind != DuctTransportKind.HEAT
                 && faceLanes.nodeMode.usesItemFilterConfig()) {
             flags |= DuctMenuSync.FLAG_FILTERS_ACTIVE;
         }
         menuData.set(DuctMenuSync.FLAGS, flags);
+        menuData.set(DuctMenuSync.ENERGY_BUF_LIMIT_EXTRACT, faceLanes.energyExtractBufferLimitFe);
+        menuData.set(DuctMenuSync.ENERGY_BUF_LIMIT_INSERT, faceLanes.energyInsertBufferLimitFe);
+        if (menuKind == DuctTransportKind.ENERGY) {
+            DuctEnergyTransportSpec energySpec = energyTransportSpec();
+            menuData.set(DuctMenuSync.ENERGY_BUF_INPUT_STORED, faceLanes.energyInputBufferFe);
+            menuData.set(DuctMenuSync.ENERGY_BUF_OUTPUT_STORED, faceLanes.energyOutputBufferFe);
+            menuData.set(
+                    DuctMenuSync.ENERGY_BUF_INPUT_CAP,
+                    DuctModuleEffects.effectiveEnergyInputBufferCapFe(this, accessFace, energySpec));
+            menuData.set(
+                    DuctMenuSync.ENERGY_BUF_OUTPUT_CAP,
+                    DuctModuleEffects.effectiveEnergyOutputBufferCapFe(this, accessFace, energySpec));
+        } else {
+            menuData.set(DuctMenuSync.ENERGY_BUF_INPUT_STORED, 0);
+            menuData.set(DuctMenuSync.ENERGY_BUF_OUTPUT_STORED, 0);
+            menuData.set(DuctMenuSync.ENERGY_BUF_INPUT_CAP, 0);
+            menuData.set(DuctMenuSync.ENERGY_BUF_OUTPUT_CAP, 0);
+        }
         menuData.set(DuctMenuSync.POS_X, worldPosition.getX());
         menuData.set(DuctMenuSync.POS_Y, worldPosition.getY());
         menuData.set(DuctMenuSync.POS_Z, worldPosition.getZ());
@@ -3714,27 +3784,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return Math.min(maxFromCapacity, maxAdd);
     }
 
-    /** Caps how many items may be extracted while respecting per-allow-line Keep on the source face. */
-    private int capExtractableForAllowKeep(
-            Level level,
-            BlockPos sourceDuctPos,
-            Direction sourceFace,
-            DuctBlockEntity sourceBe,
-            DuctFaceNode.FilterBank allowBank,
-            ItemStack template,
-            int maxWant) {
-        if (maxWant <= 0 || template.isEmpty()) {
-            return 0;
-        }
-        // Keep caps exist only on the FILTER bank; EXTRACTOR/RETRIEVER allow caps are insert limits, not extract keep.
-        if (allowBank != DuctFaceNode.FilterBank.FILTER) {
-            return maxWant;
-        }
-        return capExtractableForFilterKeep(level, sourceDuctPos, sourceFace, sourceBe, template, maxWant);
-    }
-
-    /** Same as {@link #capExtractableForAllowKeep} but uses FILTER.keep caps on the source node. */
-    private int capExtractableForFilterKeep(
+    /** Caps extract count respecting Keep on the inventory attached to {@code sourceFace}. */
+    private int capExtractableForSourceKeep(
             Level level,
             BlockPos sourceDuctPos,
             Direction sourceFace,
@@ -3749,13 +3800,26 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return maxWant;
         }
         DuctFaceNode srcNode = sourceBe.getFaceNode(sourceFace);
+        NodeMode mode = sourceBe.getFaceLanes(sourceFace).nodeMode;
+        List<String> allowLines;
+        List<Integer> keepCaps;
+        if (mode == NodeMode.EXTRACTION
+                || mode == NodeMode.EXTRACTION_FILTERING
+                || mode == NodeMode.RETRIEVING_EXTRACTION) {
+            allowLines = srcNode.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR);
+            keepCaps = srcNode.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR);
+        } else if (mode == NodeMode.FILTERING_INSERTION) {
+            allowLines = srcNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
+            keepCaps = srcNode.filterBankKeepCaps();
+        } else {
+            return maxWant;
+        }
+        if (!DuctAllowLimitLogic.hasAnyPositiveKeepOnNonEmptyLine(allowLines, keepCaps)) {
+            return maxWant;
+        }
         int cap =
                 DuctAllowLimitLogic.maxExtractRespectingKeepAcrossLines(
-                        h,
-                        srcNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER),
-                        srcNode.filterBankKeepCaps(),
-                        template,
-                        level.registryAccess());
+                        h, allowLines, keepCaps, template, level.registryAccess());
         if (cap == Integer.MAX_VALUE) {
             return maxWant;
         }

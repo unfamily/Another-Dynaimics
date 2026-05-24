@@ -83,6 +83,7 @@ public final class DuctNodeScreen
         ALLOW_FILTERS,
         ADVANCED_FILTERING,
         HOW_TO_USE,
+        BUFFER_LIMITS,
     }
 
     private static final ResourceLocation TEXTURE =
@@ -165,6 +166,10 @@ public final class DuctNodeScreen
     private static final int AMOUNT_ROWS_GAP = 4;
     private static final int AMOUNT_ROW_Y = 118;
     private static final int AMOUNT_LABEL_ABOVE_GAP = 3;
+    /** Energy buffer subview: title row, fill %, then limit editor (replaces priority/quantity block). */
+    private static final int ENERGY_BUF_NAME_Y = 88;
+    private static final int ENERGY_BUF_FILL_Y = 98;
+    private static final int ENERGY_BUF_LIMIT_ROW_Y = 108;
     /**
      * GUI-local Y of the Limit/Keep numeric row in {@link SubView#ADVANCED_FILTERING}. Lowered so the cap block sits above
      * the filter entry editor (same anchor as non-advanced: {@link #FIRST_FILTER_ROW_Y} + visible rows) without overlapping it.
@@ -181,6 +186,8 @@ public final class DuctNodeScreen
     private int advCapEditBoxGuiLeft;
     /** Gui-local X of {@link #advCap2EditBox} left edge (for Keep label centering in FILTER retrieve-only/both). */
     private int advCap2EditBoxGuiLeft;
+    private int energyBufExtractEditGuiLeft;
+    private int energyBufInsertEditGuiLeft;
 
     private static final int CHANNEL_WIDGET_W = 18;
     private static final int CHANNEL_WIDGET_H = 18;
@@ -329,6 +336,26 @@ public final class DuctNodeScreen
     private Button advCap2ApplyButton;
     private Button advCap2UndoButton;
     private boolean advCapEditHadFocus;
+
+    private int energyBufExtractDraft;
+    private int energyBufInsertDraft;
+    private int energyBufExtractCommitted;
+    private int energyBufInsertCommitted;
+    private boolean energyBufDirty;
+    private boolean syncingEnergyBufFromServer;
+    private int energyBufLayoutCache = -1;
+    private Button energyBufExtractMinus;
+    private Button energyBufExtractPlus;
+    private EditBox energyBufExtractBox;
+    private Button energyBufExtractAutoButton;
+    private Button energyBufExtractApplyButton;
+    private Button energyBufExtractUndoButton;
+    private Button energyBufInsertMinus;
+    private Button energyBufInsertPlus;
+    private EditBox energyBufInsertBox;
+    private Button energyBufInsertAutoButton;
+    private Button energyBufInsertApplyButton;
+    private Button energyBufInsertUndoButton;
     private ItemStack ghostSlotItem = ItemStack.EMPTY;
     /** When editing fluid filters, preview still sprite from {@link FluidUtil#getFluidContained} on the ghost item. */
     private FluidStack ghostSlotFluid = FluidStack.EMPTY;
@@ -437,6 +464,9 @@ public final class DuctNodeScreen
             Component.translatable("gui.another_dynamics.duct_node.deny_list"),
             b -> {
                 playClickSound();
+                if (energyFilterListsLocked()) {
+                    return;
+                }
                 NodeMode nm = NodeMode.fromOrdinal(
                     menu.getSyncData().get(DuctMenuSync.NODE_MODE)
                 );
@@ -471,6 +501,16 @@ public final class DuctNodeScreen
 
         listLogicButton = Button.builder(Component.literal(">>>>>"), b -> {
             playClickSound();
+            if (subView == SubView.BUFFER_LIMITS) {
+                closeEnergyBufferSubview();
+                return;
+            }
+            if (isEnergyOrHeatTransport()
+                    && menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND)
+                            == DuctTransportKind.ENERGY.ordinal()) {
+                openEnergyBufferSubview();
+                return;
+            }
             NodeMode nm = NodeMode.fromOrdinal(
                 menu.getSyncData().get(DuctMenuSync.NODE_MODE)
             );
@@ -504,6 +544,9 @@ public final class DuctNodeScreen
             Component.translatable("gui.another_dynamics.duct_node.allow_list"),
             b -> {
                 playClickSound();
+                if (energyFilterListsLocked()) {
+                    return;
+                }
                 NodeMode nm = NodeMode.fromOrdinal(
                     menu.getSyncData().get(DuctMenuSync.NODE_MODE)
                 );
@@ -832,7 +875,66 @@ public final class DuctNodeScreen
             .build();
         addRenderableWidget(advCap2UndoButton);
 
+        energyBufExtractMinus = Button.builder(Component.literal("-"), b -> adjustEnergyBufExtract(-1))
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .build();
+        addRenderableWidget(energyBufExtractMinus);
+        energyBufExtractBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.empty());
+        energyBufExtractBox.setMaxLength(10);
+        energyBufExtractBox.setResponder(v -> parseEnergyBufExtractBox(v));
+        addRenderableWidget(energyBufExtractBox);
+        energyBufExtractPlus = Button.builder(Component.literal("+"), b -> adjustEnergyBufExtract(1))
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .build();
+        addRenderableWidget(energyBufExtractPlus);
+        energyBufExtractAutoButton = Button.builder(Component.literal("~"), b -> {
+            playClickSound();
+            energyBufExtractDraft = 0;
+            syncEnergyBufExtractBoxDisplay();
+        })
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(energyBufExtractAutoButton);
+        energyBufExtractApplyButton = Button.builder(Component.literal("A"), b -> applyEnergyBufferLimits())
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(energyBufExtractApplyButton);
+        energyBufExtractUndoButton = Button.builder(Component.literal("\u2715"), b -> cancelEnergyBufferDraft())
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(energyBufExtractUndoButton);
+
+        energyBufInsertMinus = Button.builder(Component.literal("-"), b -> adjustEnergyBufInsert(-1))
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .build();
+        addRenderableWidget(energyBufInsertMinus);
+        energyBufInsertBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.empty());
+        energyBufInsertBox.setMaxLength(10);
+        energyBufInsertBox.setResponder(v -> parseEnergyBufInsertBox(v));
+        addRenderableWidget(energyBufInsertBox);
+        energyBufInsertPlus = Button.builder(Component.literal("+"), b -> adjustEnergyBufInsert(1))
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .build();
+        addRenderableWidget(energyBufInsertPlus);
+        energyBufInsertAutoButton = Button.builder(Component.literal("~"), b -> {
+            playClickSound();
+            energyBufInsertDraft = 0;
+            syncEnergyBufInsertBoxDisplay();
+        })
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(energyBufInsertAutoButton);
+        energyBufInsertApplyButton = Button.builder(Component.literal("A"), b -> applyEnergyBufferLimits())
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(energyBufInsertApplyButton);
+        energyBufInsertUndoButton = Button.builder(Component.literal("\u2715"), b -> cancelEnergyBufferDraft())
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(energyBufInsertUndoButton);
+
         layoutAdvancedCapBlock();
+        layoutEnergyBufferBlock();
 
         nodeModeButton = Button.builder(Component.empty(), b -> {
             playClickSound();
@@ -956,7 +1058,7 @@ public final class DuctNodeScreen
                             playClickSound();
                             reorderActiveFilterLines();
                         })
-                        .bounds(0, 0, ADVANCED_FILTER_BUTTON_WIDTH, BTN_H)
+                        .bounds(0, 0, 12, 12)
                         .tooltip(
                                 Tooltip.create(
                                         Component.translatable(
@@ -1262,6 +1364,11 @@ public final class DuctNodeScreen
                 closeAdvancedFiltering();
                 return;
             }
+            if (subView == SubView.BUFFER_LIMITS) {
+                playClickSound();
+                closeEnergyBufferSubview();
+                return;
+            }
             closeFilterSubview();
         }
     }
@@ -1292,6 +1399,33 @@ public final class DuctNodeScreen
         return slotY + (slotSize - BTN_H) / 2;
     }
 
+    private void layoutFilterSortButton() {
+        if (filterReorderButton == null) {
+            return;
+        }
+        int buttonSize = 12;
+        int buttonSpacing = 2;
+        int slotSize = 18;
+        boolean show =
+                isAllowOrDenyFilterListContext() && !inEditMode() && subView != SubView.HOW_TO_USE;
+        if (!show) {
+            filterReorderButton.visible = false;
+            return;
+        }
+        int slotY = editModeRowAnchorScreenY();
+        int rowLeft = this.leftPos + ENTRY_X;
+        int rowRight = this.leftPos + ENTRY_X + ENTRY_WIDTH;
+        int closeButtonX = rowRight - buttonSize;
+        int applyButtonX = closeButtonX - buttonSize - buttonSpacing;
+        int clearButtonX = applyButtonX - buttonSize - buttonSpacing;
+        int buttonRowY = slotY + (slotSize - buttonSize) / 2;
+        filterReorderButton.setX(clearButtonX);
+        filterReorderButton.setY(buttonRowY);
+        filterReorderButton.setWidth(buttonSize);
+        filterReorderButton.setHeight(buttonSize);
+        filterReorderButton.visible = true;
+    }
+
     private void layoutFilterNavAndHelpButtons() {
         boolean howto = subView == SubView.HOW_TO_USE;
         boolean filterList =
@@ -1314,17 +1448,8 @@ public final class DuctNodeScreen
             validKeysButton.setY(by);
             validKeysButton.setWidth(ADVANCED_FILTER_BUTTON_WIDTH);
             validKeysButton.setHeight(BTN_H);
-            if (filterReorderButton != null) {
-                filterReorderButton.setX(
-                        bx + backButton.getWidth() + ADJACENT_BTN_GAP + validKeysButton.getWidth() + ADJACENT_BTN_GAP);
-                filterReorderButton.setY(by);
-                filterReorderButton.setWidth(ADVANCED_FILTER_BUTTON_WIDTH);
-                filterReorderButton.setHeight(BTN_H);
-                filterReorderButton.visible = true;
-            }
-        } else if (filterReorderButton != null) {
-            filterReorderButton.visible = false;
         }
+        layoutFilterSortButton();
     }
 
     private boolean inEditMode() {
@@ -1528,6 +1653,259 @@ public final class DuctNodeScreen
         }
     }
 
+    private boolean isEnergyBufferLimitsSubview() {
+        return subView == SubView.BUFFER_LIMITS;
+    }
+
+    private boolean isExtractOnlyEnergyFace() {
+        NodeMode nm = NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+        if (nm == NodeMode.EXTRACTION) {
+            return true;
+        }
+        return nm == NodeMode.EXTRACTION_FILTERING && hybridPanel == HybridPanel.EXTRACTOR;
+    }
+
+    private void openEnergyBufferSubview() {
+        exitEditMode(false);
+        subView = SubView.BUFFER_LIMITS;
+        syncEnergyBufFromServer();
+        energyBufDirty = false;
+        applySubViewVisibility();
+    }
+
+    private void closeEnergyBufferSubview() {
+        exitEditMode(false);
+        subView = SubView.MAIN;
+        applySubViewVisibility();
+    }
+
+    private void syncEnergyBufFromServer() {
+        syncingEnergyBufFromServer = true;
+        energyBufExtractCommitted = menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_LIMIT_EXTRACT);
+        energyBufInsertCommitted = menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_LIMIT_INSERT);
+        energyBufExtractDraft = energyBufExtractCommitted;
+        energyBufInsertDraft = energyBufInsertCommitted;
+        syncEnergyBufExtractBoxDisplay();
+        syncEnergyBufInsertBoxDisplay();
+        syncingEnergyBufFromServer = false;
+    }
+
+    private void syncEnergyBufExtractBoxDisplay() {
+        if (energyBufExtractBox == null) {
+            return;
+        }
+        if (energyBufExtractBox.isFocused()) {
+            return;
+        }
+        energyBufExtractBox.setValue(
+                energyBufExtractDraft <= 0 ? "AUTO" : Integer.toString(energyBufExtractDraft));
+    }
+
+    private void syncEnergyBufInsertBoxDisplay() {
+        if (energyBufInsertBox == null) {
+            return;
+        }
+        if (energyBufInsertBox.isFocused()) {
+            return;
+        }
+        energyBufInsertBox.setValue(
+                energyBufInsertDraft <= 0 ? "AUTO" : Integer.toString(energyBufInsertDraft));
+    }
+
+    private void parseEnergyBufExtractBox(String v) {
+        if (syncingEnergyBufFromServer) {
+            return;
+        }
+        energyBufDirty = true;
+        String t = v.trim();
+        if (t.isEmpty() || t.equalsIgnoreCase("auto")) {
+            energyBufExtractDraft = 0;
+            return;
+        }
+        try {
+            energyBufExtractDraft =
+                    (int) Mth.clamp(Long.parseLong(t), 0L, Integer.MAX_VALUE);
+        } catch (NumberFormatException ignored) {}
+    }
+
+    private void parseEnergyBufInsertBox(String v) {
+        if (syncingEnergyBufFromServer) {
+            return;
+        }
+        energyBufDirty = true;
+        String t = v.trim();
+        if (t.isEmpty() || t.equalsIgnoreCase("auto")) {
+            energyBufInsertDraft = 0;
+            return;
+        }
+        try {
+            energyBufInsertDraft =
+                    (int) Mth.clamp(Long.parseLong(t), 0L, Integer.MAX_VALUE);
+        } catch (NumberFormatException ignored) {}
+    }
+
+    private void adjustEnergyBufExtract(int delta) {
+        playClickSound();
+        energyBufDirty = true;
+        long next = (long) energyBufExtractDraft + delta;
+        energyBufExtractDraft = (int) Mth.clamp(next, 0L, Integer.MAX_VALUE);
+        syncEnergyBufExtractBoxDisplay();
+    }
+
+    private void adjustEnergyBufInsert(int delta) {
+        if (isExtractOnlyEnergyFace()) {
+            return;
+        }
+        playClickSound();
+        energyBufDirty = true;
+        long next = (long) energyBufInsertDraft + delta;
+        energyBufInsertDraft = (int) Mth.clamp(next, 0L, Integer.MAX_VALUE);
+        syncEnergyBufInsertBoxDisplay();
+    }
+
+    private void applyEnergyBufferLimits() {
+        playClickSound();
+        if (energyBufExtractBox != null) {
+            parseEnergyBufExtractBox(energyBufExtractBox.getValue());
+        }
+        if (energyBufInsertBox != null && !isExtractOnlyEnergyFace()) {
+            parseEnergyBufInsertBox(energyBufInsertBox.getValue());
+        }
+        ModNetwork.sendEnergyBufferLimits(
+                menuSyncedPos(),
+                menuSyncedFace(),
+                energyBufExtractDraft,
+                isExtractOnlyEnergyFace() ? energyBufInsertCommitted : energyBufInsertDraft);
+        energyBufExtractCommitted = energyBufExtractDraft;
+        energyBufInsertCommitted = isExtractOnlyEnergyFace() ? energyBufInsertCommitted : energyBufInsertDraft;
+        energyBufDirty = false;
+    }
+
+    private void cancelEnergyBufferDraft() {
+        playClickSound();
+        energyBufExtractDraft = energyBufExtractCommitted;
+        energyBufInsertDraft = energyBufInsertCommitted;
+        energyBufDirty = false;
+        syncEnergyBufExtractBoxDisplay();
+        syncEnergyBufInsertBoxDisplay();
+    }
+
+    private void layoutEnergyBufferBlock() {
+        int editW = AMOUNT_EDIT_W;
+        int numericRowW1 =
+                AMOUNT_STEPPER_W + AMOUNT_INNER_GAP + editW + AMOUNT_INNER_GAP + AMOUNT_STEPPER_W;
+        int actionRowW1 =
+                AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+        int pairGap = 18;
+        int numericRowW = numericRowW1 * 2 + pairGap;
+        int blockW = numericRowW;
+        int blockGuiX = (TEXTURE_WIDTH - blockW) / 2;
+        int numericGuiX = blockGuiX + (blockW - numericRowW) / 2;
+        int amY = this.topPos + ENERGY_BUF_LIMIT_ROW_Y;
+        int amX = this.leftPos + numericGuiX;
+        int boxX = amX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        int plusX = boxX + editW + AMOUNT_INNER_GAP;
+
+        energyBufExtractEditGuiLeft = numericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        energyBufExtractMinus.setPosition(amX, amY);
+        energyBufExtractBox.setPosition(boxX, amY);
+        energyBufExtractBox.setWidth(editW);
+        energyBufExtractPlus.setPosition(plusX, amY);
+
+        int actY = amY + BTN_H + AMOUNT_ROWS_GAP;
+        int editCenterX = boxX + editW / 2;
+        int ax = editCenterX - actionRowW1 / 2;
+        energyBufExtractAutoButton.setPosition(ax, actY);
+        ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+        energyBufExtractApplyButton.setPosition(ax, actY);
+        ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+        energyBufExtractUndoButton.setPosition(ax, actY);
+
+        int offsetX = numericRowW1 + pairGap;
+        int amX2 = amX + offsetX;
+        int boxX2 = amX2 + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        int plusX2 = boxX2 + editW + AMOUNT_INNER_GAP;
+        energyBufInsertEditGuiLeft =
+                numericGuiX + numericRowW1 + pairGap + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+        energyBufInsertMinus.setPosition(amX2, amY);
+        energyBufInsertBox.setPosition(boxX2, amY);
+        energyBufInsertBox.setWidth(editW);
+        energyBufInsertPlus.setPosition(plusX2, amY);
+
+        int editCenterX2 = boxX2 + editW / 2;
+        int ax2 = editCenterX2 - actionRowW1 / 2;
+        energyBufInsertAutoButton.setPosition(ax2, actY);
+        ax2 += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+        energyBufInsertApplyButton.setPosition(ax2, actY);
+        ax2 += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+        energyBufInsertUndoButton.setPosition(ax2, actY);
+    }
+
+    private static int energyBufferFillPercent(int stored, int cap) {
+        if (cap <= 0) {
+            return stored > 0 ? 100 : 0;
+        }
+        return Mth.clamp((int) ((stored * 100L) / cap), 0, 100);
+    }
+
+    private void renderEnergyBufferColumnLabels(GuiGraphics graphics) {
+        int editW = AMOUNT_EDIT_W;
+        int storedIn = Math.max(0, menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_INPUT_STORED));
+        int capIn = Math.max(0, menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_INPUT_CAP));
+        int storedOut = Math.max(0, menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_OUTPUT_STORED));
+        int capOut = Math.max(0, menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_OUTPUT_CAP));
+        int pctIn = energyBufferFillPercent(storedIn, capIn);
+        int pctOut = energyBufferFillPercent(storedOut, capOut);
+
+        drawCenteredEnergyBufferLabel(
+                graphics,
+                Component.translatable("gui.another_dynamics.duct_node.energy_buffer.extract"),
+                energyBufExtractEditGuiLeft,
+                editW,
+                ENERGY_BUF_NAME_Y);
+        drawCenteredEnergyBufferLabel(
+                graphics,
+                Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.fill_percent", pctIn),
+                energyBufExtractEditGuiLeft,
+                editW,
+                ENERGY_BUF_FILL_Y);
+
+        int insertColor = isExtractOnlyEnergyFace() ? 0x808080 : 0x404040;
+        drawCenteredEnergyBufferLabel(
+                graphics,
+                Component.translatable("gui.another_dynamics.duct_node.energy_buffer.insert"),
+                energyBufInsertEditGuiLeft,
+                editW,
+                ENERGY_BUF_NAME_Y,
+                insertColor);
+        drawCenteredEnergyBufferLabel(
+                graphics,
+                Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.fill_percent", pctOut),
+                energyBufInsertEditGuiLeft,
+                editW,
+                ENERGY_BUF_FILL_Y,
+                insertColor);
+    }
+
+    private void drawCenteredEnergyBufferLabel(
+            GuiGraphics graphics,
+            Component text,
+            int editGuiLeft,
+            int editW,
+            int guiY,
+            int color) {
+        int lw = this.font.width(text);
+        int x = editGuiLeft + (editW - lw) / 2;
+        graphics.drawString(this.font, text, x, guiY, color, false);
+    }
+
+    private void drawCenteredEnergyBufferLabel(
+            GuiGraphics graphics, Component text, int editGuiLeft, int editW, int guiY) {
+        drawCenteredEnergyBufferLabel(graphics, text, editGuiLeft, editW, guiY, 0x404040);
+    }
+
     private void applyFilterEntryEditBoxTextStyle() {
         if (editModeTextBox == null) {
             return;
@@ -1621,6 +1999,7 @@ public final class DuctNodeScreen
     private void applySubViewVisibility() {
         boolean main = subView == SubView.MAIN;
         boolean advancedFiltering = subView == SubView.ADVANCED_FILTERING;
+        boolean bufferLimits = isEnergyBufferLimitsSubview();
         boolean filterList =
             subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS;
         boolean howto = subView == SubView.HOW_TO_USE;
@@ -1630,13 +2009,13 @@ public final class DuctNodeScreen
         );
         boolean inHybridSelector =
             nm.isHybrid() && hybridPanel == HybridPanel.NONE;
-        boolean showMainStyleChrome = main || advancedFiltering;
+        boolean showMainStyleChrome = main || advancedFiltering || bufferLimits;
         boolean multiTransport =
             menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1;
         boolean hubLayer =
             multiTransport &&
             menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
-        boolean detailMain = main && !hubLayer;
+        boolean detailMain = (main || bufferLimits) && !hubLayer;
 
         boolean showHubTransportToggles = hubLayer && main;
         for (Button b : transportToggleButtons) {
@@ -1649,7 +2028,25 @@ public final class DuctNodeScreen
         routingModeButton.visible =
             showMainStyleChrome && !howto && !advancedFiltering && !hubLayer;
 
-        boolean showAmountBlock = (detailMain && !howto && !inHybridSelector);
+        boolean showAmountBlock = (detailMain && !howto && !inHybridSelector && !bufferLimits);
+        boolean showEnergyBufBlock = bufferLimits;
+        boolean extractOnlyEnergy = showEnergyBufBlock && isExtractOnlyEnergyFace();
+        energyBufExtractMinus.visible = showEnergyBufBlock;
+        energyBufExtractPlus.visible = showEnergyBufBlock;
+        energyBufExtractBox.visible = showEnergyBufBlock;
+        energyBufExtractAutoButton.visible = showEnergyBufBlock;
+        energyBufExtractApplyButton.visible = showEnergyBufBlock;
+        energyBufExtractUndoButton.visible = showEnergyBufBlock;
+        energyBufInsertMinus.visible = showEnergyBufBlock && !extractOnlyEnergy;
+        energyBufInsertPlus.visible = showEnergyBufBlock && !extractOnlyEnergy;
+        energyBufInsertBox.visible = showEnergyBufBlock;
+        energyBufInsertAutoButton.visible = showEnergyBufBlock && !extractOnlyEnergy;
+        energyBufInsertApplyButton.visible = showEnergyBufBlock && !extractOnlyEnergy;
+        energyBufInsertUndoButton.visible = showEnergyBufBlock && !extractOnlyEnergy;
+        if (energyBufInsertBox != null) {
+            energyBufInsertBox.setEditable(!extractOnlyEnergy);
+            energyBufInsertBox.setTextColor(extractOnlyEnergy ? 0x808080 : FILTER_ENTRY_EDIT_TEXT_COLOR);
+        }
         routingMinusButton.visible = showAmountBlock;
         routingPlusButton.visible = showAmountBlock;
         routingPriorityBox.visible = showAmountBlock;
@@ -1714,7 +2111,8 @@ public final class DuctNodeScreen
         nodeModeButton.visible =
             showMainStyleChrome && !howto && !advancedFiltering;
         selfFeedStub.visible = false;
-        opaqueRenderingButton.visible = main && !howto && !advancedFiltering;
+        opaqueRenderingButton.visible =
+            (main || bufferLimits) && !howto && !advancedFiltering;
 
         closeButton.visible = true;
         channelButton.visible = detailMain && !howto;
@@ -2142,6 +2540,8 @@ public final class DuctNodeScreen
         editModeApplyButton.setPosition(applyButtonX, buttonRowY);
         editModeCloseButton.setPosition(closeButtonX, buttonRowY);
 
+        layoutFilterSortButton();
+
         if (isAdvancedFilterCapSubview()) {
             int advBtnW = ADVANCED_FILTER_BUTTON_WIDTH;
             int advBtnX = rightArrowX + buttonSize + buttonSpacing;
@@ -2495,6 +2895,16 @@ public final class DuctNodeScreen
             k == DuctTransportKind.ENERGY.ordinal() ||
             k == DuctTransportKind.HEAT.ordinal()
         );
+    }
+
+    private boolean isEnergyTransportTab() {
+        return menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND)
+                == DuctTransportKind.ENERGY.ordinal();
+    }
+
+    /** Allow/deny lists stay visible but disabled on the energy tab (filters not implemented yet). */
+    private boolean energyFilterListsLocked() {
+        return isEnergyTransportTab();
     }
 
     private String filterHelpTextPrefix() {
@@ -3201,22 +3611,69 @@ public final class DuctNodeScreen
         return ItemStack.EMPTY;
     }
 
-    private void reorderActiveFilterLines() {
+    private void reorderFilterBank(DuctFaceNode.FilterBank bank) {
         if (minecraft == null || minecraft.level == null) {
             return;
         }
+        List<Integer> keepCaps =
+                bank == DuctFaceNode.FilterBank.FILTER ? menu.getClientFilterKeepCaps() : null;
         DuctFilterLineReorder.sortAllowDenyRows(
-                menu.getClientAllowFilters(activeFilterBank),
-                menu.getClientDenyFilters(activeFilterBank),
-                menu.getClientAllowCaps(activeFilterBank),
-                List.of(),
-                minecraft.level.registryAccess());
+                menu.getClientAllowFilters(bank),
+                menu.getClientDenyFilters(bank),
+                menu.getClientAllowCaps(bank),
+                null,
+                minecraft.level.registryAccess(),
+                keepCaps);
+    }
+
+    private void reorderActiveFilterLines() {
+        reorderFilterBank(activeFilterBank);
         filterScrollOffset = 0;
         rebuildFilterEntryWidgets();
     }
 
+    private void reorderAndPushAllFilterBanks() {
+        if (minecraft == null || minecraft.level == null) {
+            return;
+        }
+        menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+        for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
+            reorderFilterBank(bank);
+            List<Integer> caps2 =
+                    bank == DuctFaceNode.FilterBank.FILTER
+                            ? new ArrayList<>(menu.getClientFilterKeepCaps())
+                            : List.of();
+            menu.pushFilterConfigToServer(
+                    bank,
+                    new ArrayList<>(menu.getClientAllowFilters(bank)),
+                    new ArrayList<>(menu.getClientDenyFilters(bank)),
+                    new ArrayList<>(menu.getClientAllowCaps(bank)),
+                    caps2,
+                    menu.getClientDenyOverridesAllow(bank));
+        }
+    }
+
+    private void flushPendingFilterEditsBeforeClose() {
+        if (editModeFilterIndex >= 0) {
+            applyEditModeAndClose();
+            return;
+        }
+        if (advCapEditBox != null && advCapEditBox.isFocused()) {
+            applyAllowCapField();
+        }
+        if (advCap2EditBox != null && advCap2EditBox.isFocused()) {
+            applyAllowCap2Field();
+        }
+    }
+
+    @Override
+    public void onClose() {
+        flushPendingFilterEditsBeforeClose();
+        reorderAndPushAllFilterBanks();
+        super.onClose();
+    }
+
     private void pushFiltersToServer() {
-        reorderActiveFilterLines();
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         List<Integer> caps2 =
             activeFilterBank == DuctFaceNode.FilterBank.FILTER
@@ -3504,6 +3961,16 @@ public final class DuctNodeScreen
         super.containerTick();
         menu.updateClientDenyOverridesFromSync();
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+        if (isEnergyBufferLimitsSubview() && !energyBufDirty) {
+            int ex = menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_LIMIT_EXTRACT);
+            int ins = menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_LIMIT_INSERT);
+            if (ex != energyBufExtractCommitted || ins != energyBufInsertCommitted) {
+                syncEnergyBufFromServer();
+            }
+        }
+        if (isEnergyBufferLimitsSubview()) {
+            layoutEnergyBufferBlock();
+        }
         if (isAdvancedFilterCapSubview() && advCapEditBox != null) {
             boolean f = advCapEditBox.isFocused();
             if (f != advCapEditHadFocus) {
@@ -3634,7 +4101,9 @@ public final class DuctNodeScreen
         int menuFlags = menu.getSyncData().get(DuctMenuSync.FLAGS);
         boolean filtersActive =
             (menuFlags & DuctMenuSync.FLAG_FILTERS_ACTIVE) != 0;
-        if (!filtersActive && subView != SubView.MAIN) {
+        if (!filtersActive
+                && subView != SubView.MAIN
+                && subView != SubView.BUFFER_LIMITS) {
             forceExitFilterUiToMain();
         }
         boolean routingUsable = nm.usesRouting();
@@ -3851,6 +4320,30 @@ public final class DuctNodeScreen
                     Component.literal(denyOver ? ">>>>>" : "<<<<<")
                 );
             }
+        } else if (isEnergyTransportTab()) {
+            denyNavButton.setMessage(
+                Component.translatable("gui.another_dynamics.duct_node.deny_list"));
+            allowNavButton.setMessage(
+                Component.translatable("gui.another_dynamics.duct_node.allow_list"));
+            denyNavButton.active = false;
+            allowNavButton.active = false;
+            denyNavButton.setTooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_filters.locked.tooltip")));
+            allowNavButton.setTooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_filters.locked.tooltip")));
+            if (isEnergyBufferLimitsSubview()) {
+                listLogicButton.setMessage(
+                    Component.translatable("gui.another_dynamics.duct_node.modify_buffers.back"));
+            } else {
+                listLogicButton.setMessage(
+                    Component.translatable("gui.another_dynamics.duct_node.modify_buffers"));
+            }
+            listLogicButton.active = true;
+            listLogicButton.setTooltip(null);
         } else {
             denyNavButton.setMessage(
                 Component.translatable(
@@ -3894,7 +4387,7 @@ public final class DuctNodeScreen
                         )
                     )
                 );
-            } else {
+            } else if (!filtersActive) {
                 var inactive = Tooltip.create(
                     Component.translatable(
                         "gui.another_dynamics.duct_node.filters.tooltip.inactive"
@@ -5538,6 +6031,21 @@ public final class DuctNodeScreen
         int mouseY
     ) {
         Component titleComponent = switch (subView) {
+            case BUFFER_LIMITS -> {
+                NodeMode nmBuf = NodeMode.fromOrdinal(
+                    menu.getSyncData().get(DuctMenuSync.NODE_MODE));
+                if (nmBuf.isHybrid() && hybridPanel != HybridPanel.NONE) {
+                    yield Component.translatable(
+                            switch (hybridPanel) {
+                                case EXTRACTOR -> "gui.another_dynamics.duct_node.hybrid.title.extractor";
+                                case FILTERING -> "gui.another_dynamics.duct_node.hybrid.title.filter";
+                                case RETRIEVER -> "gui.another_dynamics.duct_node.hybrid.title.retriever";
+                                default -> DuctIds.nodeScreenTranslationKey(menu.getClientDuctLogicalId());
+                            });
+                }
+                yield Component.translatable(
+                        DuctIds.nodeScreenTranslationKey(menu.getClientDuctLogicalId()));
+            }
             case ADVANCED_FILTERING -> Component.translatable(
                 "gui.another_dynamics.duct_node.advanced_filtering.title"
             );
@@ -5612,6 +6120,10 @@ public final class DuctNodeScreen
             0x404040,
             false
         );
+
+        if (isEnergyBufferLimitsSubview()) {
+            renderEnergyBufferColumnLabels(graphics);
+        }
 
         if (isAdvancedFilterCapSubview()) {
             boolean limitCtx;

@@ -435,10 +435,30 @@ public final class DuctModuleEffects {
     }
 
     /** Ticks between energy logistics actions; increment {@code energy.rate} modules do not apply. */
-    public static final int ENERGY_ACTION_RATE_TICKS = 5;
+    public static final int ENERGY_ACTION_RATE_TICKS = 1;
 
     public static int effectiveEnergyActionRateTicks(DuctBlockEntity duct, Direction face, DuctEnergyTransportSpec spec) {
         return ENERGY_ACTION_RATE_TICKS;
+    }
+
+    /** Input (extract) buffer capacity; {@code limitFe == 0} uses {@link #effectiveEnergyExtractPerAction}. */
+    public static int effectiveEnergyInputBufferCapFe(
+            DuctBlockEntity duct, Direction face, DuctEnergyTransportSpec spec) {
+        int lim = duct.getFaceLanes(face).energyExtractBufferLimitFe;
+        if (lim <= 0) {
+            return Math.max(1, effectiveEnergyExtractPerAction(duct, face, spec));
+        }
+        return Math.max(1, lim);
+    }
+
+    /** Output (insert) buffer capacity; {@code limitFe == 0} uses {@link #effectiveEnergyExtractPerAction}. */
+    public static int effectiveEnergyOutputBufferCapFe(
+            DuctBlockEntity duct, Direction face, DuctEnergyTransportSpec spec) {
+        int lim = duct.getFaceLanes(face).energyInsertBufferLimitFe;
+        if (lim <= 0) {
+            return Math.max(1, effectiveEnergyExtractPerAction(duct, face, spec));
+        }
+        return Math.max(1, lim);
     }
 
     /**

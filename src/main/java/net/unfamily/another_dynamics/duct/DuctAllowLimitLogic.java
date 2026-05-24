@@ -10,6 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.IItemHandler;
+import net.unfamily.another_dynamics.duct.logistics.DuctHandlerSlotSemantics;
 
 /**
  * Per-allow-line caps: {@code 0} = unlimited. First non-empty allow line that matches an item wins (same index for cap).
@@ -123,7 +124,7 @@ public final class DuctAllowLimitLogic {
             return Integer.MAX_VALUE;
         }
         int current =
-                countMatchingInHandler(handler, line, registries)
+                countMatchingInHandler(handler, line, registries, true)
                         + countPendingMatchingFilterLine(priorPending, line, registries);
         return Math.max(0, lim - current);
     }
@@ -152,17 +153,38 @@ public final class DuctAllowLimitLogic {
         if (keep <= 0) {
             return Integer.MAX_VALUE;
         }
-        int current = countMatchingInHandler(handler, line, registries);
+        int current = countMatchingInHandler(handler, line, registries, false);
         return Math.max(0, current - keep);
     }
 
+    /**
+     * @param insertSideOnly when true, only input/both slots (for insert limits); when false, only output/both (for
+     *     extract keep); when null, all slots.
+     */
     public static int countMatchingInHandler(
             IItemHandler handler, String filterLine, HolderLookup.Provider registries) {
+        return countMatchingInHandler(handler, filterLine, registries, null);
+    }
+
+    public static int countMatchingInHandler(
+            IItemHandler handler,
+            String filterLine,
+            HolderLookup.Provider registries,
+            @Nullable Boolean insertSideOnly) {
         if (handler == null || filterLine == null || filterLine.trim().isEmpty()) {
             return 0;
         }
         int sum = 0;
         for (int slot = 0; slot < handler.getSlots(); slot++) {
+            if (insertSideOnly != null) {
+                if (insertSideOnly) {
+                    if (!DuctHandlerSlotSemantics.countsTowardInsertLimit(handler, slot)) {
+                        continue;
+                    }
+                } else if (!DuctHandlerSlotSemantics.countsTowardExtractKeep(handler, slot)) {
+                    continue;
+                }
+            }
             ItemStack s = handler.getStackInSlot(slot);
             if (s.isEmpty()) {
                 continue;
@@ -278,7 +300,7 @@ public final class DuctAllowLimitLogic {
         }
         String line = allowLines.get(idx);
         int current =
-                countMatchingInHandler(handler, line, registries)
+                countMatchingInHandler(handler, line, registries, true)
                         + countPendingMatchingFilterLine(priorPending, line, registries);
         return Math.max(0, lim - current);
     }
@@ -305,7 +327,7 @@ public final class DuctAllowLimitLogic {
             return Integer.MAX_VALUE;
         }
         String line = allowLines.get(idx);
-        int current = countMatchingInHandler(handler, line, registries);
+        int current = countMatchingInHandler(handler, line, registries, false);
         return Math.max(0, current - keep);
     }
 }

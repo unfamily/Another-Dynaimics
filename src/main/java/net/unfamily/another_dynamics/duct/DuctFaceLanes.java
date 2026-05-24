@@ -78,10 +78,18 @@ public final class DuctFaceLanes {
     public RoutingMode energyRoutingMode = RoutingMode.NEAREST_FIRST;
     public RoutingMode energyRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
     public RoutingMode energyRoutingModeRetriever = RoutingMode.NEAREST_FIRST;
-    /** Per-face FE buffer for external connectors (e.g. Flux Networks). */
-    public int energyBufferFe;
+    /** Per-face FE input buffer (external push / extract toward network). */
+    public int energyInputBufferFe;
+    /** Per-face FE output buffer (network insert / adjacent machine pull). */
+    public int energyOutputBufferFe;
+    /** Max input buffer cap; 0 = AUTO (module-scaled network extract cap). */
+    public int energyExtractBufferLimitFe;
+    /** Max output buffer cap; 0 = AUTO (module-scaled network retrieve cap). */
+    public int energyInsertBufferLimitFe;
     /** Last game time an energy ray was sent for this face (visual throttle; not persisted). */
     public long lastEnergyRayGameTime = -1L;
+    /** Last ray destination duct pos for {@link #lastEnergyRayGameTime} (throttle per target, not persisted). */
+    public long lastEnergyRayDestPos = Long.MIN_VALUE;
 
     /** Mek heat logistics throttle / round-robin (same rationale as {@link #energyTicksUntilAction}). */
     public int heatTicksUntilAction;
@@ -188,7 +196,10 @@ public final class DuctFaceLanes {
         CompoundTag eh = new CompoundTag();
         eh.putInt("EnergyTicks", energyTicksUntilAction);
         eh.putInt("EnergyRr", energyRoundRobinCursor);
-        eh.putInt("EnergyBuf", energyBufferFe);
+        eh.putInt("EnergyInBuf", energyInputBufferFe);
+        eh.putInt("EnergyOutBuf", energyOutputBufferFe);
+        eh.putInt("EnergyLimEx", energyExtractBufferLimitFe);
+        eh.putInt("EnergyLimIn", energyInsertBufferLimitFe);
         eh.putByte("EnergyRt", (byte) energyRoutingMode.ordinal());
         eh.putByte("EnergyRtEx", (byte) energyRoutingModeExtractor.ordinal());
         eh.putByte("EnergyRtRe", (byte) energyRoutingModeRetriever.ordinal());
@@ -258,7 +269,17 @@ public final class DuctFaceLanes {
             CompoundTag eh = tag.getCompound(NBT_ENERGY_HEAT);
             energyTicksUntilAction = eh.getInt("EnergyTicks");
             energyRoundRobinCursor = eh.getInt("EnergyRr");
-            energyBufferFe = eh.getInt("EnergyBuf");
+            if (eh.contains("EnergyInBuf", Tag.TAG_INT)) {
+                energyInputBufferFe = eh.getInt("EnergyInBuf");
+                energyOutputBufferFe = eh.getInt("EnergyOutBuf");
+                energyExtractBufferLimitFe = eh.getInt("EnergyLimEx");
+                energyInsertBufferLimitFe = eh.getInt("EnergyLimIn");
+            } else {
+                energyInputBufferFe = eh.getInt("EnergyBuf");
+                energyOutputBufferFe = 0;
+                energyExtractBufferLimitFe = 0;
+                energyInsertBufferLimitFe = 0;
+            }
             if (eh.contains("EnergyRt", Tag.TAG_BYTE)) {
                 energyRoutingMode = RoutingMode.fromOrdinal(eh.getByte("EnergyRt"));
                 energyRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("EnergyRtEx"));
@@ -282,7 +303,10 @@ public final class DuctFaceLanes {
         } else {
             energyTicksUntilAction = 0;
             energyRoundRobinCursor = 0;
-            energyBufferFe = 0;
+            energyInputBufferFe = 0;
+            energyOutputBufferFe = 0;
+            energyExtractBufferLimitFe = 0;
+            energyInsertBufferLimitFe = 0;
             energyRoutingMode = item.routingMode;
             energyRoutingModeExtractor = item.routingModeExtractor;
             energyRoutingModeRetriever = item.routingModeRetriever;
@@ -347,7 +371,10 @@ public final class DuctFaceLanes {
         armedClearGasUntilGameTime = 0L;
         energyTicksUntilAction = 0;
         energyRoundRobinCursor = 0;
-        energyBufferFe = 0;
+        energyInputBufferFe = 0;
+        energyOutputBufferFe = 0;
+        energyExtractBufferLimitFe = 0;
+        energyInsertBufferLimitFe = 0;
         energyRoutingMode = RoutingMode.NEAREST_FIRST;
         energyRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
         energyRoutingModeRetriever = RoutingMode.NEAREST_FIRST;

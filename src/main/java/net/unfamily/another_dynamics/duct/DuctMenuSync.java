@@ -51,7 +51,19 @@ public final class DuctMenuSync {
     public static final int PRIORITY_HI = 22;
     /** {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#transportEnabledMask} for the edited face. */
     public static final int TRANSPORT_ENABLED_MASK = 23;
-    public static final int COUNT = 24;
+    /** {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#energyExtractBufferLimitFe}; 0 = AUTO in GUI. */
+    public static final int ENERGY_BUF_LIMIT_EXTRACT = 24;
+    /** {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#energyInsertBufferLimitFe}; 0 = AUTO in GUI. */
+    public static final int ENERGY_BUF_LIMIT_INSERT = 25;
+    /** Current {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#energyInputBufferFe} on the edited face. */
+    public static final int ENERGY_BUF_INPUT_STORED = 26;
+    /** Current {@link net.unfamily.another_dynamics.duct.DuctFaceLanes#energyOutputBufferFe} on the edited face. */
+    public static final int ENERGY_BUF_OUTPUT_STORED = 27;
+    /** Effective max input buffer capacity (RF) for fill display. */
+    public static final int ENERGY_BUF_INPUT_CAP = 28;
+    /** Effective max output buffer capacity (RF) for fill display. */
+    public static final int ENERGY_BUF_OUTPUT_CAP = 29;
+    public static final int COUNT = 30;
 
     /** FLAGS bit: routing row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesRouting()}). */
     public static final int FLAG_ROUTING_ACTIVE = 1;
