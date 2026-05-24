@@ -131,9 +131,79 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
     }
 
+    /** Virtual ALL with universal transport hub (layer 0 = root screen). */
+    private boolean isSettingsCopierAllVirtualMultiTransport() {
+        if (!useSettingsCopierHubNavigation() || minecraft == null || minecraft.player == null) {
+            return false;
+        }
+        if (!(menu instanceof SettingsCopierMenu copier) || !copier.isVirtualLayer()) {
+            return false;
+        }
+        return copier.storeKind(minecraft.player) == SettingsCopierStoreKind.ALL
+                && menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1;
+    }
+
+    /** Detail layer (1) on virtual ALL multi-transport editor. */
+    protected boolean isSettingsCopierVirtualDetailLayer() {
+        return isSettingsCopierAllVirtualMultiTransport()
+                && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0;
+    }
+
+    /** Sub-menus → universal virtual transport hub (not detail {@link SubView#MAIN}). */
+    protected void returnToVirtualTransportHub() {
+        exitEditMode(false);
+        subView = SubView.MAIN;
+        hybridPanel = HybridPanel.NONE;
+        handleMenuButton(DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB);
+        applySubViewVisibility();
+        layoutMainChromeRowsForHubOrDetail();
+        layoutHubTransportGrid();
+        layoutHubBackButton();
+    }
+
     private void returnToSettingsCopierHubFromVirtual() {
         playClickSound();
         ModNetwork.sendSettingsCopierReturnToHub();
+    }
+
+    /** Virtual editor X/Esc: one UI level up (Back may skip further to transport hub). */
+    private void popSettingsCopierVirtualOneLevel() {
+        if (subView == SubView.ADVANCED_FILTERING) {
+            closeAdvancedFiltering();
+            return;
+        }
+        if (subView == SubView.BUFFER_LIMITS) {
+            closeEnergyBufferSubview();
+            return;
+        }
+        if (subView == SubView.HOW_TO_USE) {
+            closeFilterSubview();
+            return;
+        }
+        if (inEditMode()) {
+            exitEditMode(true);
+            return;
+        }
+        if (subView == SubView.DENY_FILTERS || subView == SubView.ALLOW_FILTERS) {
+            if (isSettingsCopierFilterListEditor()) {
+                returnToSettingsCopierHubFromVirtual();
+            } else {
+                closeFilterSubview();
+            }
+            return;
+        }
+        if (hybridPanel != HybridPanel.NONE) {
+            hybridPanel = HybridPanel.NONE;
+            applySubViewVisibility();
+            return;
+        }
+        if (isSettingsCopierVirtualDetailLayer()) {
+            returnToVirtualTransportHub();
+        } else if (useSettingsCopierHubNavigation()) {
+            returnToSettingsCopierHubFromVirtual();
+        } else {
+            onClose();
+        }
     }
 
     /** FILTER mode virtual editor: open allow-list on first init. */
@@ -1125,12 +1195,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         backButton = Button.builder(
             Component.translatable("gui.another_dynamics.duct_node.filters.back"),
             b -> {
-                playClickSound();
-                if (subView == SubView.ADVANCED_FILTERING) {
-                    closeAdvancedFiltering();
-                } else if (isSettingsCopierFilterListEditor()) {
+                if (isSettingsCopierFilterListEditor()) {
+                    playClickSound();
                     returnToSettingsCopierHubFromVirtual();
+                } else if (isSettingsCopierAllVirtualMultiTransport()) {
+                    playClickSound();
+                    returnToVirtualTransportHub();
+                } else if (subView == SubView.ADVANCED_FILTERING) {
+                    playClickSound();
+                    closeAdvancedFiltering();
                 } else {
+                    playClickSound();
                     closeFilterSubview();
                 }
             }
@@ -1579,6 +1654,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     protected void handleCloseOrBack() {
+        if (useSettingsCopierHubNavigation()) {
+            playClickSound();
+            popSettingsCopierVirtualOneLevel();
+            return;
+        }
         if (subView == SubView.MAIN) {
             if (isSettingsCopierFilterListEditor()) {
                 returnToSettingsCopierHubFromVirtual();
@@ -1594,13 +1674,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 handleMenuButton(DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB);
                 return;
             }
-            if (useSettingsCopierHubNavigation()) {
-                playClickSound();
-                ModNetwork.sendSettingsCopierReturnToHub();
-                return;
-            }
             onClose();
         } else {
+            if (isSettingsCopierFilterListEditor()) {
+                returnToSettingsCopierHubFromVirtual();
+                return;
+            }
             if (subView == SubView.ADVANCED_FILTERING) {
                 playClickSound();
                 closeAdvancedFiltering();
@@ -1611,6 +1690,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 closeEnergyBufferSubview();
                 return;
             }
+            playClickSound();
             closeFilterSubview();
         }
     }
@@ -2374,11 +2454,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         if (hubBackButton != null) {
             hubBackButton.visible =
-                detailMain &&
-                multiTransport &&
-                !howto &&
-                !advancedFiltering &&
-                !useSettingsCopierHubNavigation();
+                detailMain && multiTransport && !howto && !advancedFiltering;
         }
         if (copierVirtualNodeBackButton != null) {
             copierVirtualNodeBackButton.visible =
@@ -4816,16 +4892,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int menuLayer = menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER);
         if (lastSyncedMenuViewLayer < 0) {
             lastSyncedMenuViewLayer = menuLayer;
-        } else if (
-            useSettingsCopierHubNavigation() &&
-            lastSyncedMenuViewLayer == 0 &&
-            menuLayer == 1
-        ) {
+        } else if (isSettingsCopierAllVirtualMultiTransport() && lastSyncedMenuViewLayer != menuLayer) {
             exitEditMode(false);
             subView = SubView.MAIN;
             hybridPanel = HybridPanel.NONE;
-            lastSyncedMenuViewLayer = menuLayer;
-        } else if (lastSyncedMenuViewLayer != menuLayer) {
             lastSyncedMenuViewLayer = menuLayer;
         }
         applySubViewVisibility();
@@ -6007,6 +6077,25 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             // with our GUI (mouse over it).
             if (jeiIsHandlingKeyboard() || !isMouseInsideOurGui()) {
                 return super.keyPressed(keyCode, scanCode, modifiers);
+            }
+            if (useSettingsCopierHubNavigation()) {
+                if (subView == SubView.MAIN) {
+                    if (routingPriorityBox != null && routingPriorityBox.isFocused()) {
+                        return super.keyPressed(keyCode, scanCode, modifiers);
+                    }
+                    if (advCapEditBox != null && advCapEditBox.isFocused()) {
+                        return super.keyPressed(keyCode, scanCode, modifiers);
+                    }
+                    if (advCap2EditBox != null && advCap2EditBox.isFocused()) {
+                        return super.keyPressed(keyCode, scanCode, modifiers);
+                    }
+                }
+                handleCloseOrBack();
+                return true;
+            }
+            if (isSettingsCopierFilterListEditor()) {
+                returnToSettingsCopierHubFromVirtual();
+                return true;
             }
             if (subView == SubView.HOW_TO_USE) {
                 playClickSound();

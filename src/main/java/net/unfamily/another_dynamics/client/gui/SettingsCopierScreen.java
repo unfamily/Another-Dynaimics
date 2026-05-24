@@ -129,13 +129,18 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
 
     @Override
     protected void handleCloseOrBack() {
+        if (menu.isVirtualLayer() && virtualBackConfirmPending) {
+            playClickSound();
+            cancelVirtualBackConfirm();
+            return;
+        }
         if (menu.isVirtualLayer() && isMainChromeSubView()) {
             playClickSound();
-            if (virtualBackConfirmPending) {
-                cancelVirtualBackConfirm();
-                return;
+            if (isSettingsCopierVirtualDetailLayer()) {
+                returnToVirtualTransportHub();
+            } else {
+                ModNetwork.sendSettingsCopierReturnToHub();
             }
-            ModNetwork.sendSettingsCopierReturnToHub();
             return;
         }
         super.handleCloseOrBack();
