@@ -43,11 +43,18 @@ public final class DuctClientSetup {
                 () -> {
                     ItemProperties.register(
                             ModItems.SETTINGS_COPIER.get(),
-                            SettingsCopierItemProperties.COPIER_STATE,
+                            SettingsCopierItemProperties.COPIER_FILTER,
                             (ItemStack stack,
                                     net.minecraft.client.multiplayer.ClientLevel level,
                                     net.minecraft.world.entity.LivingEntity entity,
-                                    int seed) -> SettingsCopierItemProperties.copierState(stack));
+                                    int seed) -> SettingsCopierItemProperties.copierFilter(stack));
+                    ItemProperties.register(
+                            ModItems.SETTINGS_COPIER.get(),
+                            SettingsCopierItemProperties.COPIER_FILLED,
+                            (ItemStack stack,
+                                    net.minecraft.client.multiplayer.ClientLevel level,
+                                    net.minecraft.world.entity.LivingEntity entity,
+                                    int seed) -> SettingsCopierItemProperties.copierFilled(stack));
                 });
     }
 
@@ -86,10 +93,16 @@ public final class DuctClientSetup {
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_line")));
         event.register(
                 ModelResourceLocation.standalone(
-                        ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_all")));
+                        ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_all_0")));
         event.register(
                 ModelResourceLocation.standalone(
-                        ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_filter")));
+                        ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_all_1")));
+        event.register(
+                ModelResourceLocation.standalone(
+                        ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_filter_0")));
+        event.register(
+                ModelResourceLocation.standalone(
+                        ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_filter_1")));
     }
 
     /**

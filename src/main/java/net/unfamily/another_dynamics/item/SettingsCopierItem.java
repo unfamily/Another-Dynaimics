@@ -27,7 +27,7 @@ import net.unfamily.another_dynamics.registry.ModMenuTypes;
 import java.util.List;
 
 /**
- * Copies duct face <em>configuration</em> via GUI Copy; left-click opens the configurator;
+ * Copies duct face <em>configuration</em> via GUI Copy; right-click (air or block) opens the configurator;
  * shift-right-click on a duct face pastes {@code all} mode only.
  */
 public class SettingsCopierItem extends Item {
@@ -39,7 +39,17 @@ public class SettingsCopierItem extends Item {
 
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
-        return InteractionResultHolder.pass(player.getItemInHand(hand));
+        ItemStack stack = player.getItemInHand(hand);
+        if (player.isShiftKeyDown()) {
+            return InteractionResultHolder.pass(stack);
+        }
+        if (level.isClientSide()) {
+            return InteractionResultHolder.success(stack);
+        }
+        if (player instanceof ServerPlayer sp) {
+            openHubMenu(sp, hand);
+        }
+        return InteractionResultHolder.consume(stack);
     }
 
     public static Component grayTooltipLine(String translationKey) {
@@ -49,18 +59,28 @@ public class SettingsCopierItem extends Item {
     @Override
     public InteractionResult useOn(UseOnContext context) {
         Player player = context.getPlayer();
-        if (player == null || !player.isShiftKeyDown()) {
+        if (player == null) {
             return InteractionResult.PASS;
         }
         Level level = context.getLevel();
         BlockPos pos = context.getClickedPos();
-        if (!(level.getBlockState(pos).getBlock() instanceof AbstractDuctBlock)) {
-            return InteractionResult.PASS;
+        InteractionHand hand = context.getHand();
+        if (player.isShiftKeyDown()) {
+            if (!(level.getBlockState(pos).getBlock() instanceof AbstractDuctBlock)) {
+                return InteractionResult.PASS;
+            }
+            ItemStack stack = context.getItemInHand();
+            BlockHitResult hit =
+                    new BlockHitResult(context.getClickLocation(), context.getClickedFace(), pos, false);
+            return DuctBlock.attemptSettingsCopierPaste(level, pos, player, stack, hit).result();
         }
-        ItemStack stack = context.getItemInHand();
-        BlockHitResult hit =
-                new BlockHitResult(context.getClickLocation(), context.getClickedFace(), pos, false);
-        return DuctBlock.attemptSettingsCopierPaste(level, pos, player, stack, hit).result();
+        if (level.isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+        if (player instanceof ServerPlayer sp) {
+            openHubMenu(sp, hand);
+        }
+        return InteractionResult.CONSUME;
     }
 
     public static void openHubMenu(ServerPlayer player, InteractionHand hand) {
@@ -84,7 +104,11 @@ public class SettingsCopierItem extends Item {
         SettingsCopierStoreKind mode = SettingsCopierStoreKind.getMode(stack);
         boolean hasData = DuctFaceSettingsSnapshot.hasStoredSettings(stack);
         if (!hasData) {
-            addTooltipLines(tooltip, TOOLTIP_ROOT + "empty.", 2);
+            if (mode == SettingsCopierStoreKind.FILTER) {
+                addTooltipLines(tooltip, TOOLTIP_ROOT + "filter.", 3);
+            } else {
+                addTooltipLines(tooltip, TOOLTIP_ROOT + "empty.", 2);
+            }
         } else if (mode == SettingsCopierStoreKind.FILTER) {
             addTooltipLines(tooltip, TOOLTIP_ROOT + "filter.", 3);
         } else {

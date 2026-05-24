@@ -338,26 +338,6 @@ public final class ModNetwork {
                     });
                 });
 
-        reg.playToServer(
-                SettingsCopierOpenHubPayload.TYPE,
-                SettingsCopierOpenHubPayload.STREAM_CODEC,
-                (payload, ctx) -> {
-                    ctx.enqueueWork(() -> {
-                        ServerPlayer player = (ServerPlayer) ctx.player();
-                        if (player.containerMenu instanceof SettingsCopierMenu) {
-                            return;
-                        }
-                        InteractionHand hand =
-                                (payload.handOrdinal() & 0xFF) == 1
-                                        ? InteractionHand.OFF_HAND
-                                        : InteractionHand.MAIN_HAND;
-                        ItemStack stack = player.getItemInHand(hand);
-                        if (!stack.isEmpty() && stack.getItem() instanceof SettingsCopierItem) {
-                            SettingsCopierItem.openHubMenu(player, hand);
-                        }
-                    });
-                });
-
         reg.playToClient(EnergyRayPathPayload.TYPE, EnergyRayPathPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> EnergyRayClient.handlePath(payload));
         });

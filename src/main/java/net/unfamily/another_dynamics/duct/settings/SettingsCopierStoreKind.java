@@ -30,9 +30,14 @@ public enum SettingsCopierStoreKind {
         return ALL;
     }
 
-    /** Authoritative mode for tooltips, hub GUI, and Copy/Paste checks. */
+    /** Authoritative mode for tooltips, hub GUI, model predicates, and Copy/Paste checks. */
     public static SettingsCopierStoreKind getMode(ItemStack stack) {
-        return SettingsCopierItemProperties.isFilterMode(stack) ? FILTER : ALL;
+        return isFilterMode(stack) ? FILTER : ALL;
+    }
+
+    /** @see SettingsCopierItemProperties#isFilterMode */
+    public static boolean isFilterMode(ItemStack stack) {
+        return SettingsCopierItemProperties.isFilterMode(stack);
     }
 
     public static void setMode(ItemStack stack, SettingsCopierStoreKind kind) {

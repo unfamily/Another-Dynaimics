@@ -25,7 +25,7 @@
   "item.another_dynamics.settings_copier.tooltip.filter.0": "Inseriscilo nella slot Copy e clicca Incolla per impostare una lista filtri.",
   "item.another_dynamics.settings_copier.tooltip.filter.1": "Inseriscilo nella slot Copy per sovrascriverlo con un nuovo settaggio.",
   "item.another_dynamics.settings_copier.tooltip.filter.2": "Mettilo in crafting per resettarlo completamente.",
-  "item.another_dynamics.settings_copier.tooltip.use_gui": "Click sinistro (aria o blocco) per aprire l'editor impostazioni.",
+  "item.another_dynamics.settings_copier.tooltip.use_gui": "Click destro (aria o blocco) per aprire l'editor impostazioni.",
   "gui.another_dynamics.settings_copier.configurator": "Configuratore copiatore",
   "gui.another_dynamics.settings_copier.configure": "Configura",
   "gui.another_dynamics.settings_copier.mode": "Modalità: %s",

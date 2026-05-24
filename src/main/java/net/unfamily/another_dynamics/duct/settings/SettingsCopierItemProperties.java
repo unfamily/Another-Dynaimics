@@ -8,33 +8,35 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 /**
- * Item model predicate input for {@link net.unfamily.another_dynamics.item.SettingsCopierItem}.
- * 0 = empty, 0.5 = all snapshot, 1 = filter snapshot (explicit components / Kind only).
+ * Item model predicates for {@link net.unfamily.another_dynamics.item.SettingsCopierItem}.
+ * Two booleans (0/1) avoid ambiguous {@code >=} matching on a single float threshold.
+ * See {@code assets/.../models/item/settings_copier.json} override order.
  */
 public final class SettingsCopierItemProperties {
-    public static final ResourceLocation COPIER_STATE =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "copier_state");
-
-    /** Empty (base texture). */
-    public static final float STATE_EMPTY = 0.0F;
-    /** Stored all-mode snapshot. */
-    public static final float STATE_ALL = 0.5F;
-    /** Stored filter-mode snapshot. */
-    public static final float STATE_FILTER = 1.0F;
+    /** 1 = {@link SettingsCopierStoreKind#FILTER} (see {@link ModDataComponents#SETTINGS_COPIER_FILTER}). */
+    public static final ResourceLocation COPIER_FILTER =
+            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "copier_filter");
+    /** 1 = snapshot present in {@link ModDataComponents#DUCT_FACE_SETTINGS}. */
+    public static final ResourceLocation COPIER_FILLED =
+            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "copier_filled");
 
     private SettingsCopierItemProperties() {}
 
-    public static float copierState(ItemStack stack) {
-        if (!DuctFaceSettingsSnapshot.hasStoredSettings(stack)) {
-            return STATE_EMPTY;
-        }
-        return isFilterMode(stack) ? STATE_FILTER : STATE_ALL;
+    public static float copierFilter(ItemStack stack) {
+        return isFilterMode(stack) ? 1.0F : 0.0F;
     }
 
-    /** Filter when {@link ModDataComponents#SETTINGS_COPIER_FILTER} or snapshot {@link SettingsCopierStoreKind#TAG} says so. */
+    public static float copierFilled(ItemStack stack) {
+        return DuctFaceSettingsSnapshot.hasStoredSettings(stack) ? 1.0F : 0.0F;
+    }
+
+    /**
+     * Authoritative filter mode: component first, then snapshot {@link SettingsCopierStoreKind#TAG}.
+     */
     public static boolean isFilterMode(ItemStack stack) {
-        if (Boolean.TRUE.equals(stack.get(ModDataComponents.SETTINGS_COPIER_FILTER.get()))) {
-            return true;
+        var filterType = ModDataComponents.SETTINGS_COPIER_FILTER.get();
+        if (stack.has(filterType)) {
+            return Boolean.TRUE.equals(stack.get(filterType));
         }
         if (!DuctFaceSettingsSnapshot.hasStoredSettings(stack)) {
             return false;

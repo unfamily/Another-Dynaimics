@@ -25,7 +25,7 @@
   "item.another_dynamics.settings_copier.tooltip.filter.0": "Insert it in the Copy slot and click Paste to apply a filter list.",
   "item.another_dynamics.settings_copier.tooltip.filter.1": "Insert it in the Copy slot to overwrite with new settings.",
   "item.another_dynamics.settings_copier.tooltip.filter.2": "Place in a crafting grid to reset completely.",
-  "item.another_dynamics.settings_copier.tooltip.use_gui": "Left-click (air or block) to open the settings editor.",
+  "item.another_dynamics.settings_copier.tooltip.use_gui": "Right-click (air or block) to open the settings editor.",
   "gui.another_dynamics.settings_copier.configurator": "Settings Copier Configurator",
   "gui.another_dynamics.settings_copier.configure": "Configure",
   "gui.another_dynamics.settings_copier.mode": "Mode: %s",

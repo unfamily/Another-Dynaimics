@@ -366,6 +366,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         DuctFaceNode.FilterBank.FILTER;
     private HybridPanel hybridPanel = HybridPanel.NONE;
     private int filterScrollOffset;
+    /** Tracks {@link DuctMenuSync#MENU_VIEW_LAYER} for copier virtual hub → detail MAIN transition. */
+    private int lastSyncedMenuViewLayer = -1;
     private boolean isDraggingHandle;
     private int dragStartY;
     private int dragStartScrollOffset;
@@ -1102,10 +1104,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
         copierVirtualNodeBackButton = Button.builder(
             Component.translatable("gui.another_dynamics.duct_node.filters.back"),
-            b -> {
-                playClickSound();
-                handleMenuButton(DuctBlockEntity.MENU_BUTTON_ENTER_DETAIL);
-            }
+            b -> openVirtualNodeMainFromTransportHub()
         )
             .bounds(
                 this.leftPos + CHROME_COL_MID_X,
@@ -1329,10 +1328,26 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (isSettingsCopierFilterListEditor()) {
             return false;
         }
+        // Settings copier virtual editor: layer changes use copierVirtualNodeBack / X, not duct hub Back.
+        if (useSettingsCopierHubNavigation()) {
+            return false;
+        }
         return (
             menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
             menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0
         );
+    }
+
+    /** Transport hub (layer 0) → virtual node detail {@link SubView#MAIN} only. */
+    private void openVirtualNodeMainFromTransportHub() {
+        exitEditMode(false);
+        subView = SubView.MAIN;
+        hybridPanel = HybridPanel.NONE;
+        playClickSound();
+        handleMenuButton(DuctBlockEntity.MENU_BUTTON_ENTER_DETAIL);
+        applySubViewVisibility();
+        layoutMainChromeRowsForHubOrDetail();
+        layoutHubTransportGrid();
     }
 
     /** Node mode + opaque: row 1 on transport hub, row 2 on detail (filters use row 1 in detail). */
@@ -2359,7 +2374,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         if (hubBackButton != null) {
             hubBackButton.visible =
-                detailMain && multiTransport && !howto && !advancedFiltering;
+                detailMain &&
+                multiTransport &&
+                !howto &&
+                !advancedFiltering &&
+                !useSettingsCopierHubNavigation();
         }
         if (copierVirtualNodeBackButton != null) {
             copierVirtualNodeBackButton.visible =
@@ -4794,6 +4813,21 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         );
 
         // Server can change MENU_VIEW_LAYER / ACTIVE_TRANSPORT_KIND without node-mode layout key changing; keep hub vs detail visibility and positions in sync.
+        int menuLayer = menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER);
+        if (lastSyncedMenuViewLayer < 0) {
+            lastSyncedMenuViewLayer = menuLayer;
+        } else if (
+            useSettingsCopierHubNavigation() &&
+            lastSyncedMenuViewLayer == 0 &&
+            menuLayer == 1
+        ) {
+            exitEditMode(false);
+            subView = SubView.MAIN;
+            hybridPanel = HybridPanel.NONE;
+            lastSyncedMenuViewLayer = menuLayer;
+        } else if (lastSyncedMenuViewLayer != menuLayer) {
+            lastSyncedMenuViewLayer = menuLayer;
+        }
         applySubViewVisibility();
         layoutMainChromeRowsForHubOrDetail();
         layoutHubTransportGrid();
