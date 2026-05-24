@@ -1,7 +1,9 @@
 package net.unfamily.another_dynamics.duct;
 
 /**
- * Fluid transport parameters from datapack {@code can_transport} (dec {@code fluid}). Amounts are in mB where relevant.
+ * Fluid transport parameters from datapack ({@code dec} {@code fluid}); amounts in mB.
+ * <p><strong>Material-lane family:</strong> parallel changes often belong in {@link DuctItemTransportSpec},
+ * {@link DuctGasTransportSpec}, and universal declarations that include item/fluid/gas.
  */
 public record DuctFluidTransportSpec(
         int batchDefaultMb,

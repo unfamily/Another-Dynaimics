@@ -37,7 +37,7 @@ public final class ModDataComponents {
                                     .networkSynchronized(ResourceLocation.STREAM_CODEC)
                                     .build());
 
-    /** Serialized {@link net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot} on {@link net.unfamily.another_dynamics.item.SettingsCopierItem}. */
+    /** Serialized snapshot payload on {@link net.unfamily.another_dynamics.item.SettingsCopierItem}. */
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<CompoundTag>> DUCT_FACE_SETTINGS =
             TYPES.register(
                     "duct_face_settings",
@@ -45,6 +45,20 @@ public final class ModDataComponents {
                             DataComponentType.<CompoundTag>builder()
                                     .persistent(CompoundTag.CODEC)
                                     .networkSynchronized(net.minecraft.network.codec.ByteBufCodecs.COMPOUND_TAG)
+                                    .build());
+
+    /**
+     * When {@code true}, copier is in filter-list mode ({@link
+     * net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind#FILTER}). Absent / false = all mode. Boolean
+     * avoids byte {@code 0} (all) being treated as a missing component on sync.
+     */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Boolean>> SETTINGS_COPIER_FILTER =
+            TYPES.register(
+                    "settings_copier_filter",
+                    () ->
+                            DataComponentType.<Boolean>builder()
+                                    .persistent(Codec.BOOL)
+                                    .networkSynchronized(ByteBufCodecs.BOOL)
                                     .build());
 
     private ModDataComponents() {}

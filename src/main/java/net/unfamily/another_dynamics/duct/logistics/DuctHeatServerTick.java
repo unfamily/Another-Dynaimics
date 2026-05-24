@@ -26,10 +26,11 @@ import net.unfamily.another_dynamics.network.ModNetwork;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Mekanism heat logistics: instant transport between actions. Per-face action interval is set in common config
- * ({@link DuctModuleEffects#HEAT_ACTION_RATE_TICKS} ticks). Throughput is
- * capped at extracting/retrieving faces; increment {@code rate}
- * modules do not apply.
+ * Mekanism heat logistics: instant transport between actions.
+ * <p><strong>Flux-lane family:</strong> behavioural changes often need equivalent updates for {@link DuctEnergyServerTick},
+ * {@link DuctFaceLanes} heat fields, and universal ducts with heat enabled (settings copier {@code EnergyHeat}).
+ * <p>Per-face interval: {@link DuctModuleEffects#HEAT_ACTION_RATE_TICKS}. Throughput capped at extract/retrieve faces;
+ * {@code rate} increment modules do not apply.
  */
 public final class DuctHeatServerTick {
     private static final double HEAT_EPS = 1e-4;

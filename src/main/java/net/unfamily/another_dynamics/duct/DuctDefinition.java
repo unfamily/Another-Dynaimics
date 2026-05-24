@@ -23,6 +23,11 @@ import net.minecraft.resources.ResourceLocation;
  * <p>{@link #restrictionsConnectWithCompatible}: when {@code false}, item ducts only connect as pipe to neighbors with
  * the same {@link #logicalId}. {@link #disabledFeatures} / {@link #forbiddenFeatures} use keys from
  * {@link DuctFeatureKeys}.</p>
+ *
+ * <p><strong>Maintenance families:</strong> {@code universal_duct} and similar ids combine material lanes
+ * (item/fluid/gas specs + {@link DuctFaceNode}) and flux lanes (energy/heat specs + {@link DuctFaceLanes}).
+ * {@link net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot} stores the same per-face key layout as
+ * {@link DuctFaceLanes#saveCopierSettings} for enabled kinds only.</p>
  */
 public record DuctDefinition(
         ResourceLocation dataId,

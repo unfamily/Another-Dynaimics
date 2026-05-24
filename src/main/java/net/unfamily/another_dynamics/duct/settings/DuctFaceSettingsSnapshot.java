@@ -10,55 +10,64 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
-import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
-import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 /**
- * Captures / restores per-face duct node settings (shared face state, modules, item/fluid/gas lanes) for the
- * {@link SettingsCopierItem}. Cross-duct: only lanes the target definition supports are applied.
+ * Captures / restores per-face duct <em>configuration</em> for the {@link SettingsCopierItem} (not physical contents).
+ * <p><strong>Universal {@code all} format:</strong> NBT keys ({@code Shared}, {@code Item}, {@code Fluid}, {@code Gas},
+ * {@code EnergyHeat}) match {@link DuctFaceLanes#saveCopierSettings} / {@link DuctFaceLanes#loadCopierSettings} on a
+ * universal duct face — copying from universal and pasting onto another universal is near 1:1 for GUI settings. Single-kind
+ * ducts store only the lanes they support ({@link DuctDefinition#enabledTransportKinds}).
+ * <p>Never copied (see {@link DuctFaceLanes} copier exclusion list): module items, stall buffers, action tick cursors,
+ * copy-slot stack, client-only state. Cross-duct paste: only lanes the target definition supports are applied.
  */
 public final class DuctFaceSettingsSnapshot {
-    public static final int FORMAT_VERSION = 2;
+    /** v3+: energy/heat GUI fields via {@link DuctFaceLanes#saveCopierSettings} (modules explicitly excluded). */
+    public static final int FORMAT_VERSION = 3;
+    /** Still readable when pasting older copiers. */
+    private static final int FORMAT_VERSION_LEGACY = 2;
 
-    static final String KEY_FMT = "Fmt";
+    public static final String KEY_FMT = "Fmt";
     private static final String KEY_SHARED = "Shared";
-    private static final String KEY_MODULES = "Modules";
     private static final String KEY_ITEM = "Item";
     private static final String KEY_FLUID = "Fluid";
     private static final String KEY_GAS = "Gas";
+    private static final String KEY_ENERGY_HEAT = "EnergyHeat";
 
     private DuctFaceSettingsSnapshot() {}
+
+    public static boolean acceptsSnapshotFormat(int fmt) {
+        return fmt == FORMAT_VERSION || fmt == FORMAT_VERSION_LEGACY;
+    }
 
     public static boolean hasStoredSettings(ItemStack stack) {
         if (stack.isEmpty() || !(stack.getItem() instanceof SettingsCopierItem)) {
             return false;
         }
-        CompoundTag tag = stack.get(ModDataComponents.DUCT_FACE_SETTINGS);
-        return tag != null
-                && !tag.isEmpty()
-                && tag.contains(KEY_FMT, Tag.TAG_INT)
-                && tag.getInt(KEY_FMT) == FORMAT_VERSION;
+        CompoundTag tag = stack.get(ModDataComponents.DUCT_FACE_SETTINGS.get());
+        if (tag == null || tag.isEmpty() || !tag.contains(KEY_FMT, Tag.TAG_INT)) {
+            return false;
+        }
+        return acceptsSnapshotFormat(tag.getInt(KEY_FMT));
     }
 
     public static SettingsCopierStoreKind getStoreKind(ItemStack stack) {
-        if (!hasStoredSettings(stack)) {
-            return SettingsCopierStoreKind.ALL;
-        }
-        return SettingsCopierStoreKind.fromCompound(stack.get(ModDataComponents.DUCT_FACE_SETTINGS));
+        return SettingsCopierStoreKind.getMode(stack);
     }
 
     public static boolean isAllPayload(CompoundTag tag) {
-        return tag != null
-                && tag.contains(KEY_FMT, Tag.TAG_INT)
-                && tag.getInt(KEY_FMT) == FORMAT_VERSION
-                && SettingsCopierStoreKind.fromCompound(tag) == SettingsCopierStoreKind.ALL;
+        if (tag == null || !tag.contains(KEY_FMT, Tag.TAG_INT)) {
+            return false;
+        }
+        if (!acceptsSnapshotFormat(tag.getInt(KEY_FMT))) {
+            return false;
+        }
+        return SettingsCopierStoreKind.fromCompound(tag) == SettingsCopierStoreKind.ALL;
     }
 
     /** Copier in the used hand, or the other hand if it holds stored settings. */
@@ -95,51 +104,62 @@ public final class DuctFaceSettingsSnapshot {
         DuctFaceLanes lanes = be.getFaceLanes(face);
         EnumSet<DuctTransportKind> kinds =
                 be.ductDefinition().map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
-        lanes.ensureTransportEnabledMask(kinds);
 
         CompoundTag root = new CompoundTag();
         root.putInt(KEY_FMT, FORMAT_VERSION);
         root.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.ALL.toTag());
-
-        CompoundTag shared = new CompoundTag();
-        shared.putByte("NodeMode", (byte) lanes.nodeMode.ordinal());
-        shared.putByte("RedstoneMode", (byte) lanes.redstoneMode);
-        shared.putInt("TransportMask", lanes.transportEnabledMask);
-        root.put(KEY_SHARED, shared);
-
-        CompoundTag itemTag = new CompoundTag();
-        lanes.item.saveSettings(registries, itemTag);
-        root.put(KEY_ITEM, itemTag);
-
-        if (kinds.contains(DuctTransportKind.FLUID)) {
-            CompoundTag fluidTag = new CompoundTag();
-            lanes.fluid.saveSettings(registries, fluidTag);
-            root.put(KEY_FLUID, fluidTag);
-        }
-        if (kinds.contains(DuctTransportKind.GAS)) {
-            CompoundTag gasTag = new CompoundTag();
-            lanes.gas.saveSettings(registries, gasTag);
-            root.put(KEY_GAS, gasTag);
-        }
+        lanes.saveCopierSettings(registries, root, kinds);
         return root;
     }
 
     public static boolean apply(
             DuctBlockEntity be, Direction face, CompoundTag data, HolderLookup.Provider registries, Player player) {
-        if (data == null || data.isEmpty() || !data.contains(KEY_FMT, Tag.TAG_INT)) {
-            return false;
-        }
-        if (!isAllPayload(data)) {
+        if (data == null || data.isEmpty() || !isAllPayload(data)) {
             return false;
         }
         EnumSet<DuctTransportKind> kinds =
                 be.ductDefinition().map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
         DuctFaceLanes lanes = be.getFaceLanes(face);
 
-        if (data.contains(KEY_SHARED, Tag.TAG_COMPOUND)) {
-            applySharedSettings(lanes, data.getCompound(KEY_SHARED), kinds);
+        int fmt = data.getInt(KEY_FMT);
+        if (fmt == FORMAT_VERSION) {
+            lanes.loadCopierSettings(registries, data, kinds);
+        } else {
+            applyLegacyV2(lanes, data, registries, kinds);
         }
 
+        be.finishFaceSettingsRestore(face);
+        return true;
+    }
+
+    public static CompoundTag captureFromLanes(
+            DuctFaceLanes lanes, HolderLookup.Provider registries, EnumSet<DuctTransportKind> kinds) {
+        CompoundTag root = new CompoundTag();
+        root.putInt(KEY_FMT, FORMAT_VERSION);
+        root.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.ALL.toTag());
+        lanes.saveCopierSettings(registries, root, kinds);
+        return root;
+    }
+
+    /** Pre-v3 copiers: shared + item/fluid/gas only (no modules / energy-heat block). */
+    public static void applyLegacyToLanes(
+            DuctFaceLanes lanes,
+            CompoundTag data,
+            HolderLookup.Provider registries,
+            EnumSet<DuctTransportKind> kinds) {
+        applyLegacyV2(lanes, data, registries, kinds);
+    }
+
+    /** Pre-v3 copiers: shared + item/fluid/gas only (no modules / energy-heat block). */
+    private static void applyLegacyV2(
+            DuctFaceLanes lanes,
+            CompoundTag data,
+            HolderLookup.Provider registries,
+            EnumSet<DuctTransportKind> kinds) {
+        if (data.contains(KEY_SHARED, Tag.TAG_COMPOUND)) {
+            lanes.loadSharedSettings(data.getCompound(KEY_SHARED));
+            lanes.ensureTransportEnabledMask(kinds);
+        }
         if (data.contains(KEY_ITEM, Tag.TAG_COMPOUND) && kinds.contains(DuctTransportKind.ITEM)) {
             lanes.item.loadSettings(registries, data.getCompound(KEY_ITEM));
         }
@@ -149,43 +169,17 @@ public final class DuctFaceSettingsSnapshot {
         if (data.contains(KEY_GAS, Tag.TAG_COMPOUND) && kinds.contains(DuctTransportKind.GAS)) {
             lanes.gas.loadSettings(registries, data.getCompound(KEY_GAS));
         }
-
-        be.finishFaceSettingsRestore(face);
-        return true;
     }
 
     public static Optional<CompoundTag> readFromCopier(ItemStack stack) {
         if (!hasStoredSettings(stack)) {
             return Optional.empty();
         }
-        return Optional.of(stack.get(ModDataComponents.DUCT_FACE_SETTINGS).copy());
+        return Optional.of(stack.get(ModDataComponents.DUCT_FACE_SETTINGS.get()).copy());
     }
 
     public static void writeToCopier(ItemStack stack, CompoundTag snapshot) {
-        stack.set(ModDataComponents.DUCT_FACE_SETTINGS, snapshot);
-    }
-
-    private static void applySharedSettings(DuctFaceLanes lanes, CompoundTag shared, EnumSet<DuctTransportKind> kinds) {
-        lanes.nodeMode = NodeMode.fromOrdinal(shared.getByte("NodeMode"));
-        lanes.redstoneMode = shared.getByte("RedstoneMode") & 0xFF;
-        if (shared.contains("TransportMask", Tag.TAG_INT)) {
-            lanes.transportEnabledMask = shared.getInt("TransportMask");
-        }
-        lanes.ensureTransportEnabledMask(kinds);
-    }
-
-    private static void applyModules(DuctFaceLanes lanes, CompoundTag modulesTag, HolderLookup.Provider registries) {
-        ItemStackHandler probe = new ItemStackHandler(modulesTag.contains("Size", Tag.TAG_INT) ? modulesTag.getInt("Size") : 0);
-        if (probe.getSlots() <= 0) {
-            return;
-        }
-        probe.deserializeNBT(registries, modulesTag);
-        int limit = Math.min(probe.getSlots(), lanes.moduleSlots.getSlots());
-        for (int i = 0; i < limit; i++) {
-            lanes.moduleSlots.setStackInSlot(i, probe.getStackInSlot(i).copy());
-        }
-        for (int i = limit; i < lanes.moduleSlots.getSlots(); i++) {
-            lanes.moduleSlots.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
-        }
+        stack.set(ModDataComponents.DUCT_FACE_SETTINGS.get(), snapshot);
+        SettingsCopierStoreKind.setMode(stack, SettingsCopierStoreKind.fromCompound(snapshot));
     }
 }

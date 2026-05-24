@@ -1,0 +1,651 @@
+package net.unfamily.another_dynamics.duct.settings;
+
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Optional;
+
+import net.minecraft.core.Direction;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.inventory.SimpleContainerData;
+import net.minecraft.world.item.ItemStack;
+import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctDefinition;
+import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctFaceLanes;
+import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctFeatureKeys;
+import net.unfamily.another_dynamics.duct.DuctFeaturePolicy;
+import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
+import net.unfamily.another_dynamics.duct.DuctGasTransportSpec;
+import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
+import net.unfamily.another_dynamics.duct.DuctMenuSync;
+import net.unfamily.another_dynamics.duct.DuctTransportKind;
+import net.unfamily.another_dynamics.duct.NodeMode;
+import net.unfamily.another_dynamics.duct.RoutingMode;
+import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
+import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.unfamily.another_dynamics.network.ModNetwork;
+
+/**
+ * In-memory universal duct face for settings copier virtual editor (no world block).
+ */
+public final class SettingsCopierVirtualSession {
+    public static final String UNIVERSAL_LOGICAL_ID = "another_dynamics:universal_duct";
+    public static final int UNLIMITED_FILTER_LINES = 512;
+    public static final Direction VIRTUAL_FACE = Direction.NORTH;
+
+    private final ServerPlayer player;
+    private final InteractionHand hand;
+    private final SettingsCopierStoreKind storeKind;
+    private final DuctFaceLanes lanes;
+    private final SimpleContainerData menuData;
+    private final EnumSet<DuctTransportKind> enabledKinds;
+    private final List<DuctTransportKind> orderedKinds;
+
+    private int menuTransportKindIndex;
+    private int menuUiLayer;
+
+    /** Last filter list edited (for FILTER mode persist). */
+    private DuctTransportKind lastFilterLane = DuctTransportKind.ITEM;
+    private DuctFaceNode.FilterBank lastFilterBank = DuctFaceNode.FilterBank.EXTRACTOR;
+    private boolean lastFilterAllowList = true;
+
+    public SettingsCopierVirtualSession(
+            ServerPlayer player, InteractionHand hand, ItemStack copier, SimpleContainerData menuData) {
+        this.menuData = menuData;
+        this.player = player;
+        this.hand = hand;
+        this.storeKind = SettingsCopierStoreKind.getMode(copier);
+        this.lanes = DuctFaceLanes.createDetached(VIRTUAL_FACE, this::refreshMenuData);
+        this.enabledKinds =
+                DuctDefinitionRegistry.getByLogicalId(UNIVERSAL_LOGICAL_ID)
+                        .map(DuctDefinition::enabledTransportKinds)
+                        .orElse(EnumSet.of(DuctTransportKind.ITEM));
+        this.orderedKinds = DuctDefinition.orderedMenuTransportKinds(
+                DuctDefinitionRegistry.getByLogicalId(UNIVERSAL_LOGICAL_ID));
+        lanes.ensureTransportEnabledMask(enabledKinds);
+        loadFromCopier(copier);
+        prepareMenuOpenState();
+        refreshMenuData();
+        ModNetwork.sendFilterSyncForVirtual(player, this);
+    }
+
+    public InteractionHand hand() {
+        return hand;
+    }
+
+    public SettingsCopierStoreKind storeKind() {
+        return storeKind;
+    }
+
+    public DuctFaceLanes lanes() {
+        return lanes;
+    }
+
+    public SimpleContainerData menuData() {
+        return menuData;
+    }
+
+    public Direction accessFace() {
+        return VIRTUAL_FACE;
+    }
+
+    public boolean isUnlimitedFilters() {
+        return true;
+    }
+
+    public List<DuctTransportKind> orderedMenuTransportKinds() {
+        return orderedKinds;
+    }
+
+    public DuctTransportKind menuActiveTransportKind() {
+        if (orderedKinds.size() == 1) {
+            return orderedKinds.getFirst();
+        }
+        return orderedKinds.get(Math.floorMod(menuTransportKindIndex, orderedKinds.size()));
+    }
+
+    public DuctFaceNode activeMenuFaceNode() {
+        return faceNodeForTransportKind(menuActiveTransportKind());
+    }
+
+    public DuctFaceNode faceNodeForTransportKind(DuctTransportKind kind) {
+        return switch (kind) {
+            case FLUID -> lanes.fluid;
+            case GAS -> lanes.gas;
+            case ENERGY, HEAT, ITEM -> lanes.item;
+        };
+    }
+
+    public boolean isMenuHubLayer() {
+        return menuUiLayer == 0;
+    }
+
+  public boolean usesEnergyOrHeatPassThroughRouting() {
+        DuctTransportKind k = menuActiveTransportKind();
+        if (k != DuctTransportKind.ENERGY && k != DuctTransportKind.HEAT) {
+            return false;
+        }
+        NodeMode nm = lanes.nodeMode;
+        return nm == NodeMode.NONE || nm == NodeMode.FILTERING_INSERTION;
+    }
+
+    private Optional<DuctDefinition> definition() {
+        return DuctDefinitionRegistry.getByLogicalId(UNIVERSAL_LOGICAL_ID);
+    }
+
+    private void prepareMenuOpenState() {
+        menuTransportKindIndex = 0;
+        // FILTER editor: land on detail + filter lists, not multi-transport hub.
+        if (storeKind == SettingsCopierStoreKind.FILTER) {
+            menuUiLayer = 1;
+        } else {
+            menuUiLayer = orderedKinds.size() > 1 ? 0 : 1;
+        }
+    }
+
+    private void loadFromCopier(ItemStack copier) {
+        var registries = player.registryAccess();
+        if (storeKind == SettingsCopierStoreKind.ALL) {
+            DuctFaceSettingsSnapshot.readFromCopier(copier).ifPresent(tag -> {
+                if (DuctFaceSettingsSnapshot.isAllPayload(tag)) {
+                    int fmt = tag.getInt(DuctFaceSettingsSnapshot.KEY_FMT);
+                    if (fmt == DuctFaceSettingsSnapshot.FORMAT_VERSION) {
+                        lanes.loadCopierSettings(registries, tag, enabledKinds);
+                    } else {
+                        DuctFaceSettingsSnapshot.applyLegacyToLanes(lanes, tag, registries, enabledKinds);
+                    }
+                }
+            });
+            lanes.ensureTransportEnabledMask(enabledKinds);
+            return;
+        }
+        DuctFaceSettingsSnapshot.readFromCopier(copier).ifPresent(tag -> {
+            if (DuctFilterListSnapshot.isFilterPayload(tag)) {
+                DuctFilterListSnapshot.applyToList(
+                        lanes.item, DuctFaceNode.FilterBank.EXTRACTOR, true, tag);
+                lastFilterLane = DuctTransportKind.ITEM;
+                lastFilterBank = DuctFaceNode.FilterBank.EXTRACTOR;
+                lastFilterAllowList = true;
+            }
+        });
+        lanes.nodeMode = NodeMode.EXTRACTION;
+        menuTransportKindIndex = Math.max(0, orderedKinds.indexOf(DuctTransportKind.ITEM));
+        lanes.ensureTransportEnabledMask(enabledKinds);
+    }
+
+    public void persistToCopier(ItemStack copier) {
+        var registries = player.registryAccess();
+        if (storeKind == SettingsCopierStoreKind.ALL) {
+            DuctFaceSettingsSnapshot.writeToCopier(
+                    copier, DuctFaceSettingsSnapshot.captureFromLanes(lanes, registries, enabledKinds));
+            return;
+        }
+        DuctFaceNode node = faceNodeForTransportKind(lastFilterLane);
+        CompoundTag snap =
+                DuctFilterListSnapshot.captureList(node, lastFilterBank, lastFilterAllowList);
+        DuctFaceSettingsSnapshot.writeToCopier(copier, snap);
+    }
+
+    public void refreshMenuData() {
+        DuctFaceNode n = activeMenuFaceNode();
+        DuctTransportKind menuKind = menuActiveTransportKind();
+        menuData.set(DuctMenuSync.NODE_MODE, lanes.nodeMode.ordinal());
+        if (menuKind == DuctTransportKind.ENERGY) {
+            menuData.set(DuctMenuSync.ROUTING_MODE, lanes.energyRoutingMode.ordinal());
+            menuData.set(DuctMenuSync.ROUTING_MODE_EXTRACTOR, lanes.energyRoutingModeExtractor.ordinal());
+            menuData.set(DuctMenuSync.ROUTING_MODE_RETRIEVER, lanes.energyRoutingModeRetriever.ordinal());
+        } else if (menuKind == DuctTransportKind.HEAT) {
+            menuData.set(DuctMenuSync.ROUTING_MODE, lanes.heatRoutingMode.ordinal());
+            menuData.set(DuctMenuSync.ROUTING_MODE_EXTRACTOR, lanes.heatRoutingModeExtractor.ordinal());
+            menuData.set(DuctMenuSync.ROUTING_MODE_RETRIEVER, lanes.heatRoutingModeRetriever.ordinal());
+        } else {
+            menuData.set(DuctMenuSync.ROUTING_MODE, n.routingMode.ordinal());
+            menuData.set(DuctMenuSync.ROUTING_MODE_EXTRACTOR, n.routingModeExtractor.ordinal());
+            menuData.set(DuctMenuSync.ROUTING_MODE_RETRIEVER, n.routingModeRetriever.ordinal());
+        }
+        menuData.set(DuctMenuSync.PRIORITY, n.insertionPriority & 0xFFFF);
+        menuData.set(DuctMenuSync.PRIORITY_HI, (n.insertionPriority >> 16) & 0xFFFF);
+        menuData.set(DuctMenuSync.AMOUNT_FIELD, n.extractBatch);
+        menuData.set(DuctMenuSync.EXTRACT_BATCH_CAP, Integer.MAX_VALUE / 2);
+        menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
+        menuData.set(DuctMenuSync.REDSTONE_MODE, lanes.redstoneMode);
+        menuData.set(DuctMenuSync.ELIGIBILITY_MODE, n.eligibilityMode.ordinal());
+        int denyOverSync =
+                switch (lanes.nodeMode) {
+                    case FILTERING_INSERTION -> n.denyOverridesAllowFilter ? 1 : 0;
+                    case EXTRACTION -> n.denyOverridesAllowExtractor ? 1 : 0;
+                    case RETRIEVING -> n.denyOverridesAllowRetriever ? 1 : 0;
+                    default -> n.denyOverridesAllow ? 1 : 0;
+                };
+        menuData.set(DuctMenuSync.DENY_OVERRIDES_ALLOW, denyOverSync);
+        int flags = 0;
+        if (lanes.nodeMode.usesRouting()
+                || (menuKind == DuctTransportKind.ENERGY || menuKind == DuctTransportKind.HEAT)
+                        && (lanes.nodeMode == NodeMode.NONE || lanes.nodeMode == NodeMode.FILTERING_INSERTION)) {
+            flags |= DuctMenuSync.FLAG_ROUTING_ACTIVE;
+        }
+        if (lanes.nodeMode.usesItemFilterConfig()) {
+            flags |= DuctMenuSync.FLAG_FILTERS_ACTIVE;
+        }
+        menuData.set(DuctMenuSync.FLAGS, flags);
+        menuData.set(DuctMenuSync.ACCESS_FACE, VIRTUAL_FACE.ordinal());
+        menuData.set(DuctMenuSync.ACTIVE_TRANSPORT_KIND, menuKind.ordinal());
+        menuData.set(DuctMenuSync.TRANSPORT_KIND_COUNT, orderedKinds.size());
+        menuData.set(DuctMenuSync.MENU_VIEW_LAYER, menuUiLayer);
+        menuData.set(DuctMenuSync.TRANSPORT_ENABLED_MASK, lanes.transportEnabledMask);
+        menuData.set(DuctMenuSync.ENERGY_BUF_LIMIT_EXTRACT, lanes.energyExtractBufferLimitFe);
+        menuData.set(DuctMenuSync.ENERGY_BUF_LIMIT_INSERT, lanes.energyInsertBufferLimitFe);
+        menuData.set(DuctMenuSync.ENERGY_BUF_INPUT_STORED, lanes.energyInputBufferFe);
+        menuData.set(DuctMenuSync.ENERGY_BUF_OUTPUT_STORED, lanes.energyOutputBufferFe);
+        int inCap = lanes.energyExtractBufferLimitFe > 0
+                ? Math.max(1, lanes.energyExtractBufferLimitFe)
+                : Math.max(1, (int) Math.min(energySpec().clampedExtract(), Integer.MAX_VALUE));
+        int outCap = lanes.energyInsertBufferLimitFe > 0
+                ? Math.max(1, lanes.energyInsertBufferLimitFe)
+                : inCap;
+        menuData.set(DuctMenuSync.ENERGY_BUF_INPUT_CAP, inCap);
+        menuData.set(DuctMenuSync.ENERGY_BUF_OUTPUT_CAP, outCap);
+        menuData.set(DuctMenuSync.SELF_FEED, n.selfFeed ? 1 : 0);
+    }
+
+    private DuctItemTransportSpec itemSpec() {
+        return definition().map(DuctDefinition::itemTransportOrFallback).orElseGet(DuctItemTransportSpec::fallback);
+    }
+
+    private DuctFluidTransportSpec fluidSpec() {
+        return definition().map(DuctDefinition::fluidTransportOrFallback).orElseGet(DuctFluidTransportSpec::fallback);
+    }
+
+    private DuctGasTransportSpec gasSpec() {
+        return definition().map(DuctDefinition::gasTransportOrFallback).orElseGet(DuctGasTransportSpec::fallback);
+    }
+
+    private net.unfamily.another_dynamics.duct.DuctEnergyTransportSpec energySpec() {
+        return definition().map(DuctDefinition::energyTransportOrFallback).orElseGet(
+                net.unfamily.another_dynamics.duct.DuctEnergyTransportSpec::fallback);
+    }
+
+    public boolean handleMenuButton(int buttonId) {
+        if (storeKind == SettingsCopierStoreKind.FILTER) {
+            return false;
+        }
+        if (buttonId >= DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE
+                && buttonId
+                        < DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE + DuctTransportKind.values().length) {
+            DuctTransportKind k =
+                    DuctTransportKind.values()[buttonId - DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE];
+            return setMenuTransportKindFromPicker(k);
+        }
+        if (buttonId == DuctBlockEntity.MENU_BUTTON_ENTER_DETAIL) {
+            return enterMenuDetail();
+        }
+        if (buttonId == DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB) {
+            return returnMenuToHub();
+        }
+        if (buttonId >= DuctBlockEntity.MENU_BUTTON_TRANSPORT_TOGGLE_BASE
+                && buttonId
+                        < DuctBlockEntity.MENU_BUTTON_TRANSPORT_TOGGLE_BASE + DuctTransportKind.values().length) {
+            DuctTransportKind k =
+                    DuctTransportKind.values()[buttonId - DuctBlockEntity.MENU_BUTTON_TRANSPORT_TOGGLE_BASE];
+            if (!enabledKinds.contains(k)) {
+                return false;
+            }
+            lanes.toggleTransportKind(k, enabledKinds);
+            refreshMenuData();
+            return true;
+        }
+        DuctFaceNode node = activeMenuFaceNode();
+        boolean changed =
+                switch (buttonId) {
+                    case 0 -> cycleNodeMode(true);
+                    case 10 -> cycleNodeMode(false);
+                    case 1 -> {
+                        if (usesEnergyOrHeatPassThroughRouting()) {
+                            yield cycleEligibility(node, 1);
+                        }
+                        if (!lanes.nodeMode.usesRouting()) {
+                            yield false;
+                        }
+                        yield stepRouting(node, 1);
+                    }
+                    case 2 -> {
+                        lanes.redstoneMode = (lanes.redstoneMode + 1) % 4;
+                        yield true;
+                    }
+                    case 11 -> {
+                        if (usesEnergyOrHeatPassThroughRouting()) {
+                            yield cycleEligibility(node, -1);
+                        }
+                        if (!lanes.nodeMode.usesRouting()) {
+                            yield false;
+                        }
+                        yield stepRouting(node, -1);
+                    }
+                    case DuctBlockEntity.MENU_BUTTON_ROUTING_EXTRACTOR_FORWARD -> stepRoutingExtractor(node, 1);
+                    case DuctBlockEntity.MENU_BUTTON_ROUTING_EXTRACTOR_BACK -> stepRoutingExtractor(node, -1);
+                    case DuctBlockEntity.MENU_BUTTON_ROUTING_RETRIEVER_FORWARD -> stepRoutingRetriever(node, 1);
+                    case DuctBlockEntity.MENU_BUTTON_ROUTING_RETRIEVER_BACK -> stepRoutingRetriever(node, -1);
+                    case 12 -> {
+                        lanes.redstoneMode = Math.floorMod(lanes.redstoneMode - 1, 4);
+                        yield true;
+                    }
+                    case 4 -> {
+                        if (!DuctFeaturePolicy.isUsable(definition().orElse(null), DuctFeatureKeys.SPECIAL_CHANNEL, false)) {
+                            yield false;
+                        }
+                        node.channelLetter = node.channelLetter >= 26 ? 1 : node.channelLetter + 1;
+                        yield true;
+                    }
+                    case 5 -> {
+                        if (!DuctFeaturePolicy.isUsable(definition().orElse(null), DuctFeatureKeys.SPECIAL_CHANNEL, false)) {
+                            yield false;
+                        }
+                        node.channelLetter = node.channelLetter <= 1 ? 26 : node.channelLetter - 1;
+                        yield true;
+                    }
+                    case 13 -> {
+                        if (!DuctFeaturePolicy.isUsable(definition().orElse(null), DuctFeatureKeys.SPECIAL_CHANNEL, false)) {
+                            yield false;
+                        }
+                        node.channelLetter = 1;
+                        yield true;
+                    }
+                    default -> false;
+                };
+        if (changed) {
+            refreshMenuData();
+            ModNetwork.sendFilterSyncForVirtual(player, this);
+        }
+        return changed;
+    }
+
+    private boolean setMenuTransportKindFromPicker(DuctTransportKind kind) {
+        int idx = orderedKinds.indexOf(kind);
+        if (idx < 0 || !lanes.isTransportKindEnabled(kind, enabledKinds)) {
+            return false;
+        }
+        menuTransportKindIndex = idx;
+        menuUiLayer = 1;
+        refreshMenuData();
+        ModNetwork.sendFilterSyncForVirtual(player, this);
+        return true;
+    }
+
+    private boolean enterMenuDetail() {
+        if (storeKind != SettingsCopierStoreKind.ALL || orderedKinds.size() <= 1 || menuUiLayer != 0) {
+            return false;
+        }
+        menuUiLayer = 1;
+        refreshMenuData();
+        ModNetwork.sendFilterSyncForVirtual(player, this);
+        return true;
+    }
+
+    private boolean returnMenuToHub() {
+        if (storeKind == SettingsCopierStoreKind.FILTER || orderedKinds.size() <= 1) {
+            return false;
+        }
+        menuUiLayer = 0;
+        refreshMenuData();
+        return true;
+    }
+
+    private boolean cycleNodeMode(boolean forward) {
+        NodeMode[] order = {
+            NodeMode.NONE,
+            NodeMode.EXTRACTION,
+            NodeMode.FILTERING_INSERTION,
+            NodeMode.RETRIEVING,
+            NodeMode.EXTRACTION_FILTERING,
+            NodeMode.RETRIEVING_EXTRACTION
+        };
+        Optional<DuctDefinition> def = definition();
+        int idx = 0;
+        for (int i = 0; i < order.length; i++) {
+            if (order[i] == lanes.nodeMode) {
+                idx = i;
+                break;
+            }
+        }
+        for (int off = 1; off <= order.length; off++) {
+            int ni = forward ? (idx + off) % order.length : Math.floorMod(idx - off, order.length);
+            NodeMode cand = order[ni];
+            if (DuctFeaturePolicy.isModeUsable(def.orElse(null), cand, false)) {
+                if (cand != lanes.nodeMode) {
+                    lanes.nodeMode = cand;
+                    refreshMenuData();
+                    return true;
+                }
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static boolean cycleEligibility(DuctFaceNode node, int delta) {
+        DuctFaceNode.EligibilityMode cur = node.eligibilityMode;
+        DuctFaceNode.EligibilityMode nxt =
+                switch (cur) {
+                    case BOTH ->
+                            delta > 0
+                                    ? DuctFaceNode.EligibilityMode.INSERT_ONLY
+                                    : DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
+                    case INSERT_ONLY ->
+                            delta > 0
+                                    ? DuctFaceNode.EligibilityMode.RETRIEVE_ONLY
+                                    : DuctFaceNode.EligibilityMode.BOTH;
+                    case RETRIEVE_ONLY ->
+                            delta > 0
+                                    ? DuctFaceNode.EligibilityMode.BOTH
+                                    : DuctFaceNode.EligibilityMode.INSERT_ONLY;
+                };
+        if (nxt == cur) {
+            return false;
+        }
+        node.eligibilityMode = nxt;
+        return true;
+    }
+
+    private boolean stepRouting(DuctFaceNode node, int delta) {
+        if (!lanes.nodeMode.usesRouting() && !usesEnergyOrHeatPassThroughRouting()) {
+            return false;
+        }
+        DuctTransportKind menuKind = menuActiveTransportKind();
+        Optional<DuctDefinition> def = definition();
+        RoutingMode[] v = RoutingMode.values();
+        if (menuKind == DuctTransportKind.ENERGY || menuKind == DuctTransportKind.HEAT) {
+            return stepEnergyOrHeatRouting(delta, menuKind == DuctTransportKind.ENERGY);
+        }
+        RoutingMode cur = node.routingMode;
+        RoutingMode nxt = nextUsableRouting(cur, v, delta, def);
+        if (nxt != cur) {
+            node.routingMode = nxt;
+            return true;
+        }
+        return false;
+    }
+
+    private boolean stepEnergyOrHeatRouting(int delta, boolean energy) {
+        Optional<DuctDefinition> def = definition();
+        RoutingMode[] v = RoutingMode.values();
+        return switch (lanes.nodeMode) {
+            case NONE, FILTERING_INSERTION -> {
+                RoutingMode cur = energy ? lanes.energyRoutingMode : lanes.heatRoutingMode;
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def);
+                if (nxt != cur) {
+                    if (energy) {
+                        lanes.energyRoutingMode = nxt;
+                    } else {
+                        lanes.heatRoutingMode = nxt;
+                    }
+                    yield true;
+                }
+                yield false;
+            }
+            default -> false;
+        };
+    }
+
+    private boolean stepRoutingExtractor(DuctFaceNode node, int delta) {
+        RoutingMode[] v = RoutingMode.values();
+        RoutingMode cur = node.routingModeExtractor;
+        RoutingMode nxt = nextUsableRouting(cur, v, delta, definition());
+        if (nxt != cur) {
+            node.routingModeExtractor = nxt;
+            return true;
+        }
+        return false;
+    }
+
+    private boolean stepRoutingRetriever(DuctFaceNode node, int delta) {
+        RoutingMode[] v = RoutingMode.values();
+        RoutingMode cur = node.routingModeRetriever;
+        RoutingMode nxt = nextUsableRouting(cur, v, delta, definition());
+        if (nxt != cur) {
+            node.routingModeRetriever = nxt;
+            return true;
+        }
+        return false;
+    }
+
+    private static RoutingMode nextUsableRouting(
+            RoutingMode current, RoutingMode[] v, int delta, Optional<DuctDefinition> def) {
+        int idx = current.ordinal();
+        int dir = delta > 0 ? 1 : -1;
+        for (int step = 1; step <= v.length; step++) {
+            int ni = Math.floorMod(idx + dir * step, v.length);
+            if (DuctFeaturePolicy.isRoutingUsable(def.orElse(null), v[ni], false)) {
+                return v[ni];
+            }
+        }
+        return current;
+    }
+
+    public void applyClientFieldUpdate(
+            int transportKindOrdinal,
+            int insertionPriority,
+            int extractBatch,
+            int eligibilityModeOrdinal) {
+        DuctTransportKind[] vals = DuctTransportKind.values();
+        DuctTransportKind kind = vals[Mth.clamp(transportKindOrdinal, 0, vals.length - 1)];
+        DuctFaceNode node = faceNodeForTransportKind(kind);
+        node.insertionPriority = insertionPriority;
+        node.extractBatch = Math.max(0, extractBatch);
+        node.eligibilityMode = DuctFaceNode.EligibilityMode.fromOrdinal(eligibilityModeOrdinal);
+        refreshMenuData();
+    }
+
+    public void applyFilterConfig(
+            DuctTransportKind laneKind,
+            DuctFaceNode.FilterBank bank,
+            List<String> allowIn,
+            List<String> denyIn,
+            List<Integer> allowCapsIn,
+            List<Integer> allowCaps2In,
+            boolean denyOverridesAllow) {
+        lastFilterLane = laneKind;
+        lastFilterBank = bank;
+        DuctFaceNode node = faceNodeForTransportKind(laneKind);
+        if (!lanes.nodeMode.usesItemFilterConfig()) {
+            return;
+        }
+        List<String> a = node.bankAllowFilters(bank);
+        List<String> d = node.bankDenyFilters(bank);
+        a.clear();
+        d.clear();
+        if (allowIn != null) {
+            a.addAll(allowIn);
+        }
+        if (denyIn != null) {
+            d.addAll(denyIn);
+        }
+        if (allowCapsIn != null) {
+            List<Integer> caps = node.bankAllowCaps(bank);
+            caps.clear();
+            for (Integer v : allowCapsIn) {
+                caps.add(Math.max(0, v != null ? v : 0));
+            }
+            syncCapSize(caps, a.size());
+        }
+        if (bank == DuctFaceNode.FilterBank.FILTER && allowCaps2In != null) {
+            List<Integer> keep = node.filterBankKeepCaps();
+            keep.clear();
+            for (Integer v : allowCaps2In) {
+                keep.add(Math.max(0, v != null ? v : 0));
+            }
+            syncCapSize(keep, a.size());
+        }
+        node.setBankDenyOverridesAllow(bank, denyOverridesAllow);
+        refreshMenuData();
+        ModNetwork.sendFilterSyncForVirtual(player, this);
+    }
+
+    private static void syncCapSize(List<Integer> caps, int size) {
+        while (caps.size() < size) {
+            caps.add(0);
+        }
+        while (caps.size() > size) {
+            caps.remove(caps.size() - 1);
+        }
+    }
+
+    public void toggleListLogic(DuctTransportKind laneKind, DuctFaceNode.FilterBank bank) {
+        if (!lanes.nodeMode.usesItemFilterConfig()) {
+            return;
+        }
+        DuctFaceNode node = faceNodeForTransportKind(laneKind);
+        if (!DuctFeaturePolicy.isUsable(
+                definition().orElse(null), DuctFeatureKeys.listPrecedenceKey(lanes.nodeMode, bank), false)) {
+            return;
+        }
+        node.setBankDenyOverridesAllow(bank, !node.bankDenyOverridesAllow(bank));
+        refreshMenuData();
+        ModNetwork.sendFilterSyncForVirtual(player, this);
+    }
+
+    public void applyEnergyBufferLimits(int extractLimitFe, int insertLimitFe) {
+        lanes.energyExtractBufferLimitFe = Math.max(0, extractLimitFe);
+        lanes.energyInsertBufferLimitFe = Math.max(0, insertLimitFe);
+        refreshMenuData();
+    }
+
+    public void setSelfFeed(boolean enabled) {
+        NodeMode shared = lanes.nodeMode;
+        if (shared != NodeMode.EXTRACTION_FILTERING && shared != NodeMode.RETRIEVING_EXTRACTION) {
+            return;
+        }
+        activeMenuFaceNode().selfFeed = enabled;
+        refreshMenuData();
+    }
+
+    public void noteFilterListContext(DuctTransportKind lane, DuctFaceNode.FilterBank bank, boolean allowList) {
+        lastFilterLane = lane;
+        lastFilterBank = bank;
+        lastFilterAllowList = allowList;
+    }
+
+    public ItemStack getCopierStack() {
+        return player.getItemInHand(hand);
+    }
+
+    public void applyRename(String name) {
+        ItemStack stack = getCopierStack();
+        if (stack.isEmpty()) {
+            return;
+        }
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isEmpty()) {
+            stack.remove(DataComponents.CUSTOM_NAME);
+        } else {
+            stack.set(DataComponents.CUSTOM_NAME, Component.literal(trimmed));
+        }
+        player.setItemInHand(hand, stack);
+    }
+}

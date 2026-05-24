@@ -4,8 +4,20 @@ import java.util.EnumSet;
 import java.util.List;
 
 /**
- * Datapack {@code can_transport} discriminator ({@code dec}) mapped to transport lanes. Extensible for future kinds
- * (Mek gas, energy) without changing save layout keys ({@code Item}, {@code Fluid}, …).
+ * Datapack {@code can_transport} discriminator ({@code dec}) mapped to transport lanes.
+ * <p><strong>Maintenance families</strong> (keep behaviour in sync when changing one member):
+ * <ul>
+ *   <li><em>Material lanes</em> — {@link #ITEM}, {@link #FLUID}, {@link #GAS}, plus universal ducts that enable them
+ *       ({@code DuctFaceNode#saveSettings}, filters, routing, hybrid banks, GUI). See {@link DuctBlock},
+ *       {@link FluidDuctBlock}, {@link GasDuctBlock}.</li>
+ *   <li><em>Flux lanes</em> — {@link #ENERGY}, {@link #HEAT}, plus universal ducts that enable them
+ *       ({@link DuctFaceLanes} {@code EnergyHeat} block; {@link DuctEnergyTransportSpec},
+ *       {@link DuctHeatTransportSpec}). See {@link net.unfamily.another_dynamics.duct.logistics.DuctEnergyServerTick}
+ *       and {@link net.unfamily.another_dynamics.duct.logistics.DuctHeatServerTick}.</li>
+ * </ul>
+ * Universal logical ducts ({@code universal_duct}, …) combine both families; {@link
+ * net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot} {@code all} payload uses the same NBT keys as
+ * {@link DuctFaceLanes#saveCopierSettings} (subset of world save).
  */
 public enum DuctTransportKind {
     ITEM("item"),

@@ -10,6 +10,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.unfamily.another_dynamics.duct.SettingsCopierFeedback;
 import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
@@ -27,6 +28,7 @@ import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.network.SettingsCopierActionPayload;
+import net.unfamily.another_dynamics.network.SettingsCopierStackSyncPayload;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
@@ -55,7 +57,8 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Duct node GUI for one {@link Direction} face (independent node configuration per side).
  */
-public final class DuctNodeMenu extends AbstractContainerMenu {
+public final class DuctNodeMenu extends AbstractContainerMenu implements UniversalDuctMenu {
+
     /** @deprecated Prefer {@link #machineSlotCount()} (per-menu). */
     @Deprecated
     public static final int MACHINE_SLOTS = 6;
@@ -112,6 +115,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     /** Open-menu sync: {@link DuctBlockEntity#getLogicalDuctId()} for correct client-side datapack caps. */
     private final String clientDuctLogicalId;
 
+    private final boolean includeCopierSlot;
+
     private final int moduleSlotCount;
     private final int machineSlotCount;
     private final ItemStackHandler copierSlot = new ItemStackHandler(1);
@@ -152,7 +157,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 be.getBlockPos(),
                 be.ductAlwaysOpaqueRendering(),
                 be.getLogicalDuctId(),
-                be.moduleSlotCountForMenu());
+                be.moduleSlotCountForMenu(),
+                true);
         be.clampFaceFiltersToSpec();
         be.refreshMenuData(accessFace);
         if (!be.getLevel().isClientSide() && playerInventory.player instanceof ServerPlayer sp) {
@@ -207,7 +213,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                 pos,
                 alwaysOpaqueLock,
                 logicalId,
-                ug);
+                ug,
+                true);
     }
 
     private DuctNodeMenu(
@@ -221,8 +228,10 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             BlockPos ductBlockPos,
             boolean clientDuctAlwaysOpaqueLock,
             String clientDuctLogicalId,
-            int moduleSlotCount) {
+            int moduleSlotCount,
+            boolean includeCopierSlot) {
         super(ModMenuTypes.DUCT_NODE.get(), containerId);
+        this.includeCopierSlot = includeCopierSlot;
         this.access = access;
         this.syncData = syncData;
         this.linkedBlockEntity = linkedBlockEntity;
@@ -231,7 +240,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         this.clientDuctAlwaysOpaqueLock = clientDuctAlwaysOpaqueLock;
         this.clientDuctLogicalId = clientDuctLogicalId;
         this.moduleSlotCount = Math.max(0, moduleSlotCount);
-        this.machineSlotCount = this.moduleSlotCount + 1;
+        this.machineSlotCount = this.moduleSlotCount + (includeCopierSlot ? 1 : 0);
         this.menuPlayer = (!playerInventory.player.level().isClientSide() && playerInventory.player instanceof ServerPlayer sp) ? sp : null;
 
         for (int i = 0; i < this.moduleSlotCount; i++) {
@@ -264,13 +273,15 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                         }
                     });
         }
-        addSlot(
-                new SlotItemHandler(copierSlot, 0, SLOT_COPY_X, SLOT_COPY_Y) {
-                    @Override
-                    public boolean mayPlace(ItemStack stack) {
-                        return !stack.isEmpty() && stack.getItem() instanceof SettingsCopierItem;
-                    }
-                });
+        if (includeCopierSlot) {
+            addSlot(
+                    new SlotItemHandler(copierSlot, 0, SLOT_COPY_X, SLOT_COPY_Y) {
+                        @Override
+                        public boolean mayPlace(ItemStack stack) {
+                            return !stack.isEmpty() && stack.getItem() instanceof SettingsCopierItem;
+                        }
+                    });
+        }
 
         addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
         addDataSlots(syncData);
@@ -372,11 +383,28 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     public int copySettingsSlotIndex() {
-        return moduleSlotCount;
+        return includeCopierSlot ? moduleSlotCount : -1;
     }
 
     public ItemStackHandler copierSlot() {
         return copierSlot;
+    }
+
+    /** Client: apply authoritative copier stack from server after Save. */
+    public void applyClientCopierStack(ItemStack stack) {
+        ItemStack copy = stack.isEmpty() ? ItemStack.EMPTY : stack.copy();
+        copierSlot.setStackInSlot(0, copy);
+        int idx = copySettingsSlotIndex();
+        if (idx >= 0 && idx < slots.size()) {
+            slots.get(idx).set(copy);
+        }
+    }
+
+    private void commitCopierSnapshot(ServerPlayer player, ItemStack base, CompoundTag snapshot) {
+        ItemStack updated = base.copy();
+        DuctFaceSettingsSnapshot.writeToCopier(updated, snapshot);
+        copierSlot.setStackInSlot(0, updated);
+        ModNetwork.sendSettingsCopierStackSync(player, updated);
     }
 
     /**
@@ -588,7 +616,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
-            boolean denyOverridesAllow) {
+            boolean denyOverridesAllow,
+            boolean editingAllowList) {
         ModNetwork.sendFilterUpdate(
                 ductBlockPos,
                 accessFace,
@@ -691,7 +720,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Server: save or load the settings copier in {@link #copierSlot} for the given GUI context.
+     * Server: copy or paste the settings copier in {@link #copierSlot} for the given GUI context.
      */
     public boolean handleSettingsCopierAction(ServerPlayer player, SettingsCopierActionPayload payload) {
         if (linkedBlockEntity == null
@@ -706,16 +735,15 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
             return false;
         }
         var registries = linkedBlockEntity.getLevel().registryAccess();
-        boolean save = payload.action() == SettingsCopierActionPayload.ACTION_SAVE;
+        boolean copy = payload.action() == SettingsCopierActionPayload.ACTION_COPY;
         if (payload.viewKind() == SettingsCopierActionPayload.VIEW_MAIN) {
-            if (save) {
+            if (copy) {
                 CompoundTag snapshot = DuctFaceSettingsSnapshot.capture(linkedBlockEntity, accessFace, registries);
-                DuctFaceSettingsSnapshot.writeToCopier(copier, snapshot);
-                copierSlot.setStackInSlot(0, copier);
+                commitCopierSnapshot(player, copier, snapshot);
                 SettingsCopierFeedback.notifyCopied(player);
                 return true;
             }
-            if (DuctFaceSettingsSnapshot.getStoreKind(copier) != SettingsCopierStoreKind.ALL) {
+            if (SettingsCopierStoreKind.getMode(copier) != SettingsCopierStoreKind.ALL) {
                 SettingsCopierFeedback.notifyWrongMode(player);
                 return false;
             }
@@ -744,14 +772,13 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
                                 DuctFaceNode.FilterBank.values().length - 1)];
         boolean allowList = payload.allowDeny() == SettingsCopierActionPayload.LIST_ALLOW;
         DuctFaceNode node = linkedBlockEntity.faceNodeForTransportKind(accessFace, laneKind);
-        if (save) {
+        if (copy) {
             CompoundTag snapshot = DuctFilterListSnapshot.captureList(node, bank, allowList);
-            DuctFaceSettingsSnapshot.writeToCopier(copier, snapshot);
-            copierSlot.setStackInSlot(0, copier);
+            commitCopierSnapshot(player, copier, snapshot);
             SettingsCopierFeedback.notifyCopied(player);
             return true;
         }
-        if (DuctFaceSettingsSnapshot.getStoreKind(copier) != SettingsCopierStoreKind.FILTER) {
+        if (SettingsCopierStoreKind.getMode(copier) != SettingsCopierStoreKind.FILTER) {
             SettingsCopierFeedback.notifyWrongMode(player);
             return false;
         }
@@ -796,19 +823,19 @@ public final class DuctNodeMenu extends AbstractContainerMenu {
         }
         ItemStack stack = slot.getItem();
         result = stack.copy();
-        if (index == copierIndex) {
+        if (copierIndex >= 0 && index == copierIndex) {
             if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
                 return ItemStack.EMPTY;
             }
-        } else if (index < copierIndex) {
+        } else if (copierIndex >= 0 && index < copierIndex) {
             if (!moveItemStackTo(stack, playerFirst, playerLast, true)) {
                 return ItemStack.EMPTY;
             }
-        } else if (stack.getItem() instanceof SettingsCopierItem) {
+        } else if (copierIndex >= 0 && stack.getItem() instanceof SettingsCopierItem) {
             if (!moveItemStackTo(stack, copierIndex, copierIndex + 1, false)) {
                 return ItemStack.EMPTY;
             }
-        } else if (!moveItemStackTo(stack, 0, copierIndex, false)) {
+        } else if (copierIndex > 0 && !moveItemStackTo(stack, 0, copierIndex, false)) {
             return ItemStack.EMPTY;
         }
         if (stack.isEmpty()) {

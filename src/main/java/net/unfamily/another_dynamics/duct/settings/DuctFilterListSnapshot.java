@@ -9,7 +9,6 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
-import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 /**
  * Portable single filter list (allow or deny lines + optional caps) for {@link SettingsCopierStoreKind#FILTER}.
@@ -26,7 +25,7 @@ public final class DuctFilterListSnapshot {
     public static boolean isFilterPayload(CompoundTag tag) {
         return tag != null
                 && tag.contains(DuctFaceSettingsSnapshot.KEY_FMT, Tag.TAG_INT)
-                && tag.getInt(DuctFaceSettingsSnapshot.KEY_FMT) == DuctFaceSettingsSnapshot.FORMAT_VERSION
+                && DuctFaceSettingsSnapshot.acceptsSnapshotFormat(tag.getInt(DuctFaceSettingsSnapshot.KEY_FMT))
                 && SettingsCopierStoreKind.fromCompound(tag) == SettingsCopierStoreKind.FILTER;
     }
 
@@ -77,14 +76,6 @@ public final class DuctFilterListSnapshot {
             }
         }
         return true;
-    }
-
-    public static SettingsCopierStoreKind getStoreKind(ItemStack stack) {
-        if (stack.isEmpty() || !DuctFaceSettingsSnapshot.hasStoredSettings(stack)) {
-            return SettingsCopierStoreKind.ALL;
-        }
-        CompoundTag tag = stack.get(ModDataComponents.DUCT_FACE_SETTINGS);
-        return SettingsCopierStoreKind.fromCompound(tag);
     }
 
     private static void syncAllowCapsSize(List<Integer> caps, int allowSize) {

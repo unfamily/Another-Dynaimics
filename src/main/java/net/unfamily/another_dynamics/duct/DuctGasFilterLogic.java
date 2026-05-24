@@ -7,8 +7,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
 /**
- * Gas allow/deny filtering: same precedence as {@link DuctFilterLogic} (items) and {@link DuctFluidFilterLogic}
- * ({@link DuctFaceNode#denyOverridesAllow} per bank).
+ * Gas filter precedence (same rules as {@link DuctFilterLogic} / {@link DuctFluidFilterLogic}).
+ * <p><strong>Material-lane family:</strong> keep in sync with item and fluid filter helpers and universal lanes.
  */
 public final class DuctGasFilterLogic {
     private DuctGasFilterLogic() {}

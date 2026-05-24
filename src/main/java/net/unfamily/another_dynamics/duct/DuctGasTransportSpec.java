@@ -1,10 +1,9 @@
 package net.unfamily.another_dynamics.duct;
 
 /**
- * Gas transport parameters from datapack {@code can_transport} (dec {@code mek_gas}).
- *
- * <p>Amounts are in Mekanism chemical units (long). We keep naming generic (\"amount\") so the spec remains usable even
- * if Mekanism tweaks exact internal scaling.</p>
+ * Gas transport parameters from datapack ({@code dec} {@code mek_gas}); Mekanism chemical units.
+ * <p><strong>Material-lane family:</strong> parallel changes often belong in {@link DuctItemTransportSpec},
+ * {@link DuctFluidTransportSpec}, and universal declarations that include item/fluid/gas.
  */
 public record DuctGasTransportSpec(
         long batchDefault,

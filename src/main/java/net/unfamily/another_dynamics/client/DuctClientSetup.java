@@ -20,12 +20,11 @@ import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierItemProperties;
 import net.unfamily.another_dynamics.duct.DuctDefinitionsReloadedEvent;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
+import net.unfamily.another_dynamics.client.gui.SettingsCopierScreen;
 import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
-import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
-import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
-import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModItems;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
@@ -44,16 +43,11 @@ public final class DuctClientSetup {
                 () -> {
                     ItemProperties.register(
                             ModItems.SETTINGS_COPIER.get(),
-                            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "stored"),
-                            (ItemStack stack, net.minecraft.client.multiplayer.ClientLevel level, net.minecraft.world.entity.LivingEntity entity, int seed) ->
-                                    DuctFaceSettingsSnapshot.hasStoredSettings(stack) ? 1.0F : 0.0F);
-                    ItemProperties.register(
-                            ModItems.SETTINGS_COPIER.get(),
-                            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "filter_kind"),
-                            (ItemStack stack, net.minecraft.client.multiplayer.ClientLevel level, net.minecraft.world.entity.LivingEntity entity, int seed) ->
-                                    DuctFilterListSnapshot.getStoreKind(stack) == SettingsCopierStoreKind.FILTER
-                                            ? 1.0F
-                                            : 0.0F);
+                            SettingsCopierItemProperties.COPIER_STATE,
+                            (ItemStack stack,
+                                    net.minecraft.client.multiplayer.ClientLevel level,
+                                    net.minecraft.world.entity.LivingEntity entity,
+                                    int seed) -> SettingsCopierItemProperties.copierState(stack));
                 });
     }
 
@@ -72,6 +66,7 @@ public final class DuctClientSetup {
     @SubscribeEvent
     public static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
         event.register(ModMenuTypes.DUCT_NODE.get(), DuctNodeScreen::new);
+        event.register(ModMenuTypes.SETTINGS_COPIER_HUB.get(), SettingsCopierScreen::new);
     }
 
     @SubscribeEvent
@@ -89,6 +84,12 @@ public final class DuctClientSetup {
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_center_only")));
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_default")));
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_line")));
+        event.register(
+                ModelResourceLocation.standalone(
+                        ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_all")));
+        event.register(
+                ModelResourceLocation.standalone(
+                        ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_filter")));
     }
 
     /**

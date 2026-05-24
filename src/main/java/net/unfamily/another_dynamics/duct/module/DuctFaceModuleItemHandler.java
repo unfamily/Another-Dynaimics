@@ -12,10 +12,10 @@ import net.unfamily.another_dynamics.duct.DuctBlockEntity;
  * {@link ModuleDefinition#incompatibleWith()} (with {@link ModuleDefinition#incompatibilityActivation()} gating).
  */
 public final class DuctFaceModuleItemHandler extends ItemStackHandler {
-    private final DuctBlockEntity duct;
+    private final @org.jetbrains.annotations.Nullable DuctBlockEntity duct;
     private final Direction face;
 
-    public DuctFaceModuleItemHandler(DuctBlockEntity duct, Direction face, int size) {
+    public DuctFaceModuleItemHandler(@org.jetbrains.annotations.Nullable DuctBlockEntity duct, Direction face, int size) {
         super(Math.max(0, size));
         this.duct = duct;
         this.face = face;
@@ -23,6 +23,9 @@ public final class DuctFaceModuleItemHandler extends ItemStackHandler {
 
     @Override
     protected void onContentsChanged(int slot) {
+        if (duct == null) {
+            return;
+        }
         duct.setChanged();
         Level level = duct.getLevel();
         if (level != null && !level.isClientSide()) {

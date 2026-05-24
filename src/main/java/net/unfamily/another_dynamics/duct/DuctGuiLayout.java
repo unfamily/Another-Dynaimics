@@ -6,6 +6,10 @@ import net.minecraft.util.Mth;
  * Shared GUI geometry for duct node screen and datapack clamping of {@link DuctDefinition#moduleSlotCount()}.
  */
 public final class DuctGuiLayout {
+    /** {@code node.png} / {@code settings_copier.png} background size (must match texture files). */
+    public static final int NODE_TEXTURE_WIDTH = 320;
+    public static final int NODE_TEXTURE_HEIGHT = 256;
+
     /** Matches first chrome button row in {@link net.unfamily.another_dynamics.client.gui.DuctNodeScreen}. */
     public static final int ROW1_Y = 32;
 

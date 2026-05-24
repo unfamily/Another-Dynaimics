@@ -18,8 +18,8 @@ public record SettingsCopierActionPayload(
         int filterBankOrdinal,
         int allowDeny)
         implements CustomPacketPayload {
-    public static final int ACTION_SAVE = 0;
-    public static final int ACTION_LOAD = 1;
+    public static final int ACTION_COPY = 0;
+    public static final int ACTION_PASTE = 1;
 
     public static final int VIEW_MAIN = 0;
     public static final int VIEW_FILTER_LIST = 1;

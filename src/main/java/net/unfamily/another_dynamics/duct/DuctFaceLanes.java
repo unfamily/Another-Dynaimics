@@ -12,6 +12,8 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 
 import java.util.EnumSet;
 
+import org.jetbrains.annotations.Nullable;
+
 /**
  * Per-face transport lanes. Item, fluid, and gas keep separate filters, channels, routing fields, and amount fields.
  * <p>
@@ -19,6 +21,17 @@ import java.util.EnumSet;
  * (one module column for all lanes including energy/heat bonuses). Each lane keeps its own copy-settings slot in
  * {@link DuctFaceNode#guiSlots}. RF and Mek heat logistics use separate throttle state on this object so hybrid ducts do
  * not share {@link DuctFaceNode#ticksUntilAction} with the item lane.
+ * <p>
+ * <strong>Settings copier</strong> ({@link #saveCopierSettings}) never copies: module slot items, stall buffers
+ * (item/fluid/gas/energy/heat), shift-clear arming times, per-lane and energy/heat action tick cursors, round-robin
+ * cursors, {@link DuctFaceNode#guiSlots} contents, or client-only energy ray throttle fields. Full world save uses
+ * {@link #save} instead.
+ * <p><strong>Universal ducts</strong> ({@code universal_duct}, …) use this same face layout for every enabled
+ * {@link DuctTransportKind}; {@link net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot} {@code all}
+ * payload is intentionally aligned with {@link #saveCopierSettings} (configuration-only subset of {@link #save}).
+ * <p><strong>Flux family:</strong> {@link DuctTransportKind#ENERGY} / {@link DuctTransportKind#HEAT} fields on this
+ * class ({@code energy*}, {@code heat*}, {@link #NBT_ENERGY_HEAT}) should be updated together and mirrored on universal
+ * ducts that expose those kinds.
  */
 public final class DuctFaceLanes {
     private static final byte REDSTONE_FMT_V1 = 1;
@@ -26,7 +39,8 @@ public final class DuctFaceLanes {
     private static final String NBT_MODULES_LEGACY = "Upgrades";
     private static final String NBT_ENERGY_HEAT = "EnergyHeat";
 
-    private final DuctBlockEntity duct;
+    private final @Nullable DuctBlockEntity duct;
+    private final @Nullable Runnable detachedChangedCallback;
     private final Direction face;
 
     public NodeMode nodeMode = NodeMode.NONE;
@@ -100,6 +114,7 @@ public final class DuctFaceLanes {
 
     public DuctFaceLanes(DuctBlockEntity duct, Direction face, int moduleSlotCount) {
         this.duct = duct;
+        this.detachedChangedCallback = null;
         this.face = face;
         int n = Math.max(0, moduleSlotCount);
         this.moduleSlots = new DuctFaceModuleItemHandler(duct, face, n);
@@ -109,6 +124,35 @@ public final class DuctFaceLanes {
         for (int i = 0; i < stalledFluids.length; i++) {
             stalledFluids[i] = FluidStack.EMPTY;
             stalledGas[i] = null;
+        }
+    }
+
+    /**
+     * In-memory face for settings copier virtual editor (no world duct). Module column uses a plain empty handler.
+     */
+    public static DuctFaceLanes createDetached(Direction face, Runnable onChanged) {
+        return new DuctFaceLanes(face, onChanged);
+    }
+
+    private DuctFaceLanes(Direction face, Runnable onChanged) {
+        this.duct = null;
+        this.detachedChangedCallback = onChanged;
+        this.face = face;
+        this.moduleSlots = new DuctFaceModuleItemHandler(null, face, 0);
+        this.item = new DuctFaceNode(this::markChanged);
+        this.fluid = new DuctFaceNode(this::markChanged);
+        this.gas = new DuctFaceNode(this::markChanged);
+        for (int i = 0; i < stalledFluids.length; i++) {
+            stalledFluids[i] = FluidStack.EMPTY;
+            stalledGas[i] = null;
+        }
+    }
+
+    private void markChanged() {
+        if (duct != null) {
+            duct.setChanged();
+        } else if (detachedChangedCallback != null) {
+            detachedChangedCallback.run();
         }
     }
 
@@ -161,7 +205,104 @@ public final class DuctFaceLanes {
         }
         int bit = 1 << kind.ordinal();
         transportEnabledMask ^= bit;
-        duct.setChanged();
+        markChanged();
+    }
+
+    /**
+     * Settings copier: shared face + per-lane GUI settings + energy/heat GUI fields only.
+     * Does not copy module items, stall buffers, or runtime cursors — see class javadoc.
+     */
+    public void saveCopierSettings(HolderLookup.Provider registries, CompoundTag tag, EnumSet<DuctTransportKind> ductKinds) {
+        ensureTransportEnabledMask(ductKinds);
+        CompoundTag shared = new CompoundTag();
+        shared.putByte("NodeMode", (byte) nodeMode.ordinal());
+        shared.putByte("RedstoneMode", (byte) redstoneMode);
+        shared.putByte("RsFmt", REDSTONE_FMT_V1);
+        shared.putInt("TransportMask", transportEnabledMask);
+        tag.put("Shared", shared);
+
+        CompoundTag itemTag = new CompoundTag();
+        item.saveSettings(registries, itemTag);
+        tag.put("Item", itemTag);
+        if (ductKinds.contains(DuctTransportKind.FLUID)) {
+            CompoundTag fluidTag = new CompoundTag();
+            fluid.saveSettings(registries, fluidTag);
+            tag.put("Fluid", fluidTag);
+        }
+        if (ductKinds.contains(DuctTransportKind.GAS)) {
+            CompoundTag gasTag = new CompoundTag();
+            gas.saveSettings(registries, gasTag);
+            tag.put("Gas", gasTag);
+        }
+        if (ductKinds.contains(DuctTransportKind.ENERGY) || ductKinds.contains(DuctTransportKind.HEAT)) {
+            tag.put(NBT_ENERGY_HEAT, saveCopierEnergyHeat(ductKinds));
+        }
+    }
+
+    /** Restores {@link #saveCopierSettings}; only lanes present in {@code ductKinds} on the target duct are applied. */
+    public void loadCopierSettings(HolderLookup.Provider registries, CompoundTag tag, EnumSet<DuctTransportKind> ductKinds) {
+        if (tag.contains("Shared", Tag.TAG_COMPOUND)) {
+            loadShared(tag.getCompound("Shared"));
+        }
+        ensureTransportEnabledMask(ductKinds);
+
+        if (tag.contains("Item", Tag.TAG_COMPOUND) && ductKinds.contains(DuctTransportKind.ITEM)) {
+            item.loadSettings(registries, tag.getCompound("Item"));
+        }
+        if (tag.contains("Fluid", Tag.TAG_COMPOUND) && ductKinds.contains(DuctTransportKind.FLUID)) {
+            fluid.loadSettings(registries, tag.getCompound("Fluid"));
+        }
+        if (tag.contains("Gas", Tag.TAG_COMPOUND) && ductKinds.contains(DuctTransportKind.GAS)) {
+            gas.loadSettings(registries, tag.getCompound("Gas"));
+        }
+        if (tag.contains(NBT_ENERGY_HEAT, Tag.TAG_COMPOUND)) {
+            loadCopierEnergyHeat(tag.getCompound(NBT_ENERGY_HEAT), ductKinds);
+        }
+    }
+
+    private CompoundTag saveCopierEnergyHeat(EnumSet<DuctTransportKind> ductKinds) {
+        CompoundTag eh = new CompoundTag();
+        if (ductKinds.contains(DuctTransportKind.ENERGY)) {
+            eh.putInt("EnergyInBuf", energyInputBufferFe);
+            eh.putInt("EnergyOutBuf", energyOutputBufferFe);
+            eh.putInt("EnergyLimEx", energyExtractBufferLimitFe);
+            eh.putInt("EnergyLimIn", energyInsertBufferLimitFe);
+            eh.putByte("EnergyRt", (byte) energyRoutingMode.ordinal());
+            eh.putByte("EnergyRtEx", (byte) energyRoutingModeExtractor.ordinal());
+            eh.putByte("EnergyRtRe", (byte) energyRoutingModeRetriever.ordinal());
+        }
+        if (ductKinds.contains(DuctTransportKind.HEAT)) {
+            eh.putByte("HeatRt", (byte) heatRoutingMode.ordinal());
+            eh.putByte("HeatRtEx", (byte) heatRoutingModeExtractor.ordinal());
+            eh.putByte("HeatRtRe", (byte) heatRoutingModeRetriever.ordinal());
+        }
+        return eh;
+    }
+
+    private void loadCopierEnergyHeat(CompoundTag eh, EnumSet<DuctTransportKind> ductKinds) {
+        if (ductKinds.contains(DuctTransportKind.ENERGY)) {
+            if (eh.contains("EnergyInBuf", Tag.TAG_INT)) {
+                energyInputBufferFe = eh.getInt("EnergyInBuf");
+                energyOutputBufferFe = eh.getInt("EnergyOutBuf");
+                energyExtractBufferLimitFe = eh.getInt("EnergyLimEx");
+                energyInsertBufferLimitFe = eh.getInt("EnergyLimIn");
+            } else if (eh.contains("EnergyBuf", Tag.TAG_INT)) {
+                energyInputBufferFe = eh.getInt("EnergyBuf");
+                energyOutputBufferFe = 0;
+                energyExtractBufferLimitFe = 0;
+                energyInsertBufferLimitFe = 0;
+            }
+            if (eh.contains("EnergyRt", Tag.TAG_BYTE)) {
+                energyRoutingMode = RoutingMode.fromOrdinal(eh.getByte("EnergyRt"));
+                energyRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("EnergyRtEx"));
+                energyRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("EnergyRtRe"));
+            }
+        }
+        if (ductKinds.contains(DuctTransportKind.HEAT) && eh.contains("HeatRt", Tag.TAG_BYTE)) {
+            heatRoutingMode = RoutingMode.fromOrdinal(eh.getByte("HeatRt"));
+            heatRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("HeatRtEx"));
+            heatRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("HeatRtRe"));
+        }
     }
 
     public void save(HolderLookup.Provider registries, CompoundTag tag) {
@@ -391,6 +532,11 @@ public final class DuctFaceLanes {
         item.clampFilterSizes(itemSpec, nodeMode, fb);
         fluid.clampFilterSizes(fluidSpec, nodeMode, fb);
         gas.clampFilterSizes(gasSpec, nodeMode, fb);
+    }
+
+    /** Loads {@code Shared} block (node mode, redstone, per-transport enable mask). */
+    public void loadSharedSettings(CompoundTag tag) {
+        loadShared(tag);
     }
 
     private void loadShared(CompoundTag tag) {

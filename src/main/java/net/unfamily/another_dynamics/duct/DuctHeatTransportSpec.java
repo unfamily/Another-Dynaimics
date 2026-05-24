@@ -1,10 +1,10 @@
 package net.unfamily.another_dynamics.duct;
 
 /**
- * Mekanism heat transport from datapack {@code can_transport} ({@code dec} {@code mek_heat}).
- *
- * <p>Heat moved per tick uses Mekanism {@code IHeatHandler#handleHeat(double)} units.
- * Insulation value reduces thermal losses during transfer (higher = better).
+ * Mekanism heat parameters from datapack ({@code dec} {@code mek_heat}).
+ * <p><strong>Flux-lane family:</strong> parallel changes often belong in {@link DuctEnergyTransportSpec}, {@link
+ * DuctFaceLanes} heat fields, {@link net.unfamily.another_dynamics.duct.logistics.DuctHeatServerTick}, and universal
+ * ducts that enable heat (copier {@code EnergyHeat} block).
  */
 public record DuctHeatTransportSpec(double insulation) {
     public static DuctHeatTransportSpec fallback() {

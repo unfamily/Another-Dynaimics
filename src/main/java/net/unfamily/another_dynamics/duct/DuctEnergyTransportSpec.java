@@ -1,9 +1,10 @@
 package net.unfamily.another_dynamics.duct;
 
 /**
- * Energy transport parameters from datapack {@code can_transport} (dec {@code forge_energy}).
- *
- * <p>Amounts are in FE/RF units (long). {@code rate} is ticks between network logistics actions per face.</p>
+ * Energy (FE/RF) parameters from datapack ({@code dec} {@code forge_energy}).
+ * <p><strong>Flux-lane family:</strong> parallel changes often belong in {@link DuctHeatTransportSpec}, {@link
+ * DuctFaceLanes} energy fields, {@link net.unfamily.another_dynamics.duct.logistics.DuctEnergyServerTick}, and universal
+ * ducts that enable energy (copier {@code EnergyHeat} block).
  */
 public record DuctEnergyTransportSpec(
         /**

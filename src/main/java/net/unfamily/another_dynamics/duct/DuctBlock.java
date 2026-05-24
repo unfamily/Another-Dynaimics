@@ -38,9 +38,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Optional;
 
 /**
- * Physical duct block. Hybrid ducts can join <strong>multiple</strong> {@link DuctNetworkType} graphs at the same time;
- * this build registers {@link DuctNetworkType#ITEM} only—add further types to {@link #ductNetworkTypes()} when implemented.
- * Block id in saves is {@code duct} ({@link net.unfamily.another_dynamics.registry.ModBlocks#DUCT}).
+ * Physical duct block for <strong>item</strong> ducts and <strong>universal</strong> logical ids
+ * ({@code another_dynamics:universal_duct}, …) on the same block type.
+ * <p><strong>Material-lane family:</strong> GUI / filter / routing changes for item ducts usually need the same
+ * treatment on {@link FluidDuctBlock}, {@link GasDuctBlock}, and universal {@link DuctFaceNode} lanes (item/fluid/gas).
+ * <p><strong>Settings copier:</strong> universal {@code all} snapshots use the same per-face layout as
+ * {@link DuctFaceLanes#saveCopierSettings} ({@link net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot});
+ * paste on another universal face is near 1:1 for configuration (not modules or stall buffers).
+ * <p>Hybrid subclasses override {@link #ductNetworkTypes()}; network membership still follows the BE logical id.
  */
 public class DuctBlock extends AbstractDuctBlock {
 

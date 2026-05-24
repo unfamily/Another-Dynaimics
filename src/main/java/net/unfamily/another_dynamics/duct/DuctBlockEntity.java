@@ -74,8 +74,13 @@ import java.util.OptionalInt;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Block entity for {@link DuctBlock}. Up to six independent <strong>item</strong> nodes (one per {@link Direction})
- * when that face touches item storage; additional transport kinds can be composed here for hybrid ducts.
+ * Block entity for all duct blocks ({@link DuctBlock}, {@link FluidDuctBlock}, {@link GasDuctBlock}, universal logical ids).
+ * Item logistics run here; fluid/gas/energy/heat use dedicated tick classes when enabled on the definition.
+ * <p><strong>Material-lane family:</strong> item tick/routing changes often need parity in {@link
+ * net.unfamily.another_dynamics.duct.logistics.DuctFluidServerTick} and {@link
+ * net.unfamily.another_dynamics.duct.logistics.DuctGasServerTick}. Universal ducts share the same {@link DuctFaceLanes}
+ * / {@link DuctFaceNode} layout as single-kind ducts; copier {@code all} data matches
+ * {@link DuctFaceLanes#saveCopierSettings} (see {@link net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot}).
  */
 public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private static final int MAX_BLOCKED_ITEM_KINDS = 5;
@@ -4048,6 +4053,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public static final int MENU_BUTTON_ROUTING_RETRIEVER_FORWARD = 32;
     public static final int MENU_BUTTON_ROUTING_EXTRACTOR_BACK = 33;
     public static final int MENU_BUTTON_ROUTING_RETRIEVER_BACK = 34;
+    /** Settings copier virtual ALL: transport hub → detail (virtual node main). */
+    public static final int MENU_BUTTON_ENTER_DETAIL = 48;
     public static final int MENU_BUTTON_BACK_TO_HUB = 49;
     /** Toggle {@link DuctFaceLanes#transportEnabledMask} bit for {@link DuctTransportKind#ordinal()}. */
     public static final int MENU_BUTTON_TRANSPORT_TOGGLE_BASE = 50;

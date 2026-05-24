@@ -9,7 +9,10 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
 
-/** Deny/allow precedence for fluid transport (same semantics as {@link DuctFilterLogic} for items). */
+/**
+ * Fluid filter precedence (same rules as {@link DuctFilterLogic}).
+ * <p><strong>Material-lane family:</strong> keep in sync with item and gas filter helpers and universal lanes.
+ */
 public final class DuctFluidFilterLogic {
     private DuctFluidFilterLogic() {}
 

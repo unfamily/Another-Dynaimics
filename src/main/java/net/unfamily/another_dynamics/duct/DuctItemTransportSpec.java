@@ -2,6 +2,8 @@ package net.unfamily.another_dynamics.duct;
 
 /**
  * Item transport parameters from datapack {@code can_transport} (dec {@code item}).
+ * <p><strong>Material-lane family:</strong> parallel changes often belong in {@link DuctFluidTransportSpec},
+ * {@link DuctGasTransportSpec}, and universal declarations that include item/fluid/gas.
  */
 public record DuctItemTransportSpec(
         int batchDefault,

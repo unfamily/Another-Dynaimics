@@ -7,6 +7,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
 
 public final class ModMenuTypes {
     public static final DeferredRegister<MenuType<?>> MENUS =
@@ -14,6 +15,11 @@ public final class ModMenuTypes {
 
     public static final DeferredHolder<MenuType<?>, MenuType<DuctNodeMenu>> DUCT_NODE =
             MENUS.register("duct_node", () -> IMenuTypeExtension.create(DuctNodeMenu::createClient));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<SettingsCopierMenu>> SETTINGS_COPIER_HUB =
+            MENUS.register(
+                    "settings_copier_hub",
+                    () -> IMenuTypeExtension.create(SettingsCopierMenu::createClient));
 
     private ModMenuTypes() {}
 }

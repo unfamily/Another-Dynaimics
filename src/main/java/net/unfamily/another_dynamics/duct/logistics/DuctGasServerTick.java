@@ -18,10 +18,9 @@ import java.util.Set;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Gas ("chemical") logistics: plan extract+insert with simulation only, enqueue {@link GasTransitShipment};
- * {@link DuctBlockEntity} executes transfer when travel completes and re-validates each tick in transit.
- *
- * <p>Mekanism is optional: this does nothing when Mekanism isn't loaded.</p>
+ * Gas logistics (Mekanism chemicals); optional when Mek is absent.
+ * <p><strong>Material-lane family:</strong> behavioural changes often need equivalent updates for item and fluid
+ * logistics, including universal ducts with those kinds enabled.
  */
 public final class DuctGasServerTick {
     private static final int RETRIEVE_ROUTE_RETRY_CAP = 32;

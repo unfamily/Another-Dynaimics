@@ -3,9 +3,10 @@ package net.unfamily.another_dynamics.duct;
 import java.util.EnumSet;
 
 /**
- * Duct that participates only in the {@link DuctNetworkType#GAS} graph.
- *
- * <p>This block should only be registered when Mekanism is present.</p>
+ * Gas-only duct ({@link DuctNetworkType#GAS}); registered when Mekanism is present.
+ * <p><strong>Material-lane family:</strong> keep filter/routing/GUI behaviour aligned with {@link DuctBlock} (item),
+ * {@link FluidDuctBlock}, and gas lanes on universal ducts — see {@link DuctFaceNode#saveSettings} and
+ * {@link DuctGasFilterLogic}.
  */
 public final class GasDuctBlock extends DuctBlock {
     public GasDuctBlock(Properties properties) {

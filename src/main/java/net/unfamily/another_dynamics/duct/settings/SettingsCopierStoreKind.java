@@ -1,10 +1,14 @@
 package net.unfamily.another_dynamics.duct.settings;
 
-/** Stored payload kind on {@link net.unfamily.another_dynamics.item.SettingsCopierItem}. */
+import net.minecraft.world.item.ItemStack;
+import net.unfamily.another_dynamics.registry.ModDataComponents;
+
+/** Stored payload / GUI mode for {@link net.unfamily.another_dynamics.item.SettingsCopierItem}. */
 public enum SettingsCopierStoreKind {
     ALL,
     FILTER;
 
+    /** Legacy key inside {@link ModDataComponents#DUCT_FACE_SETTINGS} snapshot root. */
     public static final String TAG = "Kind";
 
     public byte toTag() {
@@ -24,5 +28,23 @@ public enum SettingsCopierStoreKind {
             return fromTag(tag.getByte(TAG));
         }
         return ALL;
+    }
+
+    /** Authoritative mode for tooltips, hub GUI, and Copy/Paste checks. */
+    public static SettingsCopierStoreKind getMode(ItemStack stack) {
+        return SettingsCopierItemProperties.isFilterMode(stack) ? FILTER : ALL;
+    }
+
+    public static void setMode(ItemStack stack, SettingsCopierStoreKind kind) {
+        if (kind == FILTER) {
+            stack.set(ModDataComponents.SETTINGS_COPIER_FILTER.get(), true);
+        } else {
+            stack.remove(ModDataComponents.SETTINGS_COPIER_FILTER.get());
+        }
+    }
+
+    public static void clear(ItemStack stack) {
+        stack.remove(ModDataComponents.DUCT_FACE_SETTINGS.get());
+        stack.remove(ModDataComponents.SETTINGS_COPIER_FILTER.get());
     }
 }

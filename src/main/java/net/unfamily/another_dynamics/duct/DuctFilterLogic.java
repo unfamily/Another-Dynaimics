@@ -10,7 +10,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 /**
- * Deny/allow list precedence ({@link DuctFaceNode#denyOverridesAllow}) for item transport.
+ * Item filter precedence ({@link DuctFaceNode#denyOverridesAllow} per bank).
+ * <p><strong>Material-lane family:</strong> keep in sync with {@link DuctFluidFilterLogic} and {@link DuctGasFilterLogic}
+ * (and universal item/fluid/gas lanes).
  */
 public final class DuctFilterLogic {
     private DuctFilterLogic() {}

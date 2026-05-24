@@ -12,8 +12,13 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 
 /**
- * Per-transport-kind lane on a duct face (item or fluid): filters, routing, channel, GUI slots, amounts.
- * Node mode, redstone gating, and action tick cadence live on {@link DuctFaceLanes} (shared per face).
+ * Per-transport-kind lane on a duct face: filters, routing, channel, amounts.
+ * <p><strong>Material-lane family:</strong> item, fluid, and gas lanes share the same shape ({@link #saveSettings} /
+ * {@link #loadSettings}); fixes usually apply to all three and to matching lanes on <em>universal</em> ducts.
+ * {@link net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot} stores {@code Item}/{@code Fluid}/
+ * {@code Gas} tags from {@link #saveSettings} (not {@link #save}, which includes runtime cursors and {@link #guiSlots}).
+ * <p>Node mode, redstone, and transport enable mask live on {@link DuctFaceLanes}. Energy/heat use {@link DuctFaceLanes}
+ * {@code EnergyHeat} instead of a {@code DuctFaceNode}.
  */
 public final class DuctFaceNode {
     public enum EligibilityMode {

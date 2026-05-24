@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
+import net.unfamily.another_dynamics.client.gui.SettingsCopierScreen;
 import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.integration.jei.ghost.AnDynamicsGhostIngredientHandler;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
@@ -50,6 +51,10 @@ public final class AnotherDynamicsJeiPlugin implements IModPlugin {
         // This enables drag-and-drop from JEI into the filter calibration slot
         registration.addGhostIngredientHandler(
             DuctNodeScreen.class,
+            new AnDynamicsGhostIngredientHandler<>()
+        );
+        registration.addGhostIngredientHandler(
+            SettingsCopierScreen.class,
             new AnDynamicsGhostIngredientHandler<>()
         );
     }

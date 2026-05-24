@@ -10,19 +10,28 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
-import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
+import net.unfamily.another_dynamics.client.gui.AbstractUniversalDuctScreen;
 import net.unfamily.another_dynamics.client.EnergyRayClient;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierVirtualSession;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
+import net.unfamily.another_dynamics.inventory.UniversalDuctMenu;
+
+import org.jetbrains.annotations.Nullable;
+import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.registry.ModAttachments;
+import net.minecraft.world.InteractionHand;
 import java.util.List;
 
 public final class ModNetwork {
@@ -51,6 +60,16 @@ public final class ModNetwork {
         reg.playToServer(DUCT_FIELD, DUCT_FIELD_STREAM, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
+                SettingsCopierVirtualSession session = virtualCopierSession(player);
+                if (session != null) {
+                    session.applyClientFieldUpdate(
+                            payload.transportKindOrdinal(),
+                            payload.insertionPriority(),
+                            payload.extractBatch(),
+                            payload.eligibilityModeOrdinal());
+                    ((SettingsCopierMenu) player.containerMenu).broadcastChanges();
+                    return;
+                }
                 BlockEntity be = player.level().getBlockEntity(payload.pos());
                 if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
                     return;
@@ -74,6 +93,28 @@ public final class ModNetwork {
         reg.playToServer(DuctFilterUpdatePayload.TYPE, DuctFilterUpdatePayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
+                SettingsCopierVirtualSession session = virtualCopierSession(player);
+                if (session != null) {
+                    DuctTransportKind[] kinds = DuctTransportKind.values();
+                    DuctTransportKind laneKind =
+                            kinds[Mth.clamp(payload.transportKindOrdinal(), 0, kinds.length - 1)];
+                    DuctFaceNode.FilterBank bank =
+                            DuctFaceNode.FilterBank.values()[
+                                    Mth.clamp(
+                                            payload.filterBankOrdinal(),
+                                            0,
+                                            DuctFaceNode.FilterBank.values().length - 1)];
+                    session.applyFilterConfig(
+                            laneKind,
+                            bank,
+                            payload.allow(),
+                            payload.deny(),
+                            payload.allowCaps(),
+                            payload.allowCaps2(),
+                            payload.denyOverridesAllow());
+                    ((SettingsCopierMenu) player.containerMenu).broadcastChanges();
+                    return;
+                }
                 BlockEntity be = player.level().getBlockEntity(payload.pos());
                 if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
                     return;
@@ -107,6 +148,21 @@ public final class ModNetwork {
         reg.playToServer(DuctListLogicPayload.TYPE, DuctListLogicPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
+                SettingsCopierVirtualSession session = virtualCopierSession(player);
+                if (session != null) {
+                    DuctTransportKind[] kinds = DuctTransportKind.values();
+                    DuctTransportKind laneKind =
+                            kinds[Mth.clamp(payload.transportKindOrdinal(), 0, kinds.length - 1)];
+                    DuctFaceNode.FilterBank bank =
+                            DuctFaceNode.FilterBank.values()[
+                                    Mth.clamp(
+                                            payload.filterBankOrdinal(),
+                                            0,
+                                            DuctFaceNode.FilterBank.values().length - 1)];
+                    session.toggleListLogic(laneKind, bank);
+                    ((SettingsCopierMenu) player.containerMenu).broadcastChanges();
+                    return;
+                }
                 BlockEntity be = player.level().getBlockEntity(payload.pos());
                 if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
                     return;
@@ -139,6 +195,11 @@ public final class ModNetwork {
         reg.playToServer(DuctMenuButtonPayload.TYPE, DuctMenuButtonPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
+                if (player.containerMenu instanceof SettingsCopierMenu copier && copier.isVirtualLayer()) {
+                    copier.clickMenuButton(player, payload.buttonId());
+                    copier.broadcastChanges();
+                    return;
+                }
                 if (!(player.containerMenu instanceof DuctNodeMenu menu)) {
                     return;
                 }
@@ -162,7 +223,7 @@ public final class ModNetwork {
                 if (!validateDuctGuiInteraction(player, payload.pos())) {
                     return;
                 }
-                boolean flag = menu.clickMenuButton(player, payload.buttonId());
+                menu.clickMenuButton(player, payload.buttonId());
                 menu.broadcastChanges();
             });
         });
@@ -173,6 +234,13 @@ public final class ModNetwork {
                 (payload, ctx) -> {
                     ctx.enqueueWork(() -> {
                         ServerPlayer player = (ServerPlayer) ctx.player();
+                        SettingsCopierVirtualSession session = virtualCopierSession(player);
+                        if (session != null) {
+                            session.applyEnergyBufferLimits(
+                                    payload.extractLimitFe(), payload.insertLimitFe());
+                            ((SettingsCopierMenu) player.containerMenu).broadcastChanges();
+                            return;
+                        }
                         BlockEntity be = player.level().getBlockEntity(payload.pos());
                         if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
                             return;
@@ -194,6 +262,12 @@ public final class ModNetwork {
         reg.playToServer(DuctSelfFeedPayload.TYPE, DuctSelfFeedPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
+                SettingsCopierVirtualSession session = virtualCopierSession(player);
+                if (session != null) {
+                    session.setSelfFeed(payload.enabled());
+                    ((SettingsCopierMenu) player.containerMenu).broadcastChanges();
+                    return;
+                }
                 BlockEntity be = player.level().getBlockEntity(payload.pos());
                 if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
                     return;
@@ -209,6 +283,81 @@ public final class ModNetwork {
             });
         });
 
+        reg.playToServer(
+                SettingsCopierHubActionPayload.TYPE,
+                SettingsCopierHubActionPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        if (!(player.containerMenu instanceof SettingsCopierMenu copier) || !copier.isHubLayer()) {
+                            return;
+                        }
+                        InteractionHand hand = copier.getHand();
+                        ItemStack stack = copier.copierStack(player);
+                        if (stack.isEmpty() || !(stack.getItem() instanceof SettingsCopierItem)) {
+                            return;
+                        }
+                        switch (payload.action()) {
+                            case SettingsCopierHubActionPayload.ACTION_CONFIGURE -> copier.enterVirtual(player);
+                            case SettingsCopierHubActionPayload.ACTION_MODE_TOGGLE -> {
+                                SettingsCopierStoreKind next =
+                                        SettingsCopierStoreKind.getMode(stack) == SettingsCopierStoreKind.FILTER
+                                                ? SettingsCopierStoreKind.ALL
+                                                : SettingsCopierStoreKind.FILTER;
+                                SettingsCopierStoreKind.clear(stack);
+                                SettingsCopierStoreKind.setMode(stack, next);
+                                player.setItemInHand(hand, stack);
+                                sendSettingsCopierStackSync(player, stack);
+                            }
+                            case SettingsCopierHubActionPayload.ACTION_RENAME -> {
+                                String name = payload.renameText();
+                                if (name == null || name.isBlank()) {
+                                    stack.remove(net.minecraft.core.component.DataComponents.CUSTOM_NAME);
+                                } else {
+                                    stack.set(
+                                            net.minecraft.core.component.DataComponents.CUSTOM_NAME,
+                                            net.minecraft.network.chat.Component.literal(name.trim()));
+                                }
+                                player.setItemInHand(hand, stack);
+                                sendSettingsCopierStackSync(player, stack);
+                            }
+                            default -> {}
+                        }
+                    });
+                });
+
+        reg.playToServer(
+                SettingsCopierReturnToHubPayload.TYPE,
+                SettingsCopierReturnToHubPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        if (player.containerMenu instanceof SettingsCopierMenu menu && menu.isVirtualLayer()) {
+                            menu.returnToHub(player);
+                        }
+                    });
+                });
+
+        reg.playToServer(
+                SettingsCopierOpenHubPayload.TYPE,
+                SettingsCopierOpenHubPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        if (player.containerMenu instanceof SettingsCopierMenu) {
+                            return;
+                        }
+                        InteractionHand hand =
+                                (payload.handOrdinal() & 0xFF) == 1
+                                        ? InteractionHand.OFF_HAND
+                                        : InteractionHand.MAIN_HAND;
+                        ItemStack stack = player.getItemInHand(hand);
+                        if (!stack.isEmpty() && stack.getItem() instanceof SettingsCopierItem) {
+                            SettingsCopierItem.openHubMenu(player, hand);
+                        }
+                    });
+                });
+
         reg.playToClient(EnergyRayPathPayload.TYPE, EnergyRayPathPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> EnergyRayClient.handlePath(payload));
         });
@@ -219,7 +368,7 @@ public final class ModNetwork {
                         Direction face =
                                 Direction.values()[Mth.clamp(
                                         payload.faceOrdinal(), 0, Direction.values().length - 1)];
-                        DuctNodeScreen.applyClientFilterSync(
+                        AbstractUniversalDuctScreen.applyClientFilterSync(
                                 payload.pos(),
                                 face,
                                 payload.transportKindOrdinal(),
@@ -233,8 +382,22 @@ public final class ModNetwork {
         });
 
         reg.playToClient(DuctGuiFeedbackPayload.TYPE, DuctGuiFeedbackPayload.STREAM_CODEC, (payload, ctx) -> {
-            ctx.enqueueWork(() -> DuctNodeScreen.showSettingsCopierFeedback(payload.messageId()));
+            ctx.enqueueWork(() -> AbstractUniversalDuctScreen.showSettingsCopierFeedback(payload.messageId()));
         });
+
+        reg.playToClient(
+                SettingsCopierStackSyncPayload.TYPE,
+                SettingsCopierStackSyncPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        var player = ctx.player();
+                        if (player.containerMenu instanceof DuctNodeMenu ductMenu) {
+                            ductMenu.applyClientCopierStack(payload.stack());
+                        } else if (player.containerMenu instanceof SettingsCopierMenu copierMenu) {
+                            copierMenu.applyClientCopierStack(player, payload.stack());
+                        }
+                    });
+                });
 
         reg.playToServer(
                 SettingsCopierActionPayload.TYPE,
@@ -339,7 +502,7 @@ public final class ModNetwork {
      * Applies a duct node menu button on the server with the same validation as other duct GUI payloads, avoiding
      * vanilla {@code ServerboundContainerButtonClickPacket} which is dropped when {@code stillValid} is false.
      */
-    public static void sendDuctMenuButton(DuctNodeMenu menu, int buttonId) {
+    public static void sendDuctMenuButton(UniversalDuctMenu menu, int buttonId) {
         PacketDistributor.sendToServer(
                 new DuctMenuButtonPayload(menu.getDuctBlockPos(), menu.getAccessFace().ordinal(), buttonId));
     }
@@ -364,6 +527,60 @@ public final class ModNetwork {
 
     public static void sendDuctGuiFeedback(ServerPlayer player, int messageId) {
         PacketDistributor.sendToPlayer(player, new DuctGuiFeedbackPayload(messageId));
+    }
+
+    public static void sendSettingsCopierStackSync(ServerPlayer player, ItemStack stack) {
+        PacketDistributor.sendToPlayer(player, new SettingsCopierStackSyncPayload(stack.copy()));
+    }
+
+    public static void sendSettingsCopierHubAction(int action) {
+        PacketDistributor.sendToServer(new SettingsCopierHubActionPayload(action));
+    }
+
+    public static void sendSettingsCopierHubAction(int action, String renameText) {
+        PacketDistributor.sendToServer(new SettingsCopierHubActionPayload(action, renameText));
+    }
+
+    public static void sendSettingsCopierReturnToHub() {
+        PacketDistributor.sendToServer(new SettingsCopierReturnToHubPayload());
+    }
+
+    public static void sendFilterSyncForVirtual(ServerPlayer player, SettingsCopierVirtualSession session) {
+        var server = player.getServer();
+        if (server == null) {
+            sendFilterSyncForVirtualNow(player, session);
+            return;
+        }
+        server.execute(() -> {
+            if (player.hasDisconnected()) {
+                return;
+            }
+            sendFilterSyncForVirtualNow(player, session);
+        });
+    }
+
+    private static void sendFilterSyncForVirtualNow(ServerPlayer player, SettingsCopierVirtualSession session) {
+        DuctFaceNode node = session.activeMenuFaceNode();
+        int tk = session.menuActiveTransportKind().ordinal();
+        Direction face = session.accessFace();
+        for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
+            java.util.List<Integer> caps2 =
+                    bank == DuctFaceNode.FilterBank.FILTER
+                            ? java.util.List.copyOf(node.filterBankKeepCaps())
+                            : java.util.List.of();
+            PacketDistributor.sendToPlayer(
+                    player,
+                    new DuctFilterSyncPayload(
+                            BlockPos.ZERO,
+                            face.ordinal(),
+                            tk,
+                            bank.ordinal(),
+                            java.util.List.copyOf(node.bankAllowFilters(bank)),
+                            java.util.List.copyOf(node.bankDenyFilters(bank)),
+                            java.util.List.copyOf(node.bankAllowCaps(bank)),
+                            caps2,
+                            node.bankDenyOverridesAllow(bank)));
+        }
     }
 
     public static void sendEnergyRayPath(
@@ -428,6 +645,13 @@ public final class ModNetwork {
                             caps2,
                             node.bankDenyOverridesAllow(bank)));
         }
+    }
+
+    private static @Nullable SettingsCopierVirtualSession virtualCopierSession(ServerPlayer player) {
+        if (player.containerMenu instanceof SettingsCopierMenu menu && menu.isVirtualLayer()) {
+            return menu.virtualSession();
+        }
+        return null;
     }
 
     public record DuctFieldPayload(

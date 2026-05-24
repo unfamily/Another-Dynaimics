@@ -31,6 +31,8 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Fluid logistics: plan extract+fill with simulation only, enqueue {@link FluidTransitShipment}; {@link DuctBlockEntity}
  * executes transfer when travel completes and re-validates each tick in transit.
+ * <p><strong>Material-lane family:</strong> behavioural changes often need equivalent updates for item logistics
+ * ({@link DuctBlockEntity}) and gas ({@link DuctGasServerTick}), including universal ducts with those kinds enabled.
  */
 public final class DuctFluidServerTick {
     private static final int RETRIEVE_ROUTE_RETRY_CAP = 32;

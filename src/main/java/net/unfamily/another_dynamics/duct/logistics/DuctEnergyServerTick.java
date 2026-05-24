@@ -26,10 +26,10 @@ import net.unfamily.another_dynamics.network.ModNetwork;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Energy (Forge Energy / RF) logistics: instant transfer only (no in-duct transit shipments).
- *
- * <p>Per-face input/output buffers: external push fills input; network extract drains input; network insert fills
- * output; adjacent machines pull from output. One network action per rate tick ({@link DuctModuleEffects#ENERGY_ACTION_RATE_TICKS}).
+ * Energy (FE/RF) logistics: instant transfer only (no in-duct transit shipments).
+ * <p><strong>Flux-lane family:</strong> behavioural changes often need equivalent updates for {@link DuctHeatServerTick},
+ * {@link DuctFaceLanes} energy fields, and universal ducts with energy enabled (settings copier {@code EnergyHeat}).
+ * <p>Per-face buffers and routing: see class body; rate from {@link DuctModuleEffects#ENERGY_ACTION_RATE_TICKS}.
  */
 public final class DuctEnergyServerTick {
     /** Min ticks between rays to the same duct destination on one face (RR to other targets is not throttled). */

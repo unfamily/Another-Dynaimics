@@ -6,16 +6,15 @@
   "overrides": [
     {
       "predicate": {
-        "another_dynamics:filter_kind": 1,
-        "another_dynamics:stored": 1
+        "another_dynamics:copier_state": 0.5
       },
-      "model": "another_dynamics:item/settings_copier_filter"
+      "model": "another_dynamics:item/settings_copier_all"
     },
     {
       "predicate": {
-        "another_dynamics:stored": 1
+        "another_dynamics:copier_state": 1.0
       },
-      "model": "another_dynamics:item/settings_copier_all"
+      "model": "another_dynamics:item/settings_copier_filter"
     }
   ]
 }
