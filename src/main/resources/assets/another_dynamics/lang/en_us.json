@@ -37,7 +37,6 @@
   "gui.another_dynamics.settings_copier.rename_confirm": "OK",
   "gui.another_dynamics.settings_copier.rename_section": "Rename Settings Configurator",
   "gui.another_dynamics.settings_copier.virtual_node": "Virtual Node",
-  "gui.another_dynamics.settings_copier.virtual_back_to_node.tooltip": "Open virtual node",
   "gui.another_dynamics.settings_copier.virtual_filter": "Virtual Filter",
   "message.another_dynamics.settings_copier.copied": "Node settings copied",
   "message.another_dynamics.settings_copier.pasted": "Node settings pasted",

@@ -1174,7 +1174,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
         copierVirtualNodeBackButton = Button.builder(
             Component.translatable("gui.another_dynamics.duct_node.filters.back"),
-            b -> openVirtualNodeMainFromTransportHub()
+            b -> returnToSettingsCopierHubFromVirtual()
         )
             .bounds(
                 this.leftPos + CHROME_COL_MID_X,
@@ -1184,8 +1184,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             )
             .tooltip(
                 Tooltip.create(
-                    SettingsCopierItem.grayTooltipLine(
-                        "gui.another_dynamics.settings_copier.virtual_back_to_node.tooltip"
+                    Component.translatable(
+                        "gui.another_dynamics.settings_copier.back_to_hub"
                     )
                 )
             )
@@ -1403,7 +1403,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (isSettingsCopierFilterListEditor()) {
             return false;
         }
-        // Settings copier virtual editor: layer changes use copierVirtualNodeBack / X, not duct hub Back.
+        // Settings copier virtual editor: hub Back / X return to configurator; detail uses hubBackButton.
         if (useSettingsCopierHubNavigation()) {
             return false;
         }
@@ -1411,18 +1411,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
             menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0
         );
-    }
-
-    /** Transport hub (layer 0) → virtual node detail {@link SubView#MAIN} only. */
-    private void openVirtualNodeMainFromTransportHub() {
-        exitEditMode(false);
-        subView = SubView.MAIN;
-        hybridPanel = HybridPanel.NONE;
-        playClickSound();
-        handleMenuButton(DuctBlockEntity.MENU_BUTTON_ENTER_DETAIL);
-        applySubViewVisibility();
-        layoutMainChromeRowsForHubOrDetail();
-        layoutHubTransportGrid();
     }
 
     /** Node mode + opaque: row 1 on transport hub, row 2 on detail (filters use row 1 in detail). */
