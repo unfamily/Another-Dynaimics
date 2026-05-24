@@ -70,8 +70,7 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             if (stack.isEmpty()) {
                 continue;
             }
-            float progress = v.progress01(level, partialTick);
-            Vec3 world = v.positionAt(progress);
+            Vec3 world = v.positionAt(0f, level, partialTick);
             poseStack.pushPose();
             poseStack.translate(world.x - origin.getX(), world.y - origin.getY(), world.z - origin.getZ());
             poseStack.translate(0.0f, GHOST_Y_OFFSET, 0.0f);
@@ -92,8 +91,7 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             if (fv.fluid.isEmpty()) {
                 continue;
             }
-            float progress = fv.progress01(level, partialTick);
-            Vec3 world = fv.positionAt(progress);
+            Vec3 world = fv.positionAt(0f, level, partialTick);
             poseStack.pushPose();
             poseStack.translate(world.x - origin.getX(), world.y - origin.getY(), world.z - origin.getZ());
             poseStack.translate(0.0f, FLUID_Y_OFFSET, 0.0f);
@@ -109,8 +107,7 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
             if (gv.amount <= 0) {
                 continue;
             }
-            float progress = gv.progress01(level, partialTick);
-            Vec3 world = gv.positionAt(progress);
+            Vec3 world = gv.positionAt(0f, level, partialTick);
             poseStack.pushPose();
             poseStack.translate(world.x - origin.getX(), world.y - origin.getY(), world.z - origin.getZ());
             poseStack.translate(0.0f, FLUID_Y_OFFSET, 0.0f);

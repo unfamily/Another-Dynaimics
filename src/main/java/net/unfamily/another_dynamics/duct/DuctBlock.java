@@ -51,6 +51,7 @@ public class DuctBlock extends AbstractDuctBlock {
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
         if (!level.isClientSide() && !state.is(newState.getBlock())) {
             if (level instanceof ServerLevel sl && level.getBlockEntity(pos) instanceof DuctBlockEntity be) {
+                DuctBlockEntity.onItemDuctRemoved(sl, pos);
                 be.dropAllStalledItems(sl);
             }
         }

@@ -210,21 +210,20 @@ public final class DuctGasServerTick {
                 if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
                     List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
                     List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
-                    int idx = DuctGasAllowLimitLogic.firstMatchingAllowLineIndex(allowLines, tryStack, level.registryAccess());
-                    if (idx >= 0 && idx < caps.size()) {
-                        int lim = caps.get(idx);
-                        if (lim > 0) {
-                            String line = allowLines.get(idx);
-                            long current =
-                                    DuctGasAllowLimitLogic.countMatchingInHandler(destHandler, line, level.registryAccess());
-                            long pending =
-                                    DuctGasAllowLimitLogic.countMatchingInStacks(
-                                            DuctGasIncomingIndex.snapshot(level, destPos), line, level.registryAccess());
-                            long maxAdd = Math.max(0L, (long) lim - (current + pending));
-                            simulated = Math.min(simulated, maxAdd);
-                            if (simulated <= 0) {
-                                continue;
-                            }
+                    long maxAdd =
+                            DuctGasAllowLimitLogic.maxAdditionalInsertAcrossAllowLines(
+                                    destHandler,
+                                    allowLines,
+                                    caps,
+                                    tryStack,
+                                    level.registryAccess(),
+                                    (line, reg) ->
+                                            DuctGasAllowLimitLogic.countMatchingInStacks(
+                                                    DuctGasIncomingIndex.snapshot(level, destPos), line, reg));
+                    if (maxAdd != Long.MAX_VALUE) {
+                        simulated = Math.min(simulated, maxAdd);
+                        if (simulated <= 0) {
+                            continue;
                         }
                     }
                 }
@@ -433,7 +432,8 @@ public final class DuctGasServerTick {
                 continue;
             }
             Object planned = extracted;
-            long edgeTicks = DuctModuleEffects.effectiveGasEdgeTravelTicks(donorBe, donorFace, spec);
+            // Travel speed modules live on the retriever face (same as item retriever), not the donor.
+            long edgeTicks = DuctModuleEffects.effectiveGasEdgeTravelTicks(retrieverBe, retrieverFace, spec);
             donorBe.scheduleGasTransitPending(
                     level, planned, OutboundShipment.copyPath(path), donorFace, retrieverFace, retrieverPos, spec, edgeTicks);
             retrieverBe.setChanged();

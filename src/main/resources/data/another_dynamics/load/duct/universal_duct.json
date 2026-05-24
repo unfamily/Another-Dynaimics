@@ -4,7 +4,7 @@
   "name": "duct.another_dynamics.universal_duct",
   "put_in_creative_menu": true,
   "sound": "metallic",
-  "module_slots": 5,
+  "module_slots": 1,
   "can_transport": [
     {
       "dec": "item",
@@ -20,11 +20,11 @@
         "default": 20,
         "min": 5
       },
-      "filter":{
-        "deny":4,
-        "allow":4,
-        "deny_hybrid":2,
-        "allow_hybrid":2
+      "filter": {
+        "deny": 4,
+        "allow": 4,
+        "deny_hybrid": 2,
+        "allow_hybrid": 2
       }
     },
     {
@@ -41,11 +41,11 @@
         "default": 20,
         "min": 1
       },
-      "filter":{
-        "deny":4,
-        "allow":4,
-        "deny_hybrid":2,
-        "allow_hybrid":2
+      "filter": {
+        "deny": 4,
+        "allow": 4,
+        "deny_hybrid": 2,
+        "allow_hybrid": 2
       }
     },
     {
@@ -69,11 +69,11 @@
         "default": 20,
         "min": 1
       },
-      "filter":{
-        "deny":4,
-        "allow":4,
-        "deny_hybrid":2,
-        "allow_hybrid":2
+      "filter": {
+        "deny": 4,
+        "allow": 4,
+        "deny_hybrid": 2,
+        "allow_hybrid": 2
       }
     },
     {
@@ -82,8 +82,8 @@
     }
   ],
   "connect_with_compatbile": true,
-  "disabled_features":[],
-  "module_features":[],
+  "disabled_features": [],
+  "module_features": [],
   "rendering": {
     "always_opaque": false,
     "default_texture": "another_dynamics:block/duct/universal/universal_0_gold",

@@ -96,7 +96,7 @@ public final class DuctFluidServerTick {
         }
         int wantMb = node.extractBatch > 0 ? node.extractBatch : spec.batchDefaultMb();
         wantMb = spec.clampedBatchMb(wantMb);
-        FluidStack available = drainProbe(srcCap, wantMb);
+        FluidStack available = DuctFluidCapHelper.drainProbe(srcCap, wantMb);
         if (available.isEmpty()) {
             return;
         }
@@ -174,7 +174,7 @@ public final class DuctFluidServerTick {
                     continue;
                 }
                 FluidStack toMove = available.copy();
-                int simulated = destCap.fill(toMove, IFluidHandler.FluidAction.SIMULATE);
+                int simulated = DuctFluidCapHelper.simulateFill(destCap, toMove);
                 if (simulated <= 0) {
                     continue;
                 }
@@ -186,24 +186,24 @@ public final class DuctFluidServerTick {
                 if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
                     List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
                     List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
-                    int idx = DuctFluidAllowLimitLogic.firstMatchingAllowLineIndex(allowLines, toMove, level.registryAccess());
-                    if (idx >= 0 && idx < caps.size()) {
-                        int lim = caps.get(idx);
-                        if (lim > 0) {
-                            String line = allowLines.get(idx);
-                            int current = DuctFluidAllowLimitLogic.countMatchingInHandlerMb(destCap, line, level.registryAccess());
-                            int pending =
-                                    DuctFluidAllowLimitLogic.countMatchingInStacksMb(
-                                            DuctFluidIncomingIndex.snapshot(level, destPos), line, level.registryAccess());
-                            int maxAdd = Math.max(0, lim - (current + pending));
-                            simulated = Math.min(simulated, maxAdd);
-                            if (simulated <= 0) {
-                                continue;
-                            }
+                    int maxAdd =
+                            DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
+                                    destCap,
+                                    allowLines,
+                                    caps,
+                                    toMove,
+                                    DuctFluidIncomingIndex.snapshot(level, destPos),
+                                    level.registryAccess());
+                    if (maxAdd != Integer.MAX_VALUE) {
+                        simulated = Math.min(simulated, maxAdd);
+                        if (simulated <= 0) {
+                            continue;
                         }
                     }
                 }
-                FluidStack drain = srcCap.drain(new FluidStack(toMove.getFluid(), simulated), IFluidHandler.FluidAction.SIMULATE);
+                FluidStack drain =
+                        DuctFluidCapHelper.simulateDrainMatching(
+                                srcCap, toMove, simulated);
                 if (drain.isEmpty() || drain.getAmount() < simulated) {
                     continue;
                 }
@@ -234,7 +234,7 @@ public final class DuctFluidServerTick {
             return;
         }
         FluidStack planned = new FluidStack(available.getFluid(), movedMb);
-        FluidStack extracted = srcCap.drain(planned.copy(), IFluidHandler.FluidAction.EXECUTE);
+        FluidStack extracted = DuctFluidCapHelper.drainMatching(srcCap, planned, planned.getAmount());
         if (extracted.isEmpty() || extracted.getAmount() <= 0) {
             return;
         }
@@ -317,7 +317,7 @@ public final class DuctFluidServerTick {
             }
             int wantMb = node.extractBatch > 0 ? node.extractBatch : spec.batchDefaultMb();
             wantMb = spec.clampedBatchMb(wantMb);
-            FluidStack available = drainProbe(srcCap, wantMb);
+            FluidStack available = DuctFluidCapHelper.drainProbe(srcCap, wantMb);
             if (available.isEmpty()) {
                 continue;
             }
@@ -357,7 +357,7 @@ public final class DuctFluidServerTick {
             int plannedMb = Math.min(wantMb, remainingInStorage);
 
             FluidStack planStack = new FluidStack(available.getFluid(), plannedMb);
-            int simDest = destCap.fill(planStack, IFluidHandler.FluidAction.SIMULATE);
+            int simDest = DuctFluidCapHelper.simulateFill(destCap, planStack);
             if (simDest <= 0) {
                 continue;
             }
@@ -370,7 +370,8 @@ public final class DuctFluidServerTick {
             }
             planStack = new FluidStack(available.getFluid(), plannedMb);
             FluidStack drainSim =
-                    srcCap.drain(new FluidStack(available.getFluid(), plannedMb), IFluidHandler.FluidAction.SIMULATE);
+                    DuctFluidCapHelper.simulateDrainMatching(
+                            srcCap, available, plannedMb);
             if (drainSim.isEmpty() || drainSim.getAmount() < plannedMb) {
                 continue;
             }
@@ -381,11 +382,12 @@ public final class DuctFluidServerTick {
                 node.roundRobinCursor = rr[0] + donorIdx + 1;
             }
             FluidStack planned = new FluidStack(available.getFluid(), plannedMb);
-            FluidStack extracted = srcCap.drain(planned.copy(), IFluidHandler.FluidAction.EXECUTE);
+            FluidStack extracted = DuctFluidCapHelper.drainMatching(srcCap, planned, planned.getAmount());
             if (extracted.isEmpty() || extracted.getAmount() <= 0) {
                 continue;
             }
-            long edgeTicks = DuctModuleEffects.effectiveFluidEdgeTravelTicks(donorBe, donorFace, spec);
+            // Travel speed modules live on the retriever face (same as item retriever), not the donor.
+            long edgeTicks = DuctModuleEffects.effectiveFluidEdgeTravelTicks(retrieverBe, retrieverFace, spec);
             donorBe.scheduleFluidTransitPending(
                     level,
                     extracted,
@@ -451,7 +453,7 @@ public final class DuctFluidServerTick {
                     continue;
                 }
                 int probeMax = spec.clampedBatchMb(Math.max(spec.batchDefaultMb(), 1000));
-                FluidStack sample = drainProbe(srcCap, probeMax);
+                FluidStack sample = DuctFluidCapHelper.drainProbe(srcCap, probeMax);
                 if (sample.isEmpty()) {
                     continue;
                 }
@@ -460,7 +462,7 @@ public final class DuctFluidServerTick {
                                 donorFluid, DuctFaceNode.FilterBank.FILTER, sample, level)) {
                     continue;
                 }
-                if (retrieverDestCap.fill(sample.copy(), IFluidHandler.FluidAction.SIMULATE) <= 0) {
+                if (DuctFluidCapHelper.simulateFill(retrieverDestCap, sample) <= 0) {
                     continue;
                 }
                 OptionalLong dist =
@@ -565,22 +567,17 @@ public final class DuctFluidServerTick {
         DuctFaceNode destNode = destBe.getFaceLanes(destFace).fluid;
         List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER);
         List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER);
-        int idx = DuctFluidAllowLimitLogic.firstMatchingAllowLineIndex(allowLines, movingProbe, level.registryAccess());
-        if (idx < 0 || idx >= caps.size()) {
-            return simulatedFillMb;
-        }
-        int lim = caps.get(idx);
-        if (lim <= 0) {
-            return simulatedFillMb;
-        }
-        String line = allowLines.get(idx);
-        int current = DuctFluidAllowLimitLogic.countMatchingInHandlerMb(destCap, line, level.registryAccess());
-        int pending =
-                DuctFluidAllowLimitLogic.countMatchingInStacksMb(
+        int maxAdd =
+                DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
+                        destCap,
+                        allowLines,
+                        caps,
+                        movingProbe,
                         DuctFluidIncomingIndex.snapshot(level, destBe.getBlockPos()),
-                        line,
                         level.registryAccess());
-        int maxAdd = Math.max(0, lim - (current + pending));
+        if (maxAdd == Integer.MAX_VALUE) {
+            return simulatedFillMb;
+        }
         return Math.min(simulatedFillMb, maxAdd);
     }
 
@@ -683,7 +680,7 @@ public final class DuctFluidServerTick {
         if (destCap == null) {
             return false;
         }
-        int simulated = destCap.fill(s.fluid, IFluidHandler.FluidAction.SIMULATE);
+        int simulated = DuctFluidCapHelper.simulateFill(destCap, s.fluid);
         if (simulated <= 0) {
             return false;
         }
@@ -740,7 +737,7 @@ public final class DuctFluidServerTick {
         if (destCap == null) {
             return;
         }
-        int simulated = destCap.fill(toMove, IFluidHandler.FluidAction.SIMULATE);
+        int simulated = DuctFluidCapHelper.simulateFill(destCap, toMove);
         if (simulated <= 0) {
             return;
         }
@@ -753,7 +750,7 @@ public final class DuctFluidServerTick {
         }
         int take = Math.min(toMove.getAmount(), simulated);
         FluidStack payload = new FluidStack(toMove.getFluid(), take);
-        int filled = destCap.fill(payload.copy(), IFluidHandler.FluidAction.EXECUTE);
+        int filled = DuctFluidCapHelper.executeFill(destCap, payload);
         int left = payload.getAmount() - Math.max(0, filled);
         if (left > 0) {
             sourceBe.refundBufferedFluidToSourceOrStall(level, s.sourceFace, new FluidStack(payload.getFluid(), left));
@@ -864,7 +861,7 @@ public final class DuctFluidServerTick {
                     continue;
                 }
                 FluidStack toMove = available.copy();
-                int simulated = destCap.fill(toMove, IFluidHandler.FluidAction.SIMULATE);
+                int simulated = DuctFluidCapHelper.simulateFill(destCap, toMove);
                 if (simulated <= 0) {
                     continue;
                 }
@@ -881,20 +878,18 @@ public final class DuctFluidServerTick {
                 if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
                     List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
                     List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
-                    int idx = DuctFluidAllowLimitLogic.firstMatchingAllowLineIndex(allowLines, toMove, level.registryAccess());
-                    if (idx >= 0 && idx < caps.size()) {
-                        int lim = caps.get(idx);
-                        if (lim > 0) {
-                            String line = allowLines.get(idx);
-                            int current = DuctFluidAllowLimitLogic.countMatchingInHandlerMb(destCap, line, level.registryAccess());
-                            int pending =
-                                    DuctFluidAllowLimitLogic.countMatchingInStacksMb(
-                                            DuctFluidIncomingIndex.snapshot(level, destPos), line, level.registryAccess());
-                            int maxAdd = Math.max(0, lim - (current + pending));
-                            simulated = Math.min(simulated, maxAdd);
-                            if (simulated <= 0) {
-                                continue;
-                            }
+                    int maxAdd =
+                            DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
+                                    destCap,
+                                    allowLines,
+                                    caps,
+                                    toMove,
+                                    DuctFluidIncomingIndex.snapshot(level, destPos),
+                                    level.registryAccess());
+                    if (maxAdd != Integer.MAX_VALUE) {
+                        simulated = Math.min(simulated, maxAdd);
+                        if (simulated <= 0) {
+                            continue;
                         }
                     }
                 }
@@ -969,18 +964,4 @@ public final class DuctFluidServerTick {
         return filled >= lanes.stalledFluids.length;
     }
 
-    private static FluidStack drainProbe(IFluidHandler h, int maxMb) {
-        for (int t = 0; t < h.getTanks(); t++) {
-            FluidStack in = h.getFluidInTank(t);
-            if (in.isEmpty()) {
-                continue;
-            }
-            int take = Math.min(maxMb, in.getAmount());
-            FluidStack sim = h.drain(new FluidStack(in.getFluid(), take), IFluidHandler.FluidAction.SIMULATE);
-            if (!sim.isEmpty()) {
-                return sim;
-            }
-        }
-        return FluidStack.EMPTY;
-    }
 }

@@ -68,7 +68,7 @@
     {
       "for": "heat",
       "quantity": {
-        "mult": 250
+        "set": 100000
       },
       "rate": {
         "mult": 0.25

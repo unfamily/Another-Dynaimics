@@ -2,12 +2,15 @@ package net.unfamily.another_dynamics.duct;
 
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
+import net.unfamily.another_dynamics.duct.logistics.DuctTankSlotSemantics;
 
 /**
  * Per-allow-line caps in mB: {@code 0} = unlimited. First non-empty allow line that matches a fluid wins
@@ -15,6 +18,23 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
  */
 public final class DuctFluidAllowLimitLogic {
     private DuctFluidAllowLimitLogic() {}
+
+    public static boolean hasAnyPositiveAllowCapOnNonEmptyLine(List<String> allowLines, List<Integer> caps) {
+        if (allowLines == null || caps == null) {
+            return false;
+        }
+        for (int i = 0; i < allowLines.size(); i++) {
+            String line = allowLines.get(i);
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            int lim = i < caps.size() ? caps.get(i) : 0;
+            if (lim > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     public static int firstMatchingAllowLineIndex(
             List<String> allowLines, FluidStack template, HolderLookup.Provider registries) {
@@ -38,12 +58,29 @@ public final class DuctFluidAllowLimitLogic {
         return -1;
     }
 
+    private static int countPendingMatchingFilterLineMb(
+            @Nullable List<FluidStack> priorPending, String filterLine, HolderLookup.Provider registries) {
+        return countMatchingInStacksMb(priorPending, filterLine, registries);
+    }
+
     public static int maxAdditionalInsertForAllowLineMbAtIndex(
             IFluidHandler handler,
             List<String> allowLines,
             List<Integer> caps,
             FluidStack template,
             int lineIndex,
+            HolderLookup.Provider registries) {
+        return maxAdditionalInsertForAllowLineMbAtIndex(
+                handler, allowLines, caps, template, lineIndex, null, registries);
+    }
+
+    public static int maxAdditionalInsertForAllowLineMbAtIndex(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            FluidStack template,
+            int lineIndex,
+            @Nullable List<FluidStack> priorPending,
             HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null) {
             return Integer.MAX_VALUE;
@@ -62,7 +99,9 @@ public final class DuctFluidAllowLimitLogic {
         if (lim <= 0) {
             return Integer.MAX_VALUE;
         }
-        int current = countMatchingInHandlerMb(handler, line, registries);
+        int current =
+                countMatchingInHandlerMb(handler, line, registries)
+                        + countPendingMatchingFilterLineMb(priorPending, line, registries);
         return Math.max(0, lim - current);
     }
 
@@ -90,17 +129,31 @@ public final class DuctFluidAllowLimitLogic {
         if (keep <= 0) {
             return Integer.MAX_VALUE;
         }
-        int current = countMatchingInHandlerMb(handler, line, registries);
+        int current = countMatchingInHandlerMb(handler, line, registries, true);
         return Math.max(0, current - keep);
     }
 
     public static int countMatchingInHandlerMb(
             IFluidHandler handler, String filterLine, HolderLookup.Provider registries) {
+        return countMatchingInHandlerMb(handler, filterLine, registries, false);
+    }
+
+    /**
+     * @param drainableTanksOnly when true, only tanks classified as output/both (for extract/keep caps).
+     */
+    public static int countMatchingInHandlerMb(
+            IFluidHandler handler,
+            String filterLine,
+            HolderLookup.Provider registries,
+            boolean drainableTanksOnly) {
         if (handler == null || filterLine == null || filterLine.trim().isEmpty()) {
             return 0;
         }
         int sum = 0;
         for (int t = 0; t < handler.getTanks(); t++) {
+            if (drainableTanksOnly && !DuctTankSlotSemantics.canDrainFromFluidTank(handler, t)) {
+                continue;
+            }
             FluidStack in = handler.getFluidInTank(t);
             if (in.isEmpty()) {
                 continue;
@@ -127,6 +180,80 @@ public final class DuctFluidAllowLimitLogic {
             }
         }
         return sum;
+    }
+
+    /**
+     * Walks allow lines in order; returns headroom on the first matching line that still accepts inserts.
+     */
+    public static int maxAdditionalInsertAcrossAllowLinesMb(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            FluidStack template,
+            HolderLookup.Provider registries) {
+        return maxAdditionalInsertAcrossAllowLinesMb(handler, allowLines, caps, template, null, registries);
+    }
+
+    public static int maxAdditionalInsertAcrossAllowLinesMb(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            FluidStack template,
+            @Nullable List<FluidStack> priorPending,
+            HolderLookup.Provider registries) {
+        if (template.isEmpty() || handler == null || allowLines == null || caps == null) {
+            return Integer.MAX_VALUE;
+        }
+        if (!hasAnyPositiveAllowCapOnNonEmptyLine(allowLines, caps)) {
+            return Integer.MAX_VALUE;
+        }
+        for (int i = 0; i < allowLines.size(); i++) {
+            String line = allowLines.get(i);
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            if (!DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+                continue;
+            }
+            int add =
+                    maxAdditionalInsertForAllowLineMbAtIndex(
+                            handler, allowLines, caps, template, i, priorPending, registries);
+            if (add == Integer.MAX_VALUE) {
+                return Integer.MAX_VALUE;
+            }
+            if (add > 0) {
+                return add;
+            }
+        }
+        return 0;
+    }
+
+    public static int maxExtractRespectingKeepAcrossLinesMb(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> keepCaps,
+            FluidStack template,
+            HolderLookup.Provider registries) {
+        if (template.isEmpty() || handler == null || allowLines == null || keepCaps == null) {
+            return Integer.MAX_VALUE;
+        }
+        for (int i = 0; i < allowLines.size(); i++) {
+            String line = allowLines.get(i);
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            if (!DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+                continue;
+            }
+            int ex = maxExtractRespectingKeepMbAtIndex(handler, allowLines, keepCaps, template, i, registries);
+            if (ex == Integer.MAX_VALUE) {
+                return Integer.MAX_VALUE;
+            }
+            if (ex > 0) {
+                return ex;
+            }
+        }
+        return 0;
     }
 
     /** Max mB that may still be inserted without exceeding the allow-line {@code limit} (first matching line). */
@@ -171,7 +298,7 @@ public final class DuctFluidAllowLimitLogic {
             return Integer.MAX_VALUE;
         }
         String line = allowLines.get(idx);
-        int current = countMatchingInHandlerMb(handler, line, registries);
+        int current = countMatchingInHandlerMb(handler, line, registries, true);
         return Math.max(0, current - keep);
     }
 }

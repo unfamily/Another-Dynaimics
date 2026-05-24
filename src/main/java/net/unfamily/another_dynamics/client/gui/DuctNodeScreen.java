@@ -47,6 +47,7 @@ import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctFilterLineReorder;
 import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
@@ -259,6 +260,7 @@ public final class DuctNodeScreen
     private Button opaqueRenderingButton;
     private Button backButton;
     private Button validKeysButton;
+    private Button filterReorderButton;
 
     private SubView subView = SubView.MAIN;
     private SubView filterListBeforeHelp = SubView.DENY_FILTERS;
@@ -587,14 +589,14 @@ public final class DuctNodeScreen
             .build();
         addRenderableWidget(routingPlusButton);
 
-        amountClearButton = Button.builder(Component.literal("0"), b ->
-            amountClearField()
+        amountClearButton = Button.builder(Component.literal("1"), b ->
+            amountSetToOneField()
         )
             .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
             .tooltip(
                 Tooltip.create(
                     Component.translatable(
-                        "gui.another_dynamics.duct_node.amount.set_to_zero.tooltip"
+                        "gui.another_dynamics.duct_node.amount.set_to_one.tooltip"
                     )
                 )
             )
@@ -949,6 +951,20 @@ public final class DuctNodeScreen
             .build();
         addRenderableWidget(validKeysButton);
 
+        filterReorderButton =
+                Button.builder(Component.literal("R"), b -> {
+                            playClickSound();
+                            reorderActiveFilterLines();
+                        })
+                        .bounds(0, 0, ADVANCED_FILTER_BUTTON_WIDTH, BTN_H)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.duct_node.filters.reorder.tooltip")))
+                        .build();
+        filterReorderButton.visible = false;
+        addRenderableWidget(filterReorderButton);
+
         int channelX =
             DuctNodeMenu.SLOT_COPY_BACKGROUND_X + (18 - CHANNEL_WIDGET_W) / 2;
         channelButton = new ChannelLetterButton(
@@ -1298,6 +1314,16 @@ public final class DuctNodeScreen
             validKeysButton.setY(by);
             validKeysButton.setWidth(ADVANCED_FILTER_BUTTON_WIDTH);
             validKeysButton.setHeight(BTN_H);
+            if (filterReorderButton != null) {
+                filterReorderButton.setX(
+                        bx + backButton.getWidth() + ADJACENT_BTN_GAP + validKeysButton.getWidth() + ADJACENT_BTN_GAP);
+                filterReorderButton.setY(by);
+                filterReorderButton.setWidth(ADVANCED_FILTER_BUTTON_WIDTH);
+                filterReorderButton.setHeight(BTN_H);
+                filterReorderButton.visible = true;
+            }
+        } else if (filterReorderButton != null) {
+            filterReorderButton.visible = false;
         }
     }
 
@@ -3175,7 +3201,22 @@ public final class DuctNodeScreen
         return ItemStack.EMPTY;
     }
 
+    private void reorderActiveFilterLines() {
+        if (minecraft == null || minecraft.level == null) {
+            return;
+        }
+        DuctFilterLineReorder.sortAllowDenyRows(
+                menu.getClientAllowFilters(activeFilterBank),
+                menu.getClientDenyFilters(activeFilterBank),
+                menu.getClientAllowCaps(activeFilterBank),
+                List.of(),
+                minecraft.level.registryAccess());
+        filterScrollOffset = 0;
+        rebuildFilterEntryWidgets();
+    }
+
     private void pushFiltersToServer() {
+        reorderActiveFilterLines();
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         List<Integer> caps2 =
             activeFilterBank == DuctFaceNode.FilterBank.FILTER
@@ -3608,10 +3649,10 @@ public final class DuctNodeScreen
         boolean routingActive = routingUsable && hybridAllowsRoutingUi;
 
         boolean eligibilityCtx =
-            nm == NodeMode.NONE ||
-            nm == NodeMode.FILTERING_INSERTION ||
-            (nm == NodeMode.EXTRACTION_FILTERING &&
-                hybridPanel == HybridPanel.FILTERING);
+                nm == NodeMode.NONE
+                        || nm == NodeMode.FILTERING_INSERTION
+                        || (nm == NodeMode.EXTRACTION_FILTERING
+                                && hybridPanel == HybridPanel.FILTERING);
 
         if (routingMovedUi) {
             routingModeButton.active = false;
@@ -4200,10 +4241,10 @@ public final class DuctNodeScreen
         amountFieldsDirty = false;
     }
 
-    private void amountClearField() {
+    private void amountSetToOneField() {
         playClickSound();
         syncingAmountBoxFromServer = true;
-        routingPriorityBox.setValue("0");
+        routingPriorityBox.setValue("1");
         syncingAmountBoxFromServer = false;
         amountFieldsDirty = true;
     }

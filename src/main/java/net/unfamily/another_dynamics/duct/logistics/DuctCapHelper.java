@@ -13,6 +13,7 @@ import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 
 import org.jetbrains.annotations.Nullable;
@@ -41,6 +42,33 @@ public final class DuctCapHelper {
         return ItemHandlerHelper.insertItemStacked(h, stack.copy(), false);
     }
 
+    /** Items accepted by {@link #insertIntoFace} (may be less than {@code attempted} when inventory fills per stack). */
+    public static int countInsertedIntoFace(
+            Level level, BlockPos ductPos, Direction ductOutwardFace, ItemStack attempted) {
+        if (attempted.isEmpty()) {
+            return 0;
+        }
+        ItemStack remainder = insertIntoFace(level, ductPos, ductOutwardFace, attempted);
+        return countAccepted(attempted, remainder);
+    }
+
+    public static int countInsertedIntoStorageFaces(
+            Level level, BlockPos ductPos, DuctBlockEntity duct, ItemStack attempted) {
+        if (attempted.isEmpty()) {
+            return 0;
+        }
+        ItemStack remainder = insertIntoStorageFaces(level, ductPos, duct, attempted);
+        return countAccepted(attempted, remainder);
+    }
+
+    public static int countAccepted(ItemStack attempted, ItemStack remainder) {
+        if (attempted.isEmpty()) {
+            return 0;
+        }
+        int left = remainder.isEmpty() ? 0 : remainder.getCount();
+        return Math.max(0, attempted.getCount() - left);
+    }
+
     public static Optional<ItemStack> simulateExtractOneOnFace(Level level, BlockPos ductPos, Direction face) {
         IItemHandler h = getHandlerOnFace(level, ductPos, face);
         if (h == null) {
@@ -53,6 +81,39 @@ public final class DuctCapHelper {
             }
         }
         return Optional.empty();
+    }
+
+    public static boolean faceHasItemStallContent(DuctFaceLanes lanes) {
+        for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+            if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Cheap donor pre-check for retriever routing lists: attached handler has any extractable stack, or the face stall
+     * buffer is non-empty. Full filter/insert probes run only when a donor is actually visited.
+     */
+    public static boolean donorMaySupplyRetriever(Level level, BlockPos donorPos, Direction donorFace, DuctBlockEntity donorBe) {
+        DuctFaceLanes lanes = donorBe.getFaceLanes(donorFace);
+        if (faceHasItemStallContent(lanes)) {
+            return true;
+        }
+        IItemHandler h = getHandlerOnFace(level, donorPos, donorFace);
+        if (h == null) {
+            return false;
+        }
+        for (int slot = 0; slot < h.getSlots(); slot++) {
+            if (!DuctHandlerSlotSemantics.canExtractFromSlot(h, slot)) {
+                continue;
+            }
+            if (!h.getStackInSlot(slot).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -73,6 +134,39 @@ public final class DuctCapHelper {
         }
         for (int slot = 0; slot < h.getSlots(); slot++) {
             ItemStack probe = h.extractItem(slot, 1, true);
+            if (probe.isEmpty()) {
+                continue;
+            }
+            if (!retrieverBe.passesItemFilters(
+                    retrieverInventoryFace, probe, level, DuctFaceNode.FilterBank.RETRIEVER)) {
+                continue;
+            }
+            if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
+                continue;
+            }
+            if (!canInsertIntoFace(level, retrieverPos, retrieverInventoryFace, probe)) {
+                continue;
+            }
+            return Optional.of(probe);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Stall-buffer counterpart to {@link #findRetrievableProbeOnFace}: donor has no extractable stack on the attached
+     * handler but still holds retrievable items in the duct face stall slots.
+     */
+    public static Optional<ItemStack> findRetrievableProbeInStall(
+            Level level,
+            BlockPos donorPos,
+            Direction donorFace,
+            DuctBlockEntity donorBe,
+            BlockPos retrieverPos,
+            Direction retrieverInventoryFace,
+            DuctBlockEntity retrieverBe) {
+        DuctFaceLanes lanes = donorBe.getFaceLanes(donorFace);
+        for (int slot = 0; slot < lanes.stalledBuffer.getSlots(); slot++) {
+            ItemStack probe = lanes.stalledBuffer.getStackInSlot(slot);
             if (probe.isEmpty()) {
                 continue;
             }
@@ -113,24 +207,40 @@ public final class DuctCapHelper {
             return 0;
         }
         IItemHandler h = getHandlerOnFace(level, ductPos, face);
-        if (h == null) {
+        return countExtractableMatchingFromHandler(h, template, max);
+    }
+
+    /**
+     * Simulate-only counterpart to {@link #extractMatchingFromHandler}: sums matching items across every
+     * extractable slot (and repeated simulate calls per slot when the handler caps one pull).
+     */
+    public static int countExtractableMatchingFromHandler(IItemHandler h, ItemStack template, int max) {
+        if (max <= 0 || template.isEmpty() || h == null) {
             return 0;
         }
         int total = 0;
-        for (int slot = 0; slot < h.getSlots(); slot++) {
-            ItemStack inSlot = h.getStackInSlot(slot);
-            if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
+        for (int slot = 0; slot < h.getSlots() && total < max; slot++) {
+            if (!DuctHandlerSlotSemantics.canExtractFromSlot(h, slot)) {
                 continue;
             }
             int want = max - total;
-            if (want <= 0) {
-                return max;
-            }
-            ItemStack sim = h.extractItem(slot, want, true);
-            if (!sim.isEmpty()) {
+            while (want > 0) {
+                ItemStack inSlot = h.getStackInSlot(slot);
+                if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
+                    break;
+                }
+                int take = Math.min(want, inSlot.getCount());
+                if (take <= 0) {
+                    break;
+                }
+                ItemStack sim = h.extractItem(slot, take, true);
+                if (sim.isEmpty()) {
+                    break;
+                }
                 total += sim.getCount();
-                if (total >= max) {
-                    return max;
+                want -= sim.getCount();
+                if (sim.getCount() < take) {
+                    break;
                 }
             }
         }
@@ -142,39 +252,69 @@ public final class DuctCapHelper {
         if (maxCount <= 0 || template.isEmpty()) {
             return ItemStack.EMPTY;
         }
-        int need = Math.min(maxCount, template.getCount());
-        if (need <= 0) {
-            return ItemStack.EMPTY;
-        }
         IItemHandler h = getHandlerOnFace(level, ductPos, face);
         if (h == null) {
             return ItemStack.EMPTY;
         }
+        return extractMatchingFromHandler(h, template, maxCount);
+    }
+
+    /**
+     * Extract up to {@code maxCount} matching items in one logical operation, walking every extractable slot on
+     * {@code h} in order. When a handler caps one {@link IItemHandler#extractItem} call (e.g. vanilla stack size), the
+     * same slot is polled again until it is empty or {@code maxCount} is reached, then the next matching slot is used.
+     */
+    public static ItemStack extractMatchingFromHandler(IItemHandler h, ItemStack template, int maxCount) {
+        if (maxCount <= 0 || template.isEmpty() || h == null) {
+            return ItemStack.EMPTY;
+        }
+        int need = maxCount;
         ItemStack result = ItemStack.EMPTY;
-        for (int slot = 0; slot < h.getSlots(); slot++) {
-            ItemStack inSlot = h.getStackInSlot(slot);
-            if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
+        for (int slot = 0; slot < h.getSlots() && need > 0; slot++) {
+            if (!DuctHandlerSlotSemantics.canExtractFromSlot(h, slot)) {
                 continue;
             }
-            int take = Math.min(need, inSlot.getCount());
-            if (take <= 0) {
-                continue;
-            }
-            ItemStack ex = h.extractItem(slot, take, false);
-            if (ex.isEmpty()) {
-                continue;
-            }
-            if (result.isEmpty()) {
-                result = ex;
-            } else {
-                result.grow(ex.getCount());
-            }
-            need -= ex.getCount();
-            if (need <= 0) {
-                return result;
+            while (need > 0) {
+                ItemStack inSlot = h.getStackInSlot(slot);
+                if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
+                    break;
+                }
+                int take = Math.min(need, inSlot.getCount());
+                if (take <= 0) {
+                    break;
+                }
+                ItemStack ex = h.extractItem(slot, take, false);
+                if (ex.isEmpty()) {
+                    break;
+                }
+                if (result.isEmpty()) {
+                    result = ex.copy();
+                } else {
+                    result.setCount(result.getCount() + ex.getCount());
+                }
+                need -= ex.getCount();
+                if (ex.getCount() < take) {
+                    break;
+                }
             }
         }
         return result;
+    }
+
+    /**
+     * Simulated insert capacity on a face handler without subtracting in-flight {@link DuctIncomingIndex}
+     * reservations (items are not in the destination yet). Use for scheduling; delivery still re-simulates.
+     */
+    public static int maxInsertableOnFace(
+            Level level, BlockPos ductPos, Direction face, ItemStack template, int limit) {
+        if (limit <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        IItemHandler h = getHandlerOnFace(level, ductPos, face);
+        if (h == null) {
+            return 0;
+        }
+        return simulateMaxInsertableIntoHandler(h, template, limit);
     }
 
     public static int maxInsertableAfterPendingOnFace(
@@ -309,6 +449,9 @@ public final class DuctCapHelper {
         int total = 0;
         int mask = duct.getStorageMask();
         for (Direction dir : Direction.values()) {
+            if (total >= max) {
+                return max;
+            }
             if ((mask & (1 << dir.ordinal())) == 0) {
                 continue;
             }
@@ -317,23 +460,7 @@ public final class DuctCapHelper {
             if (h == null) {
                 continue;
             }
-            for (int slot = 0; slot < h.getSlots(); slot++) {
-                ItemStack inSlot = h.getStackInSlot(slot);
-                if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
-                    continue;
-                }
-                int want = max - total;
-                if (want <= 0) {
-                    return max;
-                }
-                ItemStack sim = h.extractItem(slot, want, true);
-                if (!sim.isEmpty()) {
-                    total += sim.getCount();
-                    if (total >= max) {
-                        return max;
-                    }
-                }
-            }
+            total += countExtractableMatchingFromHandler(h, template, max - total);
         }
         return total;
     }
@@ -346,13 +473,13 @@ public final class DuctCapHelper {
         if (maxCount <= 0 || template.isEmpty()) {
             return ItemStack.EMPTY;
         }
-        int need = Math.min(maxCount, template.getCount());
-        if (need <= 0) {
-            return ItemStack.EMPTY;
-        }
+        int need = maxCount;
         ItemStack result = ItemStack.EMPTY;
         int mask = duct.getStorageMask();
         for (Direction dir : Direction.values()) {
+            if (need <= 0) {
+                break;
+            }
             if ((mask & (1 << dir.ordinal())) == 0) {
                 continue;
             }
@@ -361,29 +488,16 @@ public final class DuctCapHelper {
             if (h == null) {
                 continue;
             }
-            for (int slot = 0; slot < h.getSlots(); slot++) {
-                ItemStack inSlot = h.getStackInSlot(slot);
-                if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
-                    continue;
-                }
-                int take = Math.min(need, inSlot.getCount());
-                if (take <= 0) {
-                    continue;
-                }
-                ItemStack ex = h.extractItem(slot, take, false);
-                if (ex.isEmpty()) {
-                    continue;
-                }
-                if (result.isEmpty()) {
-                    result = ex;
-                } else {
-                    result.grow(ex.getCount());
-                }
-                need -= ex.getCount();
-                if (need <= 0) {
-                    return result;
-                }
+            ItemStack fromFace = extractMatchingFromHandler(h, template, need);
+            if (fromFace.isEmpty()) {
+                continue;
             }
+            if (result.isEmpty()) {
+                result = fromFace;
+            } else {
+                result.setCount(result.getCount() + fromFace.getCount());
+            }
+            need -= fromFace.getCount();
         }
         return result;
     }
@@ -495,6 +609,9 @@ public final class DuctCapHelper {
         }
         ItemStack remaining = stack.copy();
         for (int i = 0; i < h.getSlots() && !remaining.isEmpty(); i++) {
+            if (!DuctHandlerSlotSemantics.canInsertIntoSlot(h, i, stack)) {
+                continue;
+            }
             remaining = h.insertItem(i, remaining, true);
         }
         return remaining;

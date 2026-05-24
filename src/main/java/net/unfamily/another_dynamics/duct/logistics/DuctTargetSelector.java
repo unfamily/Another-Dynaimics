@@ -148,6 +148,7 @@ public final class DuctTargetSelector {
                 extractorPos,
                 probe,
                 true,
+                false,
                 routing,
                 roundRobinCursor,
                 extractorFaceChannel,
@@ -173,9 +174,35 @@ public final class DuctTargetSelector {
                 extractorPos,
                 ItemStack.EMPTY,
                 false,
+                false,
                 routing,
                 roundRobinCursor,
                 extractorFaceChannel,
+                allowSelfDestination,
+                forbidSelfDestFace);
+    }
+
+    /**
+     * Stall relay / fluid-style inbound targets: includes {@link NodeMode#RETRIEVING} faces, not only filter-insertion
+     * destinations.
+     */
+    public static List<ExtractionCandidate> listInboundDeliveryCandidatesWithoutProbe(
+            ServerLevel level,
+            BlockPos sourcePos,
+            RoutingMode routing,
+            int roundRobinCursor,
+            int sourceFaceChannel,
+            boolean allowSelfDestination,
+            @Nullable Direction forbidSelfDestFace) {
+        return listExtractionDeliveryCandidatesInternal(
+                level,
+                sourcePos,
+                ItemStack.EMPTY,
+                false,
+                true,
+                routing,
+                roundRobinCursor,
+                sourceFaceChannel,
                 allowSelfDestination,
                 forbidSelfDestFace);
     }
@@ -185,6 +212,7 @@ public final class DuctTargetSelector {
             BlockPos extractorPos,
             ItemStack probe,
             boolean requireProbeInsertable,
+            boolean inboundDeliveryModes,
             RoutingMode routing,
             int roundRobinCursor,
             int extractorFaceChannel,
@@ -219,7 +247,11 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 NodeMode m = be.getFaceLanes(d).nodeMode;
-                if (m != NodeMode.NONE
+                if (inboundDeliveryModes) {
+                    if (!isNetworkInboundDeliveryMode(m)) {
+                        continue;
+                    }
+                } else if (m != NodeMode.NONE
                         && m != NodeMode.FILTERING_INSERTION
                         && m != NodeMode.EXTRACTION_FILTERING) {
                     continue;
@@ -322,10 +354,7 @@ public final class DuctTargetSelector {
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, retrieverFaceChannel)) {
                     continue;
                 }
-                Optional<ItemStack> sample =
-                        DuctCapHelper.findRetrievableProbeOnFace(
-                                level, p, d, be, retrieverPos, retrieverInventoryFace, retrieverBe);
-                if (sample.isEmpty()) {
+                if (!DuctCapHelper.donorMaySupplyRetriever(level, p, d, be)) {
                     continue;
                 }
                 OptionalLong dist =
@@ -409,10 +438,7 @@ public final class DuctTargetSelector {
                 if (!DuctChannelPolicy.sameChannel(node.channelLetter, retrieverFaceChannel)) {
                     continue;
                 }
-                Optional<ItemStack> sample =
-                        DuctCapHelper.findRetrievableProbeOnFace(
-                                level, p, d, be, retrieverPos, retrieverInventoryFace, retrieverBe);
-                if (sample.isEmpty()) {
+                if (!DuctCapHelper.donorMaySupplyRetriever(level, p, d, be)) {
                     continue;
                 }
                 OptionalLong dist =

@@ -6,6 +6,7 @@ import java.util.List;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -171,26 +172,25 @@ public final class DuctTransitVisual {
     }
 
     /**
-     * Visual progress 0 = start of leg, 1 = end (not yet delivered). Uses {@link #progressAnchorGameTime} and world
-     * time for smooth frames between packet updates; anchors differ per shipment when {@link #travelTicks} differs.
+     * Arc-length progress along the full path polyline (0 = outside source node, 1 = outside destination node).
      */
     public float progress01(@Nullable Level level, float partialTick) {
+        long key = DuctTransitMotion.legKey(journeyStartGameTime, totalTravelTicks, ductPath);
+        float elapsed = DuctTransitMotion.smoothElapsedTicks(key, totalTravelTicks, travelTicks, level, partialTick);
         if (totalTravelTicks <= 0) {
             return 1f;
         }
-        if (level != null) {
-            float elapsed = (level.getGameTime() + partialTick) - progressAnchorGameTime;
-            return Math.clamp(elapsed / (float) totalTravelTicks, 0f, 1f);
-        }
-        float predictedTravel = Math.max(0f, travelTicks - partialTick);
-        return Math.clamp((totalTravelTicks - predictedTravel) / (float) totalTravelTicks, 0f, 1f);
+        return Mth.clamp(elapsed / totalTravelTicks, 0f, 1f);
     }
 
-    public Vec3 positionAt(float progress01) {
-        Vec3[] pts = orthogonalPath.points();
-        if (pts.length == 0) {
+    public Vec3 positionAt(float ignoredProgress01) {
+        return positionAt(ignoredProgress01, null, 0f);
+    }
+
+    public Vec3 positionAt(float ignoredProgress01, @Nullable Level level, float partialTick) {
+        if (orthogonalPath.points().length == 0) {
             return Vec3.atCenterOf(ownerDuct);
         }
-        return orthogonalPath.positionAt(progress01);
+        return orthogonalPath.positionAt(progress01(level, partialTick));
     }
 }

@@ -113,14 +113,7 @@ public final class DuctOverflowRouting {
         if (remainder.isEmpty()) {
             return;
         }
-        ItemStack r =
-                s.legacyOmniFaces
-                        ? DuctCapHelper.insertIntoStorageFaces(level, s.refundDuct, donorBe, remainder.copy())
-                        : DuctCapHelper.insertIntoFace(level, s.refundDuct, s.sourceFace, remainder.copy());
-        if (!r.isEmpty()) {
-            donorBe.getOverflowBuffer().absorb(level, donorBe, r.copy());
-            r = ItemStack.EMPTY;
-        }
+        ItemStack r = donorBe.stallOntoFace(s.sourceFace, remainder.copy());
         if (!r.isEmpty()) {
             retrieverBe.getOverflowBuffer().absorb(level, retrieverBe, r.copy());
             r = ItemStack.EMPTY;
@@ -141,6 +134,7 @@ public final class DuctOverflowRouting {
         s.stack = ItemStack.EMPTY;
     }
 
+    /** Stall-only: never inserts into the attached source machine inventory. */
     private static ItemStack tryRefundInsertOnly(ServerLevel level, OutboundShipment s, ItemStack stack) {
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;
@@ -148,9 +142,7 @@ public final class DuctOverflowRouting {
         if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity duct)) {
             return stack.copy();
         }
-        return s.legacyOmniFaces
-                ? DuctCapHelper.insertIntoStorageFaces(level, s.refundDuct, duct, stack.copy())
-                : DuctCapHelper.insertIntoFace(level, s.refundDuct, s.sourceFace, stack.copy());
+        return duct.stallOntoFace(s.sourceFace, stack.copy());
     }
 
     /**
@@ -169,16 +161,27 @@ public final class DuctOverflowRouting {
         }
     }
 
+    public static void spawnItemAt(ServerLevel level, Vec3 pos, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        ItemStack left = stack.copy();
+        int max = Math.max(1, left.getMaxStackSize());
+        while (!left.isEmpty()) {
+            int n = Math.min(left.getCount(), max);
+            ItemStack part = left.copyWithCount(n);
+            left.shrink(n);
+            ItemEntity entity = new ItemEntity(level, pos.x, pos.y, pos.z, part);
+            entity.setPickUpDelay(10);
+            entity.setDeltaMovement(Vec3.ZERO);
+            level.addFreshEntity(entity);
+        }
+    }
+
     private static void lastResortSpawnItemAt(ServerLevel level, BlockPos near, ItemStack stack) {
         if (stack.isEmpty()) {
             return;
         }
-        double x = near.getX() + 0.5;
-        double y = near.getY() + 0.25;
-        double z = near.getZ() + 0.5;
-        ItemEntity entity = new ItemEntity(level, x, y, z, stack.copy());
-        entity.setPickUpDelay(10);
-        entity.setDeltaMovement(Vec3.ZERO);
-        level.addFreshEntity(entity);
+        spawnItemAt(level, new Vec3(near.getX() + 0.5, near.getY() + 0.25, near.getZ() + 0.5), stack);
     }
 }

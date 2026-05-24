@@ -14,7 +14,7 @@
         "deny_hybrid": { "add": 50 }
       },
       "speed": {
-        "mult": 0.2
+        "mult": 0.0
       },
       "rate": {
         "mult": 0.2
@@ -32,7 +32,7 @@
         "deny_hybrid": { "add": 50 }
       },
       "speed": {
-        "mult": 0.2
+        "mult": 0.0
       },
       "rate": {
         "mult": 0.2
@@ -50,7 +50,7 @@
         "deny_hybrid": { "add": 50 }
       },
       "speed": {
-        "mult": 0.2
+        "mult": 0.0
       },
       "rate": {
         "mult": 0.2

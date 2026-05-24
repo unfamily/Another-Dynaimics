@@ -3,6 +3,7 @@ package net.unfamily.another_dynamics.duct;
 import java.util.List;
 
 import net.minecraft.core.HolderLookup;
+import net.unfamily.another_dynamics.duct.logistics.DuctTankSlotSemantics;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
 /**
@@ -11,6 +12,23 @@ import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat
  */
 public final class DuctGasAllowLimitLogic {
     private DuctGasAllowLimitLogic() {}
+
+    public static boolean hasAnyPositiveAllowCapOnNonEmptyLine(List<String> allowLines, List<Integer> caps) {
+        if (allowLines == null || caps == null) {
+            return false;
+        }
+        for (int i = 0; i < allowLines.size(); i++) {
+            String line = allowLines.get(i);
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            int lim = i < caps.size() ? caps.get(i) : 0;
+            if (lim > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     public static int firstMatchingAllowLineIndex(
             List<String> allowLines, Object template, HolderLookup.Provider registries) {
@@ -31,6 +49,11 @@ public final class DuctGasAllowLimitLogic {
 
     public static long countMatchingInHandler(
             Object handler, String filterLine, HolderLookup.Provider registries) {
+        return countMatchingInHandler(handler, filterLine, registries, false);
+    }
+
+    public static long countMatchingInHandler(
+            Object handler, String filterLine, HolderLookup.Provider registries, boolean drainableTanksOnly) {
         if (handler == null || filterLine == null || filterLine.trim().isEmpty()) {
             return 0L;
         }
@@ -38,6 +61,9 @@ public final class DuctGasAllowLimitLogic {
         try {
             int tanks = (int) handler.getClass().getMethod("getChemicalTanks").invoke(handler);
             for (int t = 0; t < tanks; t++) {
+                if (drainableTanksOnly && !DuctTankSlotSemantics.canDrainFromGasTank(handler, t)) {
+                    continue;
+                }
                 Object inTank = handler.getClass().getMethod("getChemicalInTank", int.class).invoke(handler, t);
                 if (MekanismChemicalCompat.isEmptyStack(inTank)) {
                     continue;
@@ -67,6 +93,68 @@ public final class DuctGasAllowLimitLogic {
             }
         }
         return sum;
+    }
+
+    public static long maxAdditionalInsertForAllowLineAtIndex(
+            Object handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            Object template,
+            int lineIndex,
+            HolderLookup.Provider registries,
+            ServerPending pending) {
+        if (template == null || MekanismChemicalCompat.isEmptyStack(template) || handler == null) {
+            return Long.MAX_VALUE;
+        }
+        if (lineIndex < 0 || lineIndex >= allowLines.size()) {
+            return Long.MAX_VALUE;
+        }
+        String line = allowLines.get(lineIndex);
+        if (line == null || line.trim().isEmpty()) {
+            return Long.MAX_VALUE;
+        }
+        if (!DuctGasFilterMatcher.matchesAnyNonEmptyEntry(template, line, registries)) {
+            return 0L;
+        }
+        int lim = lineIndex < caps.size() ? caps.get(lineIndex) : 0;
+        if (lim <= 0) {
+            return Long.MAX_VALUE;
+        }
+        long current = countMatchingInHandler(handler, line, registries);
+        long pend = pending == null ? 0L : pending.pendingForLine(line, registries);
+        return Math.max(0L, (long) lim - (current + pend));
+    }
+
+    public static long maxAdditionalInsertAcrossAllowLines(
+            Object handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            Object template,
+            HolderLookup.Provider registries,
+            ServerPending pending) {
+        if (template == null || MekanismChemicalCompat.isEmptyStack(template) || handler == null || allowLines == null || caps == null) {
+            return Long.MAX_VALUE;
+        }
+        if (!hasAnyPositiveAllowCapOnNonEmptyLine(allowLines, caps)) {
+            return Long.MAX_VALUE;
+        }
+        for (int i = 0; i < allowLines.size(); i++) {
+            String line = allowLines.get(i);
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            if (!DuctGasFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+                continue;
+            }
+            long add = maxAdditionalInsertForAllowLineAtIndex(handler, allowLines, caps, template, i, registries, pending);
+            if (add == Long.MAX_VALUE) {
+                return Long.MAX_VALUE;
+            }
+            if (add > 0L) {
+                return add;
+            }
+        }
+        return 0L;
     }
 
     /** Max amount that may still be inserted without exceeding the allow-line {@code limit} (first matching line). */
@@ -113,7 +201,7 @@ public final class DuctGasAllowLimitLogic {
             return Long.MAX_VALUE;
         }
         String line = allowLines.get(idx);
-        long current = countMatchingInHandler(handler, line, registries);
+        long current = countMatchingInHandler(handler, line, registries, true);
         return Math.max(0L, current - (long) keep);
     }
 
@@ -142,7 +230,7 @@ public final class DuctGasAllowLimitLogic {
         if (keep <= 0) {
             return Long.MAX_VALUE;
         }
-        long current = countMatchingInHandler(handler, line, registries);
+        long current = countMatchingInHandler(handler, line, registries, true);
         return Math.max(0L, current - (long) keep);
     }
 

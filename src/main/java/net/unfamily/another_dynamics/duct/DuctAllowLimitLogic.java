@@ -21,6 +21,23 @@ public final class DuctAllowLimitLogic {
      * True when at least one non-empty allow line has a positive limit. If none, destination allow-limit logic should not
      * constrain inserts (cap 0 = unlimited per row).
      */
+    public static boolean hasAnyPositiveKeepOnNonEmptyLine(List<String> allowLines, List<Integer> keepCaps) {
+        if (allowLines == null || keepCaps == null) {
+            return false;
+        }
+        for (int i = 0; i < allowLines.size(); i++) {
+            String line = allowLines.get(i);
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            int keep = i < keepCaps.size() ? keepCaps.get(i) : 0;
+            if (keep > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean hasAnyPositiveAllowCapOnNonEmptyLine(List<String> allowLines, List<Integer> caps) {
         if (allowLines == null || caps == null) {
             return false;
@@ -155,6 +172,85 @@ public final class DuctAllowLimitLogic {
             }
         }
         return sum;
+    }
+
+    /**
+     * Walks allow lines in order; returns headroom on the first matching line that still accepts inserts. When line
+     * {@code i} is saturated, line {@code i+1} is evaluated if the template matches it.
+     */
+    public static int maxAdditionalInsertAcrossAllowLines(
+            IItemHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            ItemStack template,
+            @Nullable List<ItemStack> priorPending,
+            HolderLookup.Provider registries) {
+        if (template.isEmpty() || handler == null || allowLines == null || caps == null) {
+            return Integer.MAX_VALUE;
+        }
+        boolean anyPositiveCap = hasAnyPositiveAllowCapOnNonEmptyLine(allowLines, caps);
+        if (!anyPositiveCap) {
+            return Integer.MAX_VALUE;
+        }
+        for (int i = 0; i < allowLines.size(); i++) {
+            String line = allowLines.get(i);
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            if (!DuctFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+                continue;
+            }
+            int add =
+                    maxAdditionalInsertForAllowLineAtIndex(
+                            handler, allowLines, caps, template, i, priorPending, registries);
+            if (add == Integer.MAX_VALUE) {
+                return Integer.MAX_VALUE;
+            }
+            if (add > 0) {
+                return add;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Max extract while respecting keep caps, walking lines in order (first matching line with extractable headroom).
+     */
+    public static int maxExtractRespectingKeepAcrossLines(
+            IItemHandler handler,
+            List<String> allowLines,
+            List<Integer> keepCaps,
+            ItemStack template,
+            HolderLookup.Provider registries) {
+        if (template.isEmpty() || handler == null || allowLines == null || keepCaps == null) {
+            return Integer.MAX_VALUE;
+        }
+        if (!hasAnyPositiveKeepOnNonEmptyLine(allowLines, keepCaps)) {
+            return Integer.MAX_VALUE;
+        }
+        boolean matchedAnyLine = false;
+        for (int i = 0; i < allowLines.size(); i++) {
+            String line = allowLines.get(i);
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            if (!DuctFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+                continue;
+            }
+            matchedAnyLine = true;
+            int ex =
+                    maxExtractRespectingKeepAtIndex(handler, allowLines, keepCaps, template, i, registries);
+            if (ex == Integer.MAX_VALUE) {
+                return Integer.MAX_VALUE;
+            }
+            if (ex > 0) {
+                return ex;
+            }
+        }
+        if (!matchedAnyLine) {
+            return Integer.MAX_VALUE;
+        }
+        return 0;
     }
 
     /**

@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.unfamily.another_dynamics.duct.module.ModuleDefinition;
 import net.unfamily.another_dynamics.duct.module.ModuleDefinition.ItemQuantityModifiers;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
 
 /**
  * Gray module hints using {@code gui.another_dynamics.module.line.*}. Rate uses ×2/×3 style only (no ÷/≤). Quantity
@@ -26,8 +27,11 @@ public final class ModuleUpgradeTooltip {
     private static final String LINE_RATE = "gui.another_dynamics.module.line.rate";
     private static final String LINE_QUANTITY = "gui.another_dynamics.module.line.quantity";
     private static final String LINE_ENERGY = "gui.another_dynamics.module.line.energy";
+    private static final String LINE_HEAT = "gui.another_dynamics.module.line.heat";
     private static final String SUFFIX_ITEM = "gui.another_dynamics.module.suffix.item";
     private static final String SUFFIX_MB = "gui.another_dynamics.module.suffix.mb";
+    /** Shown when {@code speed.mult} is {@code 0} (zero edge travel ticks). */
+    private static final String VALUE_INSTANT = "gui.another_dynamics.module.value.instant";
 
     private ModuleUpgradeTooltip() {}
 
@@ -35,8 +39,7 @@ public final class ModuleUpgradeTooltip {
         ItemQuantityModifiers[] qty = {
             def.itemQuantityModifiers(),
             def.fluidQuantityModifiers(),
-            def.gasQuantityModifiers(),
-            def.heatQuantityModifiers()
+            def.gasQuantityModifiers()
         };
         // Energy/heat action interval is fixed in code; rate/speed module modifiers do not apply in logistics.
         ItemQuantityModifiers[] rate = {
@@ -55,6 +58,10 @@ public final class ModuleUpgradeTooltip {
         appendFilterAllowOnly(out, def);
         appendMergedSingle(out, LINE_RATE, rate, ModuleUpgradeTooltip::formatRateLane);
         appendMergedSingle(out, LINE_ENERGY, energy, ModuleUpgradeTooltip::formatEnergyLane);
+        if (MekanismHeatCompat.isHeatCapabilityAvailable()) {
+            ItemQuantityModifiers[] heat = {def.heatQuantityModifiers()};
+            appendMergedSingle(out, LINE_HEAT, heat, ModuleUpgradeTooltip::formatHeatLane);
+        }
         appendQuantityAtMostTwo(out, qty);
     }
 
@@ -184,7 +191,9 @@ public final class ModuleUpgradeTooltip {
             parts.add(String.format(Locale.ROOT, "%+d", m.addSum()));
         }
         double mult = m.multProduct();
-        if (Math.abs(mult - 1.0) > EPS) {
+        if (mult <= EPS) {
+            parts.add(instantSpeedLabel());
+        } else if (Math.abs(mult - 1.0) > EPS) {
             if (mult < 1.0 - EPS) {
                 parts.add("\u00d7" + reciprocalDisplay(mult));
             } else {
@@ -224,6 +233,15 @@ public final class ModuleUpgradeTooltip {
      * Energy extraction: ×N style multiplier (mult &lt; 1 shown as ×reciprocal). Optional cap / add after.
      */
     private static String formatEnergyLane(ItemQuantityModifiers m) {
+        return formatThroughputLane(m);
+    }
+
+    /** Mek heat per action (insulation); hidden when Mekanism heat capability is unavailable. */
+    private static String formatHeatLane(ItemQuantityModifiers m) {
+        return formatThroughputLane(m);
+    }
+
+    private static String formatThroughputLane(ItemQuantityModifiers m) {
         if (inactive(m)) {
             return null;
         }
@@ -275,7 +293,14 @@ public final class ModuleUpgradeTooltip {
         return Component.translatable(key, args).withStyle(ChatFormatting.GRAY);
     }
 
+    private static String instantSpeedLabel() {
+        return Component.translatable(VALUE_INSTANT).getString();
+    }
+
     private static int reciprocalDisplay(double mult) {
+        if (mult <= EPS) {
+            return 0;
+        }
         return (int) Math.round(1.0 / mult);
     }
 

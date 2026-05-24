@@ -74,6 +74,10 @@ public final class DuctFaceLanes {
      */
     public int energyTicksUntilAction;
     public int energyRoundRobinCursor;
+    /** RF routing for this face (including {@link NodeMode#NONE} pass-through from external push). */
+    public RoutingMode energyRoutingMode = RoutingMode.NEAREST_FIRST;
+    public RoutingMode energyRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
+    public RoutingMode energyRoutingModeRetriever = RoutingMode.NEAREST_FIRST;
     /** Per-face FE buffer for external connectors (e.g. Flux Networks). */
     public int energyBufferFe;
     /** Last game time an energy ray was sent for this face (visual throttle; not persisted). */
@@ -82,6 +86,9 @@ public final class DuctFaceLanes {
     /** Mek heat logistics throttle / round-robin (same rationale as {@link #energyTicksUntilAction}). */
     public int heatTicksUntilAction;
     public int heatRoundRobinCursor;
+    public RoutingMode heatRoutingMode = RoutingMode.NEAREST_FIRST;
+    public RoutingMode heatRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
+    public RoutingMode heatRoutingModeRetriever = RoutingMode.NEAREST_FIRST;
 
     public DuctFaceLanes(DuctBlockEntity duct, Direction face, int moduleSlotCount) {
         this.duct = duct;
@@ -182,8 +189,14 @@ public final class DuctFaceLanes {
         eh.putInt("EnergyTicks", energyTicksUntilAction);
         eh.putInt("EnergyRr", energyRoundRobinCursor);
         eh.putInt("EnergyBuf", energyBufferFe);
+        eh.putByte("EnergyRt", (byte) energyRoutingMode.ordinal());
+        eh.putByte("EnergyRtEx", (byte) energyRoutingModeExtractor.ordinal());
+        eh.putByte("EnergyRtRe", (byte) energyRoutingModeRetriever.ordinal());
         eh.putInt("HeatTicks", heatTicksUntilAction);
         eh.putInt("HeatRr", heatRoundRobinCursor);
+        eh.putByte("HeatRt", (byte) heatRoutingMode.ordinal());
+        eh.putByte("HeatRtEx", (byte) heatRoutingModeExtractor.ordinal());
+        eh.putByte("HeatRtRe", (byte) heatRoutingModeRetriever.ordinal());
         tag.put(NBT_ENERGY_HEAT, eh);
     }
 
@@ -246,14 +259,38 @@ public final class DuctFaceLanes {
             energyTicksUntilAction = eh.getInt("EnergyTicks");
             energyRoundRobinCursor = eh.getInt("EnergyRr");
             energyBufferFe = eh.getInt("EnergyBuf");
+            if (eh.contains("EnergyRt", Tag.TAG_BYTE)) {
+                energyRoutingMode = RoutingMode.fromOrdinal(eh.getByte("EnergyRt"));
+                energyRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("EnergyRtEx"));
+                energyRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("EnergyRtRe"));
+            } else {
+                energyRoutingMode = item.routingMode;
+                energyRoutingModeExtractor = item.routingModeExtractor;
+                energyRoutingModeRetriever = item.routingModeRetriever;
+            }
             heatTicksUntilAction = eh.getInt("HeatTicks");
             heatRoundRobinCursor = eh.getInt("HeatRr");
+            if (eh.contains("HeatRt", Tag.TAG_BYTE)) {
+                heatRoutingMode = RoutingMode.fromOrdinal(eh.getByte("HeatRt"));
+                heatRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("HeatRtEx"));
+                heatRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("HeatRtRe"));
+            } else {
+                heatRoutingMode = item.routingMode;
+                heatRoutingModeExtractor = item.routingModeExtractor;
+                heatRoutingModeRetriever = item.routingModeRetriever;
+            }
         } else {
             energyTicksUntilAction = 0;
             energyRoundRobinCursor = 0;
             energyBufferFe = 0;
+            energyRoutingMode = item.routingMode;
+            energyRoutingModeExtractor = item.routingModeExtractor;
+            energyRoutingModeRetriever = item.routingModeRetriever;
             heatTicksUntilAction = 0;
             heatRoundRobinCursor = 0;
+            heatRoutingMode = item.routingMode;
+            heatRoutingModeExtractor = item.routingModeExtractor;
+            heatRoutingModeRetriever = item.routingModeRetriever;
         }
     }
 
@@ -311,8 +348,14 @@ public final class DuctFaceLanes {
         energyTicksUntilAction = 0;
         energyRoundRobinCursor = 0;
         energyBufferFe = 0;
+        energyRoutingMode = RoutingMode.NEAREST_FIRST;
+        energyRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
+        energyRoutingModeRetriever = RoutingMode.NEAREST_FIRST;
         heatTicksUntilAction = 0;
         heatRoundRobinCursor = 0;
+        heatRoutingMode = RoutingMode.NEAREST_FIRST;
+        heatRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
+        heatRoutingModeRetriever = RoutingMode.NEAREST_FIRST;
         transportEnabledMask = -1;
     }
 

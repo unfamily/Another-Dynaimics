@@ -157,6 +157,9 @@ public final class MekanismChemicalCompat {
             int tanks = (int) handler.getClass().getMethod("getChemicalTanks").invoke(handler);
             Object actionSim = actionSimulate();
             for (int i = 0; i < tanks; i++) {
+                if (!net.unfamily.another_dynamics.duct.logistics.DuctTankSlotSemantics.canDrainFromGasTank(handler, i)) {
+                    continue;
+                }
                 Object inTank = handler.getClass().getMethod("getChemicalInTank", int.class).invoke(handler, i);
                 if (isEmptyStack(inTank)) {
                     continue;
@@ -179,15 +182,102 @@ public final class MekanismChemicalCompat {
         return empty;
     }
 
-    /** Simulates insertion and returns inserted amount. */
+    public static boolean canSimulateDrainTank(Object handler, int tank) {
+        if (handler == null) {
+            return false;
+        }
+        try {
+            Object inTank = handler.getClass().getMethod("getChemicalInTank", int.class).invoke(handler, tank);
+            if (isEmptyStack(inTank)) {
+                return false;
+            }
+            Object actionSim = actionSimulate();
+            Object extracted =
+                    handler.getClass()
+                            .getMethod("extractChemical", int.class, long.class, actionSim.getClass())
+                            .invoke(handler, tank, 1L, actionSim);
+            return !isEmptyStack(extracted) && getAmount(extracted) > 0;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public static boolean canSimulateInsertTank(Object handler, int tank, Object template) {
+        if (handler == null || template == null || isEmptyStack(template)) {
+            return false;
+        }
+        try {
+            Object probe = copyWithAmount(template, 1L);
+            Object actionSim = actionSimulate();
+            Object left =
+                    handler.getClass()
+                            .getMethod("insertChemical", int.class, probe.getClass(), actionSim.getClass())
+                            .invoke(handler, tank, probe, actionSim);
+            return isEmptyStack(left) || getAmount(left) < 1L;
+        } catch (Throwable ignored) {
+            try {
+                return simulateInsert(handler, template) > 0L;
+            } catch (Throwable ignored2) {
+                return false;
+            }
+        }
+    }
+
+    /** Simulate insert into input/both tanks only. */
     public static long simulateInsert(Object handler, Object stack) {
         if (handler == null || stack == null || isEmptyStack(stack)) {
             return 0L;
         }
         try {
+            int tanks = (int) handler.getClass().getMethod("getChemicalTanks").invoke(handler);
+            if (tanks <= 1) {
+                return simulateInsertGlobal(handler, stack);
+            }
+            long sum = 0L;
+            long need = getAmount(stack);
+            for (int t = 0; t < tanks && need > 0; t++) {
+                if (!net.unfamily.another_dynamics.duct.logistics.DuctTankSlotSemantics.canFillGasTank(handler, t, stack)) {
+                    continue;
+                }
+                Object chunk = copyWithAmount(stack, need);
+                long ins = simulateInsertTankAmount(handler, t, chunk);
+                sum += ins;
+                need -= ins;
+            }
+            return sum;
+        } catch (Throwable ignored) {
+            return simulateInsertGlobal(handler, stack);
+        }
+    }
+
+    private static long simulateInsertTankAmount(Object handler, int tank, Object stack) {
+        if (handler == null || stack == null || isEmptyStack(stack)) {
+            return 0L;
+        }
+        try {
             long before = getAmount(stack);
-            Object left = handler.getClass().getMethod("insertChemical", stack.getClass(), actionSimulate().getClass())
-                    .invoke(handler, stack, actionSimulate());
+            Object actionSim = actionSimulate();
+            Object left =
+                    handler.getClass()
+                            .getMethod("insertChemical", int.class, stack.getClass(), actionSim.getClass())
+                            .invoke(handler, tank, stack, actionSim);
+            long after = isEmptyStack(left) ? 0L : getAmount(left);
+            return Math.max(0L, before - after);
+        } catch (Throwable ignored) {
+            return 0L;
+        }
+    }
+
+    private static long simulateInsertGlobal(Object handler, Object stack) {
+        if (handler == null || stack == null || isEmptyStack(stack)) {
+            return 0L;
+        }
+        try {
+            long before = getAmount(stack);
+            Object left =
+                    handler.getClass()
+                            .getMethod("insertChemical", stack.getClass(), actionSimulate().getClass())
+                            .invoke(handler, stack, actionSimulate());
             long after = isEmptyStack(left) ? 0L : getAmount(left);
             return Math.max(0L, before - after);
         } catch (Throwable ignored) {

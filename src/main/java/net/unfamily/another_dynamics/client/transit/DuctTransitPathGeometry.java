@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 
 import org.jetbrains.annotations.Nullable;
@@ -30,7 +31,53 @@ public final class DuctTransitPathGeometry {
         Vec3[] keys = buildPathKeyPoints(pathList, ownerFallback, sourceAttachFace, destAttachFace);
         Vec3[] expanded = expandKeypointsToOrthogonalPolyline(keys);
         double[] arcAtVertex = cumulativeArcLengthAtVertices(expanded);
-        return new OrthogonalTransitPath(expanded, arcAtVertex);
+        float[] ductHopArc01 = buildDuctHopArcProgress(pathList, expanded, arcAtVertex);
+        return new OrthogonalTransitPath(expanded, arcAtVertex, ductHopArc01);
+    }
+
+    /**
+     * Arc-length progress (0–1) at each duct block center so motion can advance one hop per {@code edgeTicks} without
+     * skipping corners on long orthogonal segments.
+     */
+    private static float[] buildDuctHopArcProgress(List<BlockPos> pathList, Vec3[] polyline, double[] arc) {
+        if (pathList == null || pathList.isEmpty()) {
+            return new float[0];
+        }
+        float[] out = new float[pathList.size()];
+        double total = arc.length > 0 ? arc[arc.length - 1] : 0;
+        if (total <= 1e-9) {
+            return out;
+        }
+        for (int i = 0; i < pathList.size(); i++) {
+            out[i] = (float) (arcProgressAtPoint(polyline, arc, Vec3.atCenterOf(pathList.get(i))) / total);
+        }
+        return out;
+    }
+
+    private static double arcProgressAtPoint(Vec3[] points, double[] arc, Vec3 target) {
+        double bestArc = 0;
+        double bestDistSq = Double.MAX_VALUE;
+        for (int i = 1; i < points.length; i++) {
+            Vec3 a = points[i - 1];
+            Vec3 b = points[i];
+            double segLen = arc[i] - arc[i - 1];
+            if (segLen <= 1e-9) {
+                continue;
+            }
+            Vec3 ab = b.subtract(a);
+            double abLenSq = ab.lengthSqr();
+            if (abLenSq < 1e-12) {
+                continue;
+            }
+            double t = Mth.clamp(target.subtract(a).dot(ab) / abLenSq, 0, 1);
+            Vec3 proj = a.add(ab.scale(t));
+            double distSq = target.distanceToSqr(proj);
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                bestArc = arc[i - 1] + t * segLen;
+            }
+        }
+        return bestArc;
     }
 
     /**
@@ -193,10 +240,12 @@ public final class DuctTransitPathGeometry {
     public static final class OrthogonalTransitPath {
         private final Vec3[] points;
         private final double[] arcAtVertex;
+        private final float[] ductHopArc01;
 
-        public OrthogonalTransitPath(Vec3[] points, double[] arcAtVertex) {
+        public OrthogonalTransitPath(Vec3[] points, double[] arcAtVertex, float[] ductHopArc01) {
             this.points = points;
             this.arcAtVertex = arcAtVertex;
+            this.ductHopArc01 = ductHopArc01 != null ? ductHopArc01 : new float[0];
         }
 
         public Vec3[] points() {
@@ -209,6 +258,32 @@ public final class DuctTransitPathGeometry {
 
         public Vec3 positionAt(float progress01) {
             return DuctTransitPathGeometry.positionAlongOrthogonalPolyline(points, arcAtVertex, progress01);
+        }
+
+        /**
+         * Position by duct-hop index: {@code 0} = outside source attach, {@code n} = outside destination attach,
+         * integer hops land on duct block centers (matches {@code edgeTicks} per duct on the server).
+         */
+        public Vec3 positionAtDuctHops(float hops) {
+            if (ductHopArc01.length == 0) {
+                return positionAt(Mth.clamp(hops, 0f, 1f));
+            }
+            int n = ductHopArc01.length;
+            hops = Mth.clamp(hops, 0f, n);
+            int seg = (int) Math.floor(hops);
+            float t = hops - seg;
+            float arcFrom;
+            float arcTo;
+            if (seg <= 0) {
+                arcFrom = 0f;
+                arcTo = ductHopArc01[0];
+            } else if (seg >= n) {
+                return positionAt(1f);
+            } else {
+                arcFrom = ductHopArc01[seg - 1];
+                arcTo = seg < n ? ductHopArc01[seg] : 1f;
+            }
+            return positionAt(Mth.lerp(t, arcFrom, arcTo));
         }
     }
 }

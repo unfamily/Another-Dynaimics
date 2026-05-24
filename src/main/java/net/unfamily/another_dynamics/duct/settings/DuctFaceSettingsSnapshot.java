@@ -89,8 +89,6 @@ public final class DuctFaceSettingsSnapshot {
         shared.putInt("TransportMask", lanes.transportEnabledMask);
         root.put(KEY_SHARED, shared);
 
-        root.put(KEY_MODULES, lanes.moduleSlots.serializeNBT(registries));
-
         CompoundTag itemTag = new CompoundTag();
         lanes.item.saveSettings(registries, itemTag);
         root.put(KEY_ITEM, itemTag);
@@ -122,10 +120,6 @@ public final class DuctFaceSettingsSnapshot {
 
         if (data.contains(KEY_SHARED, Tag.TAG_COMPOUND)) {
             applySharedSettings(lanes, data.getCompound(KEY_SHARED), kinds);
-        }
-
-        if (data.contains(KEY_MODULES, Tag.TAG_COMPOUND)) {
-            applyModules(lanes, data.getCompound(KEY_MODULES), registries);
         }
 
         if (data.contains(KEY_ITEM, Tag.TAG_COMPOUND) && kinds.contains(DuctTransportKind.ITEM)) {

@@ -10,6 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
 
@@ -28,9 +29,48 @@ public final class DuctTransitClientState {
         if (!tag.contains("TransitV1", Tag.TAG_LIST)) {
             return;
         }
-        List<DuctTransitVisual> visuals =
+        List<DuctTransitVisual> incoming =
                 DuctTransitVisual.listFromUpdateTag(ductPos, tag, registries, clientWorldGameTime);
-        applyVisuals(ductPos, visuals);
+        BlockPos key = ductPos.immutable();
+        List<DuctTransitVisual> prev = BY_DUCT.get(key);
+        applyVisuals(ductPos, prev == null ? incoming : mergeTransitVisuals(prev, incoming));
+    }
+
+    /**
+     * Keeps motion monotonic when packets arrive out of order.
+     *
+     * <p>Our visuals derive position from {@code travelTicks}. If a late packet arrives with a larger
+     * {@code travelTicks} (older state), the ghost would snap backwards. We prevent that by keeping the prior visual
+     * instance for the matching leg when it is already further along.
+     */
+    private static List<DuctTransitVisual> mergeTransitVisuals(
+            List<DuctTransitVisual> prev, List<DuctTransitVisual> incoming) {
+        if (incoming.isEmpty()) {
+            return incoming;
+        }
+        ArrayList<DuctTransitVisual> out = new ArrayList<>(incoming.size());
+        for (DuctTransitVisual nv : incoming) {
+            DuctTransitVisual pv = findMatchingLeg(prev, nv);
+            if (pv != null && pv.travelTicks <= nv.travelTicks) {
+                out.add(pv);
+            } else {
+                out.add(nv);
+            }
+        }
+        return Collections.unmodifiableList(out);
+    }
+
+    private static DuctTransitVisual findMatchingLeg(List<DuctTransitVisual> list, DuctTransitVisual probe) {
+        for (DuctTransitVisual v : list) {
+            if (v.journeyStartGameTime == probe.journeyStartGameTime
+                    && v.totalTravelTicks == probe.totalTravelTicks
+                    && v.edgeTicks == probe.edgeTicks
+                    && v.ductPath.equals(probe.ductPath)
+                    && ItemStack.isSameItemSameComponents(v.stack, probe.stack)) {
+                return v;
+            }
+        }
+        return null;
     }
 
     /** After {@code DuctOutbound} loads on the client (chunk data has no TransitV1 list). */
@@ -57,10 +97,21 @@ public final class DuctTransitClientState {
     private static void applyVisuals(BlockPos ductPos, List<DuctTransitVisual> visuals) {
         BlockPos key = ductPos.immutable();
         if (visuals.isEmpty()) {
-            BY_DUCT.remove(key);
+            List<DuctTransitVisual> old = BY_DUCT.remove(key);
+            if (old != null) {
+                clearMotion(old);
+            }
             return;
         }
-        BY_DUCT.put(key, visuals);
+        List<DuctTransitVisual> prev = BY_DUCT.get(key);
+        BY_DUCT.put(key, prev == null ? visuals : mergeTransitVisuals(prev, visuals));
+    }
+
+    private static void clearMotion(List<DuctTransitVisual> visuals) {
+        for (DuctTransitVisual v : visuals) {
+            DuctTransitMotion.removeLeg(
+                    DuctTransitMotion.legKey(v.journeyStartGameTime, v.totalTravelTicks, v.ductPath));
+        }
     }
 
     /** Active visuals for the duct block that owns {@code OutboundShipment} state (source of sync packet). */

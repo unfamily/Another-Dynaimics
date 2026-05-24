@@ -21,10 +21,10 @@ import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
 import java.util.Optional;
 
 /**
- * Pending item move: {@link #stack} is the planned template and count. Items stay in the source storage until
- * {@code finish*} runs (extract-at-delivery with {@code n = min(planned, source, dest)}). When
- * {@link #sourceExtractCommitted} is true (NBT {@code SrcXfr} from older worlds), items were removed at schedule time
- * and the legacy committed path applies until those tasks complete.
+ * Pending item move: {@link #stack} is the payload and count. Modern ducts set {@link #sourceExtractCommitted} at
+ * schedule time (same as fluid/gas drain-at-schedule). When {@code sourceExtractCommitted} is false, items stay in
+ * source storage until {@code finish*} runs (extract-at-delivery). Legacy saves may still use committed or
+ * {@link #legacyPhysicalBuffer} paths.
  * {@link #sourceFace} / {@link #destFace} select which attached inventories on source/dest ducts are used.
  * {@link #transportChannel} is {@link net.unfamily.another_dynamics.duct.DuctFaceNode} letter (1–26) for both ends;
  * {@link DuctChannelPolicy#LEGACY_WILDCARD}

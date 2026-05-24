@@ -68,76 +68,20 @@ public final class DuctHeatServerTick {
             int rate = DuctModuleEffects.effectiveHeatActionRateTicks(be, dir, spec);
             lanes.heatTicksUntilAction = rate - 1;
             if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
-                RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
+                RoutingMode rm = be.heatRoutingForFace(dir, true);
                 tryExtractPush(level, be, dir, spec, rm, node);
             } else if (lanes.nodeMode == NodeMode.RETRIEVING) {
-                RoutingMode rm = lanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
+                RoutingMode rm = be.heatRoutingForFace(dir, false);
                 tryRetrievePull(level, be, dir, spec, rm, node);
             } else if (lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
-                RoutingMode rmR = lanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
-                RoutingMode rmE = lanes.nodeMode.isHybrid() ? node.routingModeExtractor : node.routingMode;
+                RoutingMode rmR = be.heatRoutingForFace(dir, false);
+                RoutingMode rmE = be.heatRoutingForFace(dir, true);
                 tryRetrievePull(level, be, dir, spec, rmR, node);
                 tryExtractPush(level, be, dir, spec, rmE, node);
             } else if (lanes.nodeMode == NodeMode.NONE || lanes.nodeMode == NodeMode.FILTERING_INSERTION) {
-                tryLocalHeatEquilibrium(level, be, dir, spec);
-            }
-        }
-    }
-
-    /** Direct heat push/pull toward the adjacent handler when this face accepts inserts. */
-    private static void tryLocalHeatEquilibrium(
-            ServerLevel level, DuctBlockEntity be, Direction face, DuctHeatTransportSpec spec) {
-        Object local = getHeatOnFace(level, be.getBlockPos(), face);
-        if (local == null) {
-            return;
-        }
-        BlockPos srcPos = be.getBlockPos();
-        java.util.Set<BlockPos> ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.HEAT);
-        for (BlockPos destPos : ducts) {
-            if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
-                continue;
-            }
-            int dsm = destBe.getStorageMask();
-            for (Direction df : Direction.values()) {
-                if ((dsm & (1 << df.ordinal())) == 0) {
-                    continue;
+                if (node.eligibilityMode.isRetrievable()) {
+                    tryExtractPush(level, be, dir, spec, be.heatRoutingForFace(dir, true), node);
                 }
-                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, face, destPos, df, false)) {
-                    continue;
-                }
-                if (!destBe.isTransportKindEnabled(df, DuctTransportKind.HEAT)) {
-                    continue;
-                }
-                DuctFaceLanes destLanes = destBe.getFaceLanes(df);
-                if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
-                    continue;
-                }
-                NodeMode dm = destLanes.nodeMode;
-                if (dm != NodeMode.NONE && dm != NodeMode.FILTERING_INSERTION) {
-                    continue;
-                }
-                if (!destBe.getFaceNode(df).eligibilityMode.isInsertable()) {
-                    continue;
-                }
-                Object dest = getHeatOnFace(level, destPos, df);
-                if (dest == null) {
-                    continue;
-                }
-                double tLocal = MekanismHeatCompat.getTotalTemperature(local);
-                double tDst = MekanismHeatCompat.getTotalTemperature(dest);
-                if (tLocal <= tDst + HEAT_EPS) {
-                    continue;
-                }
-                double cap = DuctModuleEffects.effectiveHeatExtractPerAction(be, face, spec);
-                double qEq = equilibriumTransfer(local, dest);
-                double q = Math.min(cap, qEq);
-                if (q <= HEAT_EPS) {
-                    continue;
-                }
-                MekanismHeatCompat.handleHeat(local, -q);
-                MekanismHeatCompat.handleHeat(dest, q);
-                sendHeatRayIfVisible(level, be.getBlockPos(), destPos, Math.max(tLocal, tDst), face, df);
-                return;
             }
         }
     }
@@ -236,30 +180,54 @@ public final class DuctHeatServerTick {
                 tier.add(c);
             }
         }
-        int rr = sourceLanes.heatRoundRobinCursor;
-        HeatDestCandidate pick = pickWithinTier(level, tier, routing, rr);
-        if (pick == null) {
+        int[] rr = new int[] {sourceLanes.heatRoundRobinCursor};
+        if (!dispatchHeatExtractToTier(level, sourceBe, sourceFace, spec, src, srcPos, tier, routing, rr)) {
             return;
         }
-        if (routing == RoutingMode.ROUND_ROBIN) {
-            sourceLanes.heatRoundRobinCursor = rr + 1;
-            sourceBe.setChanged();
-        }
+        sourceLanes.heatRoundRobinCursor = rr[0];
+        sourceBe.setChanged();
+    }
 
+    private static boolean dispatchHeatExtractToTier(
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            DuctHeatTransportSpec spec,
+            Object src,
+            BlockPos srcPos,
+            ArrayList<HeatDestCandidate> tier,
+            RoutingMode routing,
+            int[] roundRobinState) {
+        HeatDestCandidate pick = pickWithinTier(level, tier, routing, roundRobinState);
+        if (pick == null) {
+            return false;
+        }
+        return tryHeatExtractToCandidate(level, sourceBe, sourceFace, spec, src, srcPos, pick);
+    }
+
+    private static boolean tryHeatExtractToCandidate(
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            DuctHeatTransportSpec spec,
+            Object src,
+            BlockPos srcPos,
+            HeatDestCandidate pick) {
         Object dest = getHeatOnFace(level, pick.ductPos(), pick.face());
         if (dest == null) {
-            return;
+            return false;
         }
         double cap = DuctModuleEffects.effectiveHeatExtractPerAction(sourceBe, sourceFace, spec);
         double qEq = equilibriumTransfer(src, dest);
         double q = Math.min(cap, qEq);
         if (q <= HEAT_EPS) {
-            return;
+            return false;
         }
         double tHot = Math.max(MekanismHeatCompat.getTotalTemperature(src), MekanismHeatCompat.getTotalTemperature(dest));
         MekanismHeatCompat.handleHeat(src, -q);
         MekanismHeatCompat.handleHeat(dest, q);
         sendHeatRayIfVisible(level, srcPos, pick.ductPos(), tHot, sourceFace, pick.face());
+        return true;
     }
 
     private static void tryRetrievePull(
@@ -335,25 +303,54 @@ public final class DuctHeatServerTick {
                 tier.add(c);
             }
         }
-        HeatDonorCandidate pick = pickDonorWithinTier(level, tier, routing, retrieverLanes.heatRoundRobinCursor);
-        if (pick == null) {
+        int[] rr = new int[] {retrieverLanes.heatRoundRobinCursor};
+        if (!dispatchHeatRetrieveFromTier(level, retrieverBe, retrieverFace, spec, dest, retrieverPos, tier, routing, rr)) {
             return;
         }
+        retrieverLanes.heatRoundRobinCursor = rr[0];
+        retrieverBe.setChanged();
+    }
 
+    private static boolean dispatchHeatRetrieveFromTier(
+            ServerLevel level,
+            DuctBlockEntity retrieverBe,
+            Direction retrieverFace,
+            DuctHeatTransportSpec spec,
+            Object dest,
+            BlockPos retrieverPos,
+            ArrayList<HeatDonorCandidate> tier,
+            RoutingMode routing,
+            int[] roundRobinState) {
+        HeatDonorCandidate pick = pickDonorWithinTier(level, tier, routing, roundRobinState);
+        if (pick == null) {
+            return false;
+        }
+        return tryHeatRetrieveFromDonor(level, retrieverBe, retrieverFace, spec, dest, retrieverPos, pick);
+    }
+
+    private static boolean tryHeatRetrieveFromDonor(
+            ServerLevel level,
+            DuctBlockEntity retrieverBe,
+            Direction retrieverFace,
+            DuctHeatTransportSpec spec,
+            Object dest,
+            BlockPos retrieverPos,
+            HeatDonorCandidate pick) {
         Object src = getHeatOnFace(level, pick.ductPos(), pick.face());
         if (src == null) {
-            return;
+            return false;
         }
         double cap = DuctModuleEffects.effectiveHeatExtractPerAction(retrieverBe, retrieverFace, spec);
         double qEq = equilibriumTransfer(src, dest);
         double q = Math.min(cap, qEq);
         if (q <= HEAT_EPS) {
-            return;
+            return false;
         }
         double tHot = Math.max(MekanismHeatCompat.getTotalTemperature(src), MekanismHeatCompat.getTotalTemperature(dest));
         MekanismHeatCompat.handleHeat(src, -q);
         MekanismHeatCompat.handleHeat(dest, q);
         sendHeatRayIfVisible(level, pick.ductPos(), retrieverPos, tHot, pick.face(), retrieverFace);
+        return true;
     }
 
     private static double equilibriumTransfer(Object src, Object dst) {
@@ -409,12 +406,36 @@ public final class DuctHeatServerTick {
     }
 
     private static @Nullable HeatDestCandidate pickWithinTier(
-            ServerLevel level, List<HeatDestCandidate> tier, RoutingMode routing, int roundRobinCursor) {
+            ServerLevel level, List<HeatDestCandidate> tier, RoutingMode routing, int[] roundRobinState) {
         if (tier == null || tier.isEmpty()) {
             return null;
         }
-        orderDestTier(tier, routing, level, roundRobinCursor);
-        return tier.getFirst();
+        return switch (routing) {
+            case NEAREST_FIRST -> tier.stream().min(Comparator.comparingLong(HeatDestCandidate::dist)).orElse(null);
+            case FARTHEST_FIRST -> tier.stream().max(Comparator.comparingLong(HeatDestCandidate::dist)).orElse(null);
+            case MIDDLEST_FIRST -> {
+                double sum = 0;
+                for (HeatDestCandidate c : tier) {
+                    sum += c.dist();
+                }
+                double mean = sum / tier.size();
+                yield tier.stream()
+                        .min(
+                                Comparator.comparingDouble((HeatDestCandidate c) -> Math.abs(c.dist() - mean))
+                                        .thenComparingLong(c -> c.ductPos().asLong())
+                                        .thenComparingInt(c -> c.face().ordinal()))
+                        .orElse(null);
+            }
+            case ROUND_ROBIN -> {
+                ArrayList<HeatDestCandidate> ordered = new ArrayList<>(tier);
+                ordered.sort(
+                        Comparator.comparingLong((HeatDestCandidate c) -> c.ductPos().asLong())
+                                .thenComparingInt(c -> c.face().ordinal()));
+                int i = Math.floorMod(roundRobinState[0]++, ordered.size());
+                yield ordered.get(i);
+            }
+            case RANDOM -> tier.get(level.random.nextInt(tier.size()));
+        };
     }
 
     private static void orderDestTier(List<HeatDestCandidate> tier, RoutingMode routing, ServerLevel level, int roundRobinCursor) {
@@ -466,12 +487,36 @@ public final class DuctHeatServerTick {
     }
 
     private static @Nullable HeatDonorCandidate pickDonorWithinTier(
-            ServerLevel level, List<HeatDonorCandidate> tier, RoutingMode routing, int roundRobinCursor) {
+            ServerLevel level, List<HeatDonorCandidate> tier, RoutingMode routing, int[] roundRobinState) {
         if (tier == null || tier.isEmpty()) {
             return null;
         }
-        orderDonorTier(tier, routing, level, roundRobinCursor);
-        return tier.getFirst();
+        return switch (routing) {
+            case NEAREST_FIRST -> tier.stream().min(Comparator.comparingLong(HeatDonorCandidate::dist)).orElse(null);
+            case FARTHEST_FIRST -> tier.stream().max(Comparator.comparingLong(HeatDonorCandidate::dist)).orElse(null);
+            case MIDDLEST_FIRST -> {
+                double sum = 0;
+                for (HeatDonorCandidate c : tier) {
+                    sum += c.dist();
+                }
+                double mean = sum / tier.size();
+                yield tier.stream()
+                        .min(
+                                Comparator.comparingDouble((HeatDonorCandidate c) -> Math.abs(c.dist() - mean))
+                                        .thenComparingLong(c -> c.ductPos().asLong())
+                                        .thenComparingInt(c -> c.face().ordinal()))
+                        .orElse(null);
+            }
+            case ROUND_ROBIN -> {
+                ArrayList<HeatDonorCandidate> ordered = new ArrayList<>(tier);
+                ordered.sort(
+                        Comparator.comparingLong((HeatDonorCandidate c) -> c.ductPos().asLong())
+                                .thenComparingInt(c -> c.face().ordinal()));
+                int i = Math.floorMod(roundRobinState[0]++, ordered.size());
+                yield ordered.get(i);
+            }
+            case RANDOM -> tier.get(level.random.nextInt(tier.size()));
+        };
     }
 
     private static void orderDonorTier(List<HeatDonorCandidate> tier, RoutingMode routing, ServerLevel level, int roundRobinCursor) {
