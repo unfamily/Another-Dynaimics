@@ -1,0 +1,7 @@
+{
+  "loader": "another_dynamics:project_duct",
+  "textures": {
+    "particle": "another_dynamics:block/duct/project_duct"
+  },
+  "render_type": "cutout_mipped"
+}

@@ -182,6 +182,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private int clientPackedNodeIcons = defaultPackedNodeIcons();
     /** Client-only cached stall mask from server (bit per face). */
     private int clientStallMask = 0;
+    /** Server: network opaque for all players on this duct block. */
+    private boolean networkOpaqueRendering;
+    /** Client copy from update packet. */
+    private boolean clientNetworkOpaque;
 
     /**
      * Server-only: {@link AbstractDuctBlockEntity#refreshFromWorld()} does not send block updates when only neighbor
@@ -554,6 +558,25 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return ductDefinition().map(DuctDefinition::alwaysOpaqueRendering).orElse(false);
     }
 
+    public boolean isNetworkOpaqueRendering() {
+        return level != null && level.isClientSide ? clientNetworkOpaque : networkOpaqueRendering;
+    }
+
+    public void setNetworkOpaqueRendering(boolean opaque) {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+        if (networkOpaqueRendering == opaque) {
+            return;
+        }
+        networkOpaqueRendering = opaque;
+        setChanged();
+        if (level != null) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+        requestModelDataUpdate();
+    }
+
     @Override
     protected void applyImplicitComponents(BlockEntity.DataComponentInput input) {
         super.applyImplicitComponents(input);
@@ -868,6 +891,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     protected void onAfterConnectionRefresh(boolean masksChanged) {
         if (level != null && !level.isClientSide()) {
             enforcePipeSegmentBehavior();
+            if (masksChanged && level instanceof ServerLevel serverLevel) {
+                DuctNetworkOpaquePropagation.onStructuralChange(serverLevel, worldPosition);
+            }
         }
     }
 
@@ -4782,6 +4808,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         CompoundTag ov = new CompoundTag();
         overflowBuffer.save(registries, ov);
         tag.put("DuctOverflow", ov);
+        if (networkOpaqueRendering) {
+            tag.putBoolean("NetworkOpaque", true);
+        }
     }
 
     @Override
@@ -4825,6 +4854,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
             logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
         }
+        networkOpaqueRendering = tag.getBoolean("NetworkOpaque");
         ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
 
         setConnectionMasksForLoad(tag.getByte("PipeMask") & 0xFF, tag.getByte("StorageMask") & 0xFF);
@@ -5047,6 +5077,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         t.put("GasTransitV1", gasTransitList);
         t.putString("DuctLogicalId", logicalDuctId);
+        if (networkOpaqueRendering) {
+            t.putBoolean("NetworkOpaque", true);
+        }
         return t;
     }
 
@@ -5085,6 +5118,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int nextStallMask = tag.contains("StallMask", Tag.TAG_INT) ? tag.getInt("StallMask") : 0;
         clientStallMask = nextStallMask;
         if (prevStallMask != nextStallMask) {
+            requestModelDataUpdate();
+            if (level != null && level.isClientSide) {
+                level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            }
+        }
+        boolean prevNetworkOpaque = clientNetworkOpaque;
+        clientNetworkOpaque = tag.getBoolean("NetworkOpaque");
+        if (prevNetworkOpaque != clientNetworkOpaque) {
             requestModelDataUpdate();
             if (level != null && level.isClientSide) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
@@ -5134,6 +5175,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 .with(DuctModelProperties.DUCT_LOGICAL_ID, logicalDuctId)
                 .with(DuctModelProperties.HAS_STALL, stallMask != 0)
                 .with(DuctModelProperties.STALL_MASK, stallMask)
+                .with(DuctModelProperties.NETWORK_OPAQUE, isNetworkOpaqueRendering())
                 .build();
     }
 

@@ -47,6 +47,13 @@ base {
 // Mojang ships Java 21 to end users in 1.21, so mods should target Java 21.
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+sourceSets {
+    test {
+        compileClasspath += sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.runtimeClasspath
+    }
+}
+
 neoForge {
     // Specify the version of NeoForge to use.
     version = project.neo_version
@@ -136,6 +143,21 @@ dependencies {
     compileOnly "curse.maven:mekanism-268560:7621971"
     localRuntime "curse.maven:mekanism-268560:7621971"
 
+    // Pipez (optional): filter import from upgrade data components; no compile-time API usage.
+    localRuntime "curse.maven:pipez-443900:5609056"
+
+    // FTB Ultimine (optional): logical duct id selection grouping.
+    compileOnly "curse.maven:architectury-api-419699:5786327"
+    compileOnly "curse.maven:ftb-ultimine-forge-386134:8078515"
+    localRuntime "curse.maven:architectury-api-419699:5786327"
+    localRuntime "curse.maven:ftb-ultimine-forge-386134:8078515"
+
+    localRuntime "curse.maven:construction-sticks-1156098:7687867"
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
     // Example mod dependency using a mod jar from ./libs with a flat dir repository
     // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar
     // The group id is ignored when searching -- in this case, it is "blank"
@@ -192,6 +214,10 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
 }
 
 // IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.

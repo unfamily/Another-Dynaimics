@@ -84,6 +84,8 @@ public class SettingsCopierItem extends Item {
     }
 
     public static void openHubMenu(ServerPlayer player, InteractionHand hand) {
+        int openingBandSlot =
+                SettingsCopierMenu.resolveOpeningCopierMenuSlot(player.getInventory(), hand, player);
         player.openMenu(
                 new MenuProvider() {
                     @Override
@@ -96,7 +98,10 @@ public class SettingsCopierItem extends Item {
                         return new SettingsCopierMenu(id, inv, hand);
                     }
                 },
-                buf -> buf.writeByte(hand == InteractionHand.OFF_HAND ? 1 : 0));
+                buf -> {
+                    buf.writeByte(hand == InteractionHand.OFF_HAND ? 1 : 0);
+                    buf.writeVarInt(openingBandSlot);
+                });
     }
 
     @Override

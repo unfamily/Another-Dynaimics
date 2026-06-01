@@ -112,6 +112,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
      * locks the opaque toggle.
      */
     private final boolean clientDuctAlwaysOpaqueLock;
+    /** Open-menu sync: any duct in the physical component has server network opaque. */
+    private boolean clientComponentNetworkOpaque;
     /** Open-menu sync: {@link DuctBlockEntity#getLogicalDuctId()} for correct client-side datapack caps. */
     private final String clientDuctLogicalId;
 
@@ -156,6 +158,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
                 accessFace,
                 be.getBlockPos(),
                 be.ductAlwaysOpaqueRendering(),
+                net.unfamily.another_dynamics.duct.DuctNetworkOpaquePropagation.componentHasNetworkOpaque(
+                        be.getLevel(), be.getBlockPos()),
                 be.getLogicalDuctId(),
                 be.moduleSlotCountForMenu(),
                 true);
@@ -177,6 +181,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
         int fo = extraData.readByte() & 0xFF;
         Direction face = Direction.values()[Mth.clamp(fo, 0, Direction.values().length - 1)];
         boolean alwaysOpaqueLock = extraData.readBoolean();
+        boolean componentNetworkOpaque = extraData.readBoolean();
         String logicalId = extraData.readUtf();
         if (logicalId.isEmpty()) {
             logicalId = DuctIds.DEFAULT_LOGICAL_ID;
@@ -212,6 +217,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
                 face,
                 pos,
                 alwaysOpaqueLock,
+                componentNetworkOpaque,
                 logicalId,
                 ug,
                 true);
@@ -227,6 +233,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
             Direction accessFace,
             BlockPos ductBlockPos,
             boolean clientDuctAlwaysOpaqueLock,
+            boolean clientComponentNetworkOpaque,
             String clientDuctLogicalId,
             int moduleSlotCount,
             boolean includeCopierSlot) {
@@ -238,6 +245,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
         this.accessFace = accessFace;
         this.ductBlockPos = ductBlockPos;
         this.clientDuctAlwaysOpaqueLock = clientDuctAlwaysOpaqueLock;
+        this.clientComponentNetworkOpaque = clientComponentNetworkOpaque;
         this.clientDuctLogicalId = clientDuctLogicalId;
         this.moduleSlotCount = Math.max(0, moduleSlotCount);
         this.machineSlotCount = this.moduleSlotCount + (includeCopierSlot ? 1 : 0);
@@ -308,6 +316,20 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
 
     public boolean isDuctAlwaysOpaqueLocked() {
         return clientDuctAlwaysOpaqueLock;
+    }
+
+    public boolean isClientComponentNetworkOpaque() {
+        return clientComponentNetworkOpaque;
+    }
+
+    /** Client: refresh network-opaque hint after server block updates. */
+    public void refreshClientComponentNetworkOpaque(net.minecraft.world.level.Level level) {
+        if (level == null || !level.isClientSide()) {
+            return;
+        }
+        clientComponentNetworkOpaque =
+                net.unfamily.another_dynamics.duct.DuctNetworkOpaquePropagation.componentHasNetworkOpaque(
+                        level, ductBlockPos);
     }
 
     public String getClientDuctLogicalId() {

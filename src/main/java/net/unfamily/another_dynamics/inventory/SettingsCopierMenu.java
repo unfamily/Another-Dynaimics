@@ -16,13 +16,17 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
+import net.unfamily.another_dynamics.duct.DuctGuiLayout;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
+import net.unfamily.another_dynamics.duct.filterimport.FilterImportChannel;
+import net.unfamily.another_dynamics.duct.filterimport.FilterImportRegistry;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierVirtualSession;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.minecraft.world.SimpleContainer;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
@@ -39,9 +43,54 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
 
     public static final int ROOT_HUB = 0;
     public static final int ROOT_VIRTUAL = 1;
+    public static final int ROOT_IMPORT = 2;
+
+    public static final int IMPORT_SOURCE_SLOT = 0;
+    public static final int IMPORT_SECOND_COPIER_SLOT = 1;
+    public static final int PLAYER_SLOT_START = 2;
+
+    /** Import screen layout (gui-local pixels; shared with {@link net.unfamily.another_dynamics.client.gui.SettingsCopierScreen}). */
+    public static final int IMPORT_MARGIN = 8;
+    public static final int IMPORT_CHANNEL_Y = 20;
+    public static final int IMPORT_BACK_W = 56;
+    public static final int IMPORT_CHANNEL_W = 124;
+    public static final int IMPORT_BTN_H = 14;
+    public static final int IMPORT_TOOLBAR_BTN_GAP = 4;
+    public static final int IMPORT_BACK_Y = IMPORT_CHANNEL_Y + IMPORT_BTN_H + IMPORT_TOOLBAR_BTN_GAP;
+    public static final int IMPORT_NAME_W = 110;
+    public static final int IMPORT_SLOT_GAP_BELOW_TOOLBAR = 8;
+    public static final int IMPORT_SLOT_GAP_ABOVE_LABEL = 4;
+    public static final int IMPORT_LABEL_GAP_ABOVE_BOX = 2;
+    public static final int IMPORT_EXECUTE_GAP_BELOW_NAMES = 10;
+
+    public static final int IMPORT_SECTION_Y =
+            IMPORT_BACK_Y + IMPORT_BTN_H + IMPORT_SLOT_GAP_BELOW_TOOLBAR;
+    public static final int IMPORT_SOURCE_GUI_X = IMPORT_MARGIN + (IMPORT_NAME_W - 18) / 2;
+    public static final int IMPORT_SOURCE_GUI_Y = IMPORT_SECTION_Y;
+    public static final int IMPORT_PRIMARY_NAME_X = IMPORT_MARGIN;
+    public static final int IMPORT_LABEL_Y = IMPORT_SECTION_Y + 18 + IMPORT_SLOT_GAP_ABOVE_LABEL;
+    public static final int IMPORT_PRIMARY_NAME_Y = IMPORT_LABEL_Y + 9 + IMPORT_LABEL_GAP_ABOVE_BOX;
+    public static final int IMPORT_EXECUTE_Y = IMPORT_PRIMARY_NAME_Y + IMPORT_BTN_H + IMPORT_EXECUTE_GAP_BELOW_NAMES;
+
+    public static int importSecondaryNameX(int guiWidth) {
+        return guiWidth - IMPORT_NAME_W - IMPORT_MARGIN;
+    }
+
+    public static int importSecondCopierSlotX(int guiWidth) {
+        return importSecondaryNameX(guiWidth) + (IMPORT_NAME_W - 18) / 2;
+    }
+
+    public static int importChannelButtonX(int guiWidth) {
+        return (guiWidth - IMPORT_CHANNEL_W) / 2;
+    }
+
+    public static int importBackButtonX(int guiWidth) {
+        return (guiWidth - IMPORT_BACK_W) / 2;
+    }
 
     private static final String UNIVERSAL_LOGICAL_ID = SettingsCopierVirtualSession.UNIVERSAL_LOGICAL_ID;
 
+    private final Player owner;
     private final InteractionHand hand;
     /** Menu slot index of the copier in the player band; {@code -1} if not in the 36 synced slots (e.g. off-hand). */
     private final int openingCopierMenuSlotIndex;
@@ -51,26 +100,110 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     private final BlockPos ductBlockPos;
     private @Nullable SettingsCopierVirtualSession virtualSession;
     private final UniversalDuctMenuFilterBuffers filterBuffers = new UniversalDuctMenuFilterBuffers();
+    private final SimpleContainer importContainer = new SimpleContainer(2);
+    /** Server: channel selected in import GUI (synced from client). */
+    private int importChannelOrdinal;
+    /** Client-only: second copier slot visible when preview has inverted Pipez filters. */
+    boolean clientImportNeedsSecondCopier;
 
+    public void setClientImportNeedsSecondCopier(boolean needsSecond) {
+        this.clientImportNeedsSecondCopier = needsSecond;
+    }
+
+    public boolean clientImportNeedsSecondCopier() {
+        return clientImportNeedsSecondCopier;
+    }
+
+    public FilterImportChannel getActiveImportChannel() {
+        FilterImportChannel[] values = FilterImportChannel.values();
+        if (importChannelOrdinal < 0 || importChannelOrdinal >= values.length) {
+            return FilterImportChannel.ITEM;
+        }
+        return values[importChannelOrdinal];
+    }
+
+    public void setImportChannelOrdinal(int ordinal) {
+        FilterImportChannel[] values = FilterImportChannel.values();
+        if (values.length == 0) {
+            importChannelOrdinal = 0;
+            return;
+        }
+        importChannelOrdinal = Math.max(0, Math.min(values.length - 1, ordinal));
+    }
+
+    /**
+     * Server: whether the second copier slot accepts items for the active import channel.
+     * Client uses {@link #clientImportNeedsSecondCopier} for visibility instead.
+     */
+    public boolean serverImportNeedsSecondCopier() {
+        if (!isImportLayer()) {
+            return false;
+        }
+        ItemStack source = getImportSourceStack();
+        if (source.isEmpty()) {
+            return false;
+        }
+        return FilterImportRegistry.preview(source, getActiveImportChannel(), owner.level().registryAccess())
+                .map(preview -> preview.needsSecondCopier())
+                .orElse(false);
+    }
+
+    /** Server: eject second copier slot when it is no longer required or source upgrade was removed. */
+    public void reconcileImportSecondSlot(Player player) {
+        if (player.level().isClientSide() || !isImportLayer()) {
+            return;
+        }
+        if (!serverImportNeedsSecondCopier()) {
+            ejectImportSlot(player, IMPORT_SECOND_COPIER_SLOT);
+        }
+    }
+
+    public static SettingsCopierMenu createClient(int containerId, Inventory playerInventory, FriendlyByteBuf extra) {
+        int ho = extra.readByte() & 0xFF;
+        InteractionHand hand = ho == 1 ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        int bandSlot = extra.readVarInt();
+        return new SettingsCopierMenu(containerId, playerInventory, hand, bandSlot);
+    }
+
+    /** Server menu (resolves locked player band slot locally). */
     public SettingsCopierMenu(int containerId, Inventory playerInventory, InteractionHand hand) {
+        this(containerId, playerInventory, hand, Integer.MIN_VALUE);
+    }
+
+    private SettingsCopierMenu(
+            int containerId, Inventory playerInventory, InteractionHand hand, int openingBandSlotFromSync) {
         super(ModMenuTypes.SETTINGS_COPIER_HUB.get(), containerId);
+        this.owner = playerInventory.player;
         this.hand = hand;
         this.rootLayer = new SimpleContainerData(1);
         this.syncData = new SimpleContainerData(DuctMenuSync.COUNT);
         this.accessFace = SettingsCopierVirtualSession.VIRTUAL_FACE;
         this.ductBlockPos = BlockPos.ZERO;
         this.rootLayer.set(0, ROOT_HUB);
-        this.openingCopierMenuSlotIndex = resolveOpeningCopierMenuSlot(playerInventory, hand);
+        this.openingCopierMenuSlotIndex =
+                openingBandSlotFromSync != Integer.MIN_VALUE
+                        ? openingBandSlotFromSync
+                        : resolveOpeningCopierMenuSlot(playerInventory, hand, playerInventory.player);
         initClientSyncDefaults(playerInventory);
+        addSlot(
+                new FilterImportSourceSlot(
+                        this, importContainer, 0, IMPORT_SOURCE_GUI_X, IMPORT_SOURCE_GUI_Y));
+        addSlot(
+                new FilterImportSecondCopierSlot(
+                        this,
+                        importContainer,
+                        1,
+                        importSecondCopierSlotX(DuctGuiLayout.NODE_TEXTURE_WIDTH),
+                        IMPORT_SOURCE_GUI_Y));
+        importContainer.addListener(container -> {
+            if (owner.level().isClientSide() || !isImportLayer()) {
+                return;
+            }
+            reconcileImportSecondSlot(owner);
+        });
         addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y, openingCopierMenuSlotIndex);
         addDataSlots(rootLayer);
         addDataSlots(syncData);
-    }
-
-    public static SettingsCopierMenu createClient(int containerId, Inventory playerInventory, FriendlyByteBuf extra) {
-        int ho = extra.readByte() & 0xFF;
-        InteractionHand hand = ho == 1 ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
-        return new SettingsCopierMenu(containerId, playerInventory, hand);
     }
 
     private void initClientSyncDefaults(Inventory playerInventory) {
@@ -102,8 +235,42 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         return rootLayer.get(0) == ROOT_VIRTUAL;
     }
 
+    public boolean isImportLayer() {
+        return rootLayer.get(0) == ROOT_IMPORT;
+    }
+
     public int rootLayerValue() {
         return rootLayer.get(0);
+    }
+
+    public void enterImport(ServerPlayer player) {
+        if (!isHubLayer()) {
+            return;
+        }
+        importChannelOrdinal = 0;
+        rootLayer.set(0, ROOT_IMPORT);
+        broadcastChanges();
+    }
+
+    public void returnToHubFromImport(ServerPlayer player) {
+        if (!isImportLayer()) {
+            return;
+        }
+        ejectImportContainerContents(player);
+        rootLayer.set(0, ROOT_HUB);
+        broadcastChanges();
+    }
+
+    public ItemStack getImportSourceStack() {
+        return getSlot(IMPORT_SOURCE_SLOT).getItem();
+    }
+
+    public ItemStack getImportSecondCopierStack() {
+        return getSlot(IMPORT_SECOND_COPIER_SLOT).getItem();
+    }
+
+    public void setImportSecondCopierStack(ItemStack stack) {
+        getSlot(IMPORT_SECOND_COPIER_SLOT).set(stack);
     }
 
     @Nullable
@@ -314,6 +481,9 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
 
     @Override
     public void removed(Player player) {
+        if (!player.level().isClientSide()) {
+            ejectImportContainerContents(player);
+        }
         super.removed(player);
         if (player.level().isClientSide() || virtualSession == null || !(player instanceof ServerPlayer sp)) {
             return;
@@ -326,9 +496,41 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         }
     }
 
+    /** Returns import-slot items to the player inventory, or drops them at the player's feet. */
+    private void ejectImportContainerContents(Player player) {
+        for (int i = 0; i < importContainer.getContainerSize(); i++) {
+            ejectImportSlot(player, i);
+        }
+    }
+
+    private void ejectImportSlot(Player player, int containerIndex) {
+        if (containerIndex < 0 || containerIndex >= importContainer.getContainerSize()) {
+            return;
+        }
+        ItemStack stack = importContainer.getItem(containerIndex);
+        if (stack.isEmpty()) {
+            return;
+        }
+        ItemStack copy = stack.copy();
+        importContainer.setItem(containerIndex, ItemStack.EMPTY);
+        if (!player.getInventory().add(copy)) {
+            player.drop(copy, false);
+        }
+    }
+
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
-        if (isHubLayer() || index == openingCopierMenuSlotIndex) {
+        if (isHubLayer()) {
+            return ItemStack.EMPTY;
+        }
+        if (isImportLayer()) {
+            return quickMoveStackImport(player, index);
+        }
+        int lockedMenu =
+                openingCopierMenuSlotIndex >= 0
+                        ? openingCopierMenuSlotIndex + PLAYER_SLOT_START
+                        : -1;
+        if (index == lockedMenu) {
             return ItemStack.EMPTY;
         }
         ItemStack result = ItemStack.EMPTY;
@@ -338,7 +540,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         }
         ItemStack stack = slot.getItem();
         result = stack.copy();
-        if (!moveItemStackTo(stack, 0, PLAYER_SLOT_COUNT, false)) {
+        if (!moveItemStackTo(stack, PLAYER_SLOT_START, PLAYER_SLOT_START + PLAYER_SLOT_COUNT, false)) {
             return ItemStack.EMPTY;
         }
         if (stack.isEmpty()) {
@@ -349,11 +551,30 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         return result;
     }
 
-    private static int resolveOpeningCopierMenuSlot(Inventory inv, InteractionHand openHand) {
+    /**
+     * Index 0–35 within the player band added by {@link #addPlayerInventory} (main 0–26, hotbar 27–35).
+     * {@code -1} if the copier is not in that band (e.g. off-hand).
+     */
+    public static int resolveOpeningCopierMenuSlot(Inventory inv, InteractionHand openHand, Player player) {
         if (openHand != InteractionHand.MAIN_HAND) {
             return -1;
         }
-        return menuSlotIndexForPlayerInventoryIndex(inv.selected);
+        ItemStack held = player.getItemInHand(openHand);
+        if (held.isEmpty() || !(held.getItem() instanceof SettingsCopierItem)) {
+            return -1;
+        }
+        int selected = inv.selected;
+        if (selected >= 0
+                && selected < inv.getContainerSize()
+                && ItemStack.isSameItemSameComponents(held, inv.getItem(selected))) {
+            return menuSlotIndexForPlayerInventoryIndex(selected);
+        }
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            if (ItemStack.isSameItemSameComponents(held, inv.getItem(i))) {
+                return menuSlotIndexForPlayerInventoryIndex(i);
+            }
+        }
+        return menuSlotIndexForPlayerInventoryIndex(selected);
     }
 
     static int menuSlotIndexForPlayerInventoryIndex(int playerInvIndex) {
@@ -381,6 +602,117 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             this.addSlot(new LockedCopierPlayerSlot(
                     inv, col, startX + col * 18, hotbarY, menuSlot == lockedMenuSlot));
             menuSlot++;
+        }
+    }
+
+    private ItemStack quickMoveStackImport(Player player, int index) {
+        ItemStack result = ItemStack.EMPTY;
+        Slot slot = this.slots.get(index);
+        if (slot == null || !slot.hasItem()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack stack = slot.getItem();
+        result = stack.copy();
+        if (index == IMPORT_SOURCE_SLOT) {
+            if (!moveItemStackTo(
+                    stack,
+                    PLAYER_SLOT_START,
+                    PLAYER_SLOT_START + PLAYER_SLOT_COUNT,
+                    true)) {
+                return ItemStack.EMPTY;
+            }
+        } else if (index == IMPORT_SECOND_COPIER_SLOT) {
+            if (!moveItemStackTo(
+                    stack,
+                    PLAYER_SLOT_START,
+                    PLAYER_SLOT_START + PLAYER_SLOT_COUNT,
+                    true)) {
+                return ItemStack.EMPTY;
+            }
+        } else {
+            if (FilterImportRegistry.canImport(stack, player.level().registryAccess())) {
+                if (!getSlot(IMPORT_SOURCE_SLOT).hasItem()) {
+                    if (!moveItemStackTo(stack, IMPORT_SOURCE_SLOT, IMPORT_SOURCE_SLOT + 1, false)) {
+                        return ItemStack.EMPTY;
+                    }
+                } else if (!getSlot(IMPORT_SECOND_COPIER_SLOT).hasItem()
+                        && stack.getItem() instanceof SettingsCopierItem) {
+                    if (!moveItemStackTo(
+                            stack, IMPORT_SECOND_COPIER_SLOT, IMPORT_SECOND_COPIER_SLOT + 1, false)) {
+                        return ItemStack.EMPTY;
+                    }
+                } else {
+                    return ItemStack.EMPTY;
+                }
+            } else if (stack.getItem() instanceof SettingsCopierItem
+                    && !getSlot(IMPORT_SECOND_COPIER_SLOT).hasItem()) {
+                if (!moveItemStackTo(stack, IMPORT_SECOND_COPIER_SLOT, IMPORT_SECOND_COPIER_SLOT + 1, false)) {
+                    return ItemStack.EMPTY;
+                }
+            } else {
+                return ItemStack.EMPTY;
+            }
+        }
+        if (stack.isEmpty()) {
+            slot.set(ItemStack.EMPTY);
+        } else {
+            slot.setChanged();
+        }
+        return result;
+    }
+
+    private abstract static class ImportSlotBase extends Slot {
+        protected final SettingsCopierMenu copierMenu;
+
+        ImportSlotBase(SettingsCopierMenu copierMenu, SimpleContainer container, int index, int x, int y) {
+            super(container, index, x, y);
+            this.copierMenu = copierMenu;
+        }
+
+        @Override
+        public boolean isActive() {
+            return copierMenu.isImportLayer();
+        }
+
+        @Override
+        public boolean mayPickup(Player player) {
+            return isActive() && super.mayPickup(player);
+        }
+    }
+
+    private static final class FilterImportSourceSlot extends ImportSlotBase {
+        FilterImportSourceSlot(SettingsCopierMenu menu, SimpleContainer container, int index, int x, int y) {
+            super(menu, container, index, x, y);
+        }
+
+        @Override
+        public boolean mayPlace(ItemStack stack) {
+            if (!isActive()) {
+                return false;
+            }
+            return FilterImportRegistry.canImport(stack, copierMenu.owner.level().registryAccess());
+        }
+    }
+
+    private static final class FilterImportSecondCopierSlot extends ImportSlotBase {
+        FilterImportSecondCopierSlot(SettingsCopierMenu menu, SimpleContainer container, int index, int x, int y) {
+            super(menu, container, index, x, y);
+        }
+
+        @Override
+        public boolean isActive() {
+            if (!copierMenu.isImportLayer()) {
+                return false;
+            }
+            if (copierMenu.owner.level().isClientSide()) {
+                return copierMenu.clientImportNeedsSecondCopier;
+            }
+            return copierMenu.serverImportNeedsSecondCopier();
+        }
+
+        @Override
+        public boolean mayPlace(ItemStack stack) {
+            return isActive() && stack.getItem() instanceof SettingsCopierItem;
         }
     }
 

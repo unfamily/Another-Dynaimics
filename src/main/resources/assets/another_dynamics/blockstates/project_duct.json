@@ -1,0 +1,9 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "another_dynamics:block/project_duct"
+      }
+    }
+  ]
+}

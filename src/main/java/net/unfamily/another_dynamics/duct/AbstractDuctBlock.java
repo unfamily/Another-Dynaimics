@@ -132,6 +132,9 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
         super.onPlace(state, level, pos, oldState, movedByPiston);
         refreshAt(level, pos);
         notifySameNetworkNeighbors(level, pos);
+        if (!level.isClientSide() && level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            net.unfamily.another_dynamics.duct.DuctNetworkOpaquePropagation.onStructuralChange(serverLevel, pos);
+        }
     }
 
     @Override

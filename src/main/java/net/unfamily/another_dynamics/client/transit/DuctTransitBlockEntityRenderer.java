@@ -17,8 +17,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
-import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
-import net.unfamily.another_dynamics.registry.ModAttachments;
 
 /**
  * Visual-only stacks along the path: uses the vanilla item renderer ({@link Minecraft#getItemRenderer()}) so geometry
@@ -46,14 +44,7 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
         if (tile.getLevel() == null) {
             return;
         }
-        boolean defOpaque =
-                DuctDefinitionRegistry.getByLogicalId(tile.getLogicalDuctId())
-                        .map(d -> d.alwaysOpaqueRendering())
-                        .orElse(false);
-        boolean opaqueSkip =
-                defOpaque
-                        || (mc.player != null && mc.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get()));
-        if (opaqueSkip) {
+        if (net.unfamily.another_dynamics.duct.DuctOpaqueRendering.effectiveOpaque(tile, mc.player)) {
             return;
         }
         BlockPos origin = tile.getBlockPos();

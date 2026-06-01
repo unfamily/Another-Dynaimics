@@ -344,6 +344,9 @@ public class DuctBlock extends AbstractDuctBlock {
                     buf.writeBlockPos(duct.getBlockPos());
                     buf.writeByte(clickedFace.ordinal());
                     buf.writeBoolean(duct.ductAlwaysOpaqueRendering());
+                    buf.writeBoolean(
+                            DuctNetworkOpaquePropagation.componentHasNetworkOpaque(
+                                    duct.getLevel(), duct.getBlockPos()));
                     buf.writeUtf(duct.getLogicalDuctId());
                     buf.writeByte(duct.menuUiLayer());
                     buf.writeByte(duct.moduleSlotCountForMenu());

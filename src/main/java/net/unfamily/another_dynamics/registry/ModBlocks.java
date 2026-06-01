@@ -12,6 +12,7 @@ import net.unfamily.another_dynamics.duct.DuctBlock;
 import net.unfamily.another_dynamics.duct.FluidDuctBlock;
 import net.unfamily.another_dynamics.duct.GasDuctBlock;
 import net.unfamily.another_dynamics.duct.HybridItemFluidDuctBlock;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 
 public final class ModBlocks {
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(AnotherDynamicsMod.MOD_ID);
@@ -26,6 +27,9 @@ public final class ModBlocks {
     }
 
     public static final DeferredBlock<Block> DUCT = BLOCKS.register("duct", () -> new DuctBlock(ductProperties()));
+
+    public static final DeferredBlock<Block> PROJECT_DUCT =
+            BLOCKS.register("project_duct", () -> new ProjectDuctBlock(ductProperties()));
 
     public static final DeferredBlock<Block> FLUID_DUCT =
             BLOCKS.register("fluid_duct", () -> new FluidDuctBlock(ductProperties()));

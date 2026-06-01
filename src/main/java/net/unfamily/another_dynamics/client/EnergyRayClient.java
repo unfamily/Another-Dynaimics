@@ -25,11 +25,18 @@ public final class EnergyRayClient {
         if (level == null || mc.player == null) {
             return;
         }
-        if (mc.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get())) {
+        if (net.unfamily.another_dynamics.duct.DuctOpaqueRendering.playerAllOpaque(mc.player)) {
             return;
         }
         List<BlockPos> path = payload.ductPath();
         if (path == null || path.isEmpty()) {
+            return;
+        }
+        if (path.stream().allMatch(p -> {
+            var be = level.getBlockEntity(p);
+            return be instanceof net.unfamily.another_dynamics.duct.DuctBlockEntity duct
+                    && duct.isNetworkOpaqueRendering();
+        })) {
             return;
         }
         int argb = payload.argb();

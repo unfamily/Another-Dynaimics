@@ -49,6 +49,7 @@ import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctFilterLineReorder;
+import net.unfamily.another_dynamics.duct.FilterLineTextUtil;
 import net.unfamily.another_dynamics.duct.DuctGuiLayout;
 import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
@@ -796,7 +797,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         addRenderableWidget(routingPlusButton);
 
         amountClearButton = Button.builder(Component.literal("1"), b ->
-            amountSetToOneField()
+            amountQuickSetField()
         )
             .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
             .tooltip(
@@ -1136,7 +1137,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 return;
             }
             playClickSound();
-            ModNetwork.sendDuctOpaqueToggle();
+            ModNetwork.sendDuctOpaqueToggle(menu.getDuctBlockPos());
         })
             .bounds(
                 this.leftPos + CENTER_X + ROW_BTN_W + ROW_GAP,
@@ -1147,7 +1148,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             .tooltip(
                 Tooltip.create(
                     Component.translatable(
-                        "gui.another_dynamics.duct_node.opaque_rendering.tooltip"
+                        "gui.another_dynamics.duct_node.opaque_rendering.tooltip.off"
                     )
                 )
             )
@@ -3094,7 +3095,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return;
         }
         playClickSound();
-        String value = editModeTextBox.getValue();
+        String value = sanitizeFilterLineForCommit(editModeTextBox.getValue());
+        editModeTextBox.setValue(value);
+        editModeTextBox.setCursorPosition(value.length());
+        editModeTextBox.setHighlightPos(value.length());
         List<String> list = getEditingList();
         while (list.size() <= editModeFilterIndex) {
             list.add("");
@@ -3127,9 +3131,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         syncAllowCapEditBoxDisplay();
     }
 
+    private static String sanitizeFilterLineForCommit(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return FilterLineTextUtil.stripWrappingQuotes(raw.trim());
+    }
+
     private void applyEditModeAndClose() {
         if (editModeTextBox != null && editModeFilterIndex >= 0) {
-            String value = editModeTextBox.getValue();
+            String value = sanitizeFilterLineForCommit(editModeTextBox.getValue());
             List<String> list = getEditingList();
             while (list.size() <= editModeFilterIndex) {
                 list.add("");
@@ -3336,7 +3347,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 // In fluid filter mode, do not fall back to item filters: this ghost slot is a "calibrator" for fluids.
                 ghostSlotFluid = FluidStack.EMPTY;
                 ghostSlotItem = ItemStack.EMPTY;
-                filterVariants = List.of();
+                filterVariants.clear();
             }
             currentFilterVariantIndex = 0;
             if (editModeTextBox != null) {
@@ -3361,7 +3372,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 filterVariants = generateGasFilterVariants(sample);
             } else {
                 ghostSlotGas = null;
-                filterVariants = List.of();
+                filterVariants.clear();
             }
             currentFilterVariantIndex = 0;
             if (editModeTextBox != null) {
@@ -3423,7 +3434,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             } else {
                 ghostSlotFluid = FluidStack.EMPTY;
                 ghostSlotItem = ItemStack.EMPTY;
-                filterVariants = List.of();
+                filterVariants.clear();
             }
             currentFilterVariantIndex = 0;
             if (editModeTextBox != null) {
@@ -3445,7 +3456,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 ghostSlotItem = ItemStack.EMPTY;
                 ghostSlotFluid = FluidStack.EMPTY;
                 ghostSlotGas = null;
-                filterVariants = List.of();
+                filterVariants.clear();
                 currentFilterVariantIndex = 0;
                 if (editModeTextBox != null) {
                     editModeTextBox.setValue("");
@@ -3886,6 +3897,31 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             1024L,
             reg
         );
+    }
+
+    /** Settings copier virtual editor: row slot icon from filter line (fluid/gas/item), independent of transport sync. */
+    private void renderVirtualSettingsFilterSlotIcon(
+            GuiGraphics graphics, String filter, int slotX, int slotY) {
+        if (filter == null || filter.isBlank()) {
+            return;
+        }
+        FluidStack displayFluid = getDisplayFluidForFilter(filter);
+        if (!displayFluid.isEmpty()) {
+            GuiFluidStillBlit.blit16(graphics, displayFluid, slotX + 1, slotY + 1);
+            return;
+        }
+        if (minecraft != null && minecraft.level != null && MekanismChemicalCompat.isLoaded()) {
+            Object displayGas = getDisplayGasForFilter(filter);
+            if (!MekanismChemicalCompat.isEmptyStack(displayGas)) {
+                GuiChemicalStillBlit.blit16(graphics, displayGas, slotX + 1, slotY + 1);
+                return;
+            }
+        }
+        ItemStack displayItem = getDisplayItemForFilter(filter);
+        if (!displayItem.isEmpty()) {
+            graphics.renderItem(displayItem, slotX + 1, slotY + 1);
+            graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+        }
     }
 
     private static ItemStack parseItemStackFromSNBT(String snbtString) {
@@ -4531,18 +4567,19 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             opaqueRenderingButton != null
         ) {
             boolean locked = menu.isDuctAlwaysOpaqueLocked();
-            boolean opaqueOn =
-                locked ||
-                minecraft.player.getData(
-                    ModAttachments.DUCT_TRANSIT_OPAQUE.get()
-                );
-            opaqueRenderingButton.setMessage(
-                Component.translatable(
-                    opaqueOn
-                        ? "gui.another_dynamics.duct_node.opaque_rendering.on"
-                        : "gui.another_dynamics.duct_node.opaque_rendering.off"
-                )
-            );
+            if (menu instanceof DuctNodeMenu ductMenu) {
+                ductMenu.refreshClientComponentNetworkOpaque(minecraft.level);
+            }
+            net.unfamily.another_dynamics.duct.DuctOpaqueDisplayState display =
+                locked
+                    ? net.unfamily.another_dynamics.duct.DuctOpaqueDisplayState.ALL
+                    : net.unfamily.another_dynamics.duct.DuctOpaqueDisplayState.forContext(
+                        minecraft.player,
+                        minecraft.level,
+                        menu.getDuctBlockPos());
+            opaqueRenderingButton.setMessage(Component.translatable(display.labelKey()));
+            opaqueRenderingButton.setTooltip(
+                Tooltip.create(Component.translatable(display.tooltipKey())));
             opaqueRenderingButton.active = !locked;
         }
         if (isEnergyTransportTab()) {
@@ -4749,6 +4786,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 )
             )
         );
+        if (amountClearButton != null) {
+            amountClearButton.setMessage(
+                Component.literal(amountIsPriority ? "0" : "1"));
+            amountClearButton.setTooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        amountIsPriority
+                            ? "gui.another_dynamics.duct_node.amount.set_to_zero.tooltip.priority"
+                            : "gui.another_dynamics.duct_node.amount.set_to_one.tooltip")));
+        }
 
         redstoneModeStub = menu.getSyncData().get(DuctMenuSync.REDSTONE_MODE);
         channelButton.setLetterValue(
@@ -5065,10 +5112,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         amountFieldsDirty = false;
     }
 
-    private void amountSetToOneField() {
+    /** Quick-set under amount field: priority → 0, extract/retrieve batch → 1. */
+    private void amountQuickSetField() {
         playClickSound();
         syncingAmountBoxFromServer = true;
-        routingPriorityBox.setValue("1");
+        routingPriorityBox.setValue(amountFieldEditsPriority() ? "0" : "1");
         syncingAmountBoxFromServer = false;
         amountFieldsDirty = true;
     }
@@ -5342,7 +5390,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             graphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, 18, 18, 18, 18);
             String filter =
                 idx < list.size() && list.get(idx) != null ? list.get(idx) : "";
-            if (
+            if (menu.isSettingsCopierVirtualEditor()) {
+                renderVirtualSettingsFilterSlotIcon(graphics, filter, slotX, slotY);
+            } else if (
                 isFluidFilterTransport() &&
                 minecraft != null &&
                 minecraft.level != null
@@ -5805,6 +5855,19 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 routingModeButton.getY() + routingModeButton.getHeight()
             ) {
                 handleMenuButton(11);
+                return true;
+            }
+        }
+        // Right-click on Opaque cycles backward: All -> Network, Network -> Off.
+        if (button == 1 && opaqueRenderingButton != null && opaqueRenderingButton.visible) {
+            if (
+                mouseX >= opaqueRenderingButton.getX() &&
+                mouseX < opaqueRenderingButton.getX() + opaqueRenderingButton.getWidth() &&
+                mouseY >= opaqueRenderingButton.getY() &&
+                mouseY < opaqueRenderingButton.getY() + opaqueRenderingButton.getHeight()
+            ) {
+                playClickSound();
+                ModNetwork.sendDuctOpaqueToggleBackwards(menu.getDuctBlockPos());
                 return true;
             }
         }

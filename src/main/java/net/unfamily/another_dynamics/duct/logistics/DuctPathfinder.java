@@ -418,7 +418,7 @@ public final class DuctPathfinder {
         return gasDuctPositionAllowsRadioactive(level, pos);
     }
 
-    private static boolean isPipeNeighbor(Level level, BlockPos from, BlockPos to, DuctNetworkType network) {
+    public static boolean isPipeNeighbor(Level level, BlockPos from, BlockPos to, DuctNetworkType network) {
         if (network == DuctNetworkType.ITEM) {
             return DuctPipeAdjacency.areItemPipeNeighbors(level, from, to);
         }

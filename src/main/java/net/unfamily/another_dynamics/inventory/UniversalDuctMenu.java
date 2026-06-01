@@ -17,6 +17,11 @@ public interface UniversalDuctMenu {
 
     boolean isDuctAlwaysOpaqueLocked();
 
+    /** True when the opened duct's physical component is server network-opaque. */
+    default boolean isClientComponentNetworkOpaque() {
+        return false;
+    }
+
     BlockPos getDuctBlockPos();
 
     Direction getAccessFace();

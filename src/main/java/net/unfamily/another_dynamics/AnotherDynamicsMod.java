@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import com.mojang.logging.LogUtils;
 
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.common.NeoForge;
@@ -48,6 +49,21 @@ public final class AnotherDynamicsMod {
         modEventBus.addListener(AnotherDynamicsMod::onRegisterCapabilities);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
+
+        initOptionalIntegrations();
+    }
+
+    private static void initOptionalIntegrations() {
+        if (!ModList.get().isLoaded("ftbultimine")) {
+            return;
+        }
+        try {
+            Class.forName("net.unfamily.another_dynamics.integration.ftbultimine.FTBUltimineCompat")
+                    .getMethod("register")
+                    .invoke(null);
+        } catch (ReflectiveOperationException e) {
+            LOGGER.error("Failed to register FTB Ultimine duct selection compatibility", e);
+        }
     }
 
     private static void onAddReloadListeners(AddReloadListenerEvent event) {

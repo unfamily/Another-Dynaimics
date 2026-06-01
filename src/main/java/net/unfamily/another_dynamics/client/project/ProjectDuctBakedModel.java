@@ -1,0 +1,77 @@
+package net.unfamily.another_dynamics.client.project;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.ItemOverrides;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.client.ChunkRenderTypeSet;
+import net.neoforged.neoforge.client.model.BakedModelWrapper;
+import net.neoforged.neoforge.client.model.data.ModelData;
+import net.unfamily.another_dynamics.client.DuctCompositeGeometry;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
+
+import org.jetbrains.annotations.Nullable;
+
+public final class ProjectDuctBakedModel extends BakedModelWrapper<net.minecraft.client.resources.model.BakedModel> {
+    private static final ChunkRenderTypeSet BLOCK_RENDER_TYPES = ChunkRenderTypeSet.of(RenderType.cutoutMipped());
+    /** North + south arms for item preview line. */
+    private static final int ITEM_PIPE_MASK = (1 << Direction.NORTH.ordinal()) | (1 << Direction.SOUTH.ordinal());
+
+    private final DuctCompositeGeometry geometry;
+    private final TextureAtlasSprite particleSprite;
+
+    public ProjectDuctBakedModel(
+            net.minecraft.client.resources.model.BakedModel base,
+            DuctCompositeGeometry geometry,
+            TextureAtlasSprite particleSprite) {
+        super(base);
+        this.geometry = geometry;
+        this.particleSprite = particleSprite;
+    }
+
+    @Override
+    public List<BakedQuad> getQuads(
+            @Nullable BlockState state,
+            @Nullable Direction side,
+            RandomSource rand,
+            ModelData modelData,
+            @Nullable RenderType renderType) {
+        if (!geometry.isBuilt()) {
+            return originalModel.getQuads(state, side, rand, modelData, renderType);
+        }
+        if (state == null) {
+            return itemQuads(side);
+        }
+        int pipeMask = ProjectDuctBlock.effectivePipeMask(state);
+        List<BakedQuad> out = new ArrayList<>();
+        geometry.appendForWorld(out, pipeMask, 0);
+        return out;
+    }
+
+    private List<BakedQuad> itemQuads(@Nullable Direction side) {
+        List<BakedQuad> out = new ArrayList<>();
+        geometry.appendForWorld(out, ITEM_PIPE_MASK, 0);
+        return out;
+    }
+
+    @Override
+    public TextureAtlasSprite getParticleIcon(ModelData data) {
+        return particleSprite != null ? particleSprite : originalModel.getParticleIcon(data);
+    }
+
+    @Override
+    public ChunkRenderTypeSet getRenderTypes(BlockState state, RandomSource rand, ModelData data) {
+        return BLOCK_RENDER_TYPES;
+    }
+
+    @Override
+    public ItemOverrides getOverrides() {
+        return ItemOverrides.EMPTY;
+    }
+}

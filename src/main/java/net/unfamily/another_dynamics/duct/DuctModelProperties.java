@@ -16,6 +16,8 @@ public final class DuctModelProperties {
      * drives opaque skin and (when geometry matches) definition lookups in {@link net.unfamily.another_dynamics.client.DuctBakedModel}.
      */
     public static final ModelProperty<String> DUCT_LOGICAL_ID = new ModelProperty<>();
+    /** Server-synced network opaque skin (all players). */
+    public static final ModelProperty<Boolean> NETWORK_OPAQUE = new ModelProperty<>();
 
     private DuctModelProperties() {}
 }

@@ -29,6 +29,9 @@ import net.unfamily.another_dynamics.inventory.UniversalDuctMenu;
 
 import org.jetbrains.annotations.Nullable;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.unfamily.another_dynamics.duct.filterimport.FilterImportChannel;
+import net.unfamily.another_dynamics.duct.filterimport.FilterImportResult;
+import net.unfamily.another_dynamics.duct.filterimport.FilterImportService;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.registry.ModAttachments;
 import net.minecraft.world.InteractionHand;
@@ -183,12 +186,30 @@ public final class ModNetwork {
             });
         });
 
-        reg.playToServer(DuctOpaqueTogglePayload.TYPE, DuctOpaqueTogglePayload.STREAM_CODEC, (_payload, ctx) -> {
+        reg.playToServer(DuctOpaqueTogglePayload.TYPE, DuctOpaqueTogglePayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
-                var att = ModAttachments.DUCT_TRANSIT_OPAQUE.get();
-                boolean next = !player.getData(att);
-                player.setData(att, next);
+                if (!(player.containerMenu instanceof UniversalDuctMenu menu)) {
+                    return;
+                }
+                BlockPos anchor = payload.anchor();
+                if (!anchor.equals(menu.getDuctBlockPos())) {
+                    return;
+                }
+                if (player.containerMenu instanceof DuctNodeMenu ductMenu) {
+                    DuctBlockEntity linked = ductMenu.linkedDuctBlockEntity();
+                    if (linked != null && linked.isRemoved()) {
+                        return;
+                    }
+                    if (!ductMenu.stillValid(player)) {
+                        return;
+                    }
+                }
+                if (payload.backwards()) {
+                    net.unfamily.another_dynamics.duct.DuctNetworkOpaquePropagation.retreatOpaqueCycle(player, anchor);
+                } else {
+                    net.unfamily.another_dynamics.duct.DuctNetworkOpaquePropagation.advanceOpaqueCycle(player, anchor);
+                }
             });
         });
 
@@ -289,7 +310,22 @@ public final class ModNetwork {
                 (payload, ctx) -> {
                     ctx.enqueueWork(() -> {
                         ServerPlayer player = (ServerPlayer) ctx.player();
-                        if (!(player.containerMenu instanceof SettingsCopierMenu copier) || !copier.isHubLayer()) {
+                        if (!(player.containerMenu instanceof SettingsCopierMenu copier)) {
+                            return;
+                        }
+                        if (payload.action() == SettingsCopierHubActionPayload.ACTION_ENTER_IMPORT) {
+                            if (copier.isHubLayer()) {
+                                copier.enterImport(player);
+                            }
+                            return;
+                        }
+                        if (payload.action() == SettingsCopierHubActionPayload.ACTION_BACK_FROM_IMPORT) {
+                            if (copier.isImportLayer()) {
+                                copier.returnToHubFromImport(player);
+                            }
+                            return;
+                        }
+                        if (!copier.isHubLayer()) {
                             return;
                         }
                         InteractionHand hand = copier.getHand();
@@ -322,6 +358,50 @@ public final class ModNetwork {
                                 sendSettingsCopierStackSync(player, stack);
                             }
                             default -> {}
+                        }
+                    });
+                });
+
+        reg.playToServer(
+                FilterImportChannelPayload.TYPE,
+                FilterImportChannelPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        if (!(player.containerMenu instanceof SettingsCopierMenu copier)
+                                || !copier.isImportLayer()) {
+                            return;
+                        }
+                        copier.setImportChannelOrdinal(payload.channelOrdinal());
+                        copier.reconcileImportSecondSlot(player);
+                    });
+                });
+
+        reg.playToServer(
+                FilterImportExecutePayload.TYPE,
+                FilterImportExecutePayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        if (!(player.containerMenu instanceof SettingsCopierMenu copier)
+                                || !copier.isImportLayer()) {
+                            return;
+                        }
+                        FilterImportChannel[] channels = FilterImportChannel.values();
+                        int ord = payload.channelOrdinal();
+                        if (ord < 0 || ord >= channels.length) {
+                            return;
+                        }
+                        FilterImportResult result =
+                                FilterImportService.execute(
+                                        player,
+                                        copier,
+                                        copier.getHand(),
+                                        channels[ord],
+                                        payload.primaryName(),
+                                        payload.secondaryName());
+                        if (result == FilterImportResult.SUCCESS) {
+                            copier.returnToHubFromImport(player);
                         }
                     });
                 });
@@ -473,9 +553,14 @@ public final class ModNetwork {
                 new DuctEnergyBufferLimitsPayload(pos, face.ordinal(), extractLimitFe, insertLimitFe));
     }
 
-    /** Toggles duct opaque rendering preference (player attachment); server authoritative. */
-    public static void sendDuctOpaqueToggle() {
-        PacketDistributor.sendToServer(DuctOpaqueTogglePayload.INSTANCE);
+    /** Advances opaque cycle for duct at {@code anchor} (server authoritative). */
+    public static void sendDuctOpaqueToggle(BlockPos anchor) {
+        PacketDistributor.sendToServer(new DuctOpaqueTogglePayload(anchor, false));
+    }
+
+    /** Retreats opaque cycle for duct at {@code anchor} (server authoritative). */
+    public static void sendDuctOpaqueToggleBackwards(BlockPos anchor) {
+        PacketDistributor.sendToServer(new DuctOpaqueTogglePayload(anchor, true));
     }
 
     /**
@@ -523,6 +608,16 @@ public final class ModNetwork {
 
     public static void sendSettingsCopierReturnToHub() {
         PacketDistributor.sendToServer(new SettingsCopierReturnToHubPayload());
+    }
+
+    public static void sendFilterImportChannel(int channelOrdinal) {
+        PacketDistributor.sendToServer(new FilterImportChannelPayload(channelOrdinal));
+    }
+
+    public static void sendFilterImportExecute(
+            int channelOrdinal, String primaryName, String secondaryName) {
+        PacketDistributor.sendToServer(
+                new FilterImportExecutePayload(channelOrdinal, primaryName, secondaryName));
     }
 
     public static void sendFilterSyncForVirtual(ServerPlayer player, SettingsCopierVirtualSession session) {

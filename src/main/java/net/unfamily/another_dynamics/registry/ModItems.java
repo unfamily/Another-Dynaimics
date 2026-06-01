@@ -3,6 +3,7 @@ package net.unfamily.another_dynamics.registry;
 import java.util.Optional;
 
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
@@ -40,6 +41,9 @@ public final class ModItems {
                             new DuctBlockItem(
                                     ModBlocks.DUCT.get(),
                                     new Item.Properties()));
+
+    public static final DeferredItem<BlockItem> PROJECT_DUCT =
+            ITEMS.register("project_duct", () -> new BlockItem(ModBlocks.PROJECT_DUCT.get(), new Item.Properties()));
 
     public static final DeferredItem<DuctModuleItem> INC_MODULE_0 = registerModule("inc_module_0");
     public static final DeferredItem<DuctModuleItem> INC_MODULE_1 = registerModule("inc_module_1");

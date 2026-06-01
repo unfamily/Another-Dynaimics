@@ -12,6 +12,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 import net.unfamily.another_dynamics.client.DuctItemRenderer;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctConverter;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 import java.util.function.Consumer;
@@ -84,6 +86,13 @@ public final class DuctBlockItem extends BlockItem {
                                     context.getPlayer(), level, pos, ductBE, newLogicalId, context.getHand())
                             .result();
                 }
+            } else if (state.getBlock() instanceof ProjectDuctBlock) {
+                if (level.isClientSide()) {
+                    return InteractionResult.SUCCESS;
+                }
+                return ProjectDuctConverter.tryConvertNetwork(
+                                context.getPlayer(), level, pos, context.getItemInHand(), context.getHand())
+                        .result();
             }
         }
         return super.useOn(context);

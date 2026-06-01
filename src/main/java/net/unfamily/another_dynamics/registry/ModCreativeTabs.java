@@ -52,6 +52,7 @@ public final class ModCreativeTabs {
                     output.accept(ModItems.ENDER_ACCELERANT.get().getDefaultInstance());
                     output.accept(ModItems.SETTINGS_COPIER.get().getDefaultInstance());
                     output.accept(ModItems.BULKY_WRENCH.get().getDefaultInstance());
+                    output.accept(ModItems.PROJECT_DUCT.get().getDefaultInstance());
                 })
                 .build();
     }

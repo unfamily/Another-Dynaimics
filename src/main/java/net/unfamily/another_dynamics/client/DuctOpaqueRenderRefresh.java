@@ -24,7 +24,8 @@ public final class DuctOpaqueRenderRefresh {
             lastOpaque = false;
             return;
         }
-        boolean now = mc.player.getData(ModAttachments.DUCT_TRANSIT_OPAQUE.get());
+        boolean now =
+                mc.player.getData(ModAttachments.DUCT_PLAYER_OPAQUE.get()).allOpaqueActive();
         if (now != lastOpaque) {
             lastOpaque = now;
             mc.levelRenderer.allChanged();

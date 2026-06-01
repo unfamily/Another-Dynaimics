@@ -12,6 +12,8 @@ public record SettingsCopierHubActionPayload(int action, String renameText) impl
     public static final int ACTION_CONFIGURE = 0;
     public static final int ACTION_MODE_TOGGLE = 1;
     public static final int ACTION_RENAME = 2;
+    public static final int ACTION_ENTER_IMPORT = 3;
+    public static final int ACTION_BACK_FROM_IMPORT = 4;
 
     public static final Type<SettingsCopierHubActionPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "settings_copier_hub_action"));

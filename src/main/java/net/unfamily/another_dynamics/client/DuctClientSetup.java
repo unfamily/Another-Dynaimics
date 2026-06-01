@@ -24,6 +24,7 @@ import net.unfamily.another_dynamics.duct.settings.SettingsCopierItemProperties;
 import net.unfamily.another_dynamics.duct.DuctDefinitionsReloadedEvent;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.gui.SettingsCopierScreen;
+import net.unfamily.another_dynamics.client.project.ProjectDuctGeometryLoader;
 import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModItems;
@@ -84,6 +85,7 @@ public final class DuctClientSetup {
     @SubscribeEvent
     public static void onRegisterGeometryLoaders(ModelEvent.RegisterGeometryLoaders event) {
         event.register(DuctGeometryLoader.ID, new DuctGeometryLoader());
+        event.register(ProjectDuctGeometryLoader.ID, new ProjectDuctGeometryLoader());
     }
 
     @SubscribeEvent
@@ -91,6 +93,8 @@ public final class DuctClientSetup {
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_center_only")));
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_default")));
         event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/simple_duct_line")));
+        event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/project_duct_default")));
+        event.register(ModelResourceLocation.standalone(ResourceLocation.parse("another_dynamics:block/project_duct_line")));
         event.register(
                 ModelResourceLocation.standalone(
                         ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_all_0")));

@@ -131,6 +131,16 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
         return userDisconnectedFaceMask;
     }
 
+    /** Wrench disconnect bits copied from a converted project duct (before {@link #refreshFromWorld()}). */
+    public final void importUserDisconnectedFaceMask(int mask) {
+        setUserDisconnectedFaceMaskForLoad(mask & 0xFF);
+    }
+
+    /** Adds a wrench-disconnect bit (e.g. opposite face when syncing from project conversion). */
+    public final void addUserDisconnectedFace(Direction face) {
+        orUserDisconnectedFace(face);
+    }
+
     protected void setUserDisconnectedFaceMaskForLoad(int mask) {
         this.userDisconnectedFaceMask = mask & 0xFF;
     }

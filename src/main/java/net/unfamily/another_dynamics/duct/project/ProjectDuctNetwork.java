@@ -1,0 +1,66 @@
+package net.unfamily.another_dynamics.duct.project;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.unfamily.another_dynamics.registry.ModBlocks;
+
+/**
+ * Connected component of {@link ProjectDuctBlock} positions (BFS, deterministic order from anchor).
+ */
+public final class ProjectDuctNetwork {
+    private ProjectDuctNetwork() {}
+
+    public static boolean isProjectDuct(Block block) {
+        return block == ModBlocks.PROJECT_DUCT.get();
+    }
+
+    public static List<BlockPos> connectedOrdered(Level level, BlockPos start) {
+        List<BlockPos> out = new ArrayList<>();
+        if (level == null || start == null || !isProjectDuct(level.getBlockState(start).getBlock())) {
+            return out;
+        }
+        Set<BlockPos> seen = new HashSet<>();
+        ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+        queue.add(start);
+        seen.add(start);
+        while (!queue.isEmpty()) {
+            BlockPos current = queue.removeFirst();
+            out.add(current);
+            for (Direction direction : Direction.values()) {
+                BlockPos neighbor = current.relative(direction);
+                if (seen.contains(neighbor)) {
+                    continue;
+                }
+                if (!arePipeConnected(level, current, neighbor, direction)) {
+                    continue;
+                }
+                seen.add(neighbor);
+                queue.addLast(neighbor);
+            }
+        }
+        return out;
+    }
+
+    /** True when two adjacent project ducts share an connected (non-wrench-disconnected) pipe face. */
+    public static boolean arePipeConnected(Level level, BlockPos from, BlockPos to, Direction fromTo) {
+        if (!isProjectDuct(level.getBlockState(from).getBlock()) || !isProjectDuct(level.getBlockState(to).getBlock())) {
+            return false;
+        }
+        BlockState fromState = level.getBlockState(from);
+        BlockState toState = level.getBlockState(to);
+        int bit = 1 << fromTo.ordinal();
+        int oppositeBit = 1 << fromTo.getOpposite().ordinal();
+        return (ProjectDuctBlock.connectionMask(fromState) & bit) != 0
+                && (ProjectDuctBlock.disconnectedMask(fromState) & bit) == 0
+                && (ProjectDuctBlock.disconnectedMask(toState) & oppositeBit) == 0;
+    }
+}
