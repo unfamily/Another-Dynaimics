@@ -118,7 +118,7 @@ public final class DuctOverflowBuffer {
             duct.setChanged();
             return;
         }
-        ItemStack left = duct.tryInsertIntoAllStorageFacesRespectingRules(level, head.copy());
+        ItemStack left = duct.tryInsertOverflowRefund(level, head.copy());
         if (left.isEmpty()) {
             stacks.remove(0);
             duct.setChanged();

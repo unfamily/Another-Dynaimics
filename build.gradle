@@ -156,6 +156,7 @@ dependencies {
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.mockito:mockito-core:5.14.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     // Example mod dependency using a mod jar from ./libs with a flat dir repository

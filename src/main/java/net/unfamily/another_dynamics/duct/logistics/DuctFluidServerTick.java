@@ -36,6 +36,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class DuctFluidServerTick {
     private static final int RETRIEVE_ROUTE_RETRY_CAP = 32;
+    private static final int EXTRACT_ROUTE_RETRY_CAP = 32;
 
     private DuctFluidServerTick() {}
 
@@ -63,10 +64,12 @@ public final class DuctFluidServerTick {
             }
             if (node.ticksUntilAction > 0) {
                 node.ticksUntilAction--;
-                be.setChanged();
                 continue;
             }
             int rate = DuctModuleEffects.effectiveFluidActionRateTicks(be, dir, spec);
+            if (!DuctActionScheduling.isStaggerSlot(level, be.getBlockPos(), dir, rate)) {
+                continue;
+            }
             node.ticksUntilAction = rate - 1;
             NodeMode nm = lanes.nodeMode;
             if (nm == NodeMode.RETRIEVING || nm == NodeMode.RETRIEVING_EXTRACTION) {
@@ -123,108 +126,41 @@ public final class DuctFluidServerTick {
             return;
         }
 
-        // Build candidate insertion faces across the fluid network: priority first, then routing tie-break.
-        java.util.Set<BlockPos> ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.FLUID);
         boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
-        if (ducts.isEmpty()) {
+        List<DuctRoutingEndpointIndex.ScoredEndpoint> scored =
+                DuctRoutingEndpointIndex.listScoredExtractDestinations(
+                        level,
+                        srcPos,
+                        DuctNetworkType.FLUID,
+                        DuctTransportKind.FLUID,
+                        spec.edgeTravelTicks(),
+                        node.channelLetter,
+                        false,
+                        true,
+                        null,
+                        allowSelfFeed,
+                        sourceFace,
+                        false);
+        if (scored.isEmpty()) {
             return;
         }
-        ArrayList<DestCandidate> cands = new ArrayList<>();
-        for (BlockPos destPos : ducts) {
-            if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
-                continue;
+        int maxP = scored.getFirst().endpoint().insertionPriority();
+        ArrayList<DestCandidate> validInTier = new ArrayList<>();
+        for (DuctRoutingEndpointIndex.ScoredEndpoint s : scored) {
+            if (s.endpoint().insertionPriority() != maxP) {
+                break;
             }
-            OptionalLong dist =
-                    destPos.equals(srcPos)
-                            ? OptionalLong.of(0L)
-                            : DuctNetworkCache.routingTravelTicks(
-                                    level, srcPos, destPos, spec.edgeTravelTicks(), DuctNetworkType.FLUID);
-            if (dist.isEmpty()) {
-                continue;
-            }
-            int dsm = destBe.getStorageMask();
-            for (Direction df : Direction.values()) {
-                if ((dsm & (1 << df.ordinal())) == 0) {
-                    continue;
-                }
-                if (!destBe.isTransportKindEnabled(df, DuctTransportKind.FLUID)) {
-                    continue;
-                }
-                DuctFaceLanes destLanes = destBe.getFaceLanes(df);
-                DuctFaceNode destNode = destLanes.fluid;
-                if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
-                    continue;
-                }
-                NodeMode dm = destLanes.nodeMode;
-                if (dm != NodeMode.NONE
-                        && dm != NodeMode.FILTERING_INSERTION
-                        && dm != NodeMode.EXTRACTION_FILTERING) {
-                    continue;
-                }
-                if (!destNode.eligibilityMode.isInsertable()) {
-                    continue;
-                }
-                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, sourceFace, destPos, df, allowSelfFeed)) {
-                    continue;
-                }
-                if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {
-                    continue;
-                }
-                IFluidHandler destCap =
-                        level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
-                if (destCap == null) {
-                    continue;
-                }
-                FluidStack toMove = available.copy();
-                int simulated = DuctFluidCapHelper.simulateFill(destCap, toMove);
-                if (simulated <= 0) {
-                    continue;
-                }
-                if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
-                        && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                                destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
-                    continue;
-                }
-                if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
-                    List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
-                    List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
-                    int maxAdd =
-                            DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
-                                    destCap,
-                                    allowLines,
-                                    caps,
-                                    toMove,
-                                    DuctFluidIncomingIndex.snapshot(level, destPos),
-                                    level.registryAccess());
-                    if (maxAdd != Integer.MAX_VALUE) {
-                        simulated = Math.min(simulated, maxAdd);
-                        if (simulated <= 0) {
-                            continue;
-                        }
-                    }
-                }
-                FluidStack drain =
-                        DuctFluidCapHelper.simulateDrainMatching(
-                                srcCap, toMove, simulated);
-                if (drain.isEmpty() || drain.getAmount() < simulated) {
-                    continue;
-                }
-                cands.add(new DestCandidate(destPos, df, destNode.insertionPriority, dist.getAsLong(), simulated));
+            probeFluidDestination(level, srcCap, available, s)
+                    .ifPresent(validInTier::add);
+            if (validInTier.size() >= EXTRACT_ROUTE_RETRY_CAP) {
+                break;
             }
         }
-        if (cands.isEmpty()) {
+        if (validInTier.isEmpty()) {
             return;
-        }
-        cands.sort(Comparator.comparingInt((DestCandidate c) -> c.priority()).reversed());
-        int maxP = cands.getFirst().priority();
-        ArrayList<DestCandidate> tier = new ArrayList<>();
-        for (DestCandidate c : cands) {
-            if (c.priority() == maxP) {
-                tier.add(c);
-            }
         }
         int[] rr = new int[] {node.roundRobinCursor};
-        DestCandidate pick = pickWithinTier(level, tier, node.routingMode, rr);
+        DestCandidate pick = pickWithinTier(level, validInTier, node.routingMode, rr);
         if (pick == null) {
             return;
         }
@@ -583,6 +519,119 @@ public final class DuctFluidServerTick {
         return Math.min(simulatedFillMb, maxAdd);
     }
 
+    private static java.util.Optional<DestCandidate> probeFluidDestination(
+            ServerLevel level, IFluidHandler srcCap, FluidStack available, DuctRoutingEndpointIndex.ScoredEndpoint scored) {
+        DuctRoutingEndpointIndex.RoutingEndpoint ep = scored.endpoint();
+        if (!(level.getBlockEntity(ep.pos()) instanceof DuctBlockEntity destBe)) {
+            return java.util.Optional.empty();
+        }
+        Direction df = ep.face();
+        DuctFaceLanes destLanes = destBe.getFaceLanes(df);
+        DuctFaceNode destNode = destLanes.fluid;
+        NodeMode dm = destLanes.nodeMode;
+        IFluidHandler destCap =
+                level.getCapability(Capabilities.FluidHandler.BLOCK, ep.pos().relative(df), df.getOpposite());
+        if (destCap == null) {
+            return java.util.Optional.empty();
+        }
+        FluidStack toMove = available.copy();
+        int simulated = DuctFluidCapHelper.simulateFill(destCap, toMove);
+        if (simulated <= 0) {
+            return java.util.Optional.empty();
+        }
+        if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
+                && !DuctFluidFilterLogic.passesFluidFiltersForBank(
+                        destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
+            return java.util.Optional.empty();
+        }
+        if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
+            List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
+            List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
+            int maxAdd =
+                    DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
+                            destCap,
+                            allowLines,
+                            caps,
+                            toMove,
+                            DuctFluidIncomingIndex.snapshot(level, ep.pos()),
+                            level.registryAccess());
+            if (maxAdd != Integer.MAX_VALUE) {
+                simulated = Math.min(simulated, maxAdd);
+                if (simulated <= 0) {
+                    return java.util.Optional.empty();
+                }
+            }
+        }
+        FluidStack drain = DuctFluidCapHelper.simulateDrainMatching(srcCap, toMove, simulated);
+        if (drain.isEmpty() || drain.getAmount() < simulated) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(
+                new DestCandidate(ep.pos(), df, ep.insertionPriority(), scored.distTicks(), simulated));
+    }
+
+    private static java.util.Optional<DestCandidate> probeFluidDestinationForStall(
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            FluidStack available,
+            DuctRoutingEndpointIndex.ScoredEndpoint scored) {
+        DuctRoutingEndpointIndex.RoutingEndpoint ep = scored.endpoint();
+        if (!(level.getBlockEntity(ep.pos()) instanceof DuctBlockEntity destBe)) {
+            return java.util.Optional.empty();
+        }
+        Direction df = ep.face();
+        DuctFaceLanes destLanes = destBe.getFaceLanes(df);
+        DuctFaceNode destNode = destLanes.fluid;
+        NodeMode dm = destLanes.nodeMode;
+        IFluidHandler destCap =
+                level.getCapability(Capabilities.FluidHandler.BLOCK, ep.pos().relative(df), df.getOpposite());
+        if (destCap == null) {
+            return java.util.Optional.empty();
+        }
+        FluidStack toMove = available.copy();
+        int simulated = DuctFluidCapHelper.simulateFill(destCap, toMove);
+        if (simulated <= 0) {
+            return java.util.Optional.empty();
+        }
+        if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
+                && !DuctFluidFilterLogic.passesFluidFiltersForBank(
+                        destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
+            return java.util.Optional.empty();
+        }
+        if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
+                && !DuctFluidFilterLogic.passesFluidFiltersForBank(
+                        destNode, DuctFaceNode.FilterBank.RETRIEVER, toMove, level)) {
+            return java.util.Optional.empty();
+        }
+        if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
+            List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
+            List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
+            int maxAdd =
+                    DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
+                            destCap,
+                            allowLines,
+                            caps,
+                            toMove,
+                            DuctFluidIncomingIndex.snapshot(level, ep.pos()),
+                            level.registryAccess());
+            if (maxAdd != Integer.MAX_VALUE) {
+                simulated = Math.min(simulated, maxAdd);
+                if (simulated <= 0) {
+                    return java.util.Optional.empty();
+                }
+            }
+        }
+        if (dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION) {
+            simulated = capFillMbForRetrieverDestinationLimits(level, destBe, df, toMove, destCap, simulated);
+            if (simulated <= 0) {
+                return java.util.Optional.empty();
+            }
+        }
+        return java.util.Optional.of(
+                new DestCandidate(ep.pos(), df, ep.insertionPriority(), scored.distTicks(), simulated));
+    }
+
     private record DestCandidate(BlockPos ductPos, Direction face, int priority, long dist, int movedMb) {}
 
     private static DestCandidate pickWithinTier(
@@ -809,115 +858,41 @@ public final class DuctFluidServerTick {
             return 0;
         }
         BlockPos srcPos = sourceBe.getBlockPos();
-        java.util.Set<BlockPos> ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.FLUID);
         boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
-        if (ducts.isEmpty()) {
+        List<DuctRoutingEndpointIndex.ScoredEndpoint> scored =
+                DuctRoutingEndpointIndex.listScoredExtractDestinations(
+                        level,
+                        srcPos,
+                        DuctNetworkType.FLUID,
+                        DuctTransportKind.FLUID,
+                        spec.edgeTravelTicks(),
+                        node.channelLetter,
+                        true,
+                        true,
+                        null,
+                        allowSelfFeed,
+                        sourceFace,
+                        false);
+        if (scored.isEmpty()) {
             return 0;
         }
-        ArrayList<DestCandidate> cands = new ArrayList<>();
-        for (BlockPos destPos : ducts) {
-            if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
-                continue;
+        int maxP = scored.getFirst().endpoint().insertionPriority();
+        ArrayList<DestCandidate> validInTier = new ArrayList<>();
+        for (DuctRoutingEndpointIndex.ScoredEndpoint s : scored) {
+            if (s.endpoint().insertionPriority() != maxP) {
+                break;
             }
-            OptionalLong dist =
-                    destPos.equals(srcPos)
-                            ? OptionalLong.of(0L)
-                            : DuctNetworkCache.routingTravelTicks(
-                                    level, srcPos, destPos, spec.edgeTravelTicks(), DuctNetworkType.FLUID);
-            if (dist.isEmpty()) {
-                continue;
-            }
-            int dsm = destBe.getStorageMask();
-            for (Direction df : Direction.values()) {
-                if ((dsm & (1 << df.ordinal())) == 0) {
-                    continue;
-                }
-                if (!destBe.isTransportKindEnabled(df, DuctTransportKind.FLUID)) {
-                    continue;
-                }
-                DuctFaceLanes destLanes = destBe.getFaceLanes(df);
-                DuctFaceNode destNode = destLanes.fluid;
-                if (!DuctRedstoneLogic.isFaceTransportActive(level, destPos, destLanes.redstoneMode)) {
-                    continue;
-                }
-                NodeMode dm = destLanes.nodeMode;
-                if (dm != NodeMode.NONE
-                        && dm != NodeMode.FILTERING_INSERTION
-                        && dm != NodeMode.EXTRACTION_FILTERING
-                        && dm != NodeMode.RETRIEVING
-                        && dm != NodeMode.RETRIEVING_EXTRACTION) {
-                    continue;
-                }
-                if (!destNode.eligibilityMode.isInsertable()) {
-                    continue;
-                }
-                if (DuctSameBlockRouting.skipSameBlockDestFace(srcPos, sourceFace, destPos, df, allowSelfFeed)) {
-                    continue;
-                }
-                if (!DuctChannelPolicy.sameChannel(destNode.channelLetter, node.channelLetter)) {
-                    continue;
-                }
-                IFluidHandler destCap =
-                        level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
-                if (destCap == null) {
-                    continue;
-                }
-                FluidStack toMove = available.copy();
-                int simulated = DuctFluidCapHelper.simulateFill(destCap, toMove);
-                if (simulated <= 0) {
-                    continue;
-                }
-                if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
-                        && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                                destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
-                    continue;
-                }
-                if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
-                        && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                                destNode, DuctFaceNode.FilterBank.RETRIEVER, toMove, level)) {
-                    continue;
-                }
-                if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
-                    List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
-                    List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
-                    int maxAdd =
-                            DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
-                                    destCap,
-                                    allowLines,
-                                    caps,
-                                    toMove,
-                                    DuctFluidIncomingIndex.snapshot(level, destPos),
-                                    level.registryAccess());
-                    if (maxAdd != Integer.MAX_VALUE) {
-                        simulated = Math.min(simulated, maxAdd);
-                        if (simulated <= 0) {
-                            continue;
-                        }
-                    }
-                }
-                if (dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION) {
-                    simulated =
-                            capFillMbForRetrieverDestinationLimits(level, destBe, df, toMove, destCap, simulated);
-                    if (simulated <= 0) {
-                        continue;
-                    }
-                }
-                cands.add(new DestCandidate(destPos, df, destNode.insertionPriority, dist.getAsLong(), simulated));
+            probeFluidDestinationForStall(level, sourceBe, sourceFace, available, s)
+                    .ifPresent(validInTier::add);
+            if (validInTier.size() >= EXTRACT_ROUTE_RETRY_CAP) {
+                break;
             }
         }
-        if (cands.isEmpty()) {
+        if (validInTier.isEmpty()) {
             return 0;
-        }
-        cands.sort(Comparator.comparingInt((DestCandidate c) -> c.priority()).reversed());
-        int maxP = cands.getFirst().priority();
-        ArrayList<DestCandidate> tier = new ArrayList<>();
-        for (DestCandidate c : cands) {
-            if (c.priority() == maxP) {
-                tier.add(c);
-            }
         }
         int[] rr = new int[] {node.roundRobinCursor};
-        DestCandidate pick = pickWithinTier(level, tier, node.routingMode, rr);
+        DestCandidate pick = pickWithinTier(level, validInTier, node.routingMode, rr);
         if (pick == null) {
             return 0;
         }

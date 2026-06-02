@@ -33,6 +33,7 @@ public final class DuctNetworkCache {
         if (cache != null) {
             cache.invalidateAll();
         }
+        DuctRoutingEndpointIndex.onTopologyInvalidated(level);
     }
 
     /** Invalidate one network type (and radioactive gas subgraph when {@code GAS}). */
@@ -41,6 +42,7 @@ public final class DuctNetworkCache {
         if (cache != null) {
             cache.invalidate(network);
         }
+        DuctRoutingEndpointIndex.onTopologyInvalidated(level);
     }
 
     public static Set<BlockPos> connectedDucts(ServerLevel level, BlockPos start, DuctNetworkType network) {

@@ -189,16 +189,35 @@ public final class DuctCapHelper {
         if (probe.isEmpty()) {
             return true;
         }
+        if (level != null && !level.isClientSide()) {
+            if (DuctInsertProbeCache.isRejected(level, ductPos, face, probe)) {
+                return false;
+            }
+            Boolean cached = DuctInsertProbeCache.getCachedAccept(level, ductPos, face, probe);
+            if (cached != null) {
+                return cached;
+            }
+        }
         IItemHandler h = getHandlerOnFace(level, ductPos, face);
         if (h == null) {
+            if (level != null && !level.isClientSide()) {
+                DuctInsertProbeCache.recordReject(level, ductPos, face, probe);
+            }
             return false;
         }
         // Destination selection should only require "can insert something", not "can insert the whole batch in one call".
         // Drawers-like inventories may accept only part of a larger probe stack (or expose large capacities through a
         // small slot count), so probing with count=1 is the most compatible.
-        ItemStack one = probe.copy();
-        one.setCount(1);
-        return simulateInsertIntoHandler(h, one).isEmpty();
+        ItemStack one = probe.copyWithCount(1);
+        boolean accepted = DuctItemInsertProbe.canAcceptOne(h, one);
+        if (level != null && !level.isClientSide()) {
+            if (accepted) {
+                DuctInsertProbeCache.cacheAccept(level, ductPos, face, probe, true);
+            } else {
+                DuctInsertProbeCache.recordReject(level, ductPos, face, probe);
+            }
+        }
+        return accepted;
     }
 
     public static int countExtractableMatchingOnFace(
@@ -311,10 +330,14 @@ public final class DuctCapHelper {
             return 0;
         }
         IItemHandler h = getHandlerOnFace(level, ductPos, face);
-        if (h == null) {
+        return maxInsertableOnHandler(h, template, limit);
+    }
+
+    public static int maxInsertableOnHandler(IItemHandler h, ItemStack template, int limit) {
+        if (limit <= 0 || template.isEmpty() || h == null) {
             return 0;
         }
-        return simulateMaxInsertableIntoHandler(h, template, limit);
+        return DuctItemInsertProbe.estimateMaxInsertable(h, template, limit);
     }
 
     public static int maxInsertableAfterPendingOnFace(
@@ -334,7 +357,7 @@ public final class DuctCapHelper {
         // Measure insert capacity on the real handler using repeated simulated inserts (chunked by max stack size).
         // Do not copy into an ItemStackHandler: drawers-like inventories expose large storage through a small slot count,
         // and a plain ItemStackHandler snapshot would clamp to vanilla stack limits and under-estimate capacity.
-        int physicalCap = simulateMaxInsertableIntoHandler(h, template, limit);
+        int physicalCap = DuctItemInsertProbe.estimateMaxInsertable(h, template, limit);
         int pendingSame = countSameItemCount(priorPending, template);
         return Math.max(0, Math.min(limit, physicalCap - pendingSame));
     }
@@ -598,61 +621,6 @@ public final class DuctCapHelper {
             c.setStackInSlot(i, h.getStackInSlot(i).copy());
         }
         return c;
-    }
-
-    /**
-     * Simulate insertion into a real handler (respects slot validity/filters) without mutating it.
-     */
-    private static ItemStack simulateInsertIntoHandler(IItemHandler h, ItemStack stack) {
-        if (stack.isEmpty()) {
-            return ItemStack.EMPTY;
-        }
-        ItemStack remaining = stack.copy();
-        for (int i = 0; i < h.getSlots() && !remaining.isEmpty(); i++) {
-            if (!DuctHandlerSlotSemantics.canInsertIntoSlot(h, i, stack)) {
-                continue;
-            }
-            remaining = h.insertItem(i, remaining, true);
-        }
-        return remaining;
-    }
-
-    private static int simulateMaxInsertableIntoHandler(IItemHandler h, ItemStack template, int limit) {
-        if (limit <= 0 || template.isEmpty()) {
-            return 0;
-        }
-        // Binary search up to `limit` by repeatedly inserting stack-sized chunks.
-        // Many handlers (drawers) accept large totals but only through repeated <= maxStackSize inserts.
-        int lo = 0;
-        int hi = limit;
-        while (lo < hi) {
-            int mid = (lo + hi + 1) / 2;
-            if (canInsertCountByChunking(h, template, mid)) {
-                lo = mid;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return lo;
-    }
-
-    private static boolean canInsertCountByChunking(IItemHandler h, ItemStack template, int totalCount) {
-        if (totalCount <= 0) {
-            return true;
-        }
-        int remaining = totalCount;
-        int chunkSize = Math.max(1, template.getMaxStackSize());
-        while (remaining > 0) {
-            int n = Math.min(remaining, chunkSize);
-            ItemStack chunk = template.copy();
-            chunk.setCount(n);
-            ItemStack left = simulateInsertIntoHandler(h, chunk);
-            if (!left.isEmpty()) {
-                return false;
-            }
-            remaining -= n;
-        }
-        return true;
     }
 
     private static int countSameItemCount(@Nullable List<ItemStack> stacks, ItemStack template) {

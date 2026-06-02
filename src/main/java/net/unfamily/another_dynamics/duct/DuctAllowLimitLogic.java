@@ -16,7 +16,14 @@ import net.unfamily.another_dynamics.duct.logistics.DuctHandlerSlotSemantics;
  * Per-allow-line caps: {@code 0} = unlimited. First non-empty allow line that matches an item wins (same index for cap).
  */
 public final class DuctAllowLimitLogic {
+    /** Inventories larger than this skip allow-limit slot scans and behave as insert-saturated (0 headroom). */
+    public static final int INSERT_LIMIT_HANDLER_SLOT_CAP = 100;
+
     private DuctAllowLimitLogic() {}
+
+    private static boolean exceedsInsertLimitSlotCap(IItemHandler handler) {
+        return handler != null && handler.getSlots() > INSERT_LIMIT_HANDLER_SLOT_CAP;
+    }
 
     /**
      * True when at least one non-empty allow line has a positive limit. If none, destination allow-limit logic should not
@@ -108,6 +115,9 @@ public final class DuctAllowLimitLogic {
             HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null) {
             return Integer.MAX_VALUE;
+        }
+        if (exceedsInsertLimitSlotCap(handler)) {
+            return 0;
         }
         if (lineIndex < 0 || lineIndex >= allowLines.size()) {
             return Integer.MAX_VALUE;
@@ -214,6 +224,9 @@ public final class DuctAllowLimitLogic {
         if (!anyPositiveCap) {
             return Integer.MAX_VALUE;
         }
+        if (exceedsInsertLimitSlotCap(handler)) {
+            return 0;
+        }
         for (int i = 0; i < allowLines.size(); i++) {
             String line = allowLines.get(i);
             if (line == null || line.trim().isEmpty()) {
@@ -289,6 +302,9 @@ public final class DuctAllowLimitLogic {
             HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null) {
             return Integer.MAX_VALUE;
+        }
+        if (exceedsInsertLimitSlotCap(handler)) {
+            return 0;
         }
         int idx = firstMatchingAllowLineIndex(allowLines, template, registries);
         if (idx < 0 || idx >= caps.size()) {

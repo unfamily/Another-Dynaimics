@@ -30,8 +30,11 @@ import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
+import net.unfamily.another_dynamics.duct.logistics.DuctActionScheduling;
 import net.unfamily.another_dynamics.duct.logistics.DuctCapHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctHandlerSlotSemantics;
+import net.unfamily.another_dynamics.duct.logistics.DuctInsertProbeCache;
+import net.unfamily.another_dynamics.duct.logistics.DuctItemInsertProbe;
 import net.unfamily.another_dynamics.duct.logistics.DuctFluidIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctGasIncomingIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctOverflowBuffer;
@@ -46,6 +49,7 @@ import net.unfamily.another_dynamics.duct.logistics.DuctEnergyServerTick;
 import net.unfamily.another_dynamics.duct.logistics.DuctHeatServerTick;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
+import net.unfamily.another_dynamics.duct.logistics.DuctRoutingEndpointIndex;
 import net.unfamily.another_dynamics.duct.logistics.DuctTargetSelector;
 import net.unfamily.another_dynamics.duct.logistics.DuctTransitTopology;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
@@ -91,7 +95,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private static final int EXTRACTION_ROUTE_RETRY_CAP = 32;
     /** Throttle full-network stall drain scans (BFS destination lists) between successful drains. */
     private static final int ITEM_STALL_DRAIN_SCAN_INTERVAL = 4;
+    private static final int NON_ITEM_STALL_DRAIN_SCAN_INTERVAL = 4;
     private int itemStallDrainScanCooldown;
+    private int nonItemStallDrainScanCooldown;
 
     /**
      * After chunk load, {@link Level#getBlockState} can see an {@link AbstractDuctBlock} before the
@@ -967,6 +973,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (itemStallDrainScanCooldown > 0) {
             itemStallDrainScanCooldown--;
         }
+        if (nonItemStallDrainScanCooldown > 0) {
+            nonItemStallDrainScanCooldown--;
+        }
         boolean wantsItem =
                 ductDefinition().map(d -> d.enabledTransportKinds().contains(DuctTransportKind.ITEM)).orElse(true);
         if (wantsItem && isStorageAttachmentNode()) {
@@ -987,6 +996,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 int rate = DuctModuleEffects.effectiveItemActionRateTicks(this, dir, spec);
                 if (node.ticksUntilAction > 0) {
                     node.ticksUntilAction--;
+                    continue;
+                }
+                if (!DuctActionScheduling.isStaggerSlot(serverLevel, worldPosition, dir, rate)) {
                     continue;
                 }
                 node.ticksUntilAction = rate - 1;
@@ -1039,7 +1051,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     /** Retry delivering fluid/gas/energy stall buffers into the network (not only refund to the source block). */
     private void tickDrainNonItemStallsToNetwork(ServerLevel level) {
+        if (nonItemStallDrainScanCooldown > 0) {
+            return;
+        }
         int sm = getStorageMask();
+        boolean drained = false;
         for (Direction face : Direction.values()) {
             if ((sm & (1 << face.ordinal())) == 0) {
                 continue;
@@ -1055,12 +1071,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             if (isTransportKindEnabled(face, DuctTransportKind.FLUID)) {
                 DuctFaceLanes fl = getFaceLanes(face);
-                DuctFluidServerTick.tryDrainFluidStallForFace(this, level, face, fl.nodeMode, fl.fluid, fluidTransportSpec());
+                if (DuctFluidServerTick.tryDrainFluidStallForFace(this, level, face, fl.nodeMode, fl.fluid, fluidTransportSpec())) {
+                    drained = true;
+                }
             }
             if (isTransportKindEnabled(face, DuctTransportKind.GAS)) {
                 DuctFaceLanes gl = getFaceLanes(face);
-                DuctGasServerTick.tryDrainGasStallForFace(this, level, face, gl.nodeMode, gl.gas, gasTransportSpec());
+                if (DuctGasServerTick.tryDrainGasStallForFace(this, level, face, gl.nodeMode, gl.gas, gasTransportSpec())) {
+                    drained = true;
+                }
             }
+        }
+        if (drained) {
+            nonItemStallDrainScanCooldown = NON_ITEM_STALL_DRAIN_SCAN_INTERVAL;
+            syncStallVisualIfNeeded();
+            setChanged();
         }
     }
 
@@ -1593,20 +1618,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             capIn = DuctCapHelper.maxInsertableAfterPending(level, s.destDuct, destBe, s.stack, insLimit, prior);
         } else {
             capIn =
-                    DuctCapHelper.maxInsertableAfterPendingOnFace(
-                            level, s.destDuct, s.destFace, s.stack, insLimit, prior);
+                    maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+                            level, s.destDuct, s.destFace, destBe, s.stack, insLimit, prior, false);
         }
-        if (!s.legacyOmniFaces) {
-            capIn =
-                    capInsertableForFilterAllowLimit(
-                            level, s.destDuct, s.destFace, destBe, s.stack, capIn, prior);
-            if (!itemsAlreadyPulledFromSource) {
-                capExt =
-                        Math.min(
-                                capExt,
-                                capExtractableForSourceKeep(
-                                        level, s.refundDuct, s.sourceFace, srcBe, s.stack, capExt));
-            }
+        if (!s.legacyOmniFaces && !itemsAlreadyPulledFromSource) {
+            capExt =
+                    Math.min(
+                            capExt,
+                            capExtractableForSourceKeep(
+                                    level, s.refundDuct, s.sourceFace, srcBe, s.stack, capExt));
         }
         int newPlanned = Math.min(planned, Math.min(capExt, capIn));
 
@@ -1675,6 +1695,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (s.stack != null && !s.stack.isEmpty()) {
             DuctIncomingIndex.register(level, s.destDuct, s.destFace, s.incomingReservationId, s.stack);
         }
+        DuctInsertProbeCache.invalidateFace(s.destDuct, s.destFace);
     }
 
     /**
@@ -1848,6 +1869,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
                     continue;
                 }
+                if (DuctInsertProbeCache.isRejected(level, dest, destFace, st)) {
+                    continue;
+                }
                 int plannedCount = Math.min(remaining, tubeOperationBatchSize(spec, this, face));
                 int destCap = maxSchedulableTowardFace(level, dest, destBe, destFace, st, plannedCount);
                 if (destCap <= 0) {
@@ -1876,7 +1900,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 sh.stack = payload.copy();
                 sh.registeredIncoming = sh.stack.copy();
                 sh.sourceExtractCommitted = true;
-                sh.legacyPhysicalBuffer = true;
                 sh.ductPath = OutboundShipment.copyPath(path);
                 sh.totalTravelTicks = travelTicks;
                 sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, edgeTicks);
@@ -2374,13 +2397,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (!s.legacyOmniFaces) {
                 List<ItemStack> priorR = List.of();
                 int maxIns =
-                        DuctCapHelper.maxInsertableAfterPendingOnFace(
-                                level, s.destDuct, s.destFace, chunk, chunk.getCount(), priorR);
-                maxIns =
-                        capInsertableForFilterAllowLimit(
-                                level, s.destDuct, s.destFace, destBe, chunk, maxIns, priorR);
+                        maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+                                level, s.destDuct, s.destFace, destBe, chunk, chunk.getCount(), priorR, false);
                 take = Math.min(take, maxIns);
                 if (take <= 0) {
+                    recordDestInsertRejected(level, s.destDuct, s.destFace, chunk);
                     cancelOutboundShipment(level, s, it);
                     return false;
                 }
@@ -2390,6 +2411,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             NodeMode dm = destBe.getFaceLanes(s.destFace).nodeMode;
             if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                     && !destBe.passesItemFilters(s.destFace, chunk, level, DuctFaceNode.FilterBank.FILTER)) {
+                recordDestInsertRejected(level, s.destDuct, s.destFace, chunk);
                 cancelOutboundShipment(level, s, it);
                 return false;
             }
@@ -2400,9 +2422,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                             : DuctCapHelper.insertIntoFace(level, s.destDuct, s.destFace, toInsert);
             int inserted = DuctCapHelper.countAccepted(toInsert, remainder);
             if (inserted <= 0) {
+                recordDestInsertRejected(level, s.destDuct, s.destFace, chunk);
                 cancelOutboundShipment(level, s, it);
                 return false;
             }
+            DuctInsertProbeCache.cacheAccept(level, s.destDuct, s.destFace, chunk, true);
             if (inserted < planned) {
                 s.stack.shrink(inserted);
                 s.registeredIncoming = s.stack.copy();
@@ -2449,12 +2473,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 s.legacyOmniFaces
                         ? DuctCapHelper.maxInsertableAfterPending(
                                 level, s.destDuct, destBe, s.stack, insLimit, prior)
-                        : DuctCapHelper.maxInsertableAfterPendingOnFace(
-                                level, s.destDuct, s.destFace, s.stack, insLimit, prior);
+                        : maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+                                level, s.destDuct, s.destFace, destBe, s.stack, insLimit, prior, false);
         if (!s.legacyOmniFaces) {
-            capIn =
-                    capInsertableForFilterAllowLimit(
-                            level, s.destDuct, s.destFace, destBe, s.stack, capIn, prior);
             capExt =
                     Math.min(
                             capExt,
@@ -2501,9 +2522,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         : DuctCapHelper.insertIntoFace(level, s.destDuct, s.destFace, toInsert);
         int inserted = DuctCapHelper.countAccepted(toInsert, remainder);
         if (inserted <= 0) {
-            cancelOutboundShipment(level, s, it);
+            recordDestInsertRejected(level, s.destDuct, s.destFace, extracted);
+            if (!tryRefundOrStall(level, s, extracted)) {
+                DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, extracted, worldPosition);
+            }
+            s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
+            setChanged();
             return false;
         }
+        DuctInsertProbeCache.cacheAccept(level, s.destDuct, s.destFace, extracted, true);
         if (inserted < planned) {
             s.stack.shrink(inserted);
             s.registeredIncoming = s.stack.copy();
@@ -2556,13 +2584,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (!s.legacyOmniFaces) {
                 List<ItemStack> priorR = List.of();
                 int maxIns =
-                        DuctCapHelper.maxInsertableAfterPendingOnFace(
-                                level, worldPosition, s.destFace, chunk, chunk.getCount(), priorR);
-                maxIns =
-                        capInsertableForFilterAllowLimit(
-                                level, worldPosition, s.destFace, this, chunk, maxIns, priorR);
+                        maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+                                level, worldPosition, s.destFace, this, chunk, chunk.getCount(), priorR, false);
                 take = Math.min(take, maxIns);
                 if (take <= 0) {
+                    recordDestInsertRejected(level, s.destDuct, s.destFace, chunk);
                     cancelOutboundShipment(level, s, it);
                     return false;
                 }
@@ -2582,9 +2608,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                             : DuctCapHelper.insertIntoFace(level, worldPosition, s.destFace, toInsert);
             int inserted = DuctCapHelper.countAccepted(toInsert, remainder);
             if (inserted <= 0) {
+                recordDestInsertRejected(level, s.destDuct, s.destFace, chunk);
                 cancelOutboundShipment(level, s, it);
                 return false;
             }
+            DuctInsertProbeCache.cacheAccept(level, worldPosition, s.destFace, chunk, true);
             if (inserted < planned) {
                 s.stack.shrink(inserted);
                 s.registeredIncoming = s.stack.copy();
@@ -2615,12 +2643,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 s.legacyOmniFaces
                         ? DuctCapHelper.maxInsertableAfterPending(
                                 level, worldPosition, this, s.stack, insLimit, prior)
-                        : DuctCapHelper.maxInsertableAfterPendingOnFace(
-                                level, worldPosition, s.destFace, s.stack, insLimit, prior);
+                        : maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+                                level, worldPosition, s.destFace, this, s.stack, insLimit, prior, false);
         if (!s.legacyOmniFaces) {
-            capIn =
-                    capInsertableForFilterAllowLimit(
-                            level, worldPosition, s.destFace, this, s.stack, capIn, prior);
             capExt =
                     Math.min(
                             capExt,
@@ -2667,9 +2692,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         : DuctCapHelper.insertIntoFace(level, worldPosition, s.destFace, toInsert);
         int inserted = DuctCapHelper.countAccepted(toInsert, remainder);
         if (inserted <= 0) {
-            cancelOutboundShipment(level, s, it);
+            recordDestInsertRejected(level, worldPosition, s.destFace, extracted);
+            if (!tryRefundOrStall(level, s, extracted)) {
+                DuctOverflowRouting.tryRefundToSourceNoDrop(level, s, extracted, worldPosition);
+            }
+            s.stack = ItemStack.EMPTY;
+            removeShipmentFromList(level, s, it);
+            setChanged();
             return false;
         }
+        DuctInsertProbeCache.cacheAccept(level, worldPosition, s.destFace, extracted, true);
         if (inserted < planned) {
             s.stack.shrink(inserted);
             s.registeredIncoming = s.stack.copy();
@@ -2690,6 +2722,55 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         overflowBuffer.tickTryDrainOne(level, this);
+    }
+
+    /**
+     * Like {@link #insertIntoStorageFacesRespectingInboundRedstone} but never pushes into faces whose attached
+     * inventory supplies extraction/retrieve pulls — prevents refund overflow from duplicating source items.
+     */
+    public ItemStack tryInsertOverflowRefund(ServerLevel level, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack remaining = stack.copy();
+        int mask = getStorageMask();
+        for (Direction dir : Direction.values()) {
+            if ((mask & (1 << dir.ordinal())) == 0) {
+                continue;
+            }
+            DuctFaceLanes lanes = getFaceLanes(dir);
+            if (faceIsItemExtractSource(lanes.nodeMode)) {
+                continue;
+            }
+            if (DuctTargetSelector.isNetworkInboundDeliveryMode(lanes.nodeMode)
+                    && !isFaceTransportEnabled(dir)) {
+                continue;
+            }
+            BlockPos adj = worldPosition.relative(dir);
+            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            if (h == null) {
+                continue;
+            }
+            remaining = ItemHandlerHelper.insertItemStacked(h, remaining, false);
+            if (remaining.isEmpty()) {
+                return ItemStack.EMPTY;
+            }
+        }
+        return remaining;
+    }
+
+    /** Attached inventories on these faces supply items to the network; refunds must stay in stall/overflow, not re-enter. */
+    public static boolean faceIsItemExtractSource(NodeMode mode) {
+        return mode == NodeMode.EXTRACTION
+                || mode == NodeMode.EXTRACTION_FILTERING
+                || mode == NodeMode.RETRIEVING_EXTRACTION;
+    }
+
+    private void recordDestInsertRejected(ServerLevel level, BlockPos destDuct, Direction destFace, ItemStack template) {
+        if (template.isEmpty()) {
+            return;
+        }
+        DuctInsertProbeCache.recordReject(level, destDuct, destFace, template);
     }
 
     /**
@@ -3178,11 +3259,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             template.setCount(plannedCount);
             List<ItemStack> prior = DuctIncomingIndex.snapshot(level, worldPosition, retrieverFace);
             int capIn =
-                    DuctCapHelper.maxInsertableAfterPendingOnFace(
-                            level, worldPosition, retrieverFace, template, plannedCount, prior);
-            capIn =
-                    capInsertableForRetrieverAllowLimit(
-                            level, worldPosition, retrieverFace, this, template, capIn, prior);
+                    maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+                            level, worldPosition, retrieverFace, this, template, plannedCount, prior, true);
             plannedCount = Math.min(plannedCount, capIn);
             if (plannedCount <= 0) {
                 continue;
@@ -3260,19 +3338,42 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!DuctRedstoneLogic.isFaceTransportActive(level, destDuct, destBe.getFaceLanes(destFace).redstoneMode)) {
             return 0;
         }
+        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct, destFace);
         ItemStack t = template.copy();
         t.setCount(want);
-        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct, destFace);
-        // Physical capacity only (in-flight reservations are not in the chest yet), same idea as fluid simulateFill.
-        int capInsert = DuctCapHelper.maxInsertableOnFace(level, destDuct, destFace, t, want);
-        int afterAllow =
+        int allowCap =
                 retrieverAllowBank
                         ? capInsertableForRetrieverAllowLimit(
-                                level, destDuct, destFace, destBe, t, capInsert, prior)
+                                level, destDuct, destFace, destBe, t, want, prior)
                         : capInsertableForFilterAllowLimit(
-                                level, destDuct, destFace, destBe, t, capInsert, prior);
-        int out = Math.max(0, Math.min(want, afterAllow));
-        return out;
+                                level, destDuct, destFace, destBe, t, want, prior);
+        if (allowCap <= 0) {
+            return 0;
+        }
+        if (DuctInsertProbeCache.isRejected(level, destDuct, destFace, template)) {
+            return 0;
+        }
+        IItemHandler destHandler = DuctCapHelper.getHandlerOnFace(level, destDuct, destFace);
+        if (destHandler == null) {
+            DuctInsertProbeCache.recordReject(level, destDuct, destFace, template);
+            return 0;
+        }
+        ItemStack one = template.copyWithCount(1);
+        if (!DuctItemInsertProbe.canAcceptOne(destHandler, one)) {
+            DuctInsertProbeCache.recordReject(level, destDuct, destFace, template);
+            return 0;
+        }
+        if (allowCap == 1) {
+            DuctInsertProbeCache.cacheAccept(level, destDuct, destFace, template, true);
+            return 1;
+        }
+        int physicalCap = DuctCapHelper.maxInsertableOnHandler(destHandler, t, allowCap);
+        if (physicalCap <= 0) {
+            recordDestInsertRejected(level, destDuct, destFace, template);
+            return 0;
+        }
+        DuctInsertProbeCache.cacheAccept(level, destDuct, destFace, template, true);
+        return Math.max(0, Math.min(want, Math.min(allowCap, physicalCap)));
     }
 
     private int distinctPendingOutboundKinds() {
@@ -3732,6 +3833,34 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private static boolean destFaceUsesFilterAllowLimit(NodeMode destMode) {
         return destMode == NodeMode.FILTERING_INSERTION || destMode == NodeMode.EXTRACTION_FILTERING;
+    }
+
+    /**
+     * Applies FILTER/RETRIEVER allow-line headroom before any simulated physical insert probe on the destination face.
+     */
+    private int maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+            ServerLevel level,
+            BlockPos destDuctPos,
+            Direction destFace,
+            DuctBlockEntity destBe,
+            ItemStack template,
+            int limit,
+            List<ItemStack> priorIncoming,
+            boolean retrieverAllowBank) {
+        if (limit <= 0 || template.isEmpty()) {
+            return 0;
+        }
+        int allowCap =
+                retrieverAllowBank
+                        ? capInsertableForRetrieverAllowLimit(
+                                level, destDuctPos, destFace, destBe, template, limit, priorIncoming)
+                        : capInsertableForFilterAllowLimit(
+                                level, destDuctPos, destFace, destBe, template, limit, priorIncoming);
+        if (allowCap <= 0) {
+            return 0;
+        }
+        return DuctCapHelper.maxInsertableAfterPendingOnFace(
+                level, destDuctPos, destFace, template, allowCap, priorIncoming);
     }
 
     /**
@@ -4207,6 +4336,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 };
         if (changed) {
             setChanged();
+            invalidateRoutingEndpointCache();
             refreshMenuData(accessFace);
             syncVisualGeometryToClients();
         }
@@ -4531,7 +4661,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             clampExtractAmount(node, accessFace);
         }
         setChanged();
+        invalidateRoutingEndpointCache();
         refreshMenuData(accessFace);
+    }
+
+    private void invalidateRoutingEndpointCache() {
+        if (level instanceof ServerLevel serverLevel) {
+            DuctRoutingEndpointIndex.onSettingsChanged(serverLevel);
+        }
     }
 
     private void clampExtractAmount(DuctFaceNode node, Direction face) {

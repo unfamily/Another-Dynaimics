@@ -73,10 +73,12 @@ public final class DuctEnergyServerTick {
             }
             if (lanes.energyTicksUntilAction > 0) {
                 lanes.energyTicksUntilAction--;
-                be.setChanged();
                 continue;
             }
             int rate = DuctModuleEffects.effectiveEnergyActionRateTicks(be, dir, spec);
+            if (!DuctActionScheduling.isStaggerSlot(level, be.getBlockPos(), dir, rate)) {
+                continue;
+            }
             lanes.energyTicksUntilAction = Math.max(0, rate - 1);
 
             NodeMode nm = lanes.nodeMode;
