@@ -25,6 +25,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
 import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
+import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.network.SettingsCopierActionPayload;
@@ -79,9 +80,23 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
     /** Top of module column slot art; must match {@link DuctGuiLayout#MODULE_COLUMN_FIRST_SLOT_Y}. */
     public static final int SLOT_MODULE_BACKGROUND_Y0 = DuctGuiLayout.MODULE_COLUMN_FIRST_SLOT_Y;
 
-    /** Copy column: {@code SINGLE_SLOT} blit position (node texture alignment). */
+    /** Right column X (redstone, channel, settings copier). */
     public static final int SLOT_COPY_BACKGROUND_X = 278 + SLOT_GEOMETRY_NUDGE;
-    public static final int SLOT_COPY_BACKGROUND_Y = 52 + SLOT_GEOMETRY_NUDGE;
+
+    /** Gap between stacked controls in the right column. */
+    public static final int COPY_COLUMN_GAP = 2;
+    public static final int COPIER_ACTION_BUTTON_H = 12;
+
+    /** Channel letter control: full 18×18 slot under redstone (former copier slot position). */
+    public static final int CHANNEL_BACKGROUND_X = SLOT_COPY_BACKGROUND_X;
+    public static final int CHANNEL_BACKGROUND_Y = 52 + SLOT_GEOMETRY_NUDGE;
+
+    /** Settings copier inventory slot frame (below channel). */
+    public static final int SLOT_COPY_BACKGROUND_Y = CHANNEL_BACKGROUND_Y + 18 + COPY_COLUMN_GAP;
+
+    public static final int COPIER_SAVE_BUTTON_Y = SLOT_COPY_BACKGROUND_Y + 18 + COPY_COLUMN_GAP;
+    public static final int COPIER_LOAD_BUTTON_Y =
+            COPIER_SAVE_BUTTON_Y + COPIER_ACTION_BUTTON_H + COPY_COLUMN_GAP;
 
     /**
      * Container {@link Slot} origins for module/copy: one pixel right and down from the slot frame art so items and
@@ -784,7 +799,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
             return false;
         }
         DuctTransportKind[] kinds = DuctTransportKind.values();
-        DuctTransportKind laneKind =
+        DuctTransportKind guiLaneKind =
                 kinds[Mth.clamp(payload.transportKindOrdinal(), 0, kinds.length - 1)];
         DuctFaceNode.FilterBank bank =
                 DuctFaceNode.FilterBank.values()[
@@ -793,9 +808,11 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
                                 0,
                                 DuctFaceNode.FilterBank.values().length - 1)];
         boolean allowList = payload.allowDeny() == SettingsCopierActionPayload.LIST_ALLOW;
-        DuctFaceNode node = linkedBlockEntity.faceNodeForTransportKind(accessFace, laneKind);
         if (copy) {
-            CompoundTag snapshot = DuctFilterListSnapshot.captureList(node, bank, allowList);
+            FilterListMaterialKind materialKind = FilterListMaterialKind.fromTransportKind(guiLaneKind);
+            DuctFaceNode node = linkedBlockEntity.faceNodeForTransportKind(accessFace, guiLaneKind);
+            CompoundTag snapshot =
+                    DuctFilterListSnapshot.captureList(node, bank, allowList, materialKind);
             commitCopierSnapshot(player, copier, snapshot);
             SettingsCopierFeedback.notifyCopied(player);
             return true;
@@ -805,7 +822,22 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
             return false;
         }
         var data = DuctFaceSettingsSnapshot.readFromCopier(copier);
-        if (data.isEmpty() || !DuctFilterListSnapshot.applyToList(node, bank, allowList, data.get())) {
+        if (data.isEmpty()) {
+            SettingsCopierFeedback.notifyPasteFailed(player);
+            return false;
+        }
+        FilterListMaterialKind materialKind = DuctFilterListSnapshot.getMaterialKind(data.get());
+        if (materialKind == FilterListMaterialKind.NONE) {
+            SettingsCopierFeedback.notifyPasteKindNotSet(player);
+            return false;
+        }
+        if (!materialKind.canPasteToDuctFace(linkedBlockEntity, accessFace)) {
+            SettingsCopierFeedback.notifyPasteKindMismatch(player, materialKind);
+            return false;
+        }
+        DuctTransportKind laneKind = materialKind.toTransportKind();
+        DuctFaceNode node = linkedBlockEntity.faceNodeForTransportKind(accessFace, laneKind);
+        if (!DuctFilterListSnapshot.applyToList(node, bank, allowList, data.get())) {
             SettingsCopierFeedback.notifyPasteFailed(player);
             return false;
         }
@@ -819,17 +851,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
 
     @Override
     public void removed(Player player) {
+        // super.removed() already returns menu slot stacks (including the copier slot) to the player once.
         super.removed(player);
-        if (player.level().isClientSide()) {
-            return;
-        }
-        ItemStack copier = copierSlot.getStackInSlot(0);
-        if (!copier.isEmpty()) {
-            if (!player.getInventory().add(copier.copy())) {
-                player.drop(copier.copy(), false);
-            }
-            copierSlot.setStackInSlot(0, ItemStack.EMPTY);
-        }
     }
 
     @Override

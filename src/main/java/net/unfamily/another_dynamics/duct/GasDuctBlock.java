@@ -17,5 +17,10 @@ public final class GasDuctBlock extends DuctBlock {
     public EnumSet<DuctNetworkType> ductNetworkTypes() {
         return EnumSet.of(DuctNetworkType.GAS);
     }
+
+    @Override
+    protected String defaultSoundLogicalId() {
+        return "another_dynamics:gas_duct";
+    }
 }
 

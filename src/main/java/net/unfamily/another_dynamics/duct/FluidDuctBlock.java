@@ -17,4 +17,9 @@ public class FluidDuctBlock extends DuctBlock {
     public EnumSet<DuctNetworkType> ductNetworkTypes() {
         return EnumSet.of(DuctNetworkType.FLUID);
     }
+
+    @Override
+    protected String defaultSoundLogicalId() {
+        return "another_dynamics:fluid_duct";
+    }
 }

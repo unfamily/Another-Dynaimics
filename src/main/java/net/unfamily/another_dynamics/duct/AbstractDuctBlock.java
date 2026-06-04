@@ -5,10 +5,12 @@ import java.util.EnumSet;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
@@ -46,11 +48,37 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     @Override
     public abstract EnumSet<DuctNetworkType> ductNetworkTypes();
 
-    protected abstract SoundType soundTypeForDuct();
+    /**
+     * Fallback logical id when no {@link DuctBlockEntity} exists at the position (item default per block type).
+     * Placed ducts use {@link DuctBlockEntity#getLogicalDuctId()} and datapack {@code sound} from JSON.
+     */
+    protected String defaultSoundLogicalId() {
+        return DuctIds.DEFAULT_LOGICAL_ID;
+    }
+
+    protected static SoundType soundTypeForLogicalId(String logicalId) {
+        return DuctSoundTypes.forLogicalDuct(
+                logicalId != null && !logicalId.isEmpty()
+                        ? DuctIds.normalize(logicalId)
+                        : DuctIds.DEFAULT_LOGICAL_ID);
+    }
+
+    /**
+     * NeoForge position-aware sound (step/break/place/hit). Uses BE logical id → datapack {@code sound}.
+     */
+    @Override
+    public SoundType getSoundType(
+            BlockState state, LevelReader level, BlockPos pos, @org.jetbrains.annotations.Nullable Entity entity) {
+        BlockEntity be = level.getBlockEntity(pos);
+        if (be instanceof DuctBlockEntity ductBe) {
+            return soundTypeForLogicalId(ductBe.getLogicalDuctId());
+        }
+        return soundTypeForLogicalId(defaultSoundLogicalId());
+    }
 
     @Override
     protected SoundType getSoundType(BlockState state) {
-        return soundTypeForDuct();
+        return soundTypeForLogicalId(defaultSoundLogicalId());
     }
 
     @Override

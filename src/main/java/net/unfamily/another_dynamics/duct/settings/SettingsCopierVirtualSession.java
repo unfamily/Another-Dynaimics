@@ -56,6 +56,9 @@ public final class SettingsCopierVirtualSession {
     private DuctFaceNode.FilterBank lastFilterBank = DuctFaceNode.FilterBank.EXTRACTOR;
     private boolean lastFilterAllowList = true;
 
+    /** Portable FILTER copier: explicit list material kind (default {@link FilterListMaterialKind#NONE}). */
+    private FilterListMaterialKind filterListMaterialKind = FilterListMaterialKind.NONE;
+
     public SettingsCopierVirtualSession(
             ServerPlayer player, InteractionHand hand, ItemStack copier, SimpleContainerData menuData) {
         this.menuData = menuData;
@@ -168,11 +171,22 @@ public final class SettingsCopierVirtualSession {
         }
         DuctFaceSettingsSnapshot.readFromCopier(copier).ifPresent(tag -> {
             if (DuctFilterListSnapshot.isFilterPayload(tag)) {
+                filterListMaterialKind = DuctFilterListSnapshot.getMaterialKind(tag);
+                DuctTransportKind lane =
+                        filterListMaterialKind != FilterListMaterialKind.NONE
+                                ? filterListMaterialKind.toTransportKind()
+                                : DuctTransportKind.ITEM;
                 DuctFilterListSnapshot.applyToList(
-                        lanes.item, DuctFaceNode.FilterBank.EXTRACTOR, true, tag);
-                lastFilterLane = DuctTransportKind.ITEM;
+                        faceNodeForTransportKind(lane), DuctFaceNode.FilterBank.EXTRACTOR, true, tag);
+                lastFilterLane = lane;
                 lastFilterBank = DuctFaceNode.FilterBank.EXTRACTOR;
                 lastFilterAllowList = true;
+                if (filterListMaterialKind != FilterListMaterialKind.NONE) {
+                    int idx = orderedKinds.indexOf(lane);
+                    if (idx >= 0) {
+                        menuTransportKindIndex = idx;
+                    }
+                }
             }
         });
         lanes.nodeMode = NodeMode.EXTRACTION;
@@ -187,9 +201,13 @@ public final class SettingsCopierVirtualSession {
                     copier, DuctFaceSettingsSnapshot.captureFromLanes(lanes, registries, enabledKinds));
             return;
         }
-        DuctFaceNode node = faceNodeForTransportKind(lastFilterLane);
+        FilterListMaterialKind kind = filterListMaterialKind;
+        DuctFaceNode node =
+                kind != FilterListMaterialKind.NONE
+                        ? faceNodeForTransportKind(kind.toTransportKind())
+                        : lanes.item;
         CompoundTag snap =
-                DuctFilterListSnapshot.captureList(node, lastFilterBank, lastFilterAllowList);
+                DuctFilterListSnapshot.captureList(node, lastFilterBank, lastFilterAllowList, kind);
         DuctFaceSettingsSnapshot.writeToCopier(copier, snap);
     }
 
@@ -307,6 +325,10 @@ public final class SettingsCopierVirtualSession {
                     case 0 -> cycleNodeMode(true);
                     case 10 -> cycleNodeMode(false);
                     case 1 -> {
+                        DuctTransportKind mk1 = menuActiveTransportKind();
+                        if (mk1 == DuctTransportKind.ENERGY || mk1 == DuctTransportKind.HEAT) {
+                            yield stepRouting(node, 1);
+                        }
                         if (usesEnergyOrHeatPassThroughRouting()) {
                             yield cycleEligibility(node, 1);
                         }
@@ -320,6 +342,10 @@ public final class SettingsCopierVirtualSession {
                         yield true;
                     }
                     case 11 -> {
+                        DuctTransportKind mk11 = menuActiveTransportKind();
+                        if (mk11 == DuctTransportKind.ENERGY || mk11 == DuctTransportKind.HEAT) {
+                            yield stepRouting(node, -1);
+                        }
                         if (usesEnergyOrHeatPassThroughRouting()) {
                             yield cycleEligibility(node, -1);
                         }
@@ -463,20 +489,72 @@ public final class SettingsCopierVirtualSession {
         if (menuKind == DuctTransportKind.ENERGY || menuKind == DuctTransportKind.HEAT) {
             return stepEnergyOrHeatRouting(delta, menuKind == DuctTransportKind.ENERGY);
         }
-        RoutingMode cur = node.routingMode;
-        RoutingMode nxt = nextUsableRouting(cur, v, delta, def);
-        if (nxt != cur) {
-            node.routingMode = nxt;
-            return true;
-        }
-        return false;
+        return switch (lanes.nodeMode) {
+            case EXTRACTION_FILTERING -> {
+                RoutingMode cur = node.routingModeExtractor;
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def);
+                if (nxt != cur) {
+                    node.routingModeExtractor = nxt;
+                    yield true;
+                }
+                yield false;
+            }
+            case RETRIEVING_EXTRACTION -> false;
+            case RETRIEVING -> {
+                RoutingMode cur = node.routingModeRetriever;
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def);
+                if (nxt != cur) {
+                    node.routingModeRetriever = nxt;
+                    yield true;
+                }
+                yield false;
+            }
+            default -> {
+                RoutingMode cur = node.routingMode;
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def);
+                if (nxt != cur) {
+                    node.routingMode = nxt;
+                    yield true;
+                }
+                yield false;
+            }
+        };
     }
 
     private boolean stepEnergyOrHeatRouting(int delta, boolean energy) {
         Optional<DuctDefinition> def = definition();
         RoutingMode[] v = RoutingMode.values();
         return switch (lanes.nodeMode) {
-            case NONE, FILTERING_INSERTION -> {
+            case EXTRACTION_FILTERING -> {
+                RoutingMode cur =
+                        energy ? lanes.energyRoutingModeExtractor : lanes.heatRoutingModeExtractor;
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def);
+                if (nxt != cur) {
+                    if (energy) {
+                        lanes.energyRoutingModeExtractor = nxt;
+                    } else {
+                        lanes.heatRoutingModeExtractor = nxt;
+                    }
+                    yield true;
+                }
+                yield false;
+            }
+            case RETRIEVING_EXTRACTION -> false;
+            case RETRIEVING -> {
+                RoutingMode cur =
+                        energy ? lanes.energyRoutingModeRetriever : lanes.heatRoutingModeRetriever;
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def);
+                if (nxt != cur) {
+                    if (energy) {
+                        lanes.energyRoutingModeRetriever = nxt;
+                    } else {
+                        lanes.heatRoutingModeRetriever = nxt;
+                    }
+                    yield true;
+                }
+                yield false;
+            }
+            default -> {
                 RoutingMode cur = energy ? lanes.energyRoutingMode : lanes.heatRoutingMode;
                 RoutingMode nxt = nextUsableRouting(cur, v, delta, def);
                 if (nxt != cur) {
@@ -489,7 +567,6 @@ public final class SettingsCopierVirtualSession {
                 }
                 yield false;
             }
-            default -> false;
         };
     }
 
@@ -542,6 +619,65 @@ public final class SettingsCopierVirtualSession {
         refreshMenuData();
     }
 
+    public FilterListMaterialKind filterListMaterialKind() {
+        return filterListMaterialKind;
+    }
+
+    /**
+     * Cycle portable filter material kind; keeps allow lines, moves them to the active transport lane when kind changes.
+     */
+    public void setFilterListMaterialKind(FilterListMaterialKind kind) {
+        if (storeKind != SettingsCopierStoreKind.FILTER) {
+            return;
+        }
+        FilterListMaterialKind prev = filterListMaterialKind;
+        if (prev == kind) {
+            return;
+        }
+        filterListMaterialKind = kind;
+        if (kind != FilterListMaterialKind.NONE) {
+            DuctTransportKind tk = kind.toTransportKind();
+            if (prev != FilterListMaterialKind.NONE && prev != kind) {
+                copyFilterAllowListBetweenLanes(prev.toTransportKind(), tk);
+            } else if (prev == FilterListMaterialKind.NONE && tk != DuctTransportKind.ITEM) {
+                copyFilterAllowListBetweenLanes(DuctTransportKind.ITEM, tk);
+            }
+            int idx = orderedKinds.indexOf(tk);
+            if (idx >= 0) {
+                menuTransportKindIndex = idx;
+            }
+            lastFilterLane = tk;
+        }
+        refreshMenuData();
+        ModNetwork.sendFilterSyncForVirtual(player, this);
+    }
+
+    private void copyFilterAllowListBetweenLanes(DuctTransportKind from, DuctTransportKind to) {
+        if (from == to) {
+            return;
+        }
+        DuctFaceNode src = faceNodeForTransportKind(from);
+        DuctFaceNode dst = faceNodeForTransportKind(to);
+        DuctFaceNode.FilterBank bank = lastFilterBank;
+        List<String> allow = new ArrayList<>(src.bankAllowFilters(bank));
+        dst.bankAllowFilters(bank).clear();
+        dst.bankAllowFilters(bank).addAll(allow);
+        List<Integer> caps = new ArrayList<>(src.bankAllowCaps(bank));
+        dst.bankAllowCaps(bank).clear();
+        for (Integer v : caps) {
+            dst.bankAllowCaps(bank).add(Math.max(0, v != null ? v : 0));
+        }
+        syncCapSize(dst.bankAllowCaps(bank), allow.size());
+        if (bank == DuctFaceNode.FilterBank.FILTER) {
+            List<Integer> keep = new ArrayList<>(src.filterBankKeepCaps());
+            dst.filterBankKeepCaps().clear();
+            for (Integer v : keep) {
+                dst.filterBankKeepCaps().add(Math.max(0, v != null ? v : 0));
+            }
+            syncCapSize(dst.filterBankKeepCaps(), allow.size());
+        }
+    }
+
     public void applyFilterConfig(
             DuctTransportKind laneKind,
             DuctFaceNode.FilterBank bank,
@@ -550,6 +686,10 @@ public final class SettingsCopierVirtualSession {
             List<Integer> allowCapsIn,
             List<Integer> allowCaps2In,
             boolean denyOverridesAllow) {
+        if (storeKind == SettingsCopierStoreKind.FILTER
+                && filterListMaterialKind != FilterListMaterialKind.NONE) {
+            laneKind = filterListMaterialKind.toTransportKind();
+        }
         lastFilterLane = laneKind;
         lastFilterBank = bank;
         DuctFaceNode node = faceNodeForTransportKind(laneKind);

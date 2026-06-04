@@ -23,6 +23,9 @@ import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportChannel;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportRegistry;
+import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
+import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
+import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierVirtualSession;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
@@ -105,6 +108,12 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     private int importChannelOrdinal;
     /** Client-only: second copier slot visible when preview has inverted Pipez filters. */
     boolean clientImportNeedsSecondCopier;
+
+    /**
+     * Client-only optimistic material kind ({@code -1} = read from copier NBT).
+     * Cleared when entering virtual editor or receiving stack sync.
+     */
+    private int clientFilterMaterialKindOrdinal = -1;
 
     public void setClientImportNeedsSecondCopier(boolean needsSecond) {
         this.clientImportNeedsSecondCopier = needsSecond;
@@ -286,6 +295,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     public void applyClientCopierStack(Player player, ItemStack stack) {
         if (player.level().isClientSide()) {
             player.setItemInHand(hand, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
+            clearClientFilterListMaterialKindOverride();
         }
     }
 
@@ -305,9 +315,29 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         if (copier.isEmpty() || !(copier.getItem() instanceof SettingsCopierItem)) {
             return;
         }
+        clientFilterMaterialKindOrdinal = -1;
         virtualSession = new SettingsCopierVirtualSession(player, hand, copier, syncData);
         rootLayer.set(0, ROOT_VIRTUAL);
         broadcastChanges();
+    }
+
+    /** Client: material kind for FILTER virtual editor (from NBT or last cycle). */
+    public FilterListMaterialKind clientFilterListMaterialKind(Player player) {
+        if (clientFilterMaterialKindOrdinal >= 0) {
+            return FilterListMaterialKind.fromOrdinal(clientFilterMaterialKindOrdinal);
+        }
+        ItemStack copier = copierStack(player);
+        return DuctFaceSettingsSnapshot.readFromCopier(copier)
+                .map(DuctFilterListSnapshot::getMaterialKind)
+                .orElse(FilterListMaterialKind.NONE);
+    }
+
+    public void setClientFilterListMaterialKind(FilterListMaterialKind kind) {
+        clientFilterMaterialKindOrdinal = kind.ordinal();
+    }
+
+    public void clearClientFilterListMaterialKindOverride() {
+        clientFilterMaterialKindOrdinal = -1;
     }
 
     /** Server: persist virtual state and return to hub layer without closing the container. */

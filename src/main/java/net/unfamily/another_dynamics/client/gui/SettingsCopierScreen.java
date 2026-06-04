@@ -15,6 +15,7 @@ import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.client.SettingsCopierClient;
 import net.unfamily.another_dynamics.duct.DuctGuiLayout;
+import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportChannel;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportPreview;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportRegistry;
@@ -87,6 +88,15 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     @Override
     protected boolean showsSettingsCopierColumn() {
         return false;
+    }
+
+    @Override
+    protected boolean showsChannelLetterControl(
+            boolean hubLayer, boolean filterList, boolean advancedFiltering, boolean bufferLimits) {
+        if (!menu.isVirtualLayer() || menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0) {
+            return false;
+        }
+        return !hubLayer || filterList || advancedFiltering || bufferLimits;
     }
 
     @Override

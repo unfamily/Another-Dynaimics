@@ -22,6 +22,8 @@ import net.unfamily.another_dynamics.client.EnergyRayClient;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
+import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierVirtualSession;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
@@ -418,6 +420,24 @@ public final class ModNetwork {
                     });
                 });
 
+        reg.playToServer(
+                SettingsCopierFilterMaterialKindPayload.TYPE,
+                SettingsCopierFilterMaterialKindPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        SettingsCopierVirtualSession session = virtualCopierSession(player);
+                        if (session == null || session.storeKind() != SettingsCopierStoreKind.FILTER) {
+                            return;
+                        }
+                        session.setFilterListMaterialKind(
+                                FilterListMaterialKind.fromOrdinal(payload.materialKindOrdinal()));
+                        if (player.containerMenu instanceof SettingsCopierMenu menu) {
+                            menu.broadcastChanges();
+                        }
+                    });
+                });
+
         reg.playToClient(EnergyRayPathPayload.TYPE, EnergyRayPathPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> EnergyRayClient.handlePath(payload));
         });
@@ -608,6 +628,11 @@ public final class ModNetwork {
 
     public static void sendSettingsCopierReturnToHub() {
         PacketDistributor.sendToServer(new SettingsCopierReturnToHubPayload());
+    }
+
+    public static void sendSettingsCopierFilterMaterialKind(int materialKindOrdinal) {
+        PacketDistributor.sendToServer(
+                new SettingsCopierFilterMaterialKindPayload(materialKindOrdinal));
     }
 
     public static void sendFilterImportChannel(int channelOrdinal) {

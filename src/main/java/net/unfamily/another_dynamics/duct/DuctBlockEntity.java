@@ -526,6 +526,40 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
+    /**
+     * Shift+click on a node face with a module item when the duct definition has exactly one module slot.
+     * Swaps slot 0 (previous module returns to the player inventory).
+     */
+    public boolean tryQuickEquipModule(
+            ServerPlayer player, Direction face, ItemStack held, InteractionHand hand) {
+        if (moduleSlotCountForMenu() != 1 || held.isEmpty()) {
+            return false;
+        }
+        ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
+        var handler = getFaceLanes(face).moduleSlots;
+        ItemStack toInsert = held.copyWithCount(1);
+        if (!handler.isItemValid(0, toInsert)) {
+            return false;
+        }
+        ItemStack previous = handler.getStackInSlot(0).copy();
+        handler.setStackInSlot(0, toInsert);
+        if (!previous.isEmpty()) {
+            if (!player.getInventory().add(previous)) {
+                player.drop(previous, false);
+            }
+        }
+        held.shrink(1);
+        if (held.isEmpty()) {
+            player.setItemInHand(hand, ItemStack.EMPTY);
+        }
+        clampAllTransportExtractBatchesForFace(face);
+        setChanged();
+        if (level != null) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+        return true;
+    }
+
     public DuctItemTransportSpec itemTransportSpec() {
         return DuctDefinitionRegistry.getByLogicalId(logicalDuctId)
                 .map(DuctDefinition::itemTransportOrFallback)
@@ -1825,7 +1859,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         boolean changed = false;
 
         // Re-send stalled stacks toward network destinations only.
-        if (!faceHasItemStallContent(lanes) || overflowBuffer.isSchedulingUnavailableForNewPulls()) {
+        if (!faceHasItemStallContent(lanes)) {
             return changed;
         }
         if (isFaceStalled(lanes)) {
@@ -2169,6 +2203,22 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         // Fluids / gas: fill held tank or bucket when possible; otherwise arm empty-hand destruction.
         didAnything |= tryClearFluidBuffer(level, lanes, player, hand, true);
         didAnything |= tryClearGasBuffer(level, lanes, player, hand, true);
+
+        for (ItemStack overflow : overflowBuffer.viewStacks()) {
+            if (!overflow.isEmpty()) {
+                net.minecraft.world.Containers.dropItemStack(
+                        level,
+                        worldPosition.getX() + 0.5,
+                        worldPosition.getY() + 0.5,
+                        worldPosition.getZ() + 0.5,
+                        overflow.copy());
+                didAnything = true;
+            }
+        }
+        if (!overflowBuffer.viewStacks().isEmpty()) {
+            overflowBuffer.clear();
+        }
+        itemStallDrainScanCooldown = 0;
 
         if (didAnything) {
             requestModelDataUpdate();
@@ -2820,7 +2870,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 setChanged();
                 continue;
             }
-            ItemStack left = insertIntoStorageFacesRespectingInboundRedstone(level, b.copy());
+            ItemStack left = tryInsertOverflowRefund(level, b.copy());
             if (left.isEmpty()) {
                 it.remove();
                 setChanged();
@@ -4249,9 +4299,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case 0 -> cycleNodeMode(menuFaceLanes, accessFace);
                     case 10 -> cycleNodeModeBackward(menuFaceLanes, accessFace);
                     case 1 -> {
+                        DuctTransportKind menuKind1 = menuActiveTransportKind();
+                        if (menuKind1 == DuctTransportKind.ENERGY || menuKind1 == DuctTransportKind.HEAT) {
+                            yield cycleRoutingMode(node, accessFace);
+                        }
                         if (usesEnergyOrHeatPassThroughRouting(accessFace)) {
                             yield cycleEligibilityMode(
-                                    faceNodeForTransportKind(accessFace, menuActiveTransportKind()), 1);
+                                    faceNodeForTransportKind(accessFace, menuKind1), 1);
                         }
                         if (!menuFaceLanes.nodeMode.usesRouting()) {
                             yield false;
@@ -4263,9 +4317,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         yield true;
                     }
                     case 11 -> {
+                        DuctTransportKind menuKind11 = menuActiveTransportKind();
+                        if (menuKind11 == DuctTransportKind.ENERGY || menuKind11 == DuctTransportKind.HEAT) {
+                            yield cycleRoutingModeBackward(node, accessFace);
+                        }
                         if (usesEnergyOrHeatPassThroughRouting(accessFace)) {
                             yield cycleEligibilityMode(
-                                    faceNodeForTransportKind(accessFace, menuActiveTransportKind()), -1);
+                                    faceNodeForTransportKind(accessFace, menuKind11), -1);
                         }
                         if (!menuFaceLanes.nodeMode.usesRouting()) {
                             yield false;

@@ -15,4 +15,9 @@ public class HybridItemFluidDuctBlock extends DuctBlock {
     public EnumSet<DuctNetworkType> ductNetworkTypes() {
         return EnumSet.of(DuctNetworkType.ITEM, DuctNetworkType.FLUID);
     }
+
+    @Override
+    protected String defaultSoundLogicalId() {
+        return "another_dynamics:item_fluid_duct";
+    }
 }

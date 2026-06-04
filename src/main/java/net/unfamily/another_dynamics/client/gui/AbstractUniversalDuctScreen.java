@@ -25,6 +25,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
@@ -56,8 +57,13 @@ import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.client.SettingsCopierClient;
+import net.unfamily.another_dynamics.duct.DuctRoutingUiSync;
 import net.unfamily.another_dynamics.duct.RoutingMode;
+import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
+import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
+import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierVirtualSession;
 import net.unfamily.another_dynamics.integration.jei.ghost.IAnDynamicsGhostTarget;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
@@ -81,6 +87,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     /** World duct node shows copy/paste column; virtual copier editor does not. */
     protected boolean showsSettingsCopierColumn() {
         return true;
+    }
+
+    /**
+     * Channel letter widget (left column). World ducts: same visibility rules as copy/paste when that column is shown.
+     * {@link SettingsCopierScreen} overrides so channel appears on virtual detail sub-GUIs without the copier column.
+     */
+    protected boolean showsChannelLetterControl(
+            boolean hubLayer, boolean filterList, boolean advancedFiltering, boolean bufferLimits) {
+        return showsSettingsCopierColumn()
+                && (!hubLayer || filterList || advancedFiltering || bufferLimits);
     }
 
     /** Virtual editor X/ESC returns to settings copier hub instead of closing. */
@@ -245,11 +261,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/background/valid_keys.png"
         );
-    private static final ResourceLocation MEDIUM_BUTTONS =
-        ResourceLocation.fromNamespaceAndPath(
-            AnotherDynamicsMod.MOD_ID,
-            "textures/gui/medium_buttons.png"
-        );
     private static final ResourceLocation REDSTONE_GUI =
         ResourceLocation.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
@@ -285,7 +296,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         TEXTURE_WIDTH - CLOSE_BUTTON_SIZE - 5;
 
     private static final int REDSTONE_BUTTON_SIZE = 16;
-    private static final int REDSTONE_ICON_SIZE = 12;
 
     private static final int CENTER_X = 38;
 
@@ -347,17 +357,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private static final int CHANNEL_WIDGET_W = 18;
     private static final int CHANNEL_WIDGET_H = 18;
-    private static final int COPIER_ACTION_BTN_H = 12;
-    private static final int COPIER_COLUMN_GAP = 2;
-    private static final int COPIER_SAVE_BUTTON_Y =
-        DuctNodeMenu.SLOT_COPY_BACKGROUND_Y + 18 + COPIER_COLUMN_GAP;
-    private static final int COPIER_LOAD_BUTTON_Y =
-        COPIER_SAVE_BUTTON_Y + COPIER_ACTION_BTN_H + COPIER_COLUMN_GAP;
-    private static final int CHANNEL_WIDGET_Y =
-        COPIER_LOAD_BUTTON_Y + COPIER_ACTION_BTN_H + COPIER_COLUMN_GAP;
-    /** Detail view: transport pickers below channel widget (hub main uses {@link #ROW2_Y} in a 3-column grid). */
-    private static final int TRANSPORT_KIND_BUTTON_Y =
-        CHANNEL_WIDGET_Y + CHANNEL_WIDGET_H + 4;
+    private static final int COPIER_ACTION_BTN_H = DuctNodeMenu.COPIER_ACTION_BUTTON_H;
 
     /** Multi-transport hub: wrap kind pickers so at most this many fit per row within {@link #TEXTURE_WIDTH}. */
     private static final int HUB_TRANSPORT_KIND_COLUMNS = 3;
@@ -399,8 +399,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private static final int HELP_BACK_BUTTON_X = 8;
     private static final int HELP_BACK_BUTTON_Y = TEXTURE_HEIGHT - 25;
 
-    private int redstoneButtonScreenX;
-    private int redstoneButtonScreenY;
+    private ItemIconButton redstoneModeButton;
     private int redstoneModeStub;
 
     protected Button closeButton;
@@ -430,6 +429,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private Button backButton;
     private Button validKeysButton;
     private Button filterReorderButton;
+    private Button oppositeFilterListButton;
+    private Button copierFilterTypeButton;
 
     private SubView subView = SubView.MAIN;
     private SubView filterListBeforeHelp = SubView.DENY_FILTERS;
@@ -608,8 +609,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     protected void init() {
         super.init();
 
-        redstoneButtonScreenX = this.leftPos + DuctNodeMenu.REDSTONE_GUI_X;
-        redstoneButtonScreenY = this.topPos + DuctNodeMenu.REDSTONE_GUI_Y;
+        redstoneModeButton =
+                new ItemIconButton(
+                        this.leftPos + DuctNodeMenu.REDSTONE_GUI_X,
+                        this.topPos + DuctNodeMenu.REDSTONE_GUI_Y,
+                        REDSTONE_BUTTON_SIZE,
+                        b -> handleMenuButton(2),
+                        this::redstoneButtonIconStack,
+                        () -> redstoneModeStub == 2 ? REDSTONE_GUI : null,
+                        () -> handleMenuButton(12),
+                        Component.empty());
+        addRenderableWidget(redstoneModeButton);
 
         closeButton = Button.builder(Component.literal("\u2715"), b -> {
             playClickSound();
@@ -1256,6 +1266,30 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         filterReorderButton.visible = false;
         addRenderableWidget(filterReorderButton);
 
+        oppositeFilterListButton =
+                Button.builder(Component.empty(), b -> {
+                            playClickSound();
+                            openOppositeFilterList();
+                        })
+                        .bounds(0, 0, 80, BTN_H)
+                        .build();
+        oppositeFilterListButton.visible = false;
+        addRenderableWidget(oppositeFilterListButton);
+
+        copierFilterTypeButton =
+                Button.builder(Component.empty(), b -> {
+                            playClickSound();
+                            cycleCopierFilterMaterialKind();
+                        })
+                        .bounds(0, 0, filterNavActionSpanWidth(), BTN_H)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.settings_copier.filter_type.button.tooltip")))
+                        .build();
+        copierFilterTypeButton.visible = false;
+        addRenderableWidget(copierFilterTypeButton);
+
         settingsCopierSaveButton =
                 Button.builder(
                                 Component.translatable(
@@ -1281,11 +1315,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         .build();
         addRenderableWidget(settingsCopierLoadButton);
 
-        int channelX =
-            DuctNodeMenu.SLOT_COPY_BACKGROUND_X + (18 - CHANNEL_WIDGET_W) / 2;
         channelButton = new ChannelLetterButton(
-            this.leftPos + channelX,
-            this.topPos + CHANNEL_WIDGET_Y,
+            this.leftPos + DuctNodeMenu.CHANNEL_BACKGROUND_X,
+            this.topPos + DuctNodeMenu.CHANNEL_BACKGROUND_Y,
             CHANNEL_WIDGET_W,
             CHANNEL_WIDGET_H,
             dir -> {
@@ -1350,23 +1382,93 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
     }
 
+    /** Bottom of the right column stack (channel, optional copier + Save/Load) for positioning transport pickers. */
+    private int rightColumnStackBottomGuiY() {
+        if (showsSettingsCopierColumn() && menu.copySettingsSlotIndex() >= 0) {
+            return DuctNodeMenu.COPIER_LOAD_BUTTON_Y
+                    + COPIER_ACTION_BTN_H
+                    + DuctNodeMenu.COPY_COLUMN_GAP;
+        }
+        if (channelButton != null && channelButton.visible) {
+            return DuctNodeMenu.CHANNEL_BACKGROUND_Y + CHANNEL_WIDGET_H + DuctNodeMenu.COPY_COLUMN_GAP;
+        }
+        return DuctNodeMenu.REDSTONE_GUI_Y + REDSTONE_BUTTON_SIZE;
+    }
+
     private void layoutCopierColumn() {
         if (settingsCopierSaveButton == null || settingsCopierLoadButton == null || channelButton == null) {
             return;
         }
         int colX = this.leftPos + DuctNodeMenu.SLOT_COPY_BACKGROUND_X;
+        channelButton.setX(this.leftPos + DuctNodeMenu.CHANNEL_BACKGROUND_X);
+        channelButton.setY(this.topPos + DuctNodeMenu.CHANNEL_BACKGROUND_Y);
+        channelButton.setWidth(CHANNEL_WIDGET_W);
+        channelButton.setHeight(CHANNEL_WIDGET_H);
         settingsCopierSaveButton.setX(colX);
-        settingsCopierSaveButton.setY(this.topPos + COPIER_SAVE_BUTTON_Y);
+        settingsCopierSaveButton.setY(this.topPos + DuctNodeMenu.COPIER_SAVE_BUTTON_Y);
         settingsCopierSaveButton.setWidth(18);
         settingsCopierSaveButton.setHeight(COPIER_ACTION_BTN_H);
         settingsCopierLoadButton.setX(colX);
-        settingsCopierLoadButton.setY(this.topPos + COPIER_LOAD_BUTTON_Y);
+        settingsCopierLoadButton.setY(this.topPos + DuctNodeMenu.COPIER_LOAD_BUTTON_Y);
         settingsCopierLoadButton.setWidth(18);
         settingsCopierLoadButton.setHeight(COPIER_ACTION_BTN_H);
-        int channelX =
-                DuctNodeMenu.SLOT_COPY_BACKGROUND_X + (18 - CHANNEL_WIDGET_W) / 2;
-        channelButton.setX(this.leftPos + channelX);
-        channelButton.setY(this.topPos + CHANNEL_WIDGET_Y);
+        refreshCopierPasteUi();
+    }
+
+    private void refreshCopierPasteUi() {
+        if (settingsCopierLoadButton == null) {
+            return;
+        }
+        List<Component> tipLines = new ArrayList<>();
+        tipLines.add(
+                SettingsCopierItem.grayTooltipLine(
+                        "gui.another_dynamics.duct_node.settings_copier.paste.tooltip"));
+        boolean allowPaste = true;
+        if (isAllowOrDenyFilterListContext()) {
+            int idx = menu.copySettingsSlotIndex();
+            if (idx >= 0) {
+                ItemStack copier = menu.getSlot(idx).getItem();
+                if (!copier.isEmpty()
+                        && SettingsCopierStoreKind.getMode(copier) == SettingsCopierStoreKind.FILTER) {
+                    var snapshot = DuctFaceSettingsSnapshot.readFromCopier(copier);
+                    if (snapshot.isPresent()) {
+                        FilterListMaterialKind kind =
+                                DuctFilterListSnapshot.getMaterialKind(snapshot.get());
+                        tipLines.add(
+                                Component.translatable(
+                                                "gui.another_dynamics.duct_node.settings_copier.paste.copier_kind",
+                                                kind.displayName())
+                                        .withStyle(ChatFormatting.AQUA));
+                        int mask = menu.getSyncData().get(DuctMenuSync.TRANSPORT_ENABLED_MASK);
+                        if (kind == FilterListMaterialKind.NONE) {
+                            tipLines.add(
+                                    Component.translatable(
+                                                    "gui.another_dynamics.duct_node.settings_copier.paste.kind_not_set")
+                                            .withStyle(ChatFormatting.RED));
+                            allowPaste = false;
+                        } else if (!kind.isEnabledInTransportMask(mask)) {
+                            tipLines.add(
+                                    Component.translatable(
+                                                    "gui.another_dynamics.duct_node.settings_copier.paste.kind_mismatch",
+                                                    kind.displayName())
+                                            .withStyle(ChatFormatting.RED));
+                            allowPaste = false;
+                        }
+                    } else {
+                        allowPaste = false;
+                    }
+                }
+            }
+        }
+        MutableComponent combined = Component.empty();
+        for (int i = 0; i < tipLines.size(); i++) {
+            if (i > 0) {
+                combined.append("\n");
+            }
+            combined.append(tipLines.get(i));
+        }
+        settingsCopierLoadButton.setTooltip(Tooltip.create(combined));
+        settingsCopierLoadButton.active = allowPaste;
     }
 
     private void sendSettingsCopierAction(int action) {
@@ -1498,7 +1600,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 idx++;
             }
         } else {
-            int y = this.topPos + TRANSPORT_KIND_BUTTON_Y;
+            int y = this.topPos + rightColumnStackBottomGuiY() + 4;
             int rowStride = BTN_H + ROW_GAP;
             int idx = 0;
             for (DuctTransportKind k : DuctTransportKind.values()) {
@@ -1710,6 +1812,21 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         return slotY + (slotSize - BTN_H) / 2;
     }
 
+    /** Shared X for Go To / copier filter-type row (aligned with Back). */
+    private int filterNavActionSpanX() {
+        return editModeAdvancedButtonScreenX();
+    }
+
+    /** Shared Y for Go To / copier filter-type row (EditBox row below ghost slot). */
+    private int filterNavActionSpanY() {
+        return editModeRowAnchorScreenY() + 18 + 2;
+    }
+
+    /** Width from Back through Valid keys. */
+    private int filterNavActionSpanWidth() {
+        return ADVANCED_FILTER_BUTTON_WIDTH * 2 + ADJACENT_BTN_GAP;
+    }
+
     private void layoutFilterSortButton() {
         if (filterReorderButton == null) {
             return;
@@ -1761,6 +1878,113 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             validKeysButton.setHeight(BTN_H);
         }
         layoutFilterSortButton();
+        layoutOppositeFilterListButton();
+        layoutCopierFilterTypeButton();
+    }
+
+    private void layoutOppositeFilterListButton() {
+        if (oppositeFilterListButton == null) {
+            return;
+        }
+        boolean show =
+                isAllowOrDenyFilterListContext()
+                        && !inEditMode()
+                        && !isSettingsCopierFilterListEditor()
+                        && subView != SubView.HOW_TO_USE;
+        if (!show) {
+            oppositeFilterListButton.visible = false;
+            return;
+        }
+        oppositeFilterListButton.setX(filterNavActionSpanX());
+        oppositeFilterListButton.setY(filterNavActionSpanY());
+        oppositeFilterListButton.setWidth(filterNavActionSpanWidth());
+        oppositeFilterListButton.setHeight(BTN_H);
+        if (subView == SubView.ALLOW_FILTERS) {
+            oppositeFilterListButton.setMessage(
+                    Component.translatable(
+                            "gui.another_dynamics.duct_node.filters.goto_deny_list"));
+        } else {
+            oppositeFilterListButton.setMessage(
+                    Component.translatable(
+                            "gui.another_dynamics.duct_node.filters.goto_allow_list"));
+        }
+        int menuFlags = menu.getSyncData().get(DuctMenuSync.FLAGS);
+        boolean filtersActive = (menuFlags & DuctMenuSync.FLAG_FILTERS_ACTIVE) != 0;
+        oppositeFilterListButton.active = filtersActive && !energyFilterListsLocked();
+        oppositeFilterListButton.visible = true;
+    }
+
+    private void layoutCopierFilterTypeButton() {
+        if (copierFilterTypeButton == null) {
+            return;
+        }
+        boolean show = isSettingsCopierFilterListEditor() && !inEditMode() && subView != SubView.HOW_TO_USE;
+        if (!show) {
+            copierFilterTypeButton.visible = false;
+            return;
+        }
+        copierFilterTypeButton.setX(filterNavActionSpanX());
+        copierFilterTypeButton.setY(filterNavActionSpanY());
+        copierFilterTypeButton.setWidth(filterNavActionSpanWidth());
+        copierFilterTypeButton.setHeight(BTN_H);
+        copierFilterTypeButton.setMessage(copierFilterTypeButtonLabel(copierFilterMaterialKind()));
+        copierFilterTypeButton.visible = true;
+    }
+
+    private static Component copierFilterTypeButtonLabel(FilterListMaterialKind kind) {
+        return switch (kind) {
+            case NONE ->
+                    Component.translatable("gui.another_dynamics.settings_copier.filter_type.none");
+            case ITEM ->
+                    Component.translatable("gui.another_dynamics.settings_copier.filter_type.item");
+            case FLUID ->
+                    Component.translatable("gui.another_dynamics.settings_copier.filter_type.fluid");
+            case GAS ->
+                    Component.translatable("gui.another_dynamics.settings_copier.filter_type.gas");
+        };
+    }
+
+    private FilterListMaterialKind copierFilterMaterialKind() {
+        if (!(menu instanceof SettingsCopierMenu copier) || minecraft == null || minecraft.player == null) {
+            return FilterListMaterialKind.NONE;
+        }
+        return copier.clientFilterListMaterialKind(minecraft.player);
+    }
+
+    private boolean canOpenCopierFilterEntry() {
+        return !isSettingsCopierFilterListEditor() || copierFilterMaterialKind() != FilterListMaterialKind.NONE;
+    }
+
+    private void cycleCopierFilterMaterialKind() {
+        FilterListMaterialKind next = copierFilterMaterialKind().next();
+        if (menu instanceof SettingsCopierMenu copier) {
+            copier.setClientFilterListMaterialKind(next);
+        }
+        ModNetwork.sendSettingsCopierFilterMaterialKind(next.ordinal());
+        layoutCopierFilterTypeButton();
+        rebuildFilterEntryWidgets();
+    }
+
+    private void openOppositeFilterList() {
+        if (energyFilterListsLocked()) {
+            return;
+        }
+        SubView target =
+                subView == SubView.ALLOW_FILTERS
+                        ? SubView.DENY_FILTERS
+                        : SubView.ALLOW_FILTERS;
+        if (menu instanceof SettingsCopierMenu sc) {
+            SettingsCopierVirtualSession session = sc.virtualSession();
+            if (session != null) {
+                DuctTransportKind[] kinds = DuctTransportKind.values();
+                int tk = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
+                DuctTransportKind lane =
+                        kinds[Mth.clamp(tk, 0, kinds.length - 1)];
+                session.noteFilterListContext(
+                        lane, activeFilterBank, target == SubView.ALLOW_FILTERS);
+            }
+        }
+        openFilterSubview(target);
     }
 
     private boolean inEditMode() {
@@ -2429,7 +2653,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         closeButton.visible = true;
         boolean showCopierColumn = !howto && showsSettingsCopierColumn();
         boolean showChannel =
-            showCopierColumn && (!hubLayer || filterList || advancedFiltering || bufferLimits);
+            !howto
+                    && showsChannelLetterControl(
+                            hubLayer, filterList, advancedFiltering, bufferLimits);
         if (settingsCopierSaveButton != null) {
             settingsCopierSaveButton.visible = showCopierColumn;
         }
@@ -2437,6 +2663,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             settingsCopierLoadButton.visible = showCopierColumn;
         }
         channelButton.visible = showChannel;
+        if (redstoneModeButton != null) {
+            redstoneModeButton.visible = !filterListOnlyEditor;
+        }
         boolean showTransportPickers = main && hubLayer && !howto;
         for (Button b : transportKindPickerButtons) {
             b.visible = showTransportPickers;
@@ -2536,6 +2765,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
 
         layoutFilterNavAndHelpButtons();
+        layoutOppositeFilterListButton();
         layoutMainChromeRowsForHubOrDetail();
         layoutHubTransportGrid();
         layoutHubBackButton();
@@ -2613,6 +2843,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             })
                 .bounds(editX, buttonY, buttonSize, buttonSize)
                 .build();
+            boolean canEdit = canOpenCopierFilterEntry();
+            ed.active = canEdit;
+            if (!canEdit) {
+                ed.setTooltip(
+                        Tooltip.create(
+                                Component.translatable(
+                                        "gui.another_dynamics.settings_copier.filter_type.pick_before_edit")));
+            }
             filterEditButtons.add(ed);
             addRenderableWidget(ed);
         }
@@ -2886,6 +3124,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void enterEditMode(int index) {
+        if (!canOpenCopierFilterEntry()) {
+            transientFeedback =
+                    Component.translatable(
+                            "gui.another_dynamics.settings_copier.filter_type.pick_before_edit");
+            transientFeedbackColor = 0xFFAA55;
+            transientFeedbackHideAt = Util.getMillis() + TRANSIENT_FEEDBACK_MS;
+            return;
+        }
         if (editModeFilterIndex == index) {
             exitEditMode(true);
             return;
@@ -2972,6 +3218,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             .bounds(0, 0, buttonSize, buttonSize)
             .build();
         addRenderableWidget(rightArrowButton);
+
+        leftArrowButton.setTooltip(null);
+        rightArrowButton.setTooltip(null);
 
         advancedFilteringOpenButton = null;
         if (
@@ -3075,11 +3324,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         layoutEditModeWidgets();
         applyFilterEntryEditBoxTextStyle();
 
-        ghostSlotItem = ItemStack.EMPTY;
-        ghostSlotFluid = FluidStack.EMPTY;
-        ghostSlotGas = null;
-        filterVariants.clear();
-        currentFilterVariantIndex = 0;
+        clearGhostCalibration(false);
     }
 
     /**
@@ -3204,11 +3449,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         editGhostSlotScreenX = 0;
         editGhostSlotScreenY = 0;
-        ghostSlotItem = ItemStack.EMPTY;
-        ghostSlotFluid = FluidStack.EMPTY;
-        ghostSlotGas = null;
-        filterVariants.clear();
-        currentFilterVariantIndex = 0;
+        clearGhostCalibration(false);
     }
 
     private boolean isFluidFilterTransport() {
@@ -3317,241 +3558,174 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
     }
 
+    private boolean acceptsFluidGhostCalibration() {
+        return isFluidFilterTransport();
+    }
+
+    private void clearGhostCalibration(boolean updateEditBox) {
+        ghostSlotItem = ItemStack.EMPTY;
+        ghostSlotFluid = FluidStack.EMPTY;
+        ghostSlotGas = null;
+        filterVariants.clear();
+        currentFilterVariantIndex = 0;
+        if (updateEditBox && editModeTextBox != null) {
+            editModeTextBox.setValue("");
+            editModeTextBox.setCursorPosition(0);
+            editModeTextBox.setHighlightPos(0);
+        }
+    }
+
+    private void pushActiveVariantToEditBox() {
+        if (editModeTextBox == null) {
+            return;
+        }
+        String v =
+                filterVariants.isEmpty() ? "" : filterVariants.get(currentFilterVariantIndex);
+        editModeTextBox.setValue(v);
+        editModeTextBox.setCursorPosition(0);
+        editModeTextBox.setHighlightPos(0);
+    }
+
+    private void syncVariantIndexFromEditBoxText() {
+        if (editModeTextBox == null || filterVariants.isEmpty()) {
+            currentFilterVariantIndex = 0;
+            return;
+        }
+        String line = editModeTextBox.getValue();
+        if (line == null) {
+            currentFilterVariantIndex = 0;
+            pushActiveVariantToEditBox();
+            return;
+        }
+        String trimmed = line.trim();
+        for (int i = 0; i < filterVariants.size(); i++) {
+            if (filterVariants.get(i).equals(trimmed)) {
+                currentFilterVariantIndex = i;
+                return;
+            }
+        }
+        currentFilterVariantIndex = 0;
+        pushActiveVariantToEditBox();
+    }
+
+    private void applyGhostFromFluidStack(FluidStack fluidStack, boolean updateEditBox) {
+        ghostSlotGas = null;
+        if (!fluidStack.isEmpty()) {
+            ghostSlotItem = ItemStack.EMPTY;
+            ghostSlotFluid = fluidStack.copy();
+            filterVariants = generateFluidFilterVariants(ghostSlotFluid);
+        } else {
+            ghostSlotFluid = FluidStack.EMPTY;
+            ghostSlotItem = ItemStack.EMPTY;
+            filterVariants.clear();
+        }
+        currentFilterVariantIndex = 0;
+        if (updateEditBox) {
+            pushActiveVariantToEditBox();
+        }
+    }
+
+    private void applyGhostFromGasSample(Object sample, boolean updateEditBox) {
+        ghostSlotFluid = FluidStack.EMPTY;
+        ghostSlotItem = ItemStack.EMPTY;
+        if (!MekanismChemicalCompat.isEmptyStack(sample)) {
+            ghostSlotGas = sample;
+            filterVariants = generateGasFilterVariants(sample);
+        } else {
+            ghostSlotGas = null;
+            filterVariants.clear();
+        }
+        currentFilterVariantIndex = 0;
+        if (updateEditBox) {
+            pushActiveVariantToEditBox();
+        }
+    }
+
+    private void applyGhostFromItemStack(ItemStack stack, boolean updateEditBox) {
+        if (stack.isEmpty()) {
+            clearGhostCalibration(updateEditBox);
+            return;
+        }
+        if (isFluidFilterTransport()) {
+            ghostSlotGas = null;
+            Optional<FluidStack> contained = FluidUtil.getFluidContained(stack);
+            if (contained.isPresent() && !contained.get().isEmpty()) {
+                applyGhostFromFluidStack(contained.get(), updateEditBox);
+            } else {
+                ghostSlotFluid = FluidStack.EMPTY;
+                ghostSlotItem = ItemStack.EMPTY;
+                filterVariants.clear();
+                currentFilterVariantIndex = 0;
+                if (updateEditBox && editModeTextBox != null) {
+                    editModeTextBox.setValue("");
+                    editModeTextBox.setCursorPosition(0);
+                    editModeTextBox.setHighlightPos(0);
+                }
+            }
+            return;
+        }
+        if (isGasFilterTransport() && MekanismChemicalCompat.isLoaded()) {
+            applyGhostFromGasSample(MekanismChemicalCompat.sampleFromItemStack(stack), updateEditBox);
+            return;
+        }
+        ghostSlotGas = null;
+        ghostSlotFluid = FluidStack.EMPTY;
+        ghostSlotItem = stack.copy();
+        filterVariants = generateAllFilterVariants(stack);
+        currentFilterVariantIndex = 0;
+        if (updateEditBox) {
+            pushActiveVariantToEditBox();
+        }
+    }
+
     private void handleGhostSlotClick() {
         if (minecraft == null || minecraft.player == null) {
             return;
         }
         ItemStack cursorItem = this.menu.getCarried();
         if (cursorItem.isEmpty()) {
-            ghostSlotItem = ItemStack.EMPTY;
-            ghostSlotFluid = FluidStack.EMPTY;
-            ghostSlotGas = null;
-            filterVariants.clear();
-            currentFilterVariantIndex = 0;
-            if (editModeTextBox != null) {
-                editModeTextBox.setValue("");
-                editModeTextBox.setCursorPosition(0);
-                editModeTextBox.setHighlightPos(0);
-            }
-            playClickSound();
-        } else if (isFluidFilterTransport()) {
-            ghostSlotGas = null;
-            Optional<FluidStack> contained = FluidUtil.getFluidContained(
-                cursorItem
-            );
-            if (contained.isPresent() && !contained.get().isEmpty()) {
-                ghostSlotItem = ItemStack.EMPTY;
-                ghostSlotFluid = contained.get().copy();
-                filterVariants = generateFluidFilterVariants(ghostSlotFluid);
-            } else {
-                // In fluid filter mode, do not fall back to item filters: this ghost slot is a "calibrator" for fluids.
-                ghostSlotFluid = FluidStack.EMPTY;
-                ghostSlotItem = ItemStack.EMPTY;
-                filterVariants.clear();
-            }
-            currentFilterVariantIndex = 0;
-            if (editModeTextBox != null) {
-                String v = filterVariants.isEmpty()
-                    ? ""
-                    : filterVariants.getFirst();
-                editModeTextBox.setValue(v);
-                editModeTextBox.setCursorPosition(0);
-                editModeTextBox.setHighlightPos(0);
-            }
-            playClickSound();
-        } else if (
-            isGasFilterTransport() && MekanismChemicalCompat.isLoaded()
-        ) {
-            ghostSlotFluid = FluidStack.EMPTY;
-            ghostSlotItem = ItemStack.EMPTY;
-            Object sample = MekanismChemicalCompat.sampleFromItemStack(
-                cursorItem
-            );
-            if (!MekanismChemicalCompat.isEmptyStack(sample)) {
-                ghostSlotGas = sample;
-                filterVariants = generateGasFilterVariants(sample);
-            } else {
-                ghostSlotGas = null;
-                filterVariants.clear();
-            }
-            currentFilterVariantIndex = 0;
-            if (editModeTextBox != null) {
-                String v = filterVariants.isEmpty()
-                    ? ""
-                    : filterVariants.getFirst();
-                editModeTextBox.setValue(v);
-                editModeTextBox.setCursorPosition(0);
-                editModeTextBox.setHighlightPos(0);
-            }
-            playClickSound();
+            clearGhostCalibration(true);
         } else {
-            ghostSlotGas = null;
-            ghostSlotFluid = FluidStack.EMPTY;
-            ghostSlotItem = cursorItem.copy();
-            filterVariants = generateAllFilterVariants(cursorItem);
-            currentFilterVariantIndex = 0;
-            if (editModeTextBox != null && !filterVariants.isEmpty()) {
-                editModeTextBox.setValue(filterVariants.getFirst());
-                editModeTextBox.setCursorPosition(0);
-                editModeTextBox.setHighlightPos(0);
-            }
-            playClickSound();
+            applyGhostFromItemStack(cursorItem, true);
         }
+        playClickSound();
     }
 
     /**
      * Handle dropping an ingredient from JEI onto the ghost filter slot.
-     * This method accepts the ingredient directly from JEI instead of reading from the cursor.
-     * For ItemStack, it attempts to extract fluids/gases before treating as a plain item.
-     *
-     * @param ingredient The ingredient dropped from JEI (ItemStack, FluidStack, or Mekanism chemical)
+     * Respects active transport (item ducts never promote fluid from containers).
      */
     private void handleGhostIngredientDrop(Object ingredient) {
         if (ingredient == null) {
-            // Clear the ghost slot
-            ghostSlotItem = ItemStack.EMPTY;
-            ghostSlotFluid = FluidStack.EMPTY;
-            ghostSlotGas = null;
-            filterVariants.clear();
-            currentFilterVariantIndex = 0;
-            if (editModeTextBox != null) {
-                editModeTextBox.setValue("");
-                editModeTextBox.setCursorPosition(0);
-                editModeTextBox.setHighlightPos(0);
-            }
+            clearGhostCalibration(true);
             playClickSound();
             applyFilterEditDraft();
             return;
         }
 
-        // Handle FluidStack directly from JEI
         if (ingredient instanceof FluidStack fluidStack) {
-            ghostSlotGas = null;
-            if (!fluidStack.isEmpty()) {
-                ghostSlotItem = ItemStack.EMPTY;
-                ghostSlotFluid = fluidStack.copy();
-                filterVariants = generateFluidFilterVariants(ghostSlotFluid);
-            } else {
-                ghostSlotFluid = FluidStack.EMPTY;
-                ghostSlotItem = ItemStack.EMPTY;
-                filterVariants.clear();
+            if (!isFluidFilterTransport()) {
+                return;
             }
-            currentFilterVariantIndex = 0;
-            if (editModeTextBox != null) {
-                String v = filterVariants.isEmpty()
-                    ? ""
-                    : filterVariants.getFirst();
-                editModeTextBox.setValue(v);
-                editModeTextBox.setCursorPosition(0);
-                editModeTextBox.setHighlightPos(0);
-            }
+            applyGhostFromFluidStack(fluidStack, true);
             playClickSound();
             applyFilterEditDraft();
             return;
         }
 
-        // Handle ItemStack - try to extract fluid or gas first
         if (ingredient instanceof ItemStack itemStack) {
-            if (itemStack.isEmpty()) {
-                ghostSlotItem = ItemStack.EMPTY;
-                ghostSlotFluid = FluidStack.EMPTY;
-                ghostSlotGas = null;
-                filterVariants.clear();
-                currentFilterVariantIndex = 0;
-                if (editModeTextBox != null) {
-                    editModeTextBox.setValue("");
-                    editModeTextBox.setCursorPosition(0);
-                    editModeTextBox.setHighlightPos(0);
-                }
-                playClickSound();
-                applyFilterEditDraft();
-                return;
-            }
-
-            // Try to extract fluid first
-            Optional<FluidStack> fluidContained = FluidUtil.getFluidContained(
-                itemStack
-            );
-            if (fluidContained.isPresent() && !fluidContained.get().isEmpty()) {
-                ghostSlotGas = null;
-                ghostSlotItem = ItemStack.EMPTY;
-                ghostSlotFluid = fluidContained.get().copy();
-                filterVariants = generateFluidFilterVariants(ghostSlotFluid);
-                currentFilterVariantIndex = 0;
-                if (editModeTextBox != null) {
-                    String v = filterVariants.isEmpty()
-                        ? ""
-                        : filterVariants.getFirst();
-                    editModeTextBox.setValue(v);
-                    editModeTextBox.setCursorPosition(0);
-                    editModeTextBox.setHighlightPos(0);
-                }
-                playClickSound();
-                applyFilterEditDraft();
-                return;
-            }
-
-            // Try to extract Mekanism chemical if loaded
-            if (MekanismChemicalCompat.isLoaded()) {
-                Object chemicalSample =
-                    MekanismChemicalCompat.sampleFromItemStack(itemStack);
-                if (!MekanismChemicalCompat.isEmptyStack(chemicalSample)) {
-                    ghostSlotFluid = FluidStack.EMPTY;
-                    ghostSlotItem = ItemStack.EMPTY;
-                    ghostSlotGas = chemicalSample;
-                    filterVariants = generateGasFilterVariants(chemicalSample);
-                    currentFilterVariantIndex = 0;
-                    if (editModeTextBox != null) {
-                        String v = filterVariants.isEmpty()
-                            ? ""
-                            : filterVariants.getFirst();
-                        editModeTextBox.setValue(v);
-                        editModeTextBox.setCursorPosition(0);
-                        editModeTextBox.setHighlightPos(0);
-                    }
-                    playClickSound();
-                    applyFilterEditDraft();
-                    return;
-                }
-            }
-
-            // No fluid/gas extracted - treat as plain item
-            ghostSlotGas = null;
-            ghostSlotFluid = FluidStack.EMPTY;
-            ghostSlotItem = itemStack.copy();
-            filterVariants = generateAllFilterVariants(itemStack);
-            currentFilterVariantIndex = 0;
-            if (editModeTextBox != null && !filterVariants.isEmpty()) {
-                editModeTextBox.setValue(filterVariants.getFirst());
-                editModeTextBox.setCursorPosition(0);
-                editModeTextBox.setHighlightPos(0);
-            }
+            applyGhostFromItemStack(itemStack, true);
             playClickSound();
             applyFilterEditDraft();
             return;
         }
 
-        // Handle Mekanism chemical directly (not wrapped in ItemStack)
-        if (
-            MekanismChemicalCompat.isLoaded() &&
-            !MekanismChemicalCompat.isEmptyStack(ingredient)
-        ) {
-            ghostSlotFluid = FluidStack.EMPTY;
-            ghostSlotItem = ItemStack.EMPTY;
-            ghostSlotGas = ingredient;
-            filterVariants = generateGasFilterVariants(ingredient);
-            currentFilterVariantIndex = 0;
-            if (editModeTextBox != null) {
-                String v = filterVariants.isEmpty()
-                    ? ""
-                    : filterVariants.getFirst();
-                editModeTextBox.setValue(v);
-                editModeTextBox.setCursorPosition(0);
-                editModeTextBox.setHighlightPos(0);
-            }
+        if (MekanismChemicalCompat.isLoaded()
+                && !MekanismChemicalCompat.isEmptyStack(ingredient)
+                && isGasFilterTransport()) {
+            applyGhostFromGasSample(ingredient, true);
             playClickSound();
             applyFilterEditDraft();
-            return;
         }
     }
 
@@ -3565,12 +3739,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         } else if (currentFilterVariantIndex >= filterVariants.size()) {
             currentFilterVariantIndex = 0;
         }
-        String filterString = filterVariants.get(currentFilterVariantIndex);
-        if (editModeTextBox != null) {
-            editModeTextBox.setValue(filterString);
-            editModeTextBox.setCursorPosition(0);
-            editModeTextBox.setHighlightPos(0);
-        }
+        pushActiveVariantToEditBox();
     }
 
     /**
@@ -3899,23 +4068,35 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         );
     }
 
-    /** Settings copier virtual editor: row slot icon from filter line (fluid/gas/item), independent of transport sync. */
-    private void renderVirtualSettingsFilterSlotIcon(
-            GuiGraphics graphics, String filter, int slotX, int slotY) {
-        if (filter == null || filter.isBlank()) {
+    private void renderFilterRowSlotIcon(GuiGraphics graphics, String filter, int slotX, int slotY) {
+        if (filter == null || filter.isBlank() || minecraft == null || minecraft.level == null) {
             return;
         }
-        FluidStack displayFluid = getDisplayFluidForFilter(filter);
-        if (!displayFluid.isEmpty()) {
-            GuiFluidStillBlit.blit16(graphics, displayFluid, slotX + 1, slotY + 1);
+        if (isFluidFilterTransport()) {
+            FluidStack displayFluid = getDisplayFluidForFilter(filter);
+            if (!displayFluid.isEmpty()) {
+                GuiFluidStillBlit.blit16(graphics, displayFluid, slotX + 1, slotY + 1);
+                return;
+            }
+            ItemStack displayItem = getDisplayItemForFilter(filter);
+            if (!displayItem.isEmpty()) {
+                graphics.renderItem(displayItem, slotX + 1, slotY + 1);
+                graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+            }
             return;
         }
-        if (minecraft != null && minecraft.level != null && MekanismChemicalCompat.isLoaded()) {
+        if (isGasFilterTransport() && MekanismChemicalCompat.isLoaded()) {
             Object displayGas = getDisplayGasForFilter(filter);
             if (!MekanismChemicalCompat.isEmptyStack(displayGas)) {
                 GuiChemicalStillBlit.blit16(graphics, displayGas, slotX + 1, slotY + 1);
                 return;
             }
+            ItemStack displayItem = getDisplayItemForFilter(filter);
+            if (!displayItem.isEmpty()) {
+                graphics.renderItem(displayItem, slotX + 1, slotY + 1);
+                graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+            }
+            return;
         }
         ItemStack displayItem = getDisplayItemForFilter(filter);
         if (!displayItem.isEmpty()) {
@@ -4290,17 +4471,43 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         return forward ? 1 : 11;
     }
 
+    private ItemStack redstoneButtonIconStack() {
+        return switch (redstoneModeStub) {
+            case 0 -> new ItemStack(Items.GUNPOWDER);
+            case 1 -> new ItemStack(Items.REDSTONE);
+            case 3 -> new ItemStack(Items.BARRIER);
+            default -> ItemStack.EMPTY;
+        };
+    }
+
+    private boolean routingButtonUsesEligibilityUi(NodeMode nm) {
+        if (isEnergyOrHeatTransport()) {
+            return false;
+        }
+        return nm == NodeMode.NONE
+                || nm == NodeMode.FILTERING_INSERTION
+                || (nm == NodeMode.EXTRACTION_FILTERING && hybridPanel == HybridPanel.FILTERING);
+    }
+
+    private int syncedRoutingModeOrdinal(NodeMode nm) {
+        DuctRoutingUiSync.RoutingSlot slot =
+                DuctRoutingUiSync.activeRoutingSlot(
+                        nm,
+                        hybridPanel == HybridPanel.EXTRACTOR,
+                        hybridPanel == HybridPanel.RETRIEVER);
+        return DuctRoutingUiSync.ordinalFromSlots(
+                slot,
+                menu.getSyncData().get(DuctMenuSync.ROUTING_MODE),
+                menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_EXTRACTOR),
+                menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_RETRIEVER));
+    }
+
     private void handleMenuButton(int id) {
         if (id == 1 || id == 11) {
             NodeMode nm = NodeMode.fromOrdinal(
                 menu.getSyncData().get(DuctMenuSync.NODE_MODE)
             );
-            boolean eligibilityCtx =
-                nm == NodeMode.NONE ||
-                nm == NodeMode.FILTERING_INSERTION ||
-                (nm == NodeMode.EXTRACTION_FILTERING &&
-                    hybridPanel == HybridPanel.FILTERING);
-            if (eligibilityCtx) {
+            if (routingButtonUsesEligibilityUi(nm)) {
                 playClickSound();
                 int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
                 var cur = DuctFaceNode.EligibilityMode.fromOrdinal(ord);
@@ -4483,11 +4690,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         boolean routingMovedUi = nm.isHybrid() && hybridPanel == HybridPanel.NONE;
         boolean routingActive = routingUsable && hybridAllowsRoutingUi;
 
-        boolean eligibilityCtx =
-                nm == NodeMode.NONE
-                        || nm == NodeMode.FILTERING_INSERTION
-                        || (nm == NodeMode.EXTRACTION_FILTERING
-                                && hybridPanel == HybridPanel.FILTERING);
+        boolean eligibilityCtx = routingButtonUsesEligibilityUi(nm);
 
         if (routingMovedUi) {
             routingModeButton.active = false;
@@ -4538,13 +4741,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             );
         } else {
             routingModeButton.active = true;
-            int rmOrd =
-                nm == NodeMode.RETRIEVING_EXTRACTION &&
-                    hybridPanel == HybridPanel.RETRIEVER
-                    ? menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_RETRIEVER)
-                    : nm.isHybrid()
-                            ? menu.getSyncData().get(DuctMenuSync.ROUTING_MODE_EXTRACTOR)
-                            : menu.getSyncData().get(DuctMenuSync.ROUTING_MODE);
+            int rmOrd = syncedRoutingModeOrdinal(nm);
             RoutingMode rm = RoutingMode.fromOrdinal(rmOrd);
             routingModeButton.setMessage(
                 Component.translatable(
@@ -4798,6 +4995,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
 
         redstoneModeStub = menu.getSyncData().get(DuctMenuSync.REDSTONE_MODE);
+        if (redstoneModeButton != null) {
+            redstoneModeButton.setTooltip(
+                    Tooltip.create(
+                            Component.translatable(
+                                    "gui.another_dynamics.duct_node.redstone_mode."
+                                            + redstoneModeStub)));
+        }
         channelButton.setLetterValue(
             menu.getSyncData().get(DuctMenuSync.CHANNEL)
         );
@@ -5311,50 +5515,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (isSettingsCopierFilterListEditor()) {
             return;
         }
-
-        boolean hovered =
-            mouseX >= redstoneButtonScreenX &&
-            mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE &&
-            mouseY >= redstoneButtonScreenY &&
-            mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE;
-        int textureY = hovered ? 16 : 0;
-        graphics.blit(
-            MEDIUM_BUTTONS,
-            redstoneButtonScreenX,
-            redstoneButtonScreenY,
-            0,
-            textureY,
-            REDSTONE_BUTTON_SIZE,
-            REDSTONE_BUTTON_SIZE,
-            96,
-            96
-        );
-
-        int iconX = redstoneButtonScreenX + 2;
-        int iconY = redstoneButtonScreenY + 2;
-        switch (redstoneModeStub) {
-            case 0 -> renderScaledItem(
-                graphics,
-                new ItemStack(Items.GUNPOWDER),
-                iconX,
-                iconY
-            );
-            case 1 -> renderScaledItem(
-                graphics,
-                new ItemStack(Items.REDSTONE),
-                iconX,
-                iconY
-            );
-            case 2 -> renderScaledTexture(graphics, REDSTONE_GUI, iconX, iconY);
-            case 3 -> renderScaledItem(
-                graphics,
-                new ItemStack(Items.BARRIER),
-                iconX,
-                iconY
-            );
-            default -> {
-            }
-        }
     }
 
     private void renderFilterPanel(
@@ -5390,70 +5550,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             graphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, 18, 18, 18, 18);
             String filter =
                 idx < list.size() && list.get(idx) != null ? list.get(idx) : "";
-            if (menu.isSettingsCopierVirtualEditor()) {
-                renderVirtualSettingsFilterSlotIcon(graphics, filter, slotX, slotY);
-            } else if (
-                isFluidFilterTransport() &&
-                minecraft != null &&
-                minecraft.level != null
-            ) {
-                FluidStack displayFluid = getDisplayFluidForFilter(filter);
-                if (!displayFluid.isEmpty()) {
-                    GuiFluidStillBlit.blit16(
-                        graphics,
-                        displayFluid,
-                        slotX + 1,
-                        slotY + 1
-                    );
-                } else {
-                    ItemStack displayItem = getDisplayItemForFilter(filter);
-                    if (!displayItem.isEmpty()) {
-                        graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-                        graphics.renderItemDecorations(
-                            this.font,
-                            displayItem,
-                            slotX + 1,
-                            slotY + 1
-                        );
-                    }
-                }
-            } else if (
-                isGasFilterTransport() &&
-                minecraft != null &&
-                minecraft.level != null
-            ) {
-                Object displayGas = getDisplayGasForFilter(filter);
-                if (!MekanismChemicalCompat.isEmptyStack(displayGas)) {
-                    GuiChemicalStillBlit.blit16(
-                        graphics,
-                        displayGas,
-                        slotX + 1,
-                        slotY + 1
-                    );
-                } else {
-                    ItemStack displayItem = getDisplayItemForFilter(filter);
-                    if (!displayItem.isEmpty()) {
-                        graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-                        graphics.renderItemDecorations(
-                            this.font,
-                            displayItem,
-                            slotX + 1,
-                            slotY + 1
-                        );
-                    }
-                }
-            } else {
-                ItemStack displayItem = getDisplayItemForFilter(filter);
-                if (!displayItem.isEmpty()) {
-                    graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-                    graphics.renderItemDecorations(
-                        this.font,
-                        displayItem,
-                        slotX + 1,
-                        slotY + 1
-                    );
-                }
-            }
+            renderFilterRowSlotIcon(graphics, filter, slotX, slotY);
 
             int textX = slotX + 18 + 6;
             int textY = entryY + (ENTRY_HEIGHT - this.font.lineHeight) / 2;
@@ -5611,6 +5708,18 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 sh
             );
         }
+        if (channelButton != null && channelButton.visible) {
+            graphics.blit(
+                    SINGLE_SLOT,
+                    this.leftPos + DuctNodeMenu.CHANNEL_BACKGROUND_X,
+                    this.topPos + DuctNodeMenu.CHANNEL_BACKGROUND_Y,
+                    0,
+                    0,
+                    sw,
+                    sh,
+                    sw,
+                    sh);
+        }
         if (showsSettingsCopierColumn() && menu.copySettingsSlotIndex() >= 0) {
             SettingsCopierClient.blitSlotFrame(
                     graphics,
@@ -5708,34 +5817,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int cx = leftPos + imageWidth / 2;
         int cy = topPos + DuctNodeMenu.PLAYER_SLOTS_Y - 12;
         graphics.drawCenteredString(this.font, transientFeedback, cx, cy, transientFeedbackColor);
-    }
-
-    private static void renderScaledItem(
-        GuiGraphics graphics,
-        ItemStack stack,
-        int x,
-        int y
-    ) {
-        graphics.pose().pushPose();
-        float scale = REDSTONE_ICON_SIZE / 16.0f;
-        graphics.pose().translate(x, y, 0);
-        graphics.pose().scale(scale, scale, 1.0f);
-        graphics.renderItem(stack, 0, 0);
-        graphics.pose().popPose();
-    }
-
-    private static void renderScaledTexture(
-        GuiGraphics graphics,
-        ResourceLocation texture,
-        int x,
-        int y
-    ) {
-        graphics.pose().pushPose();
-        float scale = REDSTONE_ICON_SIZE / 16.0f;
-        graphics.pose().translate(x, y, 0);
-        graphics.pose().scale(scale, scale, 1.0f);
-        graphics.blit(texture, 0, 0, 0, 0, 16, 16, 16, 16);
-        graphics.pose().popPose();
     }
 
     private boolean isMouseOverAnyVisibleTextField(
@@ -5921,18 +6002,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 return true;
             }
         }
-        if (
-            !isSettingsCopierFilterListEditor() &&
-            (button == 0 || button == 1) &&
-            mouseX >= redstoneButtonScreenX &&
-            mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE &&
-            mouseY >= redstoneButtonScreenY &&
-            mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE
-        ) {
-            handleMenuButton(button == 0 ? 2 : 12);
-            return true;
-        }
-
         if (isAllowOrDenyFilterListContext()) {
             if (handleFilterScrollButtonClick(mouseX, mouseY)) {
                 return true;
@@ -6858,22 +6927,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
         }
 
-        if (
-            mouseX >= redstoneButtonScreenX &&
-            mouseX < redstoneButtonScreenX + REDSTONE_BUTTON_SIZE &&
-            mouseY >= redstoneButtonScreenY &&
-            mouseY < redstoneButtonScreenY + REDSTONE_BUTTON_SIZE
-        ) {
-            graphics.renderTooltip(
-                this.font,
-                Component.translatable(
-                    "gui.another_dynamics.duct_node.redstone_mode." +
-                        redstoneModeStub
-                ),
-                mouseX,
-                mouseY
-            );
-        }
     }
 
     // ===== JEI Ghost Ingredient Integration (IAnDynamicsGhostTarget) =====

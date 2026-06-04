@@ -17,7 +17,6 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
-import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -69,11 +68,6 @@ public class DuctBlock extends AbstractDuctBlock {
         // Physical block is universal; actual network membership is resolved from the BlockEntity's logical id
         // via DuctConnectable.isSameNetwork(level, pos, type).
         return EnumSet.allOf(DuctNetworkType.class);
-    }
-
-    @Override
-    protected SoundType soundTypeForDuct() {
-        return DuctSoundTypes.forLogicalDuct(DuctIds.DEFAULT_LOGICAL_ID);
     }
 
     @Override
@@ -248,6 +242,15 @@ public class DuctBlock extends AbstractDuctBlock {
                     return duct.tryShiftClearStalledOnFace(sl, nodeFace.get(), player, hand)
                             ? ItemInteractionResult.CONSUME
                             : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                }
+            }
+            if (player.isShiftKeyDown() && nodeFace.isPresent() && !stack.isEmpty()) {
+                if (level.isClientSide()) {
+                    return ItemInteractionResult.SUCCESS;
+                }
+                if (player instanceof ServerPlayer sp
+                        && duct.tryQuickEquipModule(sp, nodeFace.get(), stack, hand)) {
+                    return ItemInteractionResult.CONSUME;
                 }
             }
             if (DuctWrenchTags.isWrench(stack)) {

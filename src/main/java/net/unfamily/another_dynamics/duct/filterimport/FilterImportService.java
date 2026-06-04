@@ -45,7 +45,7 @@ public final class FilterImportService {
 
         ItemStack writtenPrimary =
                 FilterImportCopierWriter.writeFilterCopier(
-                        primary, preview.mainLines(), primaryName, registries);
+                        primary, preview.mainLines(), primaryName, channel, registries);
         if (writtenPrimary.isEmpty()) {
             return FilterImportResult.NO_ADAPTER;
         }
@@ -57,6 +57,7 @@ public final class FilterImportService {
                             secondCopierSlot,
                             preview.invertedLines(),
                             secondaryName,
+                            channel,
                             registries);
             if (writtenSecondary.isEmpty()) {
                 return FilterImportResult.NO_ADAPTER;

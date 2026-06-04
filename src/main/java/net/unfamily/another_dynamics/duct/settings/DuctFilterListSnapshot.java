@@ -7,7 +7,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 
 /**
@@ -19,6 +18,7 @@ public final class DuctFilterListSnapshot {
     private static final String KEY_CAPS = "Caps";
     private static final String KEY_CAPS_KEEP = "CapsKeep";
     private static final String KEY_HAS_KEEP = "HasKeepCaps";
+    private static final String KEY_MATERIAL_KIND = "MaterialKind";
 
     private DuctFilterListSnapshot() {}
 
@@ -29,12 +29,47 @@ public final class DuctFilterListSnapshot {
                 && SettingsCopierStoreKind.fromCompound(tag) == SettingsCopierStoreKind.FILTER;
     }
 
-    public static CompoundTag captureList(DuctFaceNode node, DuctFaceNode.FilterBank bank, boolean allowList) {
+    public static FilterListMaterialKind getMaterialKind(CompoundTag data) {
+        if (!isFilterPayload(data)) {
+            return FilterListMaterialKind.NONE;
+        }
+        if (data.contains(KEY_MATERIAL_KIND, Tag.TAG_BYTE)) {
+            return FilterListMaterialKind.fromOrdinal(data.getByte(KEY_MATERIAL_KIND));
+        }
+        return FilterListMaterialKind.NONE;
+    }
+
+    /** Portable allow-list snapshot (import / manual build) with explicit material kind. */
+    public static CompoundTag buildPortableAllowList(
+            List<String> lines, List<Integer> caps, FilterListMaterialKind materialKind) {
+        List<String> safeLines = lines != null ? new ArrayList<>(lines) : List.of();
+        CompoundTag root = new CompoundTag();
+        root.putInt(DuctFaceSettingsSnapshot.KEY_FMT, DuctFaceSettingsSnapshot.FORMAT_VERSION);
+        root.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.FILTER.toTag());
+        root.putByte(KEY_MATERIAL_KIND, (byte) materialKind.ordinal());
+        root.put(KEY_LINES, toStringListTag(safeLines));
+        List<Integer> safeCaps = caps != null ? new ArrayList<>(caps) : new ArrayList<>();
+        syncAllowCapsSize(safeCaps, safeLines.size());
+        root.putIntArray(KEY_CAPS, safeCaps.stream().mapToInt(i -> Math.max(0, i)).toArray());
+        return root;
+    }
+
+    public static CompoundTag captureList(
+            DuctFaceNode node, DuctFaceNode.FilterBank bank, boolean allowList) {
+        return captureList(node, bank, allowList, FilterListMaterialKind.ITEM);
+    }
+
+    public static CompoundTag captureList(
+            DuctFaceNode node,
+            DuctFaceNode.FilterBank bank,
+            boolean allowList,
+            FilterListMaterialKind materialKind) {
         List<String> lines =
                 allowList ? new ArrayList<>(node.bankAllowFilters(bank)) : new ArrayList<>(node.bankDenyFilters(bank));
         CompoundTag root = new CompoundTag();
         root.putInt(DuctFaceSettingsSnapshot.KEY_FMT, DuctFaceSettingsSnapshot.FORMAT_VERSION);
         root.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.FILTER.toTag());
+        root.putByte(KEY_MATERIAL_KIND, (byte) materialKind.ordinal());
         root.put(KEY_LINES, toStringListTag(lines));
         if (allowList) {
             List<Integer> caps = new ArrayList<>(node.bankAllowCaps(bank));

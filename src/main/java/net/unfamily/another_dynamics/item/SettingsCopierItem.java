@@ -20,6 +20,8 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.unfamily.another_dynamics.duct.AbstractDuctBlock;
 import net.unfamily.another_dynamics.duct.DuctBlock;
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
+import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
+import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
@@ -116,6 +118,7 @@ public class SettingsCopierItem extends Item {
             }
         } else if (mode == SettingsCopierStoreKind.FILTER) {
             addTooltipLines(tooltip, TOOLTIP_ROOT + "filter.", 3);
+            appendFilterKindTooltip(stack, tooltip);
         } else {
             addTooltipLines(tooltip, TOOLTIP_ROOT + "all.", 4);
         }
@@ -126,5 +129,22 @@ public class SettingsCopierItem extends Item {
         for (int i = 0; i < lineCount; i++) {
             tooltip.add(grayTooltipLine(keyPrefix + i));
         }
+    }
+
+    private static void appendFilterKindTooltip(ItemStack stack, List<Component> tooltip) {
+        DuctFaceSettingsSnapshot.readFromCopier(stack)
+                .map(DuctFilterListSnapshot::getMaterialKind)
+                .ifPresent(
+                        kind -> {
+                            ChatFormatting style =
+                                    kind == FilterListMaterialKind.NONE
+                                            ? ChatFormatting.GRAY
+                                            : ChatFormatting.AQUA;
+                            tooltip.add(
+                                    Component.translatable(
+                                                    "item.another_dynamics.settings_copier.filter_kind.stored",
+                                                    kind.displayName())
+                                            .withStyle(style));
+                        });
     }
 }
