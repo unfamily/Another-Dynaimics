@@ -90,12 +90,6 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     }
 
     @Override
-    protected boolean showsChannelLetterControl() {
-        return menu.isVirtualLayer()
-                && menu.getSyncData().get(net.unfamily.another_dynamics.duct.DuctMenuSync.MENU_VIEW_LAYER) != 0;
-    }
-
-    @Override
     protected boolean useSettingsCopierHubNavigation() {
         return menu.isVirtualLayer();
     }
