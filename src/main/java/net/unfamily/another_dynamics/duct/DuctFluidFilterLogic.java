@@ -32,8 +32,28 @@ public final class DuctFluidFilterLogic {
         String fluidIdStr = fluidId.toString();
         String fluidModId = fluidId.getNamespace();
 
-        boolean A = hasA && matchesAny(node.allowFilters, stack, fluid, fluidId, fluidIdStr, fluidModId, reg);
-        boolean D = hasD && matchesAny(node.denyFilters, stack, fluid, fluidId, fluidIdStr, fluidModId, reg);
+        boolean A =
+                hasA
+                        && matchesAny(
+                                node.allowFilters,
+                                node.allowConcatChannels,
+                                stack,
+                                fluid,
+                                fluidId,
+                                fluidIdStr,
+                                fluidModId,
+                                reg);
+        boolean D =
+                hasD
+                        && matchesAny(
+                                node.denyFilters,
+                                node.denyConcatChannels,
+                                stack,
+                                fluid,
+                                fluidId,
+                                fluidIdStr,
+                                fluidModId,
+                                reg);
 
         if (node.denyOverridesAllow) {
             if (D) {
@@ -71,6 +91,12 @@ public final class DuctFluidFilterLogic {
         int dc = node.effectiveDenyBankCap;
         view.allowFilters.addAll(fullAllow.subList(0, Math.min(fullAllow.size(), ac)));
         view.denyFilters.addAll(fullDeny.subList(0, Math.min(fullDeny.size(), dc)));
+        List<Integer> fullAllowConcat = node.bankAllowConcatChannels(bank);
+        List<Integer> fullDenyConcat = node.bankDenyConcatChannels(bank);
+        view.allowConcatChannels.addAll(
+                fullAllowConcat.subList(0, Math.min(fullAllowConcat.size(), ac)));
+        view.denyConcatChannels.addAll(
+                fullDenyConcat.subList(0, Math.min(fullDenyConcat.size(), dc)));
         return passesFluidFilters(view, stack, level);
     }
 
@@ -85,21 +111,18 @@ public final class DuctFluidFilterLogic {
 
     private static boolean matchesAny(
             List<String> entries,
+            List<Integer> concatChannels,
             FluidStack stack,
             Fluid fluid,
             ResourceLocation fluidId,
             String fluidIdStr,
             String fluidModId,
             HolderLookup.Provider registries) {
-        for (String raw : entries) {
-            if (raw == null || raw.trim().isEmpty()) {
-                continue;
-            }
-            if (DuctFluidFilterMatcher.matchesFilterEntry(
-                    stack, fluid, fluidId, fluidIdStr, fluidModId, raw.trim(), registries)) {
-                return true;
-            }
-        }
-        return false;
+        return DuctFilterConcatEvaluator.matchesAny(
+                entries,
+                concatChannels,
+                (i, trimmed) ->
+                        DuctFluidFilterMatcher.matchesFilterEntry(
+                                stack, fluid, fluidId, fluidIdStr, fluidModId, trimmed, registries));
     }
 }

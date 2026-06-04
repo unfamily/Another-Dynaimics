@@ -44,6 +44,10 @@ public interface UniversalDuctMenu {
 
     List<Integer> getClientFilterKeepCaps();
 
+    List<Integer> getClientAllowConcatChannels(DuctFaceNode.FilterBank bank);
+
+    List<Integer> getClientDenyConcatChannels(DuctFaceNode.FilterBank bank);
+
     void receiveFilterSync(
             BlockPos pos,
             Direction face,
@@ -53,6 +57,8 @@ public interface UniversalDuctMenu {
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
             boolean denyOverridesAllow);
 
     void ensureClientFilterBufferSizes(boolean hybridFilterContext);
@@ -63,6 +69,8 @@ public interface UniversalDuctMenu {
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
             boolean denyOverridesAllow,
             boolean editingAllowList);
 

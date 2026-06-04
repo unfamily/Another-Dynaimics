@@ -2,6 +2,8 @@ package net.unfamily.another_dynamics.duct;
 
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import net.minecraft.core.HolderLookup;
 import net.unfamily.another_dynamics.duct.logistics.DuctTankSlotSemantics;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
@@ -32,19 +34,22 @@ public final class DuctGasAllowLimitLogic {
 
     public static int firstMatchingAllowLineIndex(
             List<String> allowLines, Object template, HolderLookup.Provider registries) {
+        return firstMatchingAllowLineIndex(allowLines, null, template, registries);
+    }
+
+    public static int firstMatchingAllowLineIndex(
+            List<String> allowLines,
+            @Nullable List<Integer> concatChannels,
+            Object template,
+            HolderLookup.Provider registries) {
         if (template == null || MekanismChemicalCompat.isEmptyStack(template)) {
             return -1;
         }
-        for (int i = 0; i < allowLines.size(); i++) {
-            String line = allowLines.get(i);
-            if (line == null || line.trim().isEmpty()) {
-                continue;
-            }
-            if (DuctGasFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
-                return i;
-            }
-        }
-        return -1;
+        return DuctFilterConcatEvaluator.firstMatchingLineIndex(
+                allowLines,
+                concatChannels,
+                (i, trimmed) ->
+                        DuctGasFilterMatcher.matchesAnyNonEmptyEntry(template, trimmed, registries));
     }
 
     public static long countMatchingInHandler(
@@ -132,21 +137,50 @@ public final class DuctGasAllowLimitLogic {
             Object template,
             HolderLookup.Provider registries,
             ServerPending pending) {
+        return maxAdditionalInsertAcrossAllowLines(
+                handler, allowLines, caps, null, template, registries, pending);
+    }
+
+    public static long maxAdditionalInsertAcrossAllowLines(
+            Object handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            @Nullable List<Integer> concatChannels,
+            Object template,
+            HolderLookup.Provider registries,
+            ServerPending pending) {
         if (template == null || MekanismChemicalCompat.isEmptyStack(template) || handler == null || allowLines == null || caps == null) {
             return Long.MAX_VALUE;
         }
         if (!hasAnyPositiveAllowCapOnNonEmptyLine(allowLines, caps)) {
             return Long.MAX_VALUE;
         }
+        java.util.Set<Integer> consumedConcat = new java.util.HashSet<>();
         for (int i = 0; i < allowLines.size(); i++) {
+            int ch = FilterConcatChannel.channelAt(concatChannels, i);
+            if (ch != 0 && consumedConcat.contains(ch)) {
+                continue;
+            }
             String line = allowLines.get(i);
             if (line == null || line.trim().isEmpty()) {
                 continue;
             }
-            if (!DuctGasFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+            int capIndex = i;
+            if (ch != 0) {
+                if (!templateMatchesGasConcatGroup(allowLines, concatChannels, ch, template, registries)) {
+                    continue;
+                }
+                capIndex = firstNonEmptyGasIndexForChannel(allowLines, concatChannels, ch);
+                if (capIndex < 0) {
+                    continue;
+                }
+                consumedConcat.add(ch);
+            } else if (!DuctGasFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
                 continue;
             }
-            long add = maxAdditionalInsertForAllowLineAtIndex(handler, allowLines, caps, template, i, registries, pending);
+            long add =
+                    maxAdditionalInsertForAllowLineAtIndex(
+                            handler, allowLines, caps, template, capIndex, registries, pending);
             if (add == Long.MAX_VALUE) {
                 return Long.MAX_VALUE;
             }
@@ -155,6 +189,43 @@ public final class DuctGasAllowLimitLogic {
             }
         }
         return 0L;
+    }
+
+    private static int firstNonEmptyGasIndexForChannel(
+            List<String> lines, @Nullable List<Integer> concatChannels, int channel) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (FilterConcatChannel.channelAt(concatChannels, i) != channel) {
+                continue;
+            }
+            String raw = lines.get(i);
+            if (raw != null && !raw.trim().isEmpty()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean templateMatchesGasConcatGroup(
+            List<String> lines,
+            @Nullable List<Integer> concatChannels,
+            int channel,
+            Object template,
+            HolderLookup.Provider registries) {
+        boolean anyInGroup = false;
+        for (int i = 0; i < lines.size(); i++) {
+            if (FilterConcatChannel.channelAt(concatChannels, i) != channel) {
+                continue;
+            }
+            String raw = lines.get(i);
+            if (raw == null || raw.trim().isEmpty()) {
+                continue;
+            }
+            anyInGroup = true;
+            if (!DuctGasFilterMatcher.matchesAnyNonEmptyEntry(template, raw.trim(), registries)) {
+                return false;
+            }
+        }
+        return anyInGroup;
     }
 
     /** Max amount that may still be inserted without exceeding the allow-line {@code limit} (first matching line). */

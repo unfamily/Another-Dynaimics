@@ -19,6 +19,7 @@ import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.FilterConcatChannel;
 import net.unfamily.another_dynamics.duct.DuctFeatureKeys;
 import net.unfamily.another_dynamics.duct.DuctFeaturePolicy;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
@@ -688,6 +689,8 @@ public final class SettingsCopierVirtualSession {
             List<String> denyIn,
             List<Integer> allowCapsIn,
             List<Integer> allowCaps2In,
+            List<Integer> allowConcatIn,
+            List<Integer> denyConcatIn,
             boolean denyOverridesAllow) {
         if (storeKind == SettingsCopierStoreKind.FILTER
                 && filterListMaterialKind != FilterListMaterialKind.NONE) {
@@ -724,6 +727,22 @@ public final class SettingsCopierVirtualSession {
                 keep.add(Math.max(0, v != null ? v : 0));
             }
             syncCapSize(keep, a.size());
+        }
+        if (allowConcatIn != null) {
+            List<Integer> allowCh = node.bankAllowConcatChannels(bank);
+            allowCh.clear();
+            for (Integer v : allowConcatIn) {
+                allowCh.add(v != null ? Math.clamp(v, 0, FilterConcatChannel.MAX_LETTER) : 0);
+            }
+            FilterConcatChannel.syncToLineSize(allowCh, a.size());
+        }
+        if (denyConcatIn != null) {
+            List<Integer> denyCh = node.bankDenyConcatChannels(bank);
+            denyCh.clear();
+            for (Integer v : denyConcatIn) {
+                denyCh.add(v != null ? Math.clamp(v, 0, FilterConcatChannel.MAX_LETTER) : 0);
+            }
+            FilterConcatChannel.syncToLineSize(denyCh, d.size());
         }
         node.setBankDenyOverridesAllow(bank, denyOverridesAllow);
         refreshMenuData();

@@ -24,8 +24,14 @@ public final class DuctGasFilterLogic {
             return true;
         }
 
-        boolean A = hasA && matchesAny(node.allowFilters, chemicalStack, reg);
-        boolean D = hasD && matchesAny(node.denyFilters, chemicalStack, reg);
+        boolean A =
+                hasA
+                        && matchesAny(
+                                node.allowFilters, node.allowConcatChannels, chemicalStack, reg);
+        boolean D =
+                hasD
+                        && matchesAny(
+                                node.denyFilters, node.denyConcatChannels, chemicalStack, reg);
 
         if (node.denyOverridesAllow) {
             if (D) {
@@ -63,6 +69,12 @@ public final class DuctGasFilterLogic {
         int dc = node.effectiveDenyBankCap;
         view.allowFilters.addAll(fullAllow.subList(0, Math.min(fullAllow.size(), ac)));
         view.denyFilters.addAll(fullDeny.subList(0, Math.min(fullDeny.size(), dc)));
+        List<Integer> fullAllowConcat = node.bankAllowConcatChannels(bank);
+        List<Integer> fullDenyConcat = node.bankDenyConcatChannels(bank);
+        view.allowConcatChannels.addAll(
+                fullAllowConcat.subList(0, Math.min(fullAllowConcat.size(), ac)));
+        view.denyConcatChannels.addAll(
+                fullDenyConcat.subList(0, Math.min(fullDenyConcat.size(), dc)));
         return passesGasFilters(view, chemicalStack, level);
     }
 
@@ -76,15 +88,14 @@ public final class DuctGasFilterLogic {
     }
 
     private static boolean matchesAny(
-            List<String> entries, Object chemicalStack, HolderLookup.Provider registries) {
-        for (String raw : entries) {
-            if (raw == null || raw.trim().isEmpty()) {
-                continue;
-            }
-            if (DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, raw.trim(), registries)) {
-                return true;
-            }
-        }
-        return false;
+            List<String> entries,
+            List<Integer> concatChannels,
+            Object chemicalStack,
+            HolderLookup.Provider registries) {
+        return DuctFilterConcatEvaluator.matchesAny(
+                entries,
+                concatChannels,
+                (i, trimmed) ->
+                        DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, trimmed, registries));
     }
 }

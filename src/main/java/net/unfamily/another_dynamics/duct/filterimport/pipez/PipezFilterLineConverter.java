@@ -24,7 +24,11 @@ public final class PipezFilterLineConverter {
     public static FilterImportPreview convert(CompoundTag channelData) {
         List<String> main = new ArrayList<>();
         List<String> inverted = new ArrayList<>();
+        List<Integer> mainConcat = new ArrayList<>();
+        List<Integer> invertedConcat = new ArrayList<>();
         boolean whitelist = isWhitelist(channelData);
+        int mainChannel = 1;
+        int invertedChannel = 1;
         if (channelData.contains("Filters", Tag.TAG_LIST)) {
             ListTag filters = channelData.getList("Filters", Tag.TAG_COMPOUND);
             for (int i = 0; i < filters.size(); i++) {
@@ -35,9 +39,17 @@ public final class PipezFilterLineConverter {
                     }
                     boolean invert = entry.getBoolean("Invert");
                     if (invert) {
-                        inverted.addAll(lines);
+                        for (String line : lines) {
+                            inverted.add(line);
+                            invertedConcat.add(invertedChannel);
+                        }
+                        invertedChannel++;
                     } else {
-                        main.addAll(lines);
+                        for (String line : lines) {
+                            main.add(line);
+                            mainConcat.add(mainChannel);
+                        }
+                        mainChannel++;
                     }
                 }
             }
@@ -47,6 +59,8 @@ public final class PipezFilterLineConverter {
         return new FilterImportPreview(
                 main,
                 inverted,
+                mainConcat,
+                invertedConcat,
                 primaryName,
                 secondaryName,
                 !inverted.isEmpty());

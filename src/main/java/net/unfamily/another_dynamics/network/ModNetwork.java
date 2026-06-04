@@ -116,6 +116,8 @@ public final class ModNetwork {
                             payload.deny(),
                             payload.allowCaps(),
                             payload.allowCaps2(),
+                            payload.allowConcat(),
+                            payload.denyConcat(),
                             payload.denyOverridesAllow());
                     ((SettingsCopierMenu) player.containerMenu).broadcastChanges();
                     return;
@@ -146,6 +148,8 @@ public final class ModNetwork {
                         payload.deny(),
                         payload.allowCaps(),
                         payload.allowCaps2(),
+                        payload.allowConcat(),
+                        payload.denyConcat(),
                         payload.denyOverridesAllow());
             });
         });
@@ -457,6 +461,8 @@ public final class ModNetwork {
                                 payload.deny(),
                                 payload.allowCaps(),
                                 payload.allowCaps2(),
+                                payload.allowConcat(),
+                                payload.denyConcat(),
                                 payload.denyOverridesAllow());
                     });
         });
@@ -544,6 +550,8 @@ public final class ModNetwork {
             java.util.List<String> deny,
             java.util.List<Integer> allowCaps,
             java.util.List<Integer> allowCaps2,
+            java.util.List<Integer> allowConcat,
+            java.util.List<Integer> denyConcat,
             boolean denyOverridesAllow) {
         PacketDistributor.sendToServer(
                 new DuctFilterUpdatePayload(
@@ -555,6 +563,8 @@ public final class ModNetwork {
                         deny,
                         allowCaps,
                         allowCaps2,
+                        allowConcat,
+                        denyConcat,
                         denyOverridesAllow));
     }
 
@@ -679,6 +689,8 @@ public final class ModNetwork {
                             java.util.List.copyOf(node.bankDenyFilters(bank)),
                             java.util.List.copyOf(node.bankAllowCaps(bank)),
                             caps2,
+                            java.util.List.copyOf(node.bankAllowConcatChannels(bank)),
+                            java.util.List.copyOf(node.bankDenyConcatChannels(bank)),
                             node.bankDenyOverridesAllow(bank)));
         }
     }
@@ -743,6 +755,8 @@ public final class ModNetwork {
                             java.util.List.copyOf(node.bankDenyFilters(bank)),
                             java.util.List.copyOf(node.bankAllowCaps(bank)),
                             caps2,
+                            java.util.List.copyOf(node.bankAllowConcatChannels(bank)),
+                            java.util.List.copyOf(node.bankDenyConcatChannels(bank)),
                             node.bankDenyOverridesAllow(bank)));
         }
     }

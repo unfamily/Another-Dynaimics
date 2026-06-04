@@ -111,6 +111,10 @@ public final class DuctFaceNode {
     public final List<String> denyFilters = new ArrayList<>();
     /** Parallel to {@link #allowFilters}: 0 = unlimited (insert cap / extract keep). */
     public final List<Integer> allowAllowCaps = new ArrayList<>();
+    /** Parallel to {@link #allowFilters}: {@link FilterConcatChannel} ordinal per line. */
+    public final List<Integer> allowConcatChannels = new ArrayList<>();
+    /** Parallel to {@link #denyFilters}. */
+    public final List<Integer> denyConcatChannels = new ArrayList<>();
 
     /** Hybrid: allow this face to consider itself as a destination (only used by Extr/Filt). */
     public boolean selfFeed;
@@ -122,11 +126,15 @@ public final class DuctFaceNode {
     public final List<String> allowFiltersExtractor = new ArrayList<>();
     public final List<String> denyFiltersExtractor = new ArrayList<>();
     public final List<Integer> allowAllowCapsExtractor = new ArrayList<>();
+    public final List<Integer> allowConcatChannelsExtractor = new ArrayList<>();
+    public final List<Integer> denyConcatChannelsExtractor = new ArrayList<>();
 
     public boolean denyOverridesAllowRetriever = true;
     public final List<String> allowFiltersRetriever = new ArrayList<>();
     public final List<String> denyFiltersRetriever = new ArrayList<>();
     public final List<Integer> allowAllowCapsRetriever = new ArrayList<>();
+    public final List<Integer> allowConcatChannelsRetriever = new ArrayList<>();
+    public final List<Integer> denyConcatChannelsRetriever = new ArrayList<>();
 
     public boolean denyOverridesAllowFilter = true;
     public final List<String> allowFiltersFilter = new ArrayList<>();
@@ -134,6 +142,8 @@ public final class DuctFaceNode {
     /** FILTER bank caps split: Limit is used for insertion destinations, Keep is used when a Retrieving node pulls from this donor. */
     public final List<Integer> allowAllowCapsFilterLimit = new ArrayList<>();
     public final List<Integer> allowAllowCapsFilterKeep = new ArrayList<>();
+    public final List<Integer> allowConcatChannelsFilter = new ArrayList<>();
+    public final List<Integer> denyConcatChannelsFilter = new ArrayList<>();
 
     public final ItemStackHandler guiSlots;
 
@@ -349,6 +359,8 @@ public final class DuctFaceNode {
         clampList(allowFilters, legacyA);
         clampList(denyFilters, legacyD);
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannels, allowFilters.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannels, denyFilters.size());
 
         int bankA = DuctModuleEffects.effectiveItemAllowBank(spec, sharedNodeMode, fb);
         int bankD = DuctModuleEffects.effectiveItemDenyBank(spec, sharedNodeMode, fb);
@@ -357,13 +369,19 @@ public final class DuctFaceNode {
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannelsExtractor, allowFiltersExtractor.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannelsExtractor, denyFiltersExtractor.size());
         clampList(allowFiltersRetriever, bankA);
         clampList(denyFiltersRetriever, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannelsRetriever, allowFiltersRetriever.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannelsRetriever, denyFiltersRetriever.size());
         clampList(allowFiltersFilter, bankA);
         clampList(denyFiltersFilter, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannelsFilter, allowFiltersFilter.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannelsFilter, allowFiltersFilter.size());
     }
 
     /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode, DuctModuleEffects.FilterSlotBonuses)} using fluid datapack caps. */
@@ -382,13 +400,19 @@ public final class DuctFaceNode {
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannelsExtractor, allowFiltersExtractor.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannelsExtractor, denyFiltersExtractor.size());
         clampList(allowFiltersRetriever, bankA);
         clampList(denyFiltersRetriever, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannelsRetriever, allowFiltersRetriever.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannelsRetriever, denyFiltersRetriever.size());
         clampList(allowFiltersFilter, bankA);
         clampList(denyFiltersFilter, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannelsFilter, allowFiltersFilter.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannelsFilter, allowFiltersFilter.size());
     }
 
     /** Same layout as item clamp using gas datapack caps. */
@@ -406,13 +430,19 @@ public final class DuctFaceNode {
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannelsExtractor, allowFiltersExtractor.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannelsExtractor, denyFiltersExtractor.size());
         clampList(allowFiltersRetriever, bankA);
         clampList(denyFiltersRetriever, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannelsRetriever, allowFiltersRetriever.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannelsRetriever, denyFiltersRetriever.size());
         clampList(allowFiltersFilter, bankA);
         clampList(denyFiltersFilter, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
+        FilterConcatChannel.syncToLineSize(allowConcatChannelsFilter, allowFiltersFilter.size());
+        FilterConcatChannel.syncToLineSize(denyConcatChannelsFilter, allowFiltersFilter.size());
     }
 
     private static void syncAllowCapsToAllowSize(List<Integer> caps, int allowSize) {
@@ -431,12 +461,16 @@ public final class DuctFaceNode {
         f.put("Allow", toStringListTag(allowFilters));
         f.put("Deny", toStringListTag(denyFilters));
         putAllowCapArray(f, allowAllowCaps);
+        putConcatChannelArray(f, "AllowConcat", allowConcatChannels);
+        putConcatChannelArray(f, "DenyConcat", denyConcatChannels);
 
         CompoundTag ex = new CompoundTag();
         ex.putBoolean("DenyOver", denyOverridesAllowExtractor);
         ex.put("Allow", toStringListTag(allowFiltersExtractor));
         ex.put("Deny", toStringListTag(denyFiltersExtractor));
         putAllowCapArray(ex, allowAllowCapsExtractor);
+        putConcatChannelArray(ex, "AllowConcat", allowConcatChannelsExtractor);
+        putConcatChannelArray(ex, "DenyConcat", denyConcatChannelsExtractor);
         f.put("Extractor", ex);
 
         CompoundTag re = new CompoundTag();
@@ -444,6 +478,8 @@ public final class DuctFaceNode {
         re.put("Allow", toStringListTag(allowFiltersRetriever));
         re.put("Deny", toStringListTag(denyFiltersRetriever));
         putAllowCapArray(re, allowAllowCapsRetriever);
+        putConcatChannelArray(re, "AllowConcat", allowConcatChannelsRetriever);
+        putConcatChannelArray(re, "DenyConcat", denyConcatChannelsRetriever);
         f.put("Retriever", re);
 
         CompoundTag fi = new CompoundTag();
@@ -454,6 +490,8 @@ public final class DuctFaceNode {
         putAllowCapArray(fi, allowAllowCapsFilterLimit);
         putAllowCapArray(fi, "AllowCapLim", allowAllowCapsFilterLimit);
         putAllowCapArray(fi, "AllowCapKeep", allowAllowCapsFilterKeep);
+        putConcatChannelArray(fi, "AllowConcat", allowConcatChannelsFilter);
+        putConcatChannelArray(fi, "DenyConcat", denyConcatChannelsFilter);
         f.put("Filter", fi);
         tag.put("FaceFilters", f);
     }
@@ -462,19 +500,27 @@ public final class DuctFaceNode {
         allowFilters.clear();
         denyFilters.clear();
         allowAllowCaps.clear();
+        allowConcatChannels.clear();
+        denyConcatChannels.clear();
         denyOverridesAllow = true;
         allowFiltersExtractor.clear();
         denyFiltersExtractor.clear();
         allowAllowCapsExtractor.clear();
+        allowConcatChannelsExtractor.clear();
+        denyConcatChannelsExtractor.clear();
         denyOverridesAllowExtractor = true;
         allowFiltersRetriever.clear();
         denyFiltersRetriever.clear();
         allowAllowCapsRetriever.clear();
+        allowConcatChannelsRetriever.clear();
+        denyConcatChannelsRetriever.clear();
         denyOverridesAllowRetriever = true;
         allowFiltersFilter.clear();
         denyFiltersFilter.clear();
         allowAllowCapsFilterLimit.clear();
         allowAllowCapsFilterKeep.clear();
+        allowConcatChannelsFilter.clear();
+        denyConcatChannelsFilter.clear();
         denyOverridesAllowFilter = true;
         if (!tag.contains("FaceFilters", Tag.TAG_COMPOUND)) {
             return;
@@ -484,6 +530,8 @@ public final class DuctFaceNode {
         readStringListInto(f, "Allow", allowFilters);
         readStringListInto(f, "Deny", denyFilters);
         readAllowCapsInto(f, allowAllowCaps, allowFilters.size());
+        readConcatChannelsInto(f, "AllowConcat", allowConcatChannels, allowFilters.size());
+        readConcatChannelsInto(f, "DenyConcat", denyConcatChannels, denyFilters.size());
 
         boolean hasExtractor = f.contains("Extractor", Tag.TAG_COMPOUND);
         boolean hasRetriever = f.contains("Retriever", Tag.TAG_COMPOUND);
@@ -494,6 +542,8 @@ public final class DuctFaceNode {
             readStringListInto(ex, "Allow", allowFiltersExtractor);
             readStringListInto(ex, "Deny", denyFiltersExtractor);
             readAllowCapsInto(ex, allowAllowCapsExtractor, allowFiltersExtractor.size());
+            readConcatChannelsInto(ex, "AllowConcat", allowConcatChannelsExtractor, allowFiltersExtractor.size());
+            readConcatChannelsInto(ex, "DenyConcat", denyConcatChannelsExtractor, denyFiltersExtractor.size());
         }
         if (hasRetriever) {
             CompoundTag re = f.getCompound("Retriever");
@@ -501,6 +551,8 @@ public final class DuctFaceNode {
             readStringListInto(re, "Allow", allowFiltersRetriever);
             readStringListInto(re, "Deny", denyFiltersRetriever);
             readAllowCapsInto(re, allowAllowCapsRetriever, allowFiltersRetriever.size());
+            readConcatChannelsInto(re, "AllowConcat", allowConcatChannelsRetriever, allowFiltersRetriever.size());
+            readConcatChannelsInto(re, "DenyConcat", denyConcatChannelsRetriever, denyFiltersRetriever.size());
         }
         if (hasFilter) {
             CompoundTag fi = f.getCompound("Filter");
@@ -514,6 +566,8 @@ public final class DuctFaceNode {
                 readAllowCapsInto(fi, allowAllowCapsFilterLimit, allowFiltersFilter.size());
             }
             readAllowCapsInto(fi, "AllowCapKeep", allowAllowCapsFilterKeep, allowFiltersFilter.size());
+            readConcatChannelsInto(fi, "AllowConcat", allowConcatChannelsFilter, allowFiltersFilter.size());
+            readConcatChannelsInto(fi, "DenyConcat", denyConcatChannelsFilter, denyFiltersFilter.size());
         }
         if (!hasExtractor && !hasRetriever && !hasFilter) {
             // Migration: legacy single-bank -> FILTER bank by default.
@@ -521,6 +575,8 @@ public final class DuctFaceNode {
             allowFiltersFilter.addAll(allowFilters);
             denyFiltersFilter.addAll(denyFilters);
             allowAllowCapsFilterLimit.addAll(allowAllowCaps);
+            allowConcatChannelsFilter.addAll(allowConcatChannels);
+            denyConcatChannelsFilter.addAll(denyConcatChannels);
             syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
         }
     }
@@ -567,6 +623,45 @@ public final class DuctFaceNode {
 
     public List<Integer> filterBankKeepCaps() {
         return allowAllowCapsFilterKeep;
+    }
+
+    public List<Integer> bankAllowConcatChannels(FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> allowConcatChannelsExtractor;
+            case RETRIEVER -> allowConcatChannelsRetriever;
+            case FILTER -> allowConcatChannelsFilter;
+        };
+    }
+
+    public List<Integer> bankDenyConcatChannels(FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> denyConcatChannelsExtractor;
+            case RETRIEVER -> denyConcatChannelsRetriever;
+            case FILTER -> denyConcatChannelsFilter;
+        };
+    }
+
+    private static void putConcatChannelArray(CompoundTag tag, String key, List<Integer> concat) {
+        if (concat == null || concat.isEmpty()) {
+            return;
+        }
+        byte[] arr = new byte[concat.size()];
+        for (int i = 0; i < concat.size(); i++) {
+            int v = concat.get(i) != null ? concat.get(i) : 0;
+            arr[i] = (byte) Math.clamp(v, 0, FilterConcatChannel.MAX_LETTER);
+        }
+        tag.putByteArray(key, arr);
+    }
+
+    private static void readConcatChannelsInto(
+            CompoundTag tag, String key, List<Integer> target, int lineCount) {
+        target.clear();
+        if (tag.contains(key, Tag.TAG_BYTE_ARRAY)) {
+            for (byte b : tag.getByteArray(key)) {
+                target.add((int) b & 0xFF);
+            }
+        }
+        FilterConcatChannel.syncToLineSize(target, lineCount);
     }
 
     private static void clampList(List<String> list, int max) {

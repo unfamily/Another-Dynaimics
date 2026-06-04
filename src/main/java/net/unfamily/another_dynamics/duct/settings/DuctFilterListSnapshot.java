@@ -8,6 +8,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.FilterConcatChannel;
 
 /**
  * Portable single filter list (allow or deny lines + optional caps) for {@link SettingsCopierStoreKind#FILTER}.
@@ -19,6 +20,8 @@ public final class DuctFilterListSnapshot {
     private static final String KEY_CAPS_KEEP = "CapsKeep";
     private static final String KEY_HAS_KEEP = "HasKeepCaps";
     private static final String KEY_MATERIAL_KIND = "MaterialKind";
+    private static final String KEY_ALLOW_CONCAT = "AllowConcat";
+    private static final String KEY_DENY_CONCAT = "DenyConcat";
 
     private DuctFilterListSnapshot() {}
 
@@ -42,6 +45,14 @@ public final class DuctFilterListSnapshot {
     /** Portable allow-list snapshot (import / manual build) with explicit material kind. */
     public static CompoundTag buildPortableAllowList(
             List<String> lines, List<Integer> caps, FilterListMaterialKind materialKind) {
+        return buildPortableAllowList(lines, caps, null, materialKind);
+    }
+
+    public static CompoundTag buildPortableAllowList(
+            List<String> lines,
+            List<Integer> caps,
+            List<Integer> concatChannels,
+            FilterListMaterialKind materialKind) {
         List<String> safeLines = lines != null ? new ArrayList<>(lines) : List.of();
         CompoundTag root = new CompoundTag();
         root.putInt(DuctFaceSettingsSnapshot.KEY_FMT, DuctFaceSettingsSnapshot.FORMAT_VERSION);
@@ -51,6 +62,11 @@ public final class DuctFilterListSnapshot {
         List<Integer> safeCaps = caps != null ? new ArrayList<>(caps) : new ArrayList<>();
         syncAllowCapsSize(safeCaps, safeLines.size());
         root.putIntArray(KEY_CAPS, safeCaps.stream().mapToInt(i -> Math.max(0, i)).toArray());
+        if (concatChannels != null && !concatChannels.isEmpty()) {
+            List<Integer> safeConcat = new ArrayList<>(concatChannels);
+            FilterConcatChannel.syncToLineSize(safeConcat, safeLines.size());
+            root.putByteArray(KEY_ALLOW_CONCAT, toConcatByteArray(safeConcat));
+        }
         return root;
     }
 
@@ -66,11 +82,19 @@ public final class DuctFilterListSnapshot {
             FilterListMaterialKind materialKind) {
         List<String> lines =
                 allowList ? new ArrayList<>(node.bankAllowFilters(bank)) : new ArrayList<>(node.bankDenyFilters(bank));
+        List<Integer> concat =
+                allowList
+                        ? new ArrayList<>(node.bankAllowConcatChannels(bank))
+                        : new ArrayList<>(node.bankDenyConcatChannels(bank));
         CompoundTag root = new CompoundTag();
         root.putInt(DuctFaceSettingsSnapshot.KEY_FMT, DuctFaceSettingsSnapshot.FORMAT_VERSION);
         root.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.FILTER.toTag());
         root.putByte(KEY_MATERIAL_KIND, (byte) materialKind.ordinal());
         root.put(KEY_LINES, toStringListTag(lines));
+        if (concat.stream().anyMatch(v -> v != null && v > 0)) {
+            root.putByteArray(
+                    allowList ? KEY_ALLOW_CONCAT : KEY_DENY_CONCAT, toConcatByteArray(concat));
+        }
         if (allowList) {
             List<Integer> caps = new ArrayList<>(node.bankAllowCaps(bank));
             root.putIntArray(KEY_CAPS, caps.stream().mapToInt(i -> Math.max(0, i)).toArray());
@@ -92,6 +116,15 @@ public final class DuctFilterListSnapshot {
         List<String> target = allowList ? node.bankAllowFilters(bank) : node.bankDenyFilters(bank);
         target.clear();
         target.addAll(lines);
+        List<Integer> concatTarget =
+                allowList ? node.bankAllowConcatChannels(bank) : node.bankDenyConcatChannels(bank);
+        concatTarget.clear();
+        String concatKey = allowList ? KEY_ALLOW_CONCAT : KEY_DENY_CONCAT;
+        if (data.contains(concatKey, Tag.TAG_BYTE_ARRAY)) {
+            readConcatInto(concatTarget, data.getByteArray(concatKey), lines.size());
+        } else {
+            FilterConcatChannel.syncToLineSize(concatTarget, lines.size());
+        }
         if (allowList) {
             List<Integer> caps = readIntList(data, KEY_CAPS, lines.size());
             List<Integer> targetCaps = node.bankAllowCaps(bank);
@@ -111,6 +144,25 @@ public final class DuctFilterListSnapshot {
             }
         }
         return true;
+    }
+
+    private static byte[] toConcatByteArray(List<Integer> concat) {
+        byte[] arr = new byte[concat.size()];
+        for (int i = 0; i < concat.size(); i++) {
+            int v = concat.get(i) != null ? concat.get(i) : 0;
+            arr[i] = (byte) Math.clamp(v, 0, FilterConcatChannel.MAX_LETTER);
+        }
+        return arr;
+    }
+
+    private static void readConcatInto(List<Integer> target, byte[] arr, int lineCount) {
+        target.clear();
+        if (arr != null) {
+            for (byte b : arr) {
+                target.add(Math.clamp(b & 0xFF, 0, FilterConcatChannel.MAX_LETTER));
+            }
+        }
+        FilterConcatChannel.syncToLineSize(target, lineCount);
     }
 
     private static void syncAllowCapsSize(List<Integer> caps, int allowSize) {

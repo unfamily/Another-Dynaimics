@@ -37,6 +37,12 @@ final class UniversalDuctMenuFilterBuffers {
     private final List<Integer> clientAllowCapsRetriever = new ArrayList<>();
     private final List<Integer> clientAllowCapsFilter = new ArrayList<>();
     private final List<Integer> clientAllowCapsFilter2 = new ArrayList<>();
+    private final List<Integer> clientAllowConcatExtractor = new ArrayList<>();
+    private final List<Integer> clientDenyConcatExtractor = new ArrayList<>();
+    private final List<Integer> clientAllowConcatRetriever = new ArrayList<>();
+    private final List<Integer> clientDenyConcatRetriever = new ArrayList<>();
+    private final List<Integer> clientAllowConcatFilter = new ArrayList<>();
+    private final List<Integer> clientDenyConcatFilter = new ArrayList<>();
     private boolean clientDenyOverridesAllowExtractor;
     private boolean clientDenyOverridesAllowRetriever;
     private boolean clientDenyOverridesAllowFilter;
@@ -77,6 +83,22 @@ final class UniversalDuctMenuFilterBuffers {
         return clientAllowCapsFilter2;
     }
 
+    List<Integer> getClientAllowConcatChannels(DuctFaceNode.FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> clientAllowConcatExtractor;
+            case RETRIEVER -> clientAllowConcatRetriever;
+            case FILTER -> clientAllowConcatFilter;
+        };
+    }
+
+    List<Integer> getClientDenyConcatChannels(DuctFaceNode.FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> clientDenyConcatExtractor;
+            case RETRIEVER -> clientDenyConcatRetriever;
+            case FILTER -> clientDenyConcatFilter;
+        };
+    }
+
     void receiveFilterSync(
             BlockPos expectedPos,
             Direction expectedFace,
@@ -89,6 +111,8 @@ final class UniversalDuctMenuFilterBuffers {
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
             boolean denyOverridesAllow) {
         if (!expectedPos.equals(pos) || expectedFace != face) {
             return;
@@ -105,6 +129,8 @@ final class UniversalDuctMenuFilterBuffers {
         List<String> a = getClientAllowFilters(bank);
         List<String> d = getClientDenyFilters(bank);
         List<Integer> caps = getClientAllowCaps(bank);
+        List<Integer> allowCh = getClientAllowConcatChannels(bank);
+        List<Integer> denyCh = getClientDenyConcatChannels(bank);
         a.clear();
         a.addAll(allow);
         d.clear();
@@ -113,6 +139,18 @@ final class UniversalDuctMenuFilterBuffers {
         if (allowCaps != null) {
             for (Integer v : allowCaps) {
                 caps.add(Math.max(0, v != null ? v : 0));
+            }
+        }
+        allowCh.clear();
+        if (allowConcat != null) {
+            for (Integer v : allowConcat) {
+                allowCh.add(v != null ? Math.clamp(v, 0, 26) : 0);
+            }
+        }
+        denyCh.clear();
+        if (denyConcat != null) {
+            for (Integer v : denyConcat) {
+                denyCh.add(v != null ? Math.clamp(v, 0, 26) : 0);
             }
         }
         if (bank == DuctFaceNode.FilterBank.FILTER) {
@@ -149,6 +187,12 @@ final class UniversalDuctMenuFilterBuffers {
         clampClientIntList(clientAllowCapsRetriever, maxA);
         clampClientIntList(clientAllowCapsFilter, maxA);
         clampClientIntList(clientAllowCapsFilter2, maxA);
+        clampClientIntList(clientAllowConcatExtractor, maxA);
+        clampClientIntList(clientDenyConcatExtractor, maxD);
+        clampClientIntList(clientAllowConcatRetriever, maxA);
+        clampClientIntList(clientDenyConcatRetriever, maxD);
+        clampClientIntList(clientAllowConcatFilter, maxA);
+        clampClientIntList(clientDenyConcatFilter, maxD);
     }
 
     static int filterAllowCap(

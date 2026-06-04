@@ -506,11 +506,13 @@ public final class DuctFluidServerTick {
         DuctFaceNode destNode = destBe.getFaceLanes(destFace).fluid;
         List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER);
         List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER);
+        List<Integer> concat = destNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.RETRIEVER);
         int maxAdd =
                 DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
                         destCap,
                         allowLines,
                         caps,
+                        concat,
                         movingProbe,
                         DuctFluidIncomingIndex.snapshot(level, destBe.getBlockPos()),
                         level.registryAccess());
@@ -548,11 +550,13 @@ public final class DuctFluidServerTick {
         if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
             List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
             List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
+            List<Integer> concat = destNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.FILTER);
             int maxAdd =
                     DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
                             destCap,
                             allowLines,
                             caps,
+                            concat,
                             toMove,
                             DuctFluidIncomingIndex.snapshot(level, ep.pos()),
                             level.registryAccess());
@@ -608,11 +612,13 @@ public final class DuctFluidServerTick {
         if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
             List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
             List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
+            List<Integer> concat = destNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.FILTER);
             int maxAdd =
                     DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
                             destCap,
                             allowLines,
                             caps,
+                            concat,
                             toMove,
                             DuctFluidIncomingIndex.snapshot(level, ep.pos()),
                             level.registryAccess());

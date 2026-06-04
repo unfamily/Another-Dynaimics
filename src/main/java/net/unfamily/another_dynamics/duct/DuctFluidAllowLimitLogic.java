@@ -38,6 +38,14 @@ public final class DuctFluidAllowLimitLogic {
 
     public static int firstMatchingAllowLineIndex(
             List<String> allowLines, FluidStack template, HolderLookup.Provider registries) {
+        return firstMatchingAllowLineIndex(allowLines, null, template, registries);
+    }
+
+    public static int firstMatchingAllowLineIndex(
+            List<String> allowLines,
+            @Nullable List<Integer> concatChannels,
+            FluidStack template,
+            HolderLookup.Provider registries) {
         if (template.isEmpty()) {
             return -1;
         }
@@ -45,17 +53,12 @@ public final class DuctFluidAllowLimitLogic {
         ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluid);
         String fluidIdStr = fluidId.toString();
         String fluidModId = fluidId.getNamespace();
-        for (int i = 0; i < allowLines.size(); i++) {
-            String line = allowLines.get(i);
-            if (line == null || line.trim().isEmpty()) {
-                continue;
-            }
-            if (DuctFluidFilterMatcher.matchesFilterEntry(
-                    template, fluid, fluidId, fluidIdStr, fluidModId, line.trim(), registries)) {
-                return i;
-            }
-        }
-        return -1;
+        return DuctFilterConcatEvaluator.firstMatchingLineIndex(
+                allowLines,
+                concatChannels,
+                (i, trimmed) ->
+                        DuctFluidFilterMatcher.matchesFilterEntry(
+                                template, fluid, fluidId, fluidIdStr, fluidModId, trimmed, registries));
     }
 
     private static int countPendingMatchingFilterLineMb(
@@ -201,23 +204,50 @@ public final class DuctFluidAllowLimitLogic {
             FluidStack template,
             @Nullable List<FluidStack> priorPending,
             HolderLookup.Provider registries) {
+        return maxAdditionalInsertAcrossAllowLinesMb(
+                handler, allowLines, caps, null, template, priorPending, registries);
+    }
+
+    public static int maxAdditionalInsertAcrossAllowLinesMb(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            @Nullable List<Integer> concatChannels,
+            FluidStack template,
+            @Nullable List<FluidStack> priorPending,
+            HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null || allowLines == null || caps == null) {
             return Integer.MAX_VALUE;
         }
         if (!hasAnyPositiveAllowCapOnNonEmptyLine(allowLines, caps)) {
             return Integer.MAX_VALUE;
         }
+        java.util.Set<Integer> consumedConcat = new java.util.HashSet<>();
         for (int i = 0; i < allowLines.size(); i++) {
+            int ch = FilterConcatChannel.channelAt(concatChannels, i);
+            if (ch != 0 && consumedConcat.contains(ch)) {
+                continue;
+            }
             String line = allowLines.get(i);
             if (line == null || line.trim().isEmpty()) {
                 continue;
             }
-            if (!DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+            int capIndex = i;
+            if (ch != 0) {
+                if (!templateMatchesFluidConcatGroup(allowLines, concatChannels, ch, template, registries)) {
+                    continue;
+                }
+                capIndex = firstNonEmptyFluidIndexForChannel(allowLines, concatChannels, ch);
+                if (capIndex < 0) {
+                    continue;
+                }
+                consumedConcat.add(ch);
+            } else if (!DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
                 continue;
             }
             int add =
                     maxAdditionalInsertForAllowLineMbAtIndex(
-                            handler, allowLines, caps, template, i, priorPending, registries);
+                            handler, allowLines, caps, template, capIndex, priorPending, registries);
             if (add == Integer.MAX_VALUE) {
                 return Integer.MAX_VALUE;
             }
@@ -226,6 +256,43 @@ public final class DuctFluidAllowLimitLogic {
             }
         }
         return 0;
+    }
+
+    private static int firstNonEmptyFluidIndexForChannel(
+            List<String> lines, @Nullable List<Integer> concatChannels, int channel) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (FilterConcatChannel.channelAt(concatChannels, i) != channel) {
+                continue;
+            }
+            String raw = lines.get(i);
+            if (raw != null && !raw.trim().isEmpty()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean templateMatchesFluidConcatGroup(
+            List<String> lines,
+            @Nullable List<Integer> concatChannels,
+            int channel,
+            FluidStack template,
+            HolderLookup.Provider registries) {
+        boolean anyInGroup = false;
+        for (int i = 0; i < lines.size(); i++) {
+            if (FilterConcatChannel.channelAt(concatChannels, i) != channel) {
+                continue;
+            }
+            String raw = lines.get(i);
+            if (raw == null || raw.trim().isEmpty()) {
+                continue;
+            }
+            anyInGroup = true;
+            if (!DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(template, raw.trim(), registries)) {
+                return false;
+            }
+        }
+        return anyInGroup;
     }
 
     public static int maxExtractRespectingKeepAcrossLinesMb(

@@ -50,6 +50,7 @@ import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctFilterLineReorder;
+import net.unfamily.another_dynamics.duct.FilterConcatChannel;
 import net.unfamily.another_dynamics.duct.FilterLineTextUtil;
 import net.unfamily.another_dynamics.duct.DuctGuiLayout;
 import net.unfamily.another_dynamics.duct.DuctIds;
@@ -473,6 +474,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private final List<Button> filterEditButtons = new ArrayList<>();
     private final List<Button> filterDeleteButtons = new ArrayList<>();
+    private final List<FilterConcatChannelButton> filterConcatButtons = new ArrayList<>();
 
     // Edit mode (ported from DeepDrawerExtractorScreen)
     private int editModeFilterIndex = -1;
@@ -574,6 +576,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         List<String> deny,
         List<Integer> allowCaps,
         List<Integer> allowCaps2,
+        List<Integer> allowConcat,
+        List<Integer> denyConcat,
         boolean denyOverridesAllow
     ) {
         Minecraft mc = Minecraft.getInstance();
@@ -592,6 +596,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             deny,
             allowCaps,
             allowCaps2,
+            allowConcat,
+            denyConcat,
             denyOverridesAllow
         );
         if (
@@ -2691,6 +2697,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         for (Button b : filterDeleteButtons) {
             b.visible = showFilterEntryList;
         }
+        for (FilterConcatChannelButton b : filterConcatButtons) {
+            b.visible = showFilterEntryList;
+        }
 
         if (editModeTextBox != null) {
             boolean showFilterEditChrome =
@@ -2789,6 +2798,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             removeWidget(b);
         }
         filterDeleteButtons.clear();
+        for (FilterConcatChannelButton b : filterConcatButtons) {
+            removeWidget(b);
+        }
+        filterConcatButtons.clear();
 
         if (!isAllowOrDenyFilterListContext()) {
             return;
@@ -2807,12 +2820,32 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             int buttonMargin = 4;
             int editX = entryX + ENTRY_WIDTH - buttonMargin - buttonSize;
             int deleteX = editX - buttonSize - 2;
+            int concatX = deleteX - buttonSize - 2;
             int buttonY = entryY + (ENTRY_HEIGHT - buttonSize) / 2;
 
             final int idx = filterIndex;
+            List<Integer> concatList = getEditingConcatChannels();
+            while (concatList.size() <= idx) {
+                concatList.add(0);
+            }
+            FilterConcatChannelButton[] concatBtnRef = new FilterConcatChannelButton[1];
+            concatBtnRef[0] =
+                    new FilterConcatChannelButton(concatX, buttonY, buttonSize, buttonSize, v -> {
+                        playClickSound();
+                        concatList.set(idx, v);
+                        concatBtnRef[0].setTooltip(concatChannelTooltip(v));
+                        pushFiltersToServer();
+                    });
+            concatBtnRef[0].setChannelOrdinal(concatList.get(idx));
+            concatBtnRef[0].setTooltip(concatChannelTooltip(concatList.get(idx)));
+            FilterConcatChannelButton concatBtn = concatBtnRef[0];
+            filterConcatButtons.add(concatBtn);
+            addRenderableWidget(concatBtn);
+
             Button del = Button.builder(Component.literal("C"), b -> {
                 playClickSound();
                 getEditingList().set(idx, "");
+                concatList.set(idx, 0);
                 if (effectiveFilterLineSubview() == SubView.ALLOW_FILTERS) {
                     List<Integer> caps = menu.getClientAllowCaps(
                         activeFilterBank
@@ -2823,6 +2856,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     caps.set(idx, 0);
                 }
                 pushFiltersToServer();
+                rebuildFilterEntryWidgets();
             })
                 .bounds(deleteX, buttonY, buttonSize, buttonSize)
                 .tooltip(
@@ -2880,6 +2914,26 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return menu.getClientAllowFilters(activeFilterBank);
         }
         return menu.getClientDenyFilters(activeFilterBank);
+    }
+
+    private List<Integer> getEditingConcatChannels() {
+        SubView eff = effectiveFilterLineSubview();
+        if (eff == SubView.ALLOW_FILTERS || eff == SubView.ADVANCED_FILTERING) {
+            return menu.getClientAllowConcatChannels(activeFilterBank);
+        }
+        return menu.getClientDenyConcatChannels(activeFilterBank);
+    }
+
+    private Tooltip concatChannelTooltip(int channelOrdinal) {
+        FilterConcatChannel ch = FilterConcatChannel.fromOrdinal(channelOrdinal);
+        if (ch == FilterConcatChannel.NONE) {
+            return Tooltip.create(
+                    Component.translatable("gui.another_dynamics.duct_node.filters.concat.none"));
+        }
+        return Tooltip.create(
+                Component.translatable(
+                        "gui.another_dynamics.duct_node.filters.concat.channel_label",
+                        ch.displayPrefix()));
     }
 
     private int visibleFilterEntries() {
@@ -4165,7 +4219,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 menu.getClientAllowCaps(bank),
                 null,
                 minecraft.level.registryAccess(),
-                keepCaps);
+                keepCaps,
+                menu.getClientAllowConcatChannels(bank),
+                menu.getClientDenyConcatChannels(bank));
     }
 
     private void reorderActiveFilterLines() {
@@ -4193,6 +4249,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     new ArrayList<>(menu.getClientDenyFilters(bank)),
                     new ArrayList<>(menu.getClientAllowCaps(bank)),
                     caps2,
+                    new ArrayList<>(menu.getClientAllowConcatChannels(bank)),
+                    new ArrayList<>(menu.getClientDenyConcatChannels(bank)),
                     menu.getClientDenyOverridesAllow(bank),
                     allowListCtx);
         }
@@ -4230,6 +4288,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             new ArrayList<>(menu.getClientDenyFilters(activeFilterBank)),
             new ArrayList<>(menu.getClientAllowCaps(activeFilterBank)),
             caps2,
+            new ArrayList<>(menu.getClientAllowConcatChannels(activeFilterBank)),
+            new ArrayList<>(menu.getClientDenyConcatChannels(activeFilterBank)),
             menu.getClientDenyOverridesAllow(activeFilterBank),
             subView == SubView.ALLOW_FILTERS);
     }
@@ -5557,26 +5617,33 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             int buttonSpacing = 2;
             int editButtonX = entryX + ENTRY_WIDTH - buttonMargin - buttonSize;
             int deleteButtonX = editButtonX - buttonSize - buttonSpacing;
-            int maxTextWidth = deleteButtonX - textX - 5;
+            int concatButtonX = deleteButtonX - buttonSize - buttonSpacing;
+            int maxTextWidth = concatButtonX - textX - 5;
+            List<Integer> concatList = getEditingConcatChannels();
+            int ch =
+                    idx < concatList.size() && concatList.get(idx) != null
+                            ? Math.clamp(concatList.get(idx), 0, FilterConcatChannel.MAX_LETTER)
+                            : 0;
+            String prefix = ch > 0 ? "[" + (char) ('A' + ch - 1) + "] " : "";
             String displayText = filter;
-            if (
-                font.width(displayText) > maxTextWidth && !displayText.isEmpty()
-            ) {
+            int prefixWidth = ch > 0 ? font.width(prefix) : 0;
+            int bodyMax = maxTextWidth - prefixWidth;
+            if (font.width(displayText) > bodyMax && !displayText.isEmpty()) {
                 displayText =
-                    font.plainSubstrByWidth(
-                        displayText,
-                        maxTextWidth - font.width("...")
-                    ) +
-                    "...";
+                        font.plainSubstrByWidth(displayText, bodyMax - font.width("...")) + "...";
             }
-            graphics.drawString(
-                font,
-                displayText,
-                textX,
-                textY,
-                0x404040,
-                false
-            );
+            int drawX = textX;
+            if (ch > 0) {
+                graphics.drawString(
+                        font,
+                        prefix,
+                        drawX,
+                        textY,
+                        LetterPalette.textArgb(ch),
+                        false);
+                drawX += prefixWidth;
+            }
+            graphics.drawString(font, displayText, drawX, textY, 0x404040, false);
         }
 
         // After entry rows so the handle draws above the list edge (DeepDrawerExtractorScreen order).

@@ -798,11 +798,13 @@ public final class DuctGasServerTick {
         if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
             List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
             List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
+            List<Integer> concat = destNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.FILTER);
             long maxAdd =
                     DuctGasAllowLimitLogic.maxAdditionalInsertAcrossAllowLines(
                             destHandler,
                             allowLines,
                             caps,
+                            concat,
                             tryStack,
                             level.registryAccess(),
                             (line, reg) ->

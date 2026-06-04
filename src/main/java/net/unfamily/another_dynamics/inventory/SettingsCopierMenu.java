@@ -432,6 +432,16 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     }
 
     @Override
+    public List<Integer> getClientAllowConcatChannels(DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientAllowConcatChannels(bank);
+    }
+
+    @Override
+    public List<Integer> getClientDenyConcatChannels(DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientDenyConcatChannels(bank);
+    }
+
+    @Override
     public void receiveFilterSync(
             BlockPos pos,
             Direction face,
@@ -441,6 +451,8 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
             boolean denyOverridesAllow) {
         filterBuffers.receiveFilterSync(
                 ductBlockPos,
@@ -454,6 +466,8 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
                 deny,
                 allowCaps,
                 allowCaps2,
+                allowConcat,
+                denyConcat,
                 denyOverridesAllow);
     }
 
@@ -475,6 +489,8 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
             boolean denyOverridesAllow,
             boolean editingAllowList) {
         if (virtualSession != null) {
@@ -492,6 +508,8 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
                 deny,
                 allowCaps,
                 allowCaps2,
+                allowConcat,
+                denyConcat,
                 denyOverridesAllow);
     }
 

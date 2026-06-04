@@ -161,6 +161,12 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
     private final List<Integer> clientAllowCapsRetriever = new ArrayList<>();
     private final List<Integer> clientAllowCapsFilter = new ArrayList<>(); // FILTER.limit
     private final List<Integer> clientAllowCapsFilter2 = new ArrayList<>(); // FILTER.keep
+    private final List<Integer> clientAllowConcatExtractor = new ArrayList<>();
+    private final List<Integer> clientDenyConcatExtractor = new ArrayList<>();
+    private final List<Integer> clientAllowConcatRetriever = new ArrayList<>();
+    private final List<Integer> clientDenyConcatRetriever = new ArrayList<>();
+    private final List<Integer> clientAllowConcatFilter = new ArrayList<>();
+    private final List<Integer> clientDenyConcatFilter = new ArrayList<>();
 
     public DuctNodeMenu(int containerId, Inventory playerInventory, DuctBlockEntity be, Direction accessFace) {
         this(
@@ -574,6 +580,26 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
         return clientAllowCapsFilter2;
     }
 
+    @Override
+    public List<Integer> getClientAllowConcatChannels(
+            net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> clientAllowConcatExtractor;
+            case RETRIEVER -> clientAllowConcatRetriever;
+            case FILTER -> clientAllowConcatFilter;
+        };
+    }
+
+    @Override
+    public List<Integer> getClientDenyConcatChannels(
+            net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> clientDenyConcatExtractor;
+            case RETRIEVER -> clientDenyConcatRetriever;
+            case FILTER -> clientDenyConcatFilter;
+        };
+    }
+
     public void receiveFilterSync(
             BlockPos pos,
             Direction face,
@@ -583,6 +609,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
             boolean denyOverridesAllow) {
         if (!ductBlockPos.equals(pos) || accessFace != face) {
             return;
@@ -599,6 +627,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
         List<String> a = getClientAllowFilters(bank);
         List<String> d = getClientDenyFilters(bank);
         List<Integer> caps = getClientAllowCaps(bank);
+        List<Integer> allowCh = getClientAllowConcatChannels(bank);
+        List<Integer> denyCh = getClientDenyConcatChannels(bank);
         a.clear();
         a.addAll(allow);
         d.clear();
@@ -607,6 +637,18 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
         if (allowCaps != null) {
             for (Integer v : allowCaps) {
                 caps.add(Math.max(0, v != null ? v : 0));
+            }
+        }
+        allowCh.clear();
+        if (allowConcat != null) {
+            for (Integer v : allowConcat) {
+                allowCh.add(v != null ? Math.clamp(v, 0, 26) : 0);
+            }
+        }
+        denyCh.clear();
+        if (denyConcat != null) {
+            for (Integer v : denyConcat) {
+                denyCh.add(v != null ? Math.clamp(v, 0, 26) : 0);
             }
         }
         if (bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.FILTER) {
@@ -645,14 +687,23 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
         clampClientIntList(clientAllowCapsRetriever, maxA);
         clampClientIntList(clientAllowCapsFilter, maxA);
         clampClientIntList(clientAllowCapsFilter2, maxA);
+        clampClientIntList(clientAllowConcatExtractor, maxA);
+        clampClientIntList(clientDenyConcatExtractor, maxD);
+        clampClientIntList(clientAllowConcatRetriever, maxA);
+        clampClientIntList(clientDenyConcatRetriever, maxD);
+        clampClientIntList(clientAllowConcatFilter, maxA);
+        clampClientIntList(clientDenyConcatFilter, maxD);
     }
 
+    @Override
     public void pushFilterConfigToServer(
             net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank,
             List<String> allow,
             List<String> deny,
             List<Integer> allowCaps,
             List<Integer> allowCaps2,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
             boolean denyOverridesAllow,
             boolean editingAllowList) {
         ModNetwork.sendFilterUpdate(
@@ -664,6 +715,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
                 deny,
                 allowCaps,
                 allowCaps2,
+                allowConcat,
+                denyConcat,
                 denyOverridesAllow);
     }
 

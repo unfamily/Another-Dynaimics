@@ -33,8 +33,28 @@ public final class DuctFilterLogic {
         String itemIdStr = itemId.toString();
         String itemModId = itemId.getNamespace();
 
-        boolean A = hasA && matchesAny(node.allowFilters, stack, item, itemId, itemIdStr, itemModId, reg);
-        boolean D = hasD && matchesAny(node.denyFilters, stack, item, itemId, itemIdStr, itemModId, reg);
+        boolean A =
+                hasA
+                        && matchesAny(
+                                node.allowFilters,
+                                node.allowConcatChannels,
+                                stack,
+                                item,
+                                itemId,
+                                itemIdStr,
+                                itemModId,
+                                reg);
+        boolean D =
+                hasD
+                        && matchesAny(
+                                node.denyFilters,
+                                node.denyConcatChannels,
+                                stack,
+                                item,
+                                itemId,
+                                itemIdStr,
+                                itemModId,
+                                reg);
 
         if (node.denyOverridesAllow) {
             if (D) {
@@ -68,22 +88,19 @@ public final class DuctFilterLogic {
 
     private static boolean matchesAny(
             List<String> entries,
+            List<Integer> concatChannels,
             ItemStack stack,
             Item item,
             ResourceLocation itemId,
             String itemIdStr,
             String itemModId,
             HolderLookup.Provider registries) {
-        for (String raw : entries) {
-            if (raw == null || raw.trim().isEmpty()) {
-                continue;
-            }
-            if (DuctFilterMatcher.matchesFilterEntry(
-                    stack, item, itemId, itemIdStr, itemModId, raw.trim(), registries)) {
-                return true;
-            }
-        }
-        return false;
+        return DuctFilterConcatEvaluator.matchesAny(
+                entries,
+                concatChannels,
+                (i, trimmed) ->
+                        DuctFilterMatcher.matchesFilterEntry(
+                                stack, item, itemId, itemIdStr, itemModId, trimmed, registries));
     }
 
     public static int listHash(List<String> list) {

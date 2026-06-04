@@ -82,6 +82,14 @@ public final class DuctAllowLimitLogic {
 
     public static int firstMatchingAllowLineIndex(
             List<String> allowLines, ItemStack template, HolderLookup.Provider registries) {
+        return firstMatchingAllowLineIndex(allowLines, null, template, registries);
+    }
+
+    public static int firstMatchingAllowLineIndex(
+            List<String> allowLines,
+            @Nullable List<Integer> concatChannels,
+            ItemStack template,
+            HolderLookup.Provider registries) {
         if (template.isEmpty()) {
             return -1;
         }
@@ -89,17 +97,12 @@ public final class DuctAllowLimitLogic {
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
         String itemIdStr = itemId.toString();
         String itemModId = itemId.getNamespace();
-        for (int i = 0; i < allowLines.size(); i++) {
-            String line = allowLines.get(i);
-            if (line == null || line.trim().isEmpty()) {
-                continue;
-            }
-            if (DuctFilterMatcher.matchesFilterEntry(
-                    template, item, itemId, itemIdStr, itemModId, line.trim(), registries)) {
-                return i;
-            }
-        }
-        return -1;
+        return DuctFilterConcatEvaluator.firstMatchingLineIndex(
+                allowLines,
+                concatChannels,
+                (i, trimmed) ->
+                        DuctFilterMatcher.matchesFilterEntry(
+                                template, item, itemId, itemIdStr, itemModId, trimmed, registries));
     }
 
     /**
@@ -217,6 +220,18 @@ public final class DuctAllowLimitLogic {
             ItemStack template,
             @Nullable List<ItemStack> priorPending,
             HolderLookup.Provider registries) {
+        return maxAdditionalInsertAcrossAllowLines(
+                handler, allowLines, caps, null, template, priorPending, registries);
+    }
+
+    public static int maxAdditionalInsertAcrossAllowLines(
+            IItemHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            @Nullable List<Integer> concatChannels,
+            ItemStack template,
+            @Nullable List<ItemStack> priorPending,
+            HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null || allowLines == null || caps == null) {
             return Integer.MAX_VALUE;
         }
@@ -227,17 +242,32 @@ public final class DuctAllowLimitLogic {
         if (exceedsInsertLimitSlotCap(handler)) {
             return 0;
         }
+        java.util.Set<Integer> consumedConcat = new java.util.HashSet<>();
         for (int i = 0; i < allowLines.size(); i++) {
+            int ch = FilterConcatChannel.channelAt(concatChannels, i);
+            if (ch != 0 && consumedConcat.contains(ch)) {
+                continue;
+            }
             String line = allowLines.get(i);
             if (line == null || line.trim().isEmpty()) {
                 continue;
             }
-            if (!DuctFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+            int capIndex = i;
+            if (ch != 0) {
+                if (!templateMatchesConcatGroup(allowLines, concatChannels, ch, template, registries)) {
+                    continue;
+                }
+                capIndex = firstNonEmptyIndexForChannel(allowLines, concatChannels, ch);
+                if (capIndex < 0) {
+                    continue;
+                }
+                consumedConcat.add(ch);
+            } else if (!DuctFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
                 continue;
             }
             int add =
                     maxAdditionalInsertForAllowLineAtIndex(
-                            handler, allowLines, caps, template, i, priorPending, registries);
+                            handler, allowLines, caps, template, capIndex, priorPending, registries);
             if (add == Integer.MAX_VALUE) {
                 return Integer.MAX_VALUE;
             }
@@ -246,6 +276,43 @@ public final class DuctAllowLimitLogic {
             }
         }
         return 0;
+    }
+
+    private static int firstNonEmptyIndexForChannel(
+            List<String> lines, @Nullable List<Integer> concatChannels, int channel) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (FilterConcatChannel.channelAt(concatChannels, i) != channel) {
+                continue;
+            }
+            String raw = lines.get(i);
+            if (raw != null && !raw.trim().isEmpty()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean templateMatchesConcatGroup(
+            List<String> lines,
+            @Nullable List<Integer> concatChannels,
+            int channel,
+            ItemStack template,
+            HolderLookup.Provider registries) {
+        boolean anyInGroup = false;
+        for (int i = 0; i < lines.size(); i++) {
+            if (FilterConcatChannel.channelAt(concatChannels, i) != channel) {
+                continue;
+            }
+            String raw = lines.get(i);
+            if (raw == null || raw.trim().isEmpty()) {
+                continue;
+            }
+            anyInGroup = true;
+            if (!DuctFilterMatcher.matchesAnyNonEmptyEntry(template, raw.trim(), registries)) {
+                return false;
+            }
+        }
+        return anyInGroup;
     }
 
     /**
@@ -257,6 +324,17 @@ public final class DuctAllowLimitLogic {
             List<Integer> keepCaps,
             ItemStack template,
             HolderLookup.Provider registries) {
+        return maxExtractRespectingKeepAcrossLines(
+                handler, allowLines, keepCaps, null, template, registries);
+    }
+
+    public static int maxExtractRespectingKeepAcrossLines(
+            IItemHandler handler,
+            List<String> allowLines,
+            List<Integer> keepCaps,
+            @Nullable List<Integer> concatChannels,
+            ItemStack template,
+            HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null || allowLines == null || keepCaps == null) {
             return Integer.MAX_VALUE;
         }
@@ -264,17 +342,33 @@ public final class DuctAllowLimitLogic {
             return Integer.MAX_VALUE;
         }
         boolean matchedAnyLine = false;
+        java.util.Set<Integer> consumedConcat = new java.util.HashSet<>();
         for (int i = 0; i < allowLines.size(); i++) {
+            int ch = FilterConcatChannel.channelAt(concatChannels, i);
+            if (ch != 0 && consumedConcat.contains(ch)) {
+                continue;
+            }
             String line = allowLines.get(i);
             if (line == null || line.trim().isEmpty()) {
                 continue;
             }
-            if (!DuctFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+            int capIndex = i;
+            if (ch != 0) {
+                if (!templateMatchesConcatGroup(allowLines, concatChannels, ch, template, registries)) {
+                    continue;
+                }
+                capIndex = firstNonEmptyIndexForChannel(allowLines, concatChannels, ch);
+                if (capIndex < 0) {
+                    continue;
+                }
+                consumedConcat.add(ch);
+            } else if (!DuctFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
                 continue;
             }
             matchedAnyLine = true;
             int ex =
-                    maxExtractRespectingKeepAtIndex(handler, allowLines, keepCaps, template, i, registries);
+                    maxExtractRespectingKeepAtIndex(
+                            handler, allowLines, keepCaps, template, capIndex, registries);
             if (ex == Integer.MAX_VALUE) {
                 return Integer.MAX_VALUE;
             }
@@ -306,7 +400,36 @@ public final class DuctAllowLimitLogic {
         if (exceedsInsertLimitSlotCap(handler)) {
             return 0;
         }
-        int idx = firstMatchingAllowLineIndex(allowLines, template, registries);
+        int idx = firstMatchingAllowLineIndex(allowLines, null, template, registries);
+        if (idx < 0 || idx >= caps.size()) {
+            return Integer.MAX_VALUE;
+        }
+        int lim = caps.get(idx);
+        if (lim <= 0) {
+            return Integer.MAX_VALUE;
+        }
+        String line = allowLines.get(idx);
+        int current =
+                countMatchingInHandler(handler, line, registries, true)
+                        + countPendingMatchingFilterLine(priorPending, line, registries);
+        return Math.max(0, lim - current);
+    }
+
+    public static int maxAdditionalInsertForAllowLine(
+            IItemHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            @Nullable List<Integer> concatChannels,
+            ItemStack template,
+            @Nullable List<ItemStack> priorPending,
+            HolderLookup.Provider registries) {
+        if (template.isEmpty() || handler == null) {
+            return Integer.MAX_VALUE;
+        }
+        if (exceedsInsertLimitSlotCap(handler)) {
+            return 0;
+        }
+        int idx = firstMatchingAllowLineIndex(allowLines, concatChannels, template, registries);
         if (idx < 0 || idx >= caps.size()) {
             return Integer.MAX_VALUE;
         }
@@ -331,10 +454,20 @@ public final class DuctAllowLimitLogic {
             List<Integer> caps,
             ItemStack template,
             HolderLookup.Provider registries) {
+        return maxExtractRespectingKeep(handler, allowLines, caps, null, template, registries);
+    }
+
+    public static int maxExtractRespectingKeep(
+            IItemHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            @Nullable List<Integer> concatChannels,
+            ItemStack template,
+            HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null) {
             return Integer.MAX_VALUE;
         }
-        int idx = firstMatchingAllowLineIndex(allowLines, template, registries);
+        int idx = firstMatchingAllowLineIndex(allowLines, concatChannels, template, registries);
         if (idx < 0 || idx >= caps.size()) {
             return Integer.MAX_VALUE;
         }

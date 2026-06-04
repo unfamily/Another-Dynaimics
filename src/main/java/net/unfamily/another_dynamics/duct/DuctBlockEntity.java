@@ -3938,6 +3938,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctFaceNode destNode = destBe.getFaceNode(destFace);
         List<String> filterAllows = destNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
         List<Integer> filterCaps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.FILTER);
+        List<Integer> filterConcat = destNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.FILTER);
         if (!DuctAllowLimitLogic.hasAnyPositiveAllowCapOnNonEmptyLine(filterAllows, filterCaps)) {
             return maxFromCapacity;
         }
@@ -3946,6 +3947,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         raw,
                         filterAllows,
                         filterCaps,
+                        filterConcat,
                         template,
                         priorIncoming,
                         level.registryAccess());
@@ -3977,6 +3979,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctFaceNode destNode = destBe.getFaceNode(destFace);
         List<String> retrAllows = destNode.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER);
         List<Integer> retrCaps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER);
+        List<Integer> retrConcat = destNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.RETRIEVER);
         if (!DuctAllowLimitLogic.hasAnyPositiveAllowCapOnNonEmptyLine(retrAllows, retrCaps)) {
             return maxFromCapacity;
         }
@@ -3985,6 +3988,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         raw,
                         retrAllows,
                         retrCaps,
+                        retrConcat,
                         template,
                         priorIncoming,
                         level.registryAccess());
@@ -4013,14 +4017,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         NodeMode mode = sourceBe.getFaceLanes(sourceFace).nodeMode;
         List<String> allowLines;
         List<Integer> keepCaps;
+        List<Integer> allowConcat;
         if (mode == NodeMode.EXTRACTION
                 || mode == NodeMode.EXTRACTION_FILTERING
                 || mode == NodeMode.RETRIEVING_EXTRACTION) {
             allowLines = srcNode.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR);
             keepCaps = srcNode.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR);
+            allowConcat = srcNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.EXTRACTOR);
         } else if (mode == NodeMode.FILTERING_INSERTION) {
             allowLines = srcNode.bankAllowFilters(DuctFaceNode.FilterBank.FILTER);
             keepCaps = srcNode.filterBankKeepCaps();
+            allowConcat = srcNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.FILTER);
         } else {
             return maxWant;
         }
@@ -4029,7 +4036,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         int cap =
                 DuctAllowLimitLogic.maxExtractRespectingKeepAcrossLines(
-                        h, allowLines, keepCaps, template, level.registryAccess());
+                        h, allowLines, keepCaps, allowConcat, template, level.registryAccess());
         if (cap == Integer.MAX_VALUE) {
             return maxWant;
         }
@@ -4060,6 +4067,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         view.denyFilters.clear();
         List<String> fullDeny = node.bankDenyFilters(bank);
         view.denyFilters.addAll(fullDeny.subList(0, Math.min(fullDeny.size(), denyCap)));
+        List<Integer> fullAllowConcat = node.bankAllowConcatChannels(bank);
+        List<Integer> fullDenyConcat = node.bankDenyConcatChannels(bank);
+        view.allowConcatChannels.addAll(
+                fullAllowConcat.subList(0, Math.min(fullAllowConcat.size(), allowCap)));
+        view.denyConcatChannels.addAll(
+                fullDenyConcat.subList(0, Math.min(fullDenyConcat.size(), denyCap)));
         return DuctFilterLogic.passesItemFilters(view, stack, level);
     }
 
@@ -4081,6 +4094,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             List<String> denyIn,
             List<Integer> allowCapsIn,
             List<Integer> allowCaps2In,
+            List<Integer> allowConcatIn,
+            List<Integer> denyConcatIn,
             boolean denyOverridesAllow) {
         if (level == null || level.isClientSide) {
             return;
@@ -4101,10 +4116,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (allowCaps2In == null) {
             allowCaps2In = List.of();
         }
+        if (allowConcatIn == null) {
+            allowConcatIn = List.of();
+        }
+        if (denyConcatIn == null) {
+            denyConcatIn = List.of();
+        }
         List<String> a = node.bankAllowFilters(bank);
         List<String> d = node.bankDenyFilters(bank);
         List<Integer> caps = node.bankAllowCaps(bank);
         List<Integer> caps2 = bank == DuctFaceNode.FilterBank.FILTER ? node.filterBankKeepCaps() : null;
+        List<Integer> allowConcat = node.bankAllowConcatChannels(bank);
+        List<Integer> denyConcat = node.bankDenyConcatChannels(bank);
         int maxA;
         int maxD;
         if (laneKind == DuctTransportKind.FLUID) {
@@ -4134,9 +4157,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         List<Integer> origCaps = new ArrayList<>(caps);
         List<Integer> origCaps2 = caps2 != null ? new ArrayList<>(caps2) : null;
         List<String> origD = new ArrayList<>(d);
+        List<Integer> origAllowConcat = new ArrayList<>(allowConcat);
+        List<Integer> origDenyConcat = new ArrayList<>(denyConcat);
         a.clear();
         d.clear();
         caps.clear();
+        allowConcat.clear();
+        denyConcat.clear();
         if (caps2 != null) {
             caps2.clear();
         }
@@ -4168,6 +4195,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 int cap2 = capObj2 != null ? capObj2 : 0;
                 caps2.add(Math.max(0, cap2));
             }
+            Integer concatObj;
+            if (i < allowConcatIn.size()) {
+                concatObj = allowConcatIn.get(i);
+            } else {
+                concatObj = i < origAllowConcat.size() ? origAllowConcat.get(i) : null;
+            }
+            int concatVal = concatObj != null ? Math.clamp(concatObj, 0, FilterConcatChannel.MAX_LETTER) : 0;
+            allowConcat.add(concatVal);
         }
         for (int i = 0; i < maxD; i++) {
             String s;
@@ -4179,17 +4214,31 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 s = s != null ? s : "";
             }
             d.add(clampFilterLine(def, hasModule, s));
+            Integer concatObj;
+            if (i < denyConcatIn.size()) {
+                concatObj = denyConcatIn.get(i);
+            } else {
+                concatObj = i < origDenyConcat.size() ? origDenyConcat.get(i) : null;
+            }
+            int concatVal = concatObj != null ? Math.clamp(concatObj, 0, FilterConcatChannel.MAX_LETTER) : 0;
+            denyConcat.add(concatVal);
         }
         // Restore entries beyond current capacity (inactive until capacity is restored).
         if (origA.size() > maxA) {
             a.addAll(origA.subList(maxA, origA.size()));
             if (origCaps.size() > maxA) caps.addAll(origCaps.subList(maxA, origCaps.size()));
+            if (origAllowConcat.size() > maxA) {
+                allowConcat.addAll(origAllowConcat.subList(maxA, origAllowConcat.size()));
+            }
             if (caps2 != null && origCaps2 != null && origCaps2.size() > maxA) {
                 caps2.addAll(origCaps2.subList(maxA, origCaps2.size()));
             }
         }
         if (origD.size() > maxD) {
             d.addAll(origD.subList(maxD, origD.size()));
+            if (origDenyConcat.size() > maxD) {
+                denyConcat.addAll(origDenyConcat.subList(maxD, origDenyConcat.size()));
+            }
         }
         if (DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.listPrecedenceKey(sharedMode, bank), hasModule)) {
             node.setBankDenyOverridesAllow(bank, denyOverridesAllow);
