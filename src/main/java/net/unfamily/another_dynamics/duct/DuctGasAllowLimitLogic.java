@@ -228,7 +228,7 @@ public final class DuctGasAllowLimitLogic {
         return anyInGroup;
     }
 
-    /** Max amount that may still be inserted without exceeding the allow-line {@code limit} (first matching line). */
+    /** Max amount that may still be inserted without exceeding the allow-line {@code limit} (first matching unit). */
     public static long maxAdditionalInsertForAllowLine(
             Object handler,
             List<String> allowLines,
@@ -236,10 +236,22 @@ public final class DuctGasAllowLimitLogic {
             Object template,
             HolderLookup.Provider registries,
             ServerPending pending) {
+        return maxAdditionalInsertForAllowLine(
+                handler, allowLines, caps, null, template, registries, pending);
+    }
+
+    public static long maxAdditionalInsertForAllowLine(
+            Object handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            @Nullable List<Integer> concatChannels,
+            Object template,
+            HolderLookup.Provider registries,
+            ServerPending pending) {
         if (template == null || MekanismChemicalCompat.isEmptyStack(template) || handler == null) {
             return Long.MAX_VALUE;
         }
-        int idx = firstMatchingAllowLineIndex(allowLines, template, registries);
+        int idx = firstMatchingAllowLineIndex(allowLines, concatChannels, template, registries);
         if (idx < 0 || idx >= caps.size()) {
             return Long.MAX_VALUE;
         }
@@ -253,17 +265,27 @@ public final class DuctGasAllowLimitLogic {
         return Math.max(0L, (long) lim - (current + pend));
     }
 
-    /** Max extractable while leaving at least {@code keep} matching the winning allow line ({@code keep <= 0} unlimited). */
+    /** Max extractable while leaving at least {@code keep} on the winning allow unit ({@code keep <= 0} unlimited). */
     public static long maxExtractRespectingKeep(
             Object handler,
             List<String> allowLines,
             List<Integer> caps,
             Object template,
             HolderLookup.Provider registries) {
+        return maxExtractRespectingKeep(handler, allowLines, caps, null, template, registries);
+    }
+
+    public static long maxExtractRespectingKeep(
+            Object handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            @Nullable List<Integer> concatChannels,
+            Object template,
+            HolderLookup.Provider registries) {
         if (template == null || MekanismChemicalCompat.isEmptyStack(template) || handler == null) {
             return Long.MAX_VALUE;
         }
-        int idx = firstMatchingAllowLineIndex(allowLines, template, registries);
+        int idx = firstMatchingAllowLineIndex(allowLines, concatChannels, template, registries);
         if (idx < 0 || idx >= caps.size()) {
             return Long.MAX_VALUE;
         }

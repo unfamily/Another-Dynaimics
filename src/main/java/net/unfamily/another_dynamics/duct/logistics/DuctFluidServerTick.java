@@ -111,6 +111,7 @@ public final class DuctFluidServerTick {
                         srcCap,
                         node.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR),
                         node.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR),
+                        node.bankAllowConcatChannels(DuctFaceNode.FilterBank.EXTRACTOR),
                         available,
                         level.registryAccess());
         if (keepCap != Integer.MAX_VALUE) {
@@ -273,6 +274,7 @@ public final class DuctFluidServerTick {
                             srcCap,
                             donorFluid.bankAllowFilters(DuctFaceNode.FilterBank.FILTER),
                             donorFluid.bankAllowCaps(DuctFaceNode.FilterBank.FILTER),
+                            donorFluid.bankAllowConcatChannels(DuctFaceNode.FilterBank.FILTER),
                             available,
                             level.registryAccess());
             if (keepCap != Integer.MAX_VALUE) {

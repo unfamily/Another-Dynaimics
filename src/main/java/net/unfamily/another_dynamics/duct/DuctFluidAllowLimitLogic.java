@@ -301,18 +301,46 @@ public final class DuctFluidAllowLimitLogic {
             List<Integer> keepCaps,
             FluidStack template,
             HolderLookup.Provider registries) {
+        return maxExtractRespectingKeepAcrossLinesMb(
+                handler, allowLines, keepCaps, null, template, registries);
+    }
+
+    public static int maxExtractRespectingKeepAcrossLinesMb(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> keepCaps,
+            @Nullable List<Integer> concatChannels,
+            FluidStack template,
+            HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null || allowLines == null || keepCaps == null) {
             return Integer.MAX_VALUE;
         }
+        java.util.Set<Integer> consumedConcat = new java.util.HashSet<>();
         for (int i = 0; i < allowLines.size(); i++) {
+            int ch = FilterConcatChannel.channelAt(concatChannels, i);
+            if (ch != 0 && consumedConcat.contains(ch)) {
+                continue;
+            }
             String line = allowLines.get(i);
             if (line == null || line.trim().isEmpty()) {
                 continue;
             }
-            if (!DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
+            int capIndex = i;
+            if (ch != 0) {
+                if (!templateMatchesFluidConcatGroup(allowLines, concatChannels, ch, template, registries)) {
+                    continue;
+                }
+                capIndex = firstNonEmptyFluidIndexForChannel(allowLines, concatChannels, ch);
+                if (capIndex < 0) {
+                    continue;
+                }
+                consumedConcat.add(ch);
+            } else if (!DuctFluidFilterMatcher.matchesAnyNonEmptyEntry(template, line.trim(), registries)) {
                 continue;
             }
-            int ex = maxExtractRespectingKeepMbAtIndex(handler, allowLines, keepCaps, template, i, registries);
+            int ex =
+                    maxExtractRespectingKeepMbAtIndex(
+                            handler, allowLines, keepCaps, template, capIndex, registries);
             if (ex == Integer.MAX_VALUE) {
                 return Integer.MAX_VALUE;
             }
@@ -323,17 +351,27 @@ public final class DuctFluidAllowLimitLogic {
         return 0;
     }
 
-    /** Max mB that may still be inserted without exceeding the allow-line {@code limit} (first matching line). */
+    /** Max mB that may still be inserted without exceeding the allow-line {@code limit} (first matching unit). */
     public static int maxAdditionalInsertForAllowLineMb(
             IFluidHandler handler,
             List<String> allowLines,
             List<Integer> caps,
             FluidStack template,
             HolderLookup.Provider registries) {
+        return maxAdditionalInsertForAllowLineMb(handler, allowLines, caps, null, template, registries);
+    }
+
+    public static int maxAdditionalInsertForAllowLineMb(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            @Nullable List<Integer> concatChannels,
+            FluidStack template,
+            HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null) {
             return Integer.MAX_VALUE;
         }
-        int idx = firstMatchingAllowLineIndex(allowLines, template, registries);
+        int idx = firstMatchingAllowLineIndex(allowLines, concatChannels, template, registries);
         if (idx < 0 || idx >= caps.size()) {
             return Integer.MAX_VALUE;
         }
@@ -346,17 +384,27 @@ public final class DuctFluidAllowLimitLogic {
         return Math.max(0, lim - current);
     }
 
-    /** Max mB extractable while leaving at least {@code keep} matching the winning allow line ({@code keep <= 0} unlimited). */
+    /** Max mB extractable while leaving at least {@code keep} on the winning allow unit ({@code keep <= 0} unlimited). */
     public static int maxExtractRespectingKeepMb(
             IFluidHandler handler,
             List<String> allowLines,
             List<Integer> caps,
             FluidStack template,
             HolderLookup.Provider registries) {
+        return maxExtractRespectingKeepMb(handler, allowLines, caps, null, template, registries);
+    }
+
+    public static int maxExtractRespectingKeepMb(
+            IFluidHandler handler,
+            List<String> allowLines,
+            List<Integer> caps,
+            @Nullable List<Integer> concatChannels,
+            FluidStack template,
+            HolderLookup.Provider registries) {
         if (template.isEmpty() || handler == null) {
             return Integer.MAX_VALUE;
         }
-        int idx = firstMatchingAllowLineIndex(allowLines, template, registries);
+        int idx = firstMatchingAllowLineIndex(allowLines, concatChannels, template, registries);
         if (idx < 0 || idx >= caps.size()) {
             return Integer.MAX_VALUE;
         }

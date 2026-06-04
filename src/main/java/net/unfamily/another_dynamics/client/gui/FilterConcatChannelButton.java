@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.unfamily.another_dynamics.duct.FilterConcatChannel;
 
@@ -11,7 +12,7 @@ import java.util.function.IntConsumer;
 
 import org.jetbrains.annotations.Nullable;
 
-/** Per filter row: cycles None (gray) → A–Z (colored) → None. */
+/** Per filter row: left-click cycles forward, right-click backward (None ↔ A–Z). */
 public final class FilterConcatChannelButton extends AbstractWidget {
     private int value;
     private final @Nullable IntConsumer onChanged;
@@ -30,11 +31,25 @@ public final class FilterConcatChannelButton extends AbstractWidget {
     }
 
     @Override
-    public void onClick(double mouseX, double mouseY) {
-        setChannelOrdinal(FilterConcatChannel.fromOrdinal(value).next().ordinal());
-        if (onChanged != null) {
-            onChanged.accept(value);
+    protected boolean isValidClickButton(int button) {
+        return button == 0 || button == 1;
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (active && visible && isValidClickButton(button) && clicked(mouseX, mouseY)) {
+            playDownSound(Minecraft.getInstance().getSoundManager());
+            if (button == 0) {
+                setChannelOrdinal(FilterConcatChannel.fromOrdinal(value).next().ordinal());
+            } else {
+                setChannelOrdinal(FilterConcatChannel.fromOrdinal(value).previous().ordinal());
+            }
+            if (onChanged != null) {
+                onChanged.accept(value);
+            }
+            return true;
         }
+        return false;
     }
 
     @Override

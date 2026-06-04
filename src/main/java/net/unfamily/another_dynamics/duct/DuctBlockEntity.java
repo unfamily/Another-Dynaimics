@@ -1548,6 +1548,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                     destHandler,
                                     destLanes.gas.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER),
                                     destLanes.gas.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER),
+                                    destLanes.gas.bankAllowConcatChannels(DuctFaceNode.FilterBank.RETRIEVER),
                                     toInsertSim,
                                     level.registryAccess(),
                                     (line, reg) ->

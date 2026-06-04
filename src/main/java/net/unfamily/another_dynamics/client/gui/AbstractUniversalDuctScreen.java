@@ -50,7 +50,6 @@ import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctFilterLineReorder;
-import net.unfamily.another_dynamics.duct.FilterConcatChannel;
 import net.unfamily.another_dynamics.duct.FilterLineTextUtil;
 import net.unfamily.another_dynamics.duct.DuctGuiLayout;
 import net.unfamily.another_dynamics.duct.DuctIds;
@@ -1327,13 +1326,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 ModNetwork.sendDuctMenuButton(menu, id);
             }
         );
-        channelButton.setTooltip(
-            Tooltip.create(
-                Component.translatable(
-                    "gui.another_dynamics.duct_node.channel_letter.tooltip"
-                )
-            )
-        );
+        MutableComponent channelTip = Component.empty();
+        appendChannelLetterClickHints(channelTip, true);
+        channelButton.setTooltip(Tooltip.create(channelTip));
         addRenderableWidget(channelButton);
         layoutCopierColumn();
 
@@ -2833,11 +2828,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     new FilterConcatChannelButton(concatX, buttonY, buttonSize, buttonSize, v -> {
                         playClickSound();
                         concatList.set(idx, v);
-                        concatBtnRef[0].setTooltip(concatChannelTooltip(v));
+                        concatBtnRef[0].setTooltip(concatChannelTooltip());
                         pushFiltersToServer();
                     });
             concatBtnRef[0].setChannelOrdinal(concatList.get(idx));
-            concatBtnRef[0].setTooltip(concatChannelTooltip(concatList.get(idx)));
+            concatBtnRef[0].setTooltip(concatChannelTooltip());
             FilterConcatChannelButton concatBtn = concatBtnRef[0];
             filterConcatButtons.add(concatBtn);
             addRenderableWidget(concatBtn);
@@ -2924,16 +2919,35 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         return menu.getClientDenyConcatChannels(activeFilterBank);
     }
 
-    private Tooltip concatChannelTooltip(int channelOrdinal) {
-        FilterConcatChannel ch = FilterConcatChannel.fromOrdinal(channelOrdinal);
-        if (ch == FilterConcatChannel.NONE) {
-            return Tooltip.create(
-                    Component.translatable("gui.another_dynamics.duct_node.filters.concat.none"));
-        }
-        return Tooltip.create(
+    /** Same click lines as {@link #channelButton} (filter concat has no Shift reset). */
+    private static void appendChannelLetterClickHints(
+            MutableComponent tip, boolean includeShiftReset) {
+        tip.append(
                 Component.translatable(
-                        "gui.another_dynamics.duct_node.filters.concat.channel_label",
-                        ch.displayPrefix()));
+                        "gui.another_dynamics.duct_node.channel_letter.tooltip.click_forward"));
+        tip.append("\n");
+        tip.append(
+                Component.translatable(
+                        "gui.another_dynamics.duct_node.channel_letter.tooltip.click_back"));
+        if (includeShiftReset) {
+            tip.append("\n");
+            tip.append(
+                    Component.translatable(
+                            "gui.another_dynamics.duct_node.channel_letter.tooltip.shift_a"));
+        }
+    }
+
+    private Tooltip concatChannelTooltip() {
+        MutableComponent tip = Component.empty();
+        tip.append(
+                Component.translatable(
+                        "gui.another_dynamics.duct_node.filters.concat.tooltip.concat"));
+        tip.append("\n");
+        tip.append(
+                Component.translatable("gui.another_dynamics.duct_node.filters.concat.tooltip.and"));
+        tip.append("\n");
+        appendChannelLetterClickHints(tip, false);
+        return Tooltip.create(tip);
     }
 
     private int visibleFilterEntries() {
@@ -5619,31 +5633,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             int deleteButtonX = editButtonX - buttonSize - buttonSpacing;
             int concatButtonX = deleteButtonX - buttonSize - buttonSpacing;
             int maxTextWidth = concatButtonX - textX - 5;
-            List<Integer> concatList = getEditingConcatChannels();
-            int ch =
-                    idx < concatList.size() && concatList.get(idx) != null
-                            ? Math.clamp(concatList.get(idx), 0, FilterConcatChannel.MAX_LETTER)
-                            : 0;
-            String prefix = ch > 0 ? "[" + (char) ('A' + ch - 1) + "] " : "";
             String displayText = filter;
-            int prefixWidth = ch > 0 ? font.width(prefix) : 0;
-            int bodyMax = maxTextWidth - prefixWidth;
-            if (font.width(displayText) > bodyMax && !displayText.isEmpty()) {
+            if (font.width(displayText) > maxTextWidth && !displayText.isEmpty()) {
                 displayText =
-                        font.plainSubstrByWidth(displayText, bodyMax - font.width("...")) + "...";
+                        font.plainSubstrByWidth(displayText, maxTextWidth - font.width("...")) + "...";
             }
-            int drawX = textX;
-            if (ch > 0) {
-                graphics.drawString(
-                        font,
-                        prefix,
-                        drawX,
-                        textY,
-                        LetterPalette.textArgb(ch),
-                        false);
-                drawX += prefixWidth;
-            }
-            graphics.drawString(font, displayText, drawX, textY, 0x404040, false);
+            graphics.drawString(font, displayText, textX, textY, 0x404040, false);
         }
 
         // After entry rows so the handle draws above the list edge (DeepDrawerExtractorScreen order).

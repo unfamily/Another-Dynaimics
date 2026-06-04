@@ -69,6 +69,14 @@ public enum FilterConcatChannel {
         };
     }
 
+    public FilterConcatChannel previous() {
+        return switch (this) {
+            case NONE -> Z;
+            case A -> NONE;
+            default -> VALUES[ordinal() - 1];
+        };
+    }
+
     /** Sync concat list size to filter lines; missing entries default to {@link #NONE}. */
     public static void syncToLineSize(java.util.List<Integer> concat, int lineCount) {
         while (concat.size() < lineCount) {

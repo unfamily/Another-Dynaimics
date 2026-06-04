@@ -106,6 +106,7 @@ public final class DuctGasServerTick {
                         srcHandler,
                         node.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR),
                         node.bankAllowCaps(DuctFaceNode.FilterBank.EXTRACTOR),
+                        node.bankAllowConcatChannels(DuctFaceNode.FilterBank.EXTRACTOR),
                         available,
                         level.registryAccess());
         if (keepCap != Long.MAX_VALUE) {
@@ -298,6 +299,7 @@ public final class DuctGasServerTick {
                             srcHandler,
                             donorGas.bankAllowFilters(DuctFaceNode.FilterBank.FILTER),
                             donorGas.bankAllowCaps(DuctFaceNode.FilterBank.FILTER),
+                            donorGas.bankAllowConcatChannels(DuctFaceNode.FilterBank.FILTER),
                             available,
                             level.registryAccess());
             if (keepCap != Long.MAX_VALUE) {
@@ -680,12 +682,14 @@ public final class DuctGasServerTick {
         DuctFaceNode destNode = destBe.getFaceLanes(destFace).gas;
         List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER);
         List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER);
+        List<Integer> concat = destNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.RETRIEVER);
         return Math.min(
                 simulatedInsert,
                 DuctGasAllowLimitLogic.maxAdditionalInsertForAllowLine(
                         destHandler,
                         allowLines,
                         caps,
+                        concat,
                         movingProbe,
                         level.registryAccess(),
                         (line, reg) ->
