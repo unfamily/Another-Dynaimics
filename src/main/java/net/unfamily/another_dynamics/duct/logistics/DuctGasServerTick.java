@@ -5,6 +5,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.*;
+import net.unfamily.another_dynamics.duct.logistics.DuctSameBlockRouting;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
@@ -523,9 +524,6 @@ public final class DuctGasServerTick {
             Set<BlockPos> radioactiveGasSubnet) {
         ArrayList<DuctTargetSelector.DonorCandidate> cands = new ArrayList<>();
         for (BlockPos p : DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.GAS)) {
-            if (!allowSelfDonor && p.equals(retrieverPos)) {
-                continue;
-            }
             if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 continue;
             }
@@ -535,6 +533,11 @@ public final class DuctGasServerTick {
                     continue;
                 }
                 if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
+                    continue;
+                }
+                if (!allowSelfDonor
+                        && DuctSameBlockRouting.skipSameBlockDonorFace(
+                                retrieverPos, retrieverInventoryFace, p, d)) {
                     continue;
                 }
                 if (!be.isTransportKindEnabled(d, DuctTransportKind.GAS)) {

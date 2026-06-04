@@ -25,6 +25,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
+import net.unfamily.another_dynamics.duct.module.DuctModuleHelper;
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
@@ -234,6 +235,19 @@ public class DuctBlock extends AbstractDuctBlock {
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
             }
             Optional<Direction> nodeFace = nodeFaceFromHitLocation(pos, hitResult, duct);
+            if (player.isShiftKeyDown()
+                    && nodeFace.isPresent()
+                    && !stack.isEmpty()
+                    && duct.moduleSlotCountForMenu() == 1
+                    && DuctModuleHelper.resolvedDeclarationId(stack).isPresent()) {
+                if (level.isClientSide()) {
+                    return ItemInteractionResult.SUCCESS;
+                }
+                if (player instanceof ServerPlayer sp
+                        && duct.tryQuickEquipModule(sp, nodeFace.get(), stack, hand)) {
+                    return ItemInteractionResult.CONSUME;
+                }
+            }
             if (player.isShiftKeyDown() && nodeFace.isPresent() && duct.hasAnyStallOnFace(nodeFace.get())) {
                 if (level.isClientSide()) {
                     return ItemInteractionResult.SUCCESS;
@@ -242,15 +256,6 @@ public class DuctBlock extends AbstractDuctBlock {
                     return duct.tryShiftClearStalledOnFace(sl, nodeFace.get(), player, hand)
                             ? ItemInteractionResult.CONSUME
                             : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-                }
-            }
-            if (player.isShiftKeyDown() && nodeFace.isPresent() && !stack.isEmpty()) {
-                if (level.isClientSide()) {
-                    return ItemInteractionResult.SUCCESS;
-                }
-                if (player instanceof ServerPlayer sp
-                        && duct.tryQuickEquipModule(sp, nodeFace.get(), stack, hand)) {
-                    return ItemInteractionResult.CONSUME;
                 }
             }
             if (DuctWrenchTags.isWrench(stack)) {

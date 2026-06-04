@@ -528,24 +528,42 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     /**
      * Shift+click on a node face with a module item when the duct definition has exactly one module slot.
-     * Swaps slot 0 (previous module returns to the player inventory).
+     * Inserts into an empty slot, merges stackable modules, swaps compatible modules, or force-replaces incompatible ones.
      */
     public boolean tryQuickEquipModule(
             ServerPlayer player, Direction face, ItemStack held, InteractionHand hand) {
         if (moduleSlotCountForMenu() != 1 || held.isEmpty()) {
             return false;
         }
+        if (net.unfamily.another_dynamics.duct.module.DuctModuleHelper.resolvedDeclarationId(held)
+                .isEmpty()) {
+            return false;
+        }
         ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
         var handler = getFaceLanes(face).moduleSlots;
         ItemStack toInsert = held.copyWithCount(1);
-        if (!handler.isItemValid(0, toInsert)) {
-            return false;
-        }
-        ItemStack previous = handler.getStackInSlot(0).copy();
-        handler.setStackInSlot(0, toInsert);
-        if (!previous.isEmpty()) {
-            if (!player.getInventory().add(previous)) {
-                player.drop(previous, false);
+        ItemStack before = handler.getStackInSlot(0).copy();
+        if (before.isEmpty()) {
+            if (!handler.isItemValid(0, toInsert)) {
+                return false;
+            }
+            ItemStack remainder = handler.insertItem(0, toInsert, false);
+            if (!remainder.isEmpty()) {
+                return false;
+            }
+        } else {
+            ItemStack remainder = handler.insertItem(0, toInsert, false);
+            if (!remainder.isEmpty()) {
+                if (!player.getInventory().add(remainder)) {
+                    player.drop(remainder, false);
+                }
+            } else if (ItemStack.matches(before, handler.getStackInSlot(0))) {
+                handler.setStackInSlot(0, toInsert);
+                if (!before.isEmpty()) {
+                    if (!player.getInventory().add(before)) {
+                        player.drop(before, false);
+                    }
+                }
             }
         }
         held.shrink(1);
@@ -1217,10 +1235,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int deliverPasses = 0;
             while (!deliveryDeferred && !s.stack.isEmpty() && deliverPasses < 64) {
                 deliverPasses++;
-                deliveryDeferred =
-                        s.destDuct.equals(worldPosition)
-                                ? finishRetrieverArrival(level, s, it)
-                                : finishExtractionDelivery(level, s, it);
+                if (s.destDuct.equals(worldPosition)) {
+                    NodeMode destMode = getFaceLanes(s.destFace).nodeMode;
+                    boolean retrieverInbound =
+                            destMode == NodeMode.RETRIEVING || destMode == NodeMode.RETRIEVING_EXTRACTION;
+                    deliveryDeferred =
+                            retrieverInbound
+                                    ? finishRetrieverArrival(level, s, it)
+                                    : finishExtractionDelivery(level, s, it);
+                } else {
+                    deliveryDeferred = finishExtractionDelivery(level, s, it);
+                }
             }
             if (deliveryDeferred) {
                 continue;
@@ -1875,15 +1900,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 : node.routingMode;
         final int rrFrozen = node.roundRobinCursor;
         boolean allowSelfOrSingle = true;
-        Direction forbidSelfDestFace = (lanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed) ? null : face;
+        boolean allowSelfFeed = lanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+        Direction forbidSelfDestFace = allowSelfFeed ? null : face;
         List<DuctTargetSelector.ExtractionCandidate> candidates =
                 DuctTargetSelector.listInboundDeliveryCandidatesWithoutProbe(
                         level,
                         worldPosition,
+                        face,
                         rm,
                         rrFrozen,
                         node.channelLetter,
                         allowSelfOrSingle,
+                        allowSelfFeed,
                         forbidSelfDestFace);
         if (candidates.isEmpty()) {
             return changed;
@@ -2909,8 +2937,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         // Always allow destinations on this same duct (other faces). This prevents routing from ignoring local
         // attached storage just because the network has multiple ducts.
         boolean allowSelfOrSingle = true;
-        Direction forbidSelfDestFace =
-                (faceLanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed) ? null : face;
+        boolean allowSelfFeed = faceLanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+        Direction forbidSelfDestFace = allowSelfFeed ? null : face;
         RoutingMode rm =
                 faceLanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION
                         ? node.routingModeRetriever
@@ -2923,11 +2951,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 DuctTargetSelector.listExtractionDeliveryCandidatesWithoutProbe(
                         level,
                         worldPosition,
+                        face,
                         rm,
                         rrFrozen,
                         node.channelLetter,
                         allowSelfOrSingle,
-                        // With self-feed enabled (EXTRACTION_FILTERING), allow selecting the same face as a destination.
+                        allowSelfFeed,
                         forbidSelfDestFace);
         if (candidates.isEmpty()) {
             return;

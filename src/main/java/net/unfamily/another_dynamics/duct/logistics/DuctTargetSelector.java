@@ -51,11 +51,13 @@ public final class DuctTargetSelector {
     public static Optional<ExtractionRouting> selectExtractionDelivery(
             ServerLevel level,
             BlockPos extractorPos,
+            Direction sourceFace,
             ItemStack probe,
             RoutingMode routing,
             int[] roundRobinState,
             int extractorFaceChannel,
             boolean allowSelfDestination,
+            boolean allowSelfFeed,
             @Nullable Direction forbidSelfDestFace) {
         DuctItemTransportSpec spec =
                 level.getBlockEntity(extractorPos) instanceof DuctBlockEntity extractorDuct
@@ -64,9 +66,6 @@ public final class DuctTargetSelector {
         Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
         List<ExtractionCandidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
-            if (!allowSelfDestination && p.equals(extractorPos)) {
-                continue;
-            }
             if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 continue;
             }
@@ -76,6 +75,10 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 if (p.equals(extractorPos) && forbidSelfDestFace != null && d == forbidSelfDestFace) {
+                    continue;
+                }
+                if (DuctSameBlockRouting.skipSameBlockDestFace(
+                        extractorPos, sourceFace, p, d, allowSelfFeed)) {
                     continue;
                 }
                 if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {
@@ -137,15 +140,18 @@ public final class DuctTargetSelector {
     public static List<ExtractionCandidate> listExtractionDeliveryCandidates(
             ServerLevel level,
             BlockPos extractorPos,
+            Direction sourceFace,
             ItemStack probe,
             RoutingMode routing,
             int roundRobinCursor,
             int extractorFaceChannel,
             boolean allowSelfDestination,
+            boolean allowSelfFeed,
             @Nullable Direction forbidSelfDestFace) {
         return listExtractionDeliveryCandidatesInternal(
                 level,
                 extractorPos,
+                sourceFace,
                 probe,
                 true,
                 false,
@@ -153,6 +159,7 @@ public final class DuctTargetSelector {
                 roundRobinCursor,
                 extractorFaceChannel,
                 allowSelfDestination,
+                allowSelfFeed,
                 forbidSelfDestFace);
     }
 
@@ -164,14 +171,17 @@ public final class DuctTargetSelector {
     public static List<ExtractionCandidate> listExtractionDeliveryCandidatesWithoutProbe(
             ServerLevel level,
             BlockPos extractorPos,
+            Direction sourceFace,
             RoutingMode routing,
             int roundRobinCursor,
             int extractorFaceChannel,
             boolean allowSelfDestination,
+            boolean allowSelfFeed,
             @Nullable Direction forbidSelfDestFace) {
         return listExtractionDeliveryCandidatesInternal(
                 level,
                 extractorPos,
+                sourceFace,
                 ItemStack.EMPTY,
                 false,
                 false,
@@ -179,6 +189,7 @@ public final class DuctTargetSelector {
                 roundRobinCursor,
                 extractorFaceChannel,
                 allowSelfDestination,
+                allowSelfFeed,
                 forbidSelfDestFace);
     }
 
@@ -189,14 +200,17 @@ public final class DuctTargetSelector {
     public static List<ExtractionCandidate> listInboundDeliveryCandidatesWithoutProbe(
             ServerLevel level,
             BlockPos sourcePos,
+            Direction sourceFace,
             RoutingMode routing,
             int roundRobinCursor,
             int sourceFaceChannel,
             boolean allowSelfDestination,
+            boolean allowSelfFeed,
             @Nullable Direction forbidSelfDestFace) {
         return listExtractionDeliveryCandidatesInternal(
                 level,
                 sourcePos,
+                sourceFace,
                 ItemStack.EMPTY,
                 false,
                 true,
@@ -204,12 +218,14 @@ public final class DuctTargetSelector {
                 roundRobinCursor,
                 sourceFaceChannel,
                 allowSelfDestination,
+                allowSelfFeed,
                 forbidSelfDestFace);
     }
 
     private static List<ExtractionCandidate> listExtractionDeliveryCandidatesInternal(
             ServerLevel level,
             BlockPos extractorPos,
+            Direction sourceFace,
             ItemStack probe,
             boolean requireProbeInsertable,
             boolean inboundDeliveryModes,
@@ -217,6 +233,7 @@ public final class DuctTargetSelector {
             int roundRobinCursor,
             int extractorFaceChannel,
             boolean allowSelfDestination,
+            boolean allowSelfFeed,
             @Nullable Direction forbidSelfDestFace) {
         DuctItemTransportSpec spec =
                 level.getBlockEntity(extractorPos) instanceof DuctBlockEntity extractorDuct
@@ -233,8 +250,8 @@ public final class DuctTargetSelector {
                         inboundDeliveryModes,
                         allowSelfDestination,
                         forbidSelfDestFace,
-                        false,
-                        Direction.NORTH,
+                        allowSelfFeed,
+                        sourceFace,
                         false);
         List<ExtractionCandidate> cands = new ArrayList<>();
         for (DuctRoutingEndpointIndex.ScoredEndpoint s : scored) {
@@ -268,11 +285,22 @@ public final class DuctTargetSelector {
     public static Optional<ExtractionRouting> selectExtractionDelivery(
             ServerLevel level,
             BlockPos extractorPos,
+            Direction sourceFace,
             ItemStack probe,
             RoutingMode routing,
             int[] roundRobinState,
             int extractorFaceChannel) {
-        return selectExtractionDelivery(level, extractorPos, probe, routing, roundRobinState, extractorFaceChannel, false, null);
+        return selectExtractionDelivery(
+                level,
+                extractorPos,
+                sourceFace,
+                probe,
+                routing,
+                roundRobinState,
+                extractorFaceChannel,
+                true,
+                false,
+                null);
     }
 
     public static Optional<RetrieverRouting> selectRetrievingDonorPath(
@@ -291,9 +319,6 @@ public final class DuctTargetSelector {
         Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
         List<DonorCandidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
-            if (!allowSelfDonor && p.equals(retrieverPos)) {
-                continue;
-            }
             if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 continue;
             }
@@ -303,6 +328,11 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
+                    continue;
+                }
+                if (!allowSelfDonor
+                        && DuctSameBlockRouting.skipSameBlockDonorFace(
+                                retrieverPos, retrieverInventoryFace, p, d)) {
                     continue;
                 }
                 if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {
@@ -375,9 +405,6 @@ public final class DuctTargetSelector {
         Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
         List<DonorCandidate> cands = new ArrayList<>();
         for (BlockPos p : net) {
-            if (!allowSelfDonor && p.equals(retrieverPos)) {
-                continue;
-            }
             if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 continue;
             }
@@ -387,6 +414,11 @@ public final class DuctTargetSelector {
                     continue;
                 }
                 if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
+                    continue;
+                }
+                if (!allowSelfDonor
+                        && DuctSameBlockRouting.skipSameBlockDonorFace(
+                                retrieverPos, retrieverInventoryFace, p, d)) {
                     continue;
                 }
                 if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {

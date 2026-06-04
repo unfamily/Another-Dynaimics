@@ -24,6 +24,7 @@ import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
+import net.unfamily.another_dynamics.duct.logistics.DuctSameBlockRouting;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 
 import org.jetbrains.annotations.Nullable;
@@ -356,9 +357,6 @@ public final class DuctFluidServerTick {
             DuctFluidTransportSpec spec) {
         ArrayList<DuctTargetSelector.DonorCandidate> cands = new ArrayList<>();
         for (BlockPos p : DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.FLUID)) {
-            if (!allowSelfDonor && p.equals(retrieverPos)) {
-                continue;
-            }
             if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 continue;
             }
@@ -368,6 +366,11 @@ public final class DuctFluidServerTick {
                     continue;
                 }
                 if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
+                    continue;
+                }
+                if (!allowSelfDonor
+                        && DuctSameBlockRouting.skipSameBlockDonorFace(
+                                retrieverPos, retrieverInventoryFace, p, d)) {
                     continue;
                 }
                 if (!be.isTransportKindEnabled(d, DuctTransportKind.FLUID)) {

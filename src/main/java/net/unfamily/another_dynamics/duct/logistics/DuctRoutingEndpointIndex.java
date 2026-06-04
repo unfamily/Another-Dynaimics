@@ -72,9 +72,6 @@ public final class DuctRoutingEndpointIndex {
                 getOrBuildRaw(level, members, networkType, transportKind, radioactiveGasSubgraph);
         List<ScoredEndpoint> scored = new ArrayList<>();
         for (RoutingEndpoint ep : raw) {
-            if (!allowSelfDestination && ep.pos.equals(sourcePos)) {
-                continue;
-            }
             if (ep.pos.equals(sourcePos) && forbidSelfDestFace != null && ep.face == forbidSelfDestFace) {
                 continue;
             }
