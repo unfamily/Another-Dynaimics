@@ -88,7 +88,7 @@ public final class ProjectDuctConverter {
             AbstractDuctBlock.refreshAdjacentDuctBlockEntities(
                     serverLevel, pos, EnumSet.allOf(DuctNetworkType.class));
         }
-        ProjectDuctBlock.updateConnectionsAround(serverLevel, anchor);
+        ProjectDuctVisualRefresh.refreshAround(serverLevel, anchor);
 
         if (player instanceof ServerPlayer sp) {
             if (converted < targets.size()) {

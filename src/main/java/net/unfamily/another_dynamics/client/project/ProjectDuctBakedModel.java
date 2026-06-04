@@ -7,14 +7,17 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.ItemOverrides;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.ChunkRenderTypeSet;
 import net.neoforged.neoforge.client.model.BakedModelWrapper;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import net.unfamily.another_dynamics.client.DuctCompositeGeometry;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctModelProperties;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -49,9 +52,29 @@ public final class ProjectDuctBakedModel extends BakedModelWrapper<net.minecraft
             return itemQuads(side);
         }
         int pipeMask = ProjectDuctBlock.effectivePipeMask(state);
+        int nodeMask = nodePreviewFromModelData(modelData);
         List<BakedQuad> out = new ArrayList<>();
-        geometry.appendForWorld(out, pipeMask, 0);
+        geometry.appendForWorld(out, pipeMask, nodeMask);
         return out;
+    }
+
+    @Override
+    public ModelData getModelData(BlockAndTintGetter level, BlockPos pos, BlockState state, ModelData modelData) {
+        if (state != null && state.getBlock() instanceof ProjectDuctBlock) {
+            int preview = ProjectDuctBlock.effectiveNodePreviewMask(level, pos, state);
+            if (preview != 0) {
+                return ModelData.of(ProjectDuctModelProperties.NODE_PREVIEW_MASK, preview);
+            }
+        }
+        return ModelData.EMPTY;
+    }
+
+    private static int nodePreviewFromModelData(ModelData modelData) {
+        if (modelData == null || !modelData.has(ProjectDuctModelProperties.NODE_PREVIEW_MASK)) {
+            return 0;
+        }
+        Integer mask = modelData.get(ProjectDuctModelProperties.NODE_PREVIEW_MASK);
+        return mask != null ? mask : 0;
     }
 
     private List<BakedQuad> itemQuads(@Nullable Direction side) {

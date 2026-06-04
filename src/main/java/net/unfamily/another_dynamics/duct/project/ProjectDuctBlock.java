@@ -15,6 +15,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.SimpleWaterloggedBlock;
 import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -27,6 +28,8 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.unfamily.another_dynamics.duct.AbstractDuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctReplaceHelper;
 import net.unfamily.another_dynamics.duct.DuctShapes;
 import net.unfamily.another_dynamics.duct.DuctWrenchTags;
@@ -65,6 +68,12 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
         return connectionMask(state) & ~disconnectedMask(state);
     }
 
+    /** Ghost storage nodes for conversion preview (minus wrench disconnects). */
+    public static int effectiveNodePreviewMask(BlockGetter level, BlockPos pos, BlockState state) {
+        int preview = computeNodePreviewMask(level, pos);
+        return preview & ~disconnectedMask(state);
+    }
+
     @Override
     public RenderShape getRenderShape(BlockState state) {
         return RenderShape.MODEL;
@@ -72,7 +81,8 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
 
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext ctx) {
-        return DuctShapes.forMasks(effectivePipeMask(state), 0);
+        int nodes = effectiveNodePreviewMask(level, pos, state);
+        return DuctShapes.forMasks(effectivePipeMask(state), nodes);
     }
 
     @Override
@@ -110,8 +120,9 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
         if (DuctWrenchTags.isWrench(stack)) {
             double[] loc = localHit(pos, hitResult);
             int pipeMask = effectivePipeMask(state);
+            int nodeMask = effectiveNodePreviewMask(level, pos, state);
             Optional<Direction> wrenchFace =
-                    DuctShapes.resolveWrenchDisconnectFace(pipeMask, 0, loc[0], loc[1], loc[2]);
+                    DuctShapes.resolveWrenchDisconnectFace(pipeMask, nodeMask, loc[0], loc[1], loc[2]);
             if (wrenchFace.isPresent()) {
                 if (level.isClientSide()) {
                     return ItemInteractionResult.SUCCESS;
@@ -122,7 +133,7 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
             if (!player.isShiftKeyDown()
                     && DuctShapes.canReconnectFromCoreHit(
                             pipeMask,
-                            0,
+                            nodeMask,
                             disconnectedMask(state),
                             loc[0],
                             loc[1],
@@ -152,14 +163,7 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
         level.setBlock(pos, state.setValue(DISCONNECTED, disconnectedMask(state) | bit), Block.UPDATE_ALL);
         BlockPos neighborPos = pos.relative(face);
         BlockState neighborState = level.getBlockState(neighborPos);
-        if (neighborState.getBlock() instanceof ProjectDuctBlock) {
-            Direction opposite = face.getOpposite();
-            int oppositeBit = 1 << opposite.ordinal();
-            level.setBlock(
-                    neighborPos,
-                    neighborState.setValue(DISCONNECTED, disconnectedMask(neighborState) | oppositeBit),
-                    Block.UPDATE_ALL);
-        }
+        syncWrenchDisconnectToNeighbor(level, pos, face, true);
     }
 
     public static void tryReconnectFace(LevelAccessor level, BlockPos pos, Direction face) {
@@ -172,30 +176,60 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
             return;
         }
         level.setBlock(pos, state.setValue(DISCONNECTED, disconnectedMask(state) & ~bit), Block.UPDATE_ALL);
+        syncWrenchDisconnectToNeighbor(level, pos, face, false);
+    }
+
+    private static void syncWrenchDisconnectToNeighbor(
+            LevelAccessor level, BlockPos pos, Direction face, boolean disconnect) {
         BlockPos neighborPos = pos.relative(face);
         BlockState neighborState = level.getBlockState(neighborPos);
         if (neighborState.getBlock() instanceof ProjectDuctBlock) {
             Direction opposite = face.getOpposite();
             int oppositeBit = 1 << opposite.ordinal();
-            level.setBlock(
-                    neighborPos,
-                    neighborState.setValue(DISCONNECTED, disconnectedMask(neighborState) & ~oppositeBit),
-                    Block.UPDATE_ALL);
+            int nextDisc = disconnect
+                    ? disconnectedMask(neighborState) | oppositeBit
+                    : disconnectedMask(neighborState) & ~oppositeBit;
+            level.setBlock(neighborPos, neighborState.setValue(DISCONNECTED, nextDisc), Block.UPDATE_ALL);
+            return;
+        }
+        BlockEntity neighborBe = level.getBlockEntity(neighborPos);
+        if (neighborBe instanceof DuctBlockEntity duct) {
+            Direction opposite = face.getOpposite();
+            if (disconnect) {
+                duct.addUserDisconnectedFace(opposite);
+            } else {
+                duct.clearUserDisconnectedFacePublic(opposite);
+            }
+            duct.setChanged();
+            duct.refreshFromWorld();
         }
     }
 
     @Override
     public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
         super.onPlace(state, level, pos, oldState, movedByPiston);
-        updateConnectionsAround(level, pos);
+        ProjectDuctVisualRefresh.refreshAround(level, pos);
     }
 
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
         if (!state.is(newState.getBlock())) {
-            updateConnectionsAround(level, pos);
+            ProjectDuctNodePreviewTracker.remove(pos);
+            ProjectDuctVisualRefresh.refreshAround(level, pos);
         }
         super.onRemove(state, level, pos, newState, movedByPiston);
+    }
+
+    @Override
+    protected void neighborChanged(
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Block neighborBlock,
+            BlockPos neighborPos,
+            boolean movedByPiston) {
+        super.neighborChanged(state, level, pos, neighborBlock, neighborPos, movedByPiston);
+        ProjectDuctVisualRefresh.refreshAround(level, pos);
     }
 
     @Override
@@ -253,21 +287,33 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
         int mask = 0;
         if (!(level instanceof Level world)) {
             for (Direction direction : Direction.values()) {
-                if (ProjectDuctNetwork.isProjectDuct(level.getBlockState(pos.relative(direction)).getBlock())) {
+                BlockState neighbor = level.getBlockState(pos.relative(direction));
+                if (ProjectDuctNetwork.isProjectDuct(neighbor.getBlock())
+                        || ProjectDuctVisualAdjacency.isDefinitiveDuctNeighbor(neighbor)) {
                     mask |= 1 << direction.ordinal();
                 }
             }
             return mask;
         }
         for (Direction direction : Direction.values()) {
-            if (ProjectDuctVisualAdjacency.connectsVisually(world, pos, direction)) {
+            if (ProjectDuctVisualAdjacency.connectsPipeVisually(world, pos, direction)) {
                 mask |= 1 << direction.ordinal();
             }
         }
         return mask;
     }
 
-    /** Refreshes connection masks on this position and touching project ducts. */
+    public static int computeNodePreviewMask(BlockGetter level, BlockPos pos) {
+        int mask = 0;
+        for (Direction direction : Direction.values()) {
+            if (ProjectDuctVisualAdjacency.connectsNodePreview(level, pos, direction)) {
+                mask |= 1 << direction.ordinal();
+            }
+        }
+        return mask;
+    }
+
+    /** Refreshes pipe connection masks on this position and touching project ducts. */
     public static void updateConnectionsAround(LevelAccessor level, BlockPos origin) {
         java.util.HashSet<BlockPos> positions = new java.util.HashSet<>();
         positions.add(origin);
@@ -279,9 +325,9 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
             if (!(state.getBlock() instanceof ProjectDuctBlock)) {
                 continue;
             }
-            int mask = computeConnectionMask(level, pos);
-            if (state.getValue(CONNECTIONS) != mask) {
-                level.setBlock(pos, state.setValue(CONNECTIONS, mask), Block.UPDATE_CLIENTS);
+            int pipe = computeConnectionMask(level, pos);
+            if (state.getValue(CONNECTIONS) != pipe) {
+                level.setBlock(pos, state.setValue(CONNECTIONS, pipe), Block.UPDATE_CLIENTS);
             }
         }
     }

@@ -291,6 +291,7 @@
   "gui.another_dynamics.duct_node.advanced_filtering.title": "Avanzate",
   "gui.another_dynamics.duct_node.advanced_filtering.button": "Avanzate",
   "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip": "Modifica Limite (banco filtri) o Mantieni (estrattore/recuperatore) per questa riga consenti: max oggetti in magazzino o minimo da lasciare in estrazione.",
+  "gui.another_dynamics.duct_node.channel_letter.hub_locked.tooltip": "Il canale si imposta dentro ogni parte del nodo. Apri Item, Fluid, Gas o un'altra lane qui sotto.",
   "gui.another_dynamics.duct_node.channel_letter.tooltip.click_forward": "Click sinistro: canale successivo",
   "gui.another_dynamics.duct_node.channel_letter.tooltip.click_back": "Click destro: canale precedente",
   "gui.another_dynamics.duct_node.channel_letter.tooltip.shift_a": "Shift+click: canale A",

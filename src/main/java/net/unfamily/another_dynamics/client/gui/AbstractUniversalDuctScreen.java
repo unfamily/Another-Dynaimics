@@ -99,6 +99,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 && (!hubLayer || filterList || advancedFiltering || bufferLimits);
     }
 
+    /** Universal multi-transport hub main: channel slot visible but empty (concat None style), not editable. */
+    private boolean isHubChannelLocked() {
+        return menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
+                && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0
+                && subView == SubView.MAIN;
+    }
+
     /** Virtual editor X/ESC returns to settings copier hub instead of closing. */
     protected boolean useSettingsCopierHubNavigation() {
         return false;
@@ -2654,15 +2661,22 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         boolean showCopierColumn = !howto && showsSettingsCopierColumn();
         boolean showChannel =
             !howto
-                    && showsChannelLetterControl(
-                            hubLayer, filterList, advancedFiltering, bufferLimits);
+                    && showsSettingsCopierColumn()
+                    && (showsChannelLetterControl(
+                                    hubLayer, filterList, advancedFiltering, bufferLimits)
+                            || (hubLayer && main && multiTransport));
         if (settingsCopierSaveButton != null) {
             settingsCopierSaveButton.visible = showCopierColumn;
         }
         if (settingsCopierLoadButton != null) {
             settingsCopierLoadButton.visible = showCopierColumn;
         }
-        channelButton.visible = showChannel;
+        if (channelButton != null) {
+            channelButton.visible = showChannel;
+            boolean hubChannelLocked = isHubChannelLocked();
+            channelButton.active = showChannel && !hubChannelLocked;
+            channelButton.setHubPlaceholder(hubChannelLocked);
+        }
         if (redstoneModeButton != null) {
             redstoneModeButton.visible = !filterListOnlyEditor;
         }
@@ -5074,9 +5088,20 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                                     "gui.another_dynamics.duct_node.redstone_mode."
                                             + redstoneModeStub)));
         }
-        channelButton.setLetterValue(
-            menu.getSyncData().get(DuctMenuSync.CHANNEL)
-        );
+        if (isHubChannelLocked()) {
+            channelButton.setHubPlaceholder(true);
+            channelButton.setTooltip(
+                    Tooltip.create(
+                            Component.translatable(
+                                    "gui.another_dynamics.duct_node.channel_letter.hub_locked.tooltip")));
+        } else {
+            channelButton.setHubPlaceholder(false);
+            channelButton.setLetterValue(
+                    menu.getSyncData().get(DuctMenuSync.CHANNEL));
+            MutableComponent channelTip = Component.empty();
+            appendChannelLetterClickHints(channelTip, true);
+            channelButton.setTooltip(Tooltip.create(channelTip));
+        }
 
         EnumSet<DuctTransportKind> enabledKinds =
             DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())

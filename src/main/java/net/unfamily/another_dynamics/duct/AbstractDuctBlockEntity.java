@@ -8,6 +8,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.unfamily.another_dynamics.duct.logistics.DuctNetworkCache;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctVisualAdjacency;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -70,10 +71,14 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
             BlockPos n = worldPosition.relative(dir);
             BlockState ns = level.getBlockState(n);
             boolean pipeHere = false;
-            for (DuctNetworkType net : nets) {
-                if (isPipeNeighborForNetwork(level, worldPosition, n, net)) {
-                    pipeHere = true;
-                    break;
+            if (ProjectDuctVisualAdjacency.isVisualPipeToProjectDuct(level, worldPosition, dir)) {
+                pipeHere = true;
+            } else {
+                for (DuctNetworkType net : nets) {
+                    if (isPipeNeighborForNetwork(level, worldPosition, n, net)) {
+                        pipeHere = true;
+                        break;
+                    }
                 }
             }
             if (pipeHere) {
@@ -139,6 +144,11 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
     /** Adds a wrench-disconnect bit (e.g. opposite face when syncing from project conversion). */
     public final void addUserDisconnectedFace(Direction face) {
         orUserDisconnectedFace(face);
+    }
+
+    /** Clears a wrench-disconnect bit (e.g. when a project duct reconnects on the opposite face). */
+    public final boolean clearUserDisconnectedFacePublic(Direction face) {
+        return clearUserDisconnectedFace(face);
     }
 
     protected void setUserDisconnectedFaceMaskForLoad(int mask) {

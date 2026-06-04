@@ -126,6 +126,79 @@ public class DuctBlock extends AbstractDuctBlock {
         return Optional.empty();
     }
 
+    /**
+     * Target face for shift+module equip: node voxel, clicked block face in settings mask, sole settings face,
+     * or closest storage node to the hit.
+     */
+    public static Optional<Direction> resolveModuleEquipFace(
+            DuctBlockEntity duct, BlockPos pos, Direction clickedBlockFace, Vec3 hitLocation) {
+        double lx = hitLocation.x - pos.getX();
+        double ly = hitLocation.y - pos.getY();
+        double lz = hitLocation.z - pos.getZ();
+        int mask = duct.getSettingsFaceMask();
+        if (mask == 0) {
+            return Optional.empty();
+        }
+        Optional<Direction> fromShape =
+                DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), mask, lx, ly, lz);
+        if (fromShape.isPresent()) {
+            return fromShape;
+        }
+        if ((mask & (1 << clickedBlockFace.ordinal())) != 0) {
+            return Optional.of(clickedBlockFace);
+        }
+        if (Integer.bitCount(mask & 0x3F) == 1) {
+            for (Direction d : Direction.values()) {
+                if ((mask & (1 << d.ordinal())) != 0) {
+                    return Optional.of(d);
+                }
+            }
+        }
+        BlockHitResult synthetic =
+                new BlockHitResult(hitLocation, clickedBlockFace, pos, false);
+        return nodeFaceFromHitLocation(pos, synthetic, duct);
+    }
+
+    private static Optional<Direction> resolveNodeFaceForModuleEquip(
+            BlockPos pos, BlockHitResult hit, DuctBlockEntity duct) {
+        return resolveModuleEquipFace(duct, pos, hit.getDirection(), hit.getLocation());
+    }
+
+    /** Shift+right-click with a module item on a duct node face (block or item {@link UseOnContext} entry). */
+    public static InteractionResult attemptShiftModuleEquip(
+            Level level,
+            BlockPos pos,
+            Player player,
+            ItemStack stack,
+            InteractionHand hand,
+            Direction clickedBlockFace,
+            Vec3 hitLocation) {
+        if (!player.isShiftKeyDown() || stack.isEmpty()) {
+            return InteractionResult.PASS;
+        }
+        BlockEntity entity = level.getBlockEntity(pos);
+        if (!(entity instanceof DuctBlockEntity duct)) {
+            return InteractionResult.PASS;
+        }
+        if (duct.moduleSlotCountForMenu() <= 0
+                || DuctModuleHelper.resolvedDeclarationId(stack).isEmpty()) {
+            return InteractionResult.PASS;
+        }
+        Optional<Direction> face =
+                resolveModuleEquipFace(duct, pos, clickedBlockFace, hitLocation);
+        if (face.isEmpty()) {
+            return InteractionResult.PASS;
+        }
+        if (level.isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+        if (player instanceof ServerPlayer sp
+                && duct.tryQuickEquipModule(sp, face.get(), stack, hand)) {
+            return InteractionResult.CONSUME;
+        }
+        return InteractionResult.PASS;
+    }
+
     private static double[] localHit(BlockPos pos, BlockHitResult hit) {
         Vec3 l = hit.getLocation();
         return new double[] {l.x - pos.getX(), l.y - pos.getY(), l.z - pos.getZ()};
@@ -234,20 +307,22 @@ public class DuctBlock extends AbstractDuctBlock {
                 }
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
             }
-            Optional<Direction> nodeFace = nodeFaceFromHitLocation(pos, hitResult, duct);
-            if (player.isShiftKeyDown()
-                    && nodeFace.isPresent()
-                    && !stack.isEmpty()
-                    && duct.moduleSlotCountForMenu() == 1
-                    && DuctModuleHelper.resolvedDeclarationId(stack).isPresent()) {
-                if (level.isClientSide()) {
-                    return ItemInteractionResult.SUCCESS;
-                }
-                if (player instanceof ServerPlayer sp
-                        && duct.tryQuickEquipModule(sp, nodeFace.get(), stack, hand)) {
-                    return ItemInteractionResult.CONSUME;
-                }
+            InteractionResult moduleEquip =
+                    attemptShiftModuleEquip(
+                            level,
+                            pos,
+                            player,
+                            stack,
+                            hand,
+                            hitResult.getDirection(),
+                            hitResult.getLocation());
+            if (moduleEquip == InteractionResult.CONSUME) {
+                return ItemInteractionResult.CONSUME;
             }
+            if (moduleEquip == InteractionResult.SUCCESS) {
+                return ItemInteractionResult.sidedSuccess(level.isClientSide());
+            }
+            Optional<Direction> nodeFace = resolveNodeFaceForModuleEquip(pos, hitResult, duct);
             if (player.isShiftKeyDown() && nodeFace.isPresent() && duct.hasAnyStallOnFace(nodeFace.get())) {
                 if (level.isClientSide()) {
                     return ItemInteractionResult.SUCCESS;

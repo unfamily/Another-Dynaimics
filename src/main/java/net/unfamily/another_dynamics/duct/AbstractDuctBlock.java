@@ -5,6 +5,7 @@ import java.util.EnumSet;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -160,6 +161,7 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
         super.onPlace(state, level, pos, oldState, movedByPiston);
         refreshAt(level, pos);
         notifySameNetworkNeighbors(level, pos);
+        refreshAdjacentProjectDuctVisuals(level, pos);
         if (!level.isClientSide() && level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
             net.unfamily.another_dynamics.duct.DuctNetworkOpaquePropagation.onStructuralChange(serverLevel, pos);
         }
@@ -169,6 +171,7 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
         if (!state.is(newState.getBlock())) {
             notifySameNetworkNeighbors(level, pos);
+            refreshAdjacentProjectDuctVisuals(level, pos);
         }
         super.onRemove(state, level, pos, newState, movedByPiston);
     }
@@ -233,5 +236,15 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
             BlockState state, Level level, BlockPos pos, Block neighborBlock, BlockPos neighborPos, boolean movedByPiston) {
         super.neighborChanged(state, level, pos, neighborBlock, neighborPos, movedByPiston);
         refreshAt(level, pos);
+        refreshAdjacentProjectDuctVisuals(level, pos);
+    }
+
+    private static void refreshAdjacentProjectDuctVisuals(Level level, BlockPos pos) {
+        for (Direction d : Direction.values()) {
+            BlockPos neighbor = pos.relative(d);
+            if (level.getBlockState(neighbor).getBlock() instanceof net.unfamily.another_dynamics.duct.project.ProjectDuctBlock) {
+                net.unfamily.another_dynamics.duct.project.ProjectDuctVisualRefresh.refreshAround(level, neighbor);
+            }
+        }
     }
 }

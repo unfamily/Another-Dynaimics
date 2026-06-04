@@ -21,6 +21,8 @@ public final class ChannelLetterButton extends AbstractWidget {
     private static final int MAX = 26;
 
     private int value = MIN;
+    /** Hub placeholder: empty cell like {@link FilterConcatChannelButton} on None (no lane letter). */
+    private boolean hubPlaceholder;
     private final @Nullable IntConsumer onClickNotifyServer;
 
     public ChannelLetterButton(int x, int y, int width, int height) {
@@ -41,6 +43,11 @@ public final class ChannelLetterButton extends AbstractWidget {
             return;
         }
         this.value = v;
+    }
+
+    /** When true, draws neutral empty box (concat None style); does not show {@link #value}. */
+    public void setHubPlaceholder(boolean hubPlaceholder) {
+        this.hubPlaceholder = hubPlaceholder;
     }
 
     private void cycleForward() {
@@ -82,6 +89,16 @@ public final class ChannelLetterButton extends AbstractWidget {
 
     @Override
     protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        if (hubPlaceholder) {
+            int bg = LetterPalette.backgroundArgb(0);
+            graphics.fill(getX() + 1, getY() + 1, getX() + width - 1, getY() + height - 1, bg);
+            int border = isHovered ? 0xFFFFFFFF : 0xFF303030;
+            graphics.fill(getX(), getY(), getX() + width, getY() + 1, border);
+            graphics.fill(getX(), getY() + height - 1, getX() + width, getY() + height, border);
+            graphics.fill(getX(), getY(), getX() + 1, getY() + height, border);
+            graphics.fill(getX() + width - 1, getY(), getX() + width, getY() + height, border);
+            return;
+        }
         int bg = LetterPalette.backgroundArgb(value);
         graphics.fill(getX() + 1, getY() + 1, getX() + width - 1, getY() + height - 1, bg);
 

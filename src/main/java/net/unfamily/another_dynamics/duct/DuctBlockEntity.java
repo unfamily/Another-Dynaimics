@@ -64,6 +64,7 @@ import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.FluidUtil;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.fluids.capability.IFluidHandlerItem;
+import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
@@ -527,12 +528,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     /**
-     * Shift+click on a node face with a module item when the duct definition has exactly one module slot.
-     * Inserts into an empty slot, merges stackable modules, swaps compatible modules, or force-replaces incompatible ones.
+     * Shift+click on a node face with a module item. Works for any datapack {@code module_slots} count (1-slot ducts,
+     * improved/custom 5-slot columns, etc.): valid empty slot (respects {@code incompatible_with} vs other slots),
+     * merge same module, then force-replace one occupied slot when no valid empty target exists.
      */
     public boolean tryQuickEquipModule(
             ServerPlayer player, Direction face, ItemStack held, InteractionHand hand) {
-        if (moduleSlotCountForMenu() != 1 || held.isEmpty()) {
+        int slotCount = moduleSlotCountForMenu();
+        if (slotCount <= 0 || held.isEmpty()) {
             return false;
         }
         if (net.unfamily.another_dynamics.duct.module.DuctModuleHelper.resolvedDeclarationId(held)
@@ -542,30 +545,85 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
         var handler = getFaceLanes(face).moduleSlots;
         ItemStack toInsert = held.copyWithCount(1);
-        ItemStack before = handler.getStackInSlot(0).copy();
-        if (before.isEmpty()) {
-            if (!handler.isItemValid(0, toInsert)) {
-                return false;
-            }
-            ItemStack remainder = handler.insertItem(0, toInsert, false);
-            if (!remainder.isEmpty()) {
-                return false;
-            }
-        } else {
-            ItemStack remainder = handler.insertItem(0, toInsert, false);
-            if (!remainder.isEmpty()) {
-                if (!player.getInventory().add(remainder)) {
-                    player.drop(remainder, false);
-                }
-            } else if (ItemStack.matches(before, handler.getStackInSlot(0))) {
-                handler.setStackInSlot(0, toInsert);
-                if (!before.isEmpty()) {
-                    if (!player.getInventory().add(before)) {
-                        player.drop(before, false);
-                    }
-                }
+
+        for (int slot = 0; slot < slotCount; slot++) {
+            if (handler.getStackInSlot(slot).isEmpty()
+                    && quickEquipModuleIntoSlot(handler, slot, toInsert)) {
+                return finishQuickEquipModule(player, face, held, hand);
             }
         }
+        for (int slot = 0; slot < slotCount; slot++) {
+            ItemStack existing = handler.getStackInSlot(slot);
+            if (!existing.isEmpty()
+                    && ItemStack.isSameItemSameComponents(existing, toInsert)
+                    && quickEquipModuleIntoOccupiedSlot(player, handler, slot, toInsert)) {
+                return finishQuickEquipModule(player, face, held, hand);
+            }
+        }
+        for (int slot = 0; slot < slotCount; slot++) {
+            if (!handler.getStackInSlot(slot).isEmpty()
+                    && quickEquipModuleForceSwapSlot(player, handler, slot, toInsert)) {
+                return finishQuickEquipModule(player, face, held, hand);
+            }
+        }
+        return false;
+    }
+
+    private static boolean quickEquipModuleIntoSlot(
+            net.unfamily.another_dynamics.duct.module.DuctFaceModuleItemHandler handler, int slot, ItemStack toInsert) {
+        if (!handler.isItemValid(slot, toInsert)) {
+            return false;
+        }
+        ItemStack remainder = handler.insertItem(slot, toInsert, false);
+        return remainder.isEmpty() && !handler.getStackInSlot(slot).isEmpty();
+    }
+
+    private static boolean quickEquipModuleIntoOccupiedSlot(
+            ServerPlayer player, net.unfamily.another_dynamics.duct.module.DuctFaceModuleItemHandler handler, int slot, ItemStack toInsert) {
+        ItemStack before = handler.getStackInSlot(slot).copy();
+        ItemStack remainder = handler.insertItem(slot, toInsert, false);
+        ItemStack now = handler.getStackInSlot(slot);
+        if (ItemStack.isSameItemSameComponents(now, toInsert) && !ItemStack.matches(now, before)) {
+            if (!remainder.isEmpty()) {
+                giveOrDrop(player, remainder);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean quickEquipModuleForceSwapSlot(
+            ServerPlayer player, net.unfamily.another_dynamics.duct.module.DuctFaceModuleItemHandler handler, int slot, ItemStack toInsert) {
+        ItemStack before = handler.getStackInSlot(slot).copy();
+        ItemStack remainder = handler.insertItem(slot, toInsert, false);
+        ItemStack now = handler.getStackInSlot(slot);
+        if (ItemStack.isSameItemSameComponents(now, toInsert) && !ItemStack.matches(now, before)) {
+            if (!remainder.isEmpty()) {
+                giveOrDrop(player, remainder);
+            }
+            return true;
+        }
+        if (ItemStack.matches(now, before)) {
+            handler.setStackInSlot(slot, toInsert);
+            if (!before.isEmpty()) {
+                giveOrDrop(player, before);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static void giveOrDrop(ServerPlayer player, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        if (!player.getInventory().add(stack)) {
+            player.drop(stack, false);
+        }
+    }
+
+    private boolean finishQuickEquipModule(
+            ServerPlayer player, Direction face, ItemStack held, InteractionHand hand) {
         held.shrink(1);
         if (held.isEmpty()) {
             player.setItemInHand(hand, ItemStack.EMPTY);
@@ -3810,7 +3868,37 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return memo > 0 && node.extractBatch >= memo;
     }
 
+    /**
+     * Whether {@link #refreshMenuData} may write {@link #menuData} for {@code face}. Skips when another
+     * face on this duct has an open menu (prevents face A ticks overwriting face B GUI sync). When no
+     * menu is open on this duct, writes are allowed (harmless; also covers menu ctor before
+     * {@code player.containerMenu} is assigned).
+     */
+    private boolean shouldRefreshMenuDataForFace(Direction face) {
+        if (level == null || level.isClientSide) {
+            return false;
+        }
+        boolean anyMenuOnThisDuct = false;
+        boolean menuOnRequestedFace = false;
+        for (Player player : level.players()) {
+            if (player.containerMenu instanceof DuctNodeMenu menu
+                    && menu.linkedDuctBlockEntity() == this) {
+                anyMenuOnThisDuct = true;
+                if (menu.getAccessFace() == face) {
+                    menuOnRequestedFace = true;
+                }
+            }
+        }
+        if (!anyMenuOnThisDuct) {
+            return true;
+        }
+        return menuOnRequestedFace;
+    }
+
     public void refreshMenuData(Direction accessFace) {
+        if (!shouldRefreshMenuDataForFace(accessFace)) {
+            return;
+        }
         DuctFaceLanes faceLanes = getFaceLanes(accessFace);
         DuctFaceNode n = activeMenuFaceNode(accessFace);
         menuData.set(DuctMenuSync.NODE_MODE, faceLanes.nodeMode.ordinal());
@@ -4949,7 +5037,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public void applyWrenchDisconnect(Level level, Direction face) {
         orUserDisconnectedFace(face);
         BlockPos npos = worldPosition.relative(face);
-        if (level.getBlockEntity(npos) instanceof DuctBlockEntity neighbor) {
+        BlockState neighborState = level.getBlockState(npos);
+        if (neighborState.getBlock() instanceof net.unfamily.another_dynamics.duct.project.ProjectDuctBlock) {
+            net.unfamily.another_dynamics.duct.project.ProjectDuctBlock.applyWrenchDisconnect(level, npos, face.getOpposite());
+        } else if (level.getBlockEntity(npos) instanceof DuctBlockEntity neighbor) {
             neighbor.orUserDisconnectedFace(face.getOpposite());
             neighbor.setChanged();
             neighbor.refreshFromWorld();
@@ -4968,7 +5059,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         BlockPos npos = worldPosition.relative(hitFace);
-        if (level.getBlockEntity(npos) instanceof DuctBlockEntity neighbor) {
+        BlockState neighborState = level.getBlockState(npos);
+        if (neighborState.getBlock() instanceof net.unfamily.another_dynamics.duct.project.ProjectDuctBlock) {
+            net.unfamily.another_dynamics.duct.project.ProjectDuctBlock.tryReconnectFace(level, npos, hitFace.getOpposite());
+        } else if (level.getBlockEntity(npos) instanceof DuctBlockEntity neighbor) {
             neighbor.clearUserDisconnectedFace(hitFace.getOpposite());
             neighbor.setChanged();
             neighbor.refreshFromWorld();

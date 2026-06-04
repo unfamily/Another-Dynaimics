@@ -291,6 +291,7 @@
   "gui.another_dynamics.duct_node.advanced_filtering.title": "Advanced",
   "gui.another_dynamics.duct_node.advanced_filtering.button": "Advanced",
   "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip": "Edit Limit (filter bank) or Keep (extractor/retriever) for this allow line: max items in storage or minimum to leave when extracting.",
+  "gui.another_dynamics.duct_node.channel_letter.hub_locked.tooltip": "Channel letter is set inside each part of this node. Open Item, Fluid, Gas, or another lane below.",
   "gui.another_dynamics.duct_node.channel_letter.tooltip.click_forward": "Left click: next channel",
   "gui.another_dynamics.duct_node.channel_letter.tooltip.click_back": "Right click: previous channel",
   "gui.another_dynamics.duct_node.channel_letter.tooltip.shift_a": "Shift+click: channel A",
