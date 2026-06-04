@@ -160,7 +160,8 @@ public final class DuctFluidServerTick {
             return;
         }
         int[] rr = new int[] {node.roundRobinCursor};
-        DestCandidate pick = pickWithinTier(level, validInTier, node.routingMode, rr);
+        RoutingMode extractRm = node.routingForExtraction(sourceMode);
+        DestCandidate pick = pickWithinTier(level, validInTier, extractRm, rr);
         if (pick == null) {
             return;
         }
@@ -206,7 +207,7 @@ public final class DuctFluidServerTick {
         if (destCap == null) {
             return;
         }
-        RoutingMode rm = retrieverLanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
+        RoutingMode rm = node.routingForRetrieval(retrieverLanes.nodeMode);
         boolean roundRobinRetriever = rm == RoutingMode.ROUND_ROBIN;
         int[] rr = new int[] {node.roundRobinCursor};
         List<DuctTargetSelector.DonorCandidate> donors =
@@ -892,7 +893,8 @@ public final class DuctFluidServerTick {
             return 0;
         }
         int[] rr = new int[] {node.roundRobinCursor};
-        DestCandidate pick = pickWithinTier(level, validInTier, node.routingMode, rr);
+        RoutingMode stallRm = node.routingForStallResend(sourceMode);
+        DestCandidate pick = pickWithinTier(level, validInTier, stallRm, rr);
         if (pick == null) {
             return 0;
         }

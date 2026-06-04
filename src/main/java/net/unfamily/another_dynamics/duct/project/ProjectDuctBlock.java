@@ -251,8 +251,16 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
 
     public static int computeConnectionMask(BlockGetter level, BlockPos pos) {
         int mask = 0;
+        if (!(level instanceof Level world)) {
+            for (Direction direction : Direction.values()) {
+                if (ProjectDuctNetwork.isProjectDuct(level.getBlockState(pos.relative(direction)).getBlock())) {
+                    mask |= 1 << direction.ordinal();
+                }
+            }
+            return mask;
+        }
         for (Direction direction : Direction.values()) {
-            if (ProjectDuctNetwork.isProjectDuct(level.getBlockState(pos.relative(direction)).getBlock())) {
+            if (ProjectDuctVisualAdjacency.connectsVisually(world, pos, direction)) {
                 mask |= 1 << direction.ordinal();
             }
         }

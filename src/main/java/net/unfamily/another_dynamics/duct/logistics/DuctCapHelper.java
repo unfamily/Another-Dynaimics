@@ -24,6 +24,25 @@ import org.jetbrains.annotations.Nullable;
 public final class DuctCapHelper {
     private DuctCapHelper() {}
 
+    /** Per-operation item count cap from GUI/datapack batch and the item's max stack size. */
+    public static int clampOperationCount(ItemStack template, int requested) {
+        if (template.isEmpty() || requested <= 0) {
+            return 0;
+        }
+        return Math.min(requested, Math.max(1, template.getMaxStackSize()));
+    }
+
+    /** Clamps {@code stack} count to {@link ItemStack#getMaxStackSize()} in place. */
+    public static void normalizeStackCount(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        int max = Math.max(1, stack.getMaxStackSize());
+        if (stack.getCount() > max) {
+            stack.setCount(max);
+        }
+    }
+
     @Nullable
     public static IItemHandler getHandlerOnFace(Level level, BlockPos ductPos, Direction ductOutwardFace) {
         BlockPos adj = ductPos.relative(ductOutwardFace);
@@ -287,7 +306,11 @@ public final class DuctCapHelper {
         if (maxCount <= 0 || template.isEmpty() || h == null) {
             return ItemStack.EMPTY;
         }
-        int need = maxCount;
+        int need = clampOperationCount(template, maxCount);
+        if (need <= 0) {
+            return ItemStack.EMPTY;
+        }
+        int perStackMax = Math.max(1, template.getMaxStackSize());
         ItemStack result = ItemStack.EMPTY;
         for (int slot = 0; slot < h.getSlots() && need > 0; slot++) {
             if (!DuctHandlerSlotSemantics.canExtractFromSlot(h, slot)) {
@@ -298,7 +321,7 @@ public final class DuctCapHelper {
                 if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, template)) {
                     break;
                 }
-                int take = Math.min(need, inSlot.getCount());
+                int take = Math.min(need, Math.min(inSlot.getCount(), perStackMax));
                 if (take <= 0) {
                     break;
                 }
@@ -306,17 +329,24 @@ public final class DuctCapHelper {
                 if (ex.isEmpty()) {
                     break;
                 }
+                normalizeStackCount(ex);
                 if (result.isEmpty()) {
                     result = ex.copy();
                 } else {
-                    result.setCount(result.getCount() + ex.getCount());
+                    int merged = Math.min(perStackMax, result.getCount() + ex.getCount());
+                    result.setCount(merged);
                 }
                 need -= ex.getCount();
+                if (result.getCount() >= perStackMax) {
+                    need = 0;
+                    break;
+                }
                 if (ex.getCount() < take) {
                     break;
                 }
             }
         }
+        normalizeStackCount(result);
         return result;
     }
 

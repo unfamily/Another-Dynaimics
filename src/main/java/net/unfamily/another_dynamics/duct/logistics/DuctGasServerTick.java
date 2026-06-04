@@ -166,7 +166,8 @@ public final class DuctGasServerTick {
         }
 
         int[] rr = new int[] {node.roundRobinCursor};
-        DestCandidate pick = pickWithinTier(level, validInTier, node.routingMode, rr);
+        RoutingMode extractRm = node.routingForExtraction(sourceMode);
+        DestCandidate pick = pickWithinTier(level, validInTier, extractRm, rr);
         if (pick == null) {
             return;
         }
@@ -223,7 +224,7 @@ public final class DuctGasServerTick {
         if (destHandler == null) {
             return;
         }
-        RoutingMode rm = retrieverLanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
+        RoutingMode rm = node.routingForRetrieval(retrieverLanes.nodeMode);
         boolean roundRobinRetriever = rm == RoutingMode.ROUND_ROBIN;
         int[] rr = new int[] {node.roundRobinCursor};
         Set<BlockPos> radioactiveGasSubnet = DuctNetworkCache.connectedRadioactiveGasDucts(level, retrieverPos);
@@ -455,7 +456,8 @@ public final class DuctGasServerTick {
             return 0L;
         }
         int[] rr = new int[] {node.roundRobinCursor};
-        DestCandidate pick = pickWithinTier(level, validInTier, node.routingMode, rr);
+        RoutingMode stallRm = node.routingForStallResend(sourceMode);
+        DestCandidate pick = pickWithinTier(level, validInTier, stallRm, rr);
         if (pick == null) {
             return 0L;
         }

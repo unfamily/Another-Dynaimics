@@ -10,6 +10,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.level.ServerLevel;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import org.jetbrains.annotations.Nullable;
 /**
  * Per-duct internal overflow: adaptive list of stacks (hidden; not a GUI inventory).
  * {@link #SCHEDULING_UNAVAILABLE_LINE_THRESHOLD} only gates new pulls (node “busy”); the list may grow without a hard cap.
@@ -102,6 +103,41 @@ public final class DuctOverflowBuffer {
 
     public void pruneEmptyLines() {
         stacks.removeIf(ItemStack::isEmpty);
+    }
+
+    @Nullable
+    public ItemStack peekFirstNonEmpty() {
+        pruneEmptyLines();
+        for (ItemStack s : stacks) {
+            if (!s.isEmpty()) {
+                return s;
+            }
+        }
+        return null;
+    }
+
+    public void clear() {
+        stacks.clear();
+    }
+
+    /** Shrinks the first non-empty line; removes the line when empty. */
+    public void shrinkFirstNonEmpty(int count, DuctBlockEntity duct) {
+        if (count <= 0) {
+            return;
+        }
+        pruneEmptyLines();
+        for (int i = 0; i < stacks.size(); i++) {
+            ItemStack line = stacks.get(i);
+            if (line.isEmpty()) {
+                continue;
+            }
+            line.shrink(Math.min(count, line.getCount()));
+            if (line.isEmpty()) {
+                stacks.remove(i);
+            }
+            duct.setChanged();
+            return;
+        }
     }
 
     /**

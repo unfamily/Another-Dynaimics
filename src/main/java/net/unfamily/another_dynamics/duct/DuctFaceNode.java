@@ -57,6 +57,33 @@ public final class DuctFaceNode {
     public RoutingMode routingModeExtractor = RoutingMode.NEAREST_FIRST;
     /** Hybrid: independent routing mode for the Retriever sub-node. */
     public RoutingMode routingModeRetriever = RoutingMode.NEAREST_FIRST;
+
+    /** Routing when this face pushes from storage into the network (extract / hybrid extractor lane). */
+    public RoutingMode routingForExtraction(NodeMode faceMode) {
+        return switch (faceMode) {
+            case EXTRACTION -> routingMode;
+            case EXTRACTION_FILTERING, RETRIEVING_EXTRACTION -> routingModeExtractor;
+            default -> routingMode;
+        };
+    }
+
+    /** Routing when this face pulls from the network into storage (retrieve / hybrid retriever lane). */
+    public RoutingMode routingForRetrieval(NodeMode faceMode) {
+        return switch (faceMode) {
+            case RETRIEVING, RETRIEVING_EXTRACTION -> routingModeRetriever;
+            default -> routingMode;
+        };
+    }
+
+    /** Routing for stall / overflow resend on this face. */
+    public RoutingMode routingForStallResend(NodeMode faceMode) {
+        return switch (faceMode) {
+            case RETRIEVING, RETRIEVING_EXTRACTION -> routingModeRetriever;
+            case EXTRACTION_FILTERING -> routingModeExtractor;
+            case EXTRACTION -> routingMode;
+            default -> routingMode;
+        };
+    }
     /** Insert-capable modes ({@link NodeMode#NONE}, {@link NodeMode#FILTERING_INSERTION}): insertion priority for this face. */
     public int insertionPriority;
     /** Extract / retrieve modes: items moved per operation (0 = use duct default). */

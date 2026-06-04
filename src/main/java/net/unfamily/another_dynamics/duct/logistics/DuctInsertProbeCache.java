@@ -74,6 +74,12 @@ public final class DuctInsertProbeCache {
         accepts.keySet().removeIf(k -> k.ductPos.equals(ductPos) && k.face == face);
     }
 
+    /** Drop all cached insert probes for a duct (e.g. after shift-clear stall on a face). */
+    public static void invalidateDuct(BlockPos ductPos) {
+        rejectsUntilTick.keySet().removeIf(k -> k.ductPos.equals(ductPos));
+        accepts.keySet().removeIf(k -> k.ductPos.equals(ductPos));
+    }
+
     private static RejectKey key(ItemStack probe, BlockPos ductPos, Direction face) {
         return new RejectKey(ductPos, face, itemKey(probe));
     }
