@@ -1282,10 +1282,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                             cycleCopierFilterMaterialKind();
                         })
                         .bounds(0, 0, filterNavActionSpanWidth(), BTN_H)
-                        .tooltip(
-                                Tooltip.create(
-                                        Component.translatable(
-                                                "gui.another_dynamics.settings_copier.filter_type.button.tooltip")))
                         .build();
         copierFilterTypeButton.visible = false;
         addRenderableWidget(copierFilterTypeButton);
@@ -1928,6 +1924,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         copierFilterTypeButton.setWidth(filterNavActionSpanWidth());
         copierFilterTypeButton.setHeight(BTN_H);
         copierFilterTypeButton.setMessage(copierFilterTypeButtonLabel(copierFilterMaterialKind()));
+        copierFilterTypeButton.setTooltip(
+                Tooltip.create(
+                        Component.translatable(FilterListMaterialKind.filterTypeButtonTooltipKey())));
         copierFilterTypeButton.visible = true;
     }
 
@@ -2849,7 +2848,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 ed.setTooltip(
                         Tooltip.create(
                                 Component.translatable(
-                                        "gui.another_dynamics.settings_copier.filter_type.pick_before_edit")));
+                                        FilterListMaterialKind.pickBeforeEditTooltipKey())));
             }
             filterEditButtons.add(ed);
             addRenderableWidget(ed);
@@ -3126,8 +3125,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private void enterEditMode(int index) {
         if (!canOpenCopierFilterEntry()) {
             transientFeedback =
-                    Component.translatable(
-                            "gui.another_dynamics.settings_copier.filter_type.pick_before_edit");
+                    Component.translatable(FilterListMaterialKind.pickBeforeEditTooltipKey());
             transientFeedbackColor = 0xFFAA55;
             transientFeedbackHideAt = Util.getMillis() + TRANSIENT_FEEDBACK_MS;
             return;

@@ -630,6 +630,9 @@ public final class SettingsCopierVirtualSession {
         if (storeKind != SettingsCopierStoreKind.FILTER) {
             return;
         }
+        if (kind == FilterListMaterialKind.GAS && !FilterListMaterialKind.gasFiltersAvailable()) {
+            return;
+        }
         FilterListMaterialKind prev = filterListMaterialKind;
         if (prev == kind) {
             return;

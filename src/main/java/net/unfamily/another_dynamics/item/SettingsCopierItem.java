@@ -23,6 +23,7 @@ import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
 import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
 import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
@@ -136,6 +137,10 @@ public class SettingsCopierItem extends Item {
                 .map(DuctFilterListSnapshot::getMaterialKind)
                 .ifPresent(
                         kind -> {
+                            if (kind == FilterListMaterialKind.GAS
+                                    && !MekanismChemicalCompat.isLoaded()) {
+                                return;
+                            }
                             ChatFormatting style =
                                     kind == FilterListMaterialKind.NONE
                                             ? ChatFormatting.GRAY

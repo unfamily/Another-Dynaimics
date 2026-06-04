@@ -6,6 +6,7 @@ import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportChannel;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
 /**
  * Material interpretation for a portable filter list ({@link SettingsCopierStoreKind#FILTER}).
@@ -36,13 +37,30 @@ public enum FilterListMaterialKind {
         };
     }
 
+    /** Gas filter lists require Mekanism chemical transport. */
+    public static boolean gasFiltersAvailable() {
+        return MekanismChemicalCompat.isLoaded();
+    }
+
     public FilterListMaterialKind next() {
         return switch (this) {
             case NONE -> ITEM;
             case ITEM -> FLUID;
-            case FLUID -> GAS;
+            case FLUID -> gasFiltersAvailable() ? GAS : NONE;
             case GAS -> NONE;
         };
+    }
+
+    public static String filterTypeButtonTooltipKey() {
+        return gasFiltersAvailable()
+                ? "gui.another_dynamics.settings_copier.filter_type.button.tooltip"
+                : "gui.another_dynamics.settings_copier.filter_type.button.tooltip_no_gas";
+    }
+
+    public static String pickBeforeEditTooltipKey() {
+        return gasFiltersAvailable()
+                ? "gui.another_dynamics.settings_copier.filter_type.pick_before_edit"
+                : "gui.another_dynamics.settings_copier.filter_type.pick_before_edit_no_gas";
     }
 
     public static FilterListMaterialKind fromTransportKind(DuctTransportKind lane) {
@@ -62,6 +80,9 @@ public enum FilterListMaterialKind {
     }
 
     public Component displayName() {
+        if (this == GAS && !gasFiltersAvailable()) {
+            return Component.translatable("item.another_dynamics.settings_copier.filter_kind.stored_generic");
+        }
         return Component.translatable(
                 "item.another_dynamics.settings_copier.filter_kind." + name().toLowerCase());
     }
