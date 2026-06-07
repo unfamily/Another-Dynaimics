@@ -4897,27 +4897,25 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     )
                 );
             }
-            boolean on = (menu.getSyncData().get(DuctMenuSync.SELF_FEED) != 0);
-            listLogicButton.setMessage(
-                Component.translatable(
-                    on
-                        ? "gui.another_dynamics.duct_node.hybrid.self_feed.on"
-                        : "gui.another_dynamics.duct_node.hybrid.self_feed.off"
-                )
-            );
             denyNavButton.active = true;
-            // Self-feed is only meaningful for the Extractor/Filtering hybrid mode.
-            // In Retriever/Extractor, keep it visible but disabled and forced OFF.
-            listLogicButton.active = nm == NodeMode.EXTRACTION_FILTERING;
-            if (nm != NodeMode.EXTRACTION_FILTERING) {
-                listLogicButton.setMessage(
-                    Component.translatable(
-                        "gui.another_dynamics.duct_node.hybrid.self_feed.off"
-                    )
-                );
-            }
             allowNavButton.active = true;
             if (nm == NodeMode.EXTRACTION_FILTERING) {
+                boolean on = (menu.getSyncData().get(DuctMenuSync.SELF_FEED) != 0);
+                listLogicButton.setMessage(
+                    Component.translatable(
+                        on
+                            ? "gui.another_dynamics.duct_node.hybrid.self_feed.on"
+                            : "gui.another_dynamics.duct_node.hybrid.self_feed.off"
+                    )
+                );
+                listLogicButton.active = true;
+                listLogicButton.setTooltip(
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.self_feed.tooltip"
+                        )
+                    )
+                );
                 denyNavButton.setTooltip(
                     Tooltip.create(
                         Component.translatable(
@@ -4933,6 +4931,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     )
                 );
             } else {
+                // Self-feed applies only to Extr/Filt; Retr/Extr leaves the center slot blank.
+                listLogicButton.setMessage(Component.empty());
+                listLogicButton.active = false;
+                listLogicButton.setTooltip(null);
                 denyNavButton.setTooltip(
                     Tooltip.create(
                         Component.translatable(
@@ -4948,13 +4950,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     )
                 );
             }
-            listLogicButton.setTooltip(
-                Tooltip.create(
-                    Component.translatable(
-                        "gui.another_dynamics.duct_node.hybrid.self_feed.tooltip"
-                    )
-                )
-            );
         } else if (shouldBlankFilterNavButtons(nm)) {
             denyNavButton.setMessage(Component.empty());
             allowNavButton.setMessage(Component.empty());
