@@ -3164,8 +3164,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         final int rrFrozen = node.roundRobinCursor;
-        RoutingMode rm =
-                retrieverLanes.nodeMode.isHybrid() ? node.routingModeRetriever : node.routingMode;
+        RoutingMode rm = node.routingForRetrieval(retrieverLanes.nodeMode);
         boolean roundRobinRetriever = rm == RoutingMode.ROUND_ROBIN;
         List<DuctTargetSelector.DonorCandidate> donors =
                 DuctTargetSelector.listRetrievingDonorCandidates(
@@ -4752,6 +4751,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 yield false;
             }
             case RETRIEVING_EXTRACTION -> false;
+            case RETRIEVING -> {
+                RoutingMode cur = node.routingModeRetriever;
+                RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasModule);
+                if (nxt != cur) {
+                    node.routingModeRetriever = nxt;
+                    yield true;
+                }
+                yield false;
+            }
             default -> {
                 RoutingMode cur = node.routingMode;
                 RoutingMode nxt = nextUsableRouting(cur, v, delta, def, hasModule);

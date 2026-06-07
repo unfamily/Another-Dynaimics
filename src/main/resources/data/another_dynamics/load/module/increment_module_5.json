@@ -5,7 +5,7 @@
     {
       "for": "item",
       "quantity": {
-        "set": 256
+        "set": 64
       },
       "filter": {
         "allow": { "add": 100 },

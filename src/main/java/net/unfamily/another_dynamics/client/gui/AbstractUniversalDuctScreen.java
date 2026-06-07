@@ -650,7 +650,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             Component.translatable("gui.another_dynamics.duct_node.deny_list"),
             b -> {
                 playClickSound();
-                if (energyFilterListsLocked()) {
+                if (transportFilterListsLocked()) {
                     return;
                 }
                 NodeMode nm = NodeMode.fromOrdinal(
@@ -730,7 +730,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             Component.translatable("gui.another_dynamics.duct_node.allow_list"),
             b -> {
                 playClickSound();
-                if (energyFilterListsLocked()) {
+                if (transportFilterListsLocked()) {
                     return;
                 }
                 NodeMode nm = NodeMode.fromOrdinal(
@@ -1914,7 +1914,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         int menuFlags = menu.getSyncData().get(DuctMenuSync.FLAGS);
         boolean filtersActive = (menuFlags & DuctMenuSync.FLAG_FILTERS_ACTIVE) != 0;
-        oppositeFilterListButton.active = filtersActive && !energyFilterListsLocked();
+        oppositeFilterListButton.active = filtersActive && !transportFilterListsLocked();
         oppositeFilterListButton.visible = true;
     }
 
@@ -1973,7 +1973,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void openOppositeFilterList() {
-        if (energyFilterListsLocked()) {
+        if (transportFilterListsLocked()) {
             return;
         }
         SubView target =
@@ -3559,9 +3559,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 == DuctTransportKind.ENERGY.ordinal();
     }
 
-    /** Allow/deny lists stay visible but disabled on the energy tab (filters not implemented yet). */
-    private boolean energyFilterListsLocked() {
-        return isEnergyTransportTab();
+    /** Allow/deny filter lists are not used on energy/heat tabs (no item/fluid/gas filters). */
+    private boolean transportFilterListsLocked() {
+        return isEnergyOrHeatTransport();
+    }
+
+    /** Energy/heat: blank deny/allow nav except on the hybrid lane selector ({@link HybridPanel#NONE}). */
+    private boolean shouldBlankFilterNavButtons(NodeMode nm) {
+        if (!transportFilterListsLocked()) {
+            return false;
+        }
+        return !(nm.isHybrid() && hybridPanel == HybridPanel.NONE);
     }
 
     private String filterHelpTextPrefix() {
@@ -4865,127 +4873,131 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 Tooltip.create(Component.translatable(display.tooltipKey())));
             opaqueRenderingButton.active = !locked;
         }
-        if (isEnergyTransportTab()) {
+        if (nm.isHybrid() && hybridPanel == HybridPanel.NONE) {
+            if (nm == NodeMode.EXTRACTION_FILTERING) {
+                denyNavButton.setMessage(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.hybrid.selector.extractor"
+                    )
+                );
+                allowNavButton.setMessage(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.hybrid.selector.filtering"
+                    )
+                );
+            } else {
+                denyNavButton.setMessage(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.hybrid.selector.retrieving"
+                    )
+                );
+                allowNavButton.setMessage(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.hybrid.selector.extractor"
+                    )
+                );
+            }
+            boolean on = (menu.getSyncData().get(DuctMenuSync.SELF_FEED) != 0);
+            listLogicButton.setMessage(
+                Component.translatable(
+                    on
+                        ? "gui.another_dynamics.duct_node.hybrid.self_feed.on"
+                        : "gui.another_dynamics.duct_node.hybrid.self_feed.off"
+                )
+            );
+            denyNavButton.active = true;
+            // Self-feed is only meaningful for the Extractor/Filtering hybrid mode.
+            // In Retriever/Extractor, keep it visible but disabled and forced OFF.
+            listLogicButton.active = nm == NodeMode.EXTRACTION_FILTERING;
+            if (nm != NodeMode.EXTRACTION_FILTERING) {
+                listLogicButton.setMessage(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.hybrid.self_feed.off"
+                    )
+                );
+            }
+            allowNavButton.active = true;
+            if (nm == NodeMode.EXTRACTION_FILTERING) {
+                denyNavButton.setTooltip(
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.selector.extractor.tooltip"
+                        )
+                    )
+                );
+                allowNavButton.setTooltip(
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.selector.filtering.tooltip"
+                        )
+                    )
+                );
+            } else {
+                denyNavButton.setTooltip(
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.selector.retrieving.tooltip"
+                        )
+                    )
+                );
+                allowNavButton.setTooltip(
+                    Tooltip.create(
+                        Component.translatable(
+                            "gui.another_dynamics.duct_node.hybrid.selector.extractor.tooltip"
+                        )
+                    )
+                );
+            }
+            listLogicButton.setTooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.hybrid.self_feed.tooltip"
+                    )
+                )
+            );
+        } else if (shouldBlankFilterNavButtons(nm)) {
             denyNavButton.setMessage(Component.empty());
             allowNavButton.setMessage(Component.empty());
             denyNavButton.active = false;
             allowNavButton.active = false;
             denyNavButton.setTooltip(null);
             allowNavButton.setTooltip(null);
-            if (isEnergyBufferLimitsSubview()) {
-                listLogicButton.setMessage(
-                    Component.translatable("gui.another_dynamics.duct_node.modify_buffers.back"));
-            } else {
-                listLogicButton.setMessage(
-                    Component.translatable("gui.another_dynamics.duct_node.modify_buffers"));
-            }
-            listLogicButton.active = true;
-            listLogicButton.setTooltip(null);
-        } else if (nm.isHybrid()) {
-            if (!inHybridPanel) {
-                if (nm == NodeMode.EXTRACTION_FILTERING) {
-                    denyNavButton.setMessage(
-                        Component.translatable(
-                            "gui.another_dynamics.duct_node.hybrid.selector.extractor"
-                        )
-                    );
-                    allowNavButton.setMessage(
-                        Component.translatable(
-                            "gui.another_dynamics.duct_node.hybrid.selector.filtering"
-                        )
-                    );
-                } else {
-                    denyNavButton.setMessage(
-                        Component.translatable(
-                            "gui.another_dynamics.duct_node.hybrid.selector.retrieving"
-                        )
-                    );
-                    allowNavButton.setMessage(
-                        Component.translatable(
-                            "gui.another_dynamics.duct_node.hybrid.selector.extractor"
-                        )
-                    );
-                }
-                boolean on = (menu.getSyncData().get(DuctMenuSync.SELF_FEED) !=
-                    0);
-                listLogicButton.setMessage(
-                    Component.translatable(
-                        on
-                            ? "gui.another_dynamics.duct_node.hybrid.self_feed.on"
-                            : "gui.another_dynamics.duct_node.hybrid.self_feed.off"
-                    )
-                );
-                denyNavButton.active = true;
-                // Self-feed is only meaningful for the Extractor/Filtering hybrid mode.
-                // In Retriever/Extractor, keep it visible but disabled and forced OFF.
-                listLogicButton.active = nm == NodeMode.EXTRACTION_FILTERING;
-                if (nm != NodeMode.EXTRACTION_FILTERING) {
+            if (isEnergyTransportTab()) {
+                if (isEnergyBufferLimitsSubview()) {
                     listLogicButton.setMessage(
                         Component.translatable(
-                            "gui.another_dynamics.duct_node.hybrid.self_feed.off"
-                        )
-                    );
-                }
-                allowNavButton.active = true;
-                if (nm == NodeMode.EXTRACTION_FILTERING) {
-                    denyNavButton.setTooltip(
-                        Tooltip.create(
-                            Component.translatable(
-                                "gui.another_dynamics.duct_node.hybrid.selector.extractor.tooltip"
-                            )
-                        )
-                    );
-                    allowNavButton.setTooltip(
-                        Tooltip.create(
-                            Component.translatable(
-                                "gui.another_dynamics.duct_node.hybrid.selector.filtering.tooltip"
-                            )
-                        )
-                    );
+                            "gui.another_dynamics.duct_node.modify_buffers.back"));
                 } else {
-                    denyNavButton.setTooltip(
-                        Tooltip.create(
-                            Component.translatable(
-                                "gui.another_dynamics.duct_node.hybrid.selector.retrieving.tooltip"
-                            )
-                        )
-                    );
-                    allowNavButton.setTooltip(
-                        Tooltip.create(
-                            Component.translatable(
-                                "gui.another_dynamics.duct_node.hybrid.selector.extractor.tooltip"
-                            )
-                        )
-                    );
+                    listLogicButton.setMessage(
+                        Component.translatable("gui.another_dynamics.duct_node.modify_buffers"));
                 }
-                listLogicButton.setTooltip(
-                    Tooltip.create(
-                        Component.translatable(
-                            "gui.another_dynamics.duct_node.hybrid.self_feed.tooltip"
-                        )
-                    )
-                );
+                listLogicButton.active = true;
+                listLogicButton.setTooltip(null);
             } else {
-                denyNavButton.setMessage(
-                    Component.translatable(
-                        "gui.another_dynamics.duct_node.deny_list"
-                    )
-                );
-                allowNavButton.setMessage(
-                    Component.translatable(
-                        "gui.another_dynamics.duct_node.allow_list"
-                    )
-                );
-                denyNavButton.active = filtersActive;
-                allowNavButton.active = filtersActive;
-                listLogicButton.active = filtersActive;
-                boolean denyOver = menu.getClientDenyOverridesAllow(
-                    activeFilterBank
-                );
-                listLogicButton.setMessage(
-                    Component.literal(denyOver ? ">>>>>" : "<<<<<")
-                );
+                listLogicButton.setMessage(Component.empty());
+                listLogicButton.active = false;
+                listLogicButton.setTooltip(null);
             }
+        } else if (nm.isHybrid()) {
+            denyNavButton.setMessage(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.deny_list"
+                )
+            );
+            allowNavButton.setMessage(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.allow_list"
+                )
+            );
+            denyNavButton.active = filtersActive;
+            allowNavButton.active = filtersActive;
+            listLogicButton.active = filtersActive;
+            boolean denyOver = menu.getClientDenyOverridesAllow(
+                activeFilterBank
+            );
+            listLogicButton.setMessage(
+                Component.literal(denyOver ? ">>>>>" : "<<<<<")
+            );
         } else {
             denyNavButton.setMessage(
                 Component.translatable(
