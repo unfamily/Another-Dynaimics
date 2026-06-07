@@ -650,9 +650,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             Component.translatable("gui.another_dynamics.duct_node.deny_list"),
             b -> {
                 playClickSound();
-                if (transportFilterListsLocked()) {
-                    return;
-                }
                 NodeMode nm = NodeMode.fromOrdinal(
                     menu.getSyncData().get(DuctMenuSync.NODE_MODE)
                 );
@@ -664,6 +661,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         ? DuctFaceNode.FilterBank.EXTRACTOR
                         : DuctFaceNode.FilterBank.RETRIEVER;
                     applySubViewVisibility();
+                    return;
+                }
+                if (transportFilterListsLocked()) {
                     return;
                 }
                 openFilterSubview(SubView.DENY_FILTERS);
@@ -730,9 +730,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             Component.translatable("gui.another_dynamics.duct_node.allow_list"),
             b -> {
                 playClickSound();
-                if (transportFilterListsLocked()) {
-                    return;
-                }
                 NodeMode nm = NodeMode.fromOrdinal(
                     menu.getSyncData().get(DuctMenuSync.NODE_MODE)
                 );
@@ -744,6 +741,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         ? DuctFaceNode.FilterBank.FILTER
                         : DuctFaceNode.FilterBank.EXTRACTOR;
                     applySubViewVisibility();
+                    return;
+                }
+                if (transportFilterListsLocked()) {
                     return;
                 }
                 openFilterSubview(SubView.ALLOW_FILTERS);
