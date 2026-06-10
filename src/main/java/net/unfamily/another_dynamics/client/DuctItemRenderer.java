@@ -9,8 +9,8 @@ import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
-import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctIds;
+import net.unfamily.another_dynamics.duct.DuctOpaqueRendering;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 import java.util.ArrayList;
@@ -24,7 +24,7 @@ import java.util.Map;
  * {@code GeoItemRenderer}) by routing through {@code IClientItemExtensions.getCustomRenderer()}.
  * Reads {@link ModDataComponents#DUCT_LOGICAL_ID} from the stack and renders the correct
  * line-shape quads from {@link DuctCompositeGeometry}, including the opaque V-shift when
- * {@code always_opaque = true} in the definition JSON.
+ * {@code always_opaque} in the definition JSON or the player's global opaque (All) preference.
  *
  * <p>{@code ItemRenderer} already applies {@code translate(-0.5, -0.5, -0.5)} and the display
  * context transforms before calling {@link #renderByItem}, so quads in block-space [0,1]
@@ -62,12 +62,12 @@ public final class DuctItemRenderer extends BlockEntityWithoutLevelRenderer {
         }
         if (geo == null || !geo.isBuilt()) return;
 
-        boolean alwaysOpaque = DuctDefinitionRegistry.getByLogicalId(logicalId)
-                .map(d -> d.alwaysOpaqueRendering())
-                .orElse(false);
+        boolean opaqueRendering =
+                DuctOpaqueRendering.effectiveItemPreviewOpaque(
+                        logicalId, Minecraft.getInstance().player);
 
         List<BakedQuad> quads;
-        if (alwaysOpaque) {
+        if (opaqueRendering) {
             // V-shift only the center (duct body) quads; node end-caps are invariant.
             List<BakedQuad> centerQuads = geo.lineCenterQuads();
             List<BakedQuad> nodeCaps = geo.lineNodeCapsQuads();

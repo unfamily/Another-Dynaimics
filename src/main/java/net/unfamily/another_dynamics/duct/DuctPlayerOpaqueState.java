@@ -12,7 +12,7 @@ import net.minecraft.network.codec.StreamCodec;
  * {@link #absoluteOpaquePreferred} (remembered after using All).
  */
 public record DuctPlayerOpaqueState(boolean allOpaqueActive, boolean absoluteOpaquePreferred) {
-    public static final DuctPlayerOpaqueState DEFAULT = new DuctPlayerOpaqueState(false, false);
+    public static final DuctPlayerOpaqueState DEFAULT = new DuctPlayerOpaqueState(true, true);
 
     public static final Codec<DuctPlayerOpaqueState> CODEC =
             Codec.withAlternative(

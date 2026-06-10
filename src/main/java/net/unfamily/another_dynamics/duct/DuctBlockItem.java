@@ -2,9 +2,11 @@ package net.unfamily.another_dynamics.duct;
 
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -14,14 +16,18 @@ import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 import net.unfamily.another_dynamics.client.DuctItemRenderer;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctConverter;
+import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
  * Single physical item representing multiple logical duct types (via {@link ModDataComponents#DUCT_LOGICAL_ID}).
  */
 public final class DuctBlockItem extends BlockItem {
+    private static final String OPAQUE_TOOLTIP_ROOT = "item.another_dynamics.duct.opaque.desc.";
+
     private final String defaultLogicalId;
 
     public DuctBlockItem(Block block, Properties properties) {
@@ -103,6 +109,15 @@ public final class DuctBlockItem extends BlockItem {
         ItemStack stack = new ItemStack(this);
         stack.set(ModDataComponents.DUCT_LOGICAL_ID.get(), defaultLogicalId);
         return stack;
+    }
+
+    @Override
+    public void appendHoverText(
+            ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
+        super.appendHoverText(stack, context, tooltip, flag);
+        for (int i = 0; i < 3; i++) {
+            tooltip.add(SettingsCopierItem.grayTooltipLine(OPAQUE_TOOLTIP_ROOT + i));
+        }
     }
 
     @Override

@@ -38,4 +38,9 @@ public final class DuctOpaqueRendering {
     public static boolean effectiveOpaque(String logicalDuctId, boolean networkOpaque, Player player) {
         return definitionAlwaysOpaque(logicalDuctId) || playerAllOpaque(player) || networkOpaque;
     }
+
+    /** Opaque skin for duct items in hand/inventory (no network anchor). */
+    public static boolean effectiveItemPreviewOpaque(String logicalDuctId, Player player) {
+        return definitionAlwaysOpaque(logicalDuctId) || playerAllOpaque(player);
+    }
 }
