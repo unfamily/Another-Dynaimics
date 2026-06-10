@@ -156,6 +156,8 @@
   "gui.another_dynamics.duct_node.redstone_mode.1": "Redstone: Low",
   "gui.another_dynamics.duct_node.redstone_mode.2": "Redstone: High",
   "gui.another_dynamics.duct_node.redstone_mode.3": "Redstone: Disabled",
+  "gui.another_dynamics.duct_node.list_logic.label.deny_wins": "Deny first",
+  "gui.another_dynamics.duct_node.list_logic.label.allow_bypass": "Allow first",
   "gui.another_dynamics.duct_node.list_logic.tooltip.deny_wins": "Deny blocks Allow: if an item matches deny, it is blocked even when allow matches.",
   "gui.another_dynamics.duct_node.list_logic.tooltip.allow_bypass": "Allow bypasses deny: if an item matches allow, deny rules do not block it.",
   "gui.another_dynamics.duct_node.amount.label.priority": "Priority",
@@ -337,5 +339,7 @@
   "another_dynamics.duct_replace.unknown_type": "Cannot replace: the target duct type is unknown.",
   "another_dynamics.duct_replace.incompatible_types": "Cannot replace: the new duct does not support all transport types of the installed one.",
   "another_dynamics.duct_replace.module_slots_lost": "Cannot replace: installed modules would not fit in the new duct's module slots.",
-  "another_dynamics.duct_replace.filter_slots_lost": "Cannot replace: active filters would be lost because the new duct has fewer filter slots."
+  "another_dynamics.duct_replace.filter_slots_lost": "Cannot replace: active filters would be lost because the new duct has fewer filter slots.",
+  "another_dynamics.beta.pipez_nag": "Sono stufo di dirtelo, devi testare %s!",
+  "another_dynamics.beta.pipez_nag.mod_name": "Another Dynamics"
 }

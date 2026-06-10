@@ -442,6 +442,26 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     }
 
     @Override
+    public boolean clientFiltersHydrated() {
+        return filterBuffers.clientFiltersHydrated();
+    }
+
+    @Override
+    public boolean clientFiltersDirty() {
+        return filterBuffers.clientFiltersDirty();
+    }
+
+    @Override
+    public void markClientFiltersDirty() {
+        filterBuffers.markClientFiltersDirty();
+    }
+
+    @Override
+    public boolean shouldPushClientFiltersOnClose() {
+        return filterBuffers.shouldPushClientFiltersOnClose();
+    }
+
+    @Override
     public void receiveFilterSync(
             BlockPos pos,
             Direction face,

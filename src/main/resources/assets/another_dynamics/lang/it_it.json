@@ -156,6 +156,8 @@
   "gui.another_dynamics.duct_node.redstone_mode.1": "Pietrarossa: bassa",
   "gui.another_dynamics.duct_node.redstone_mode.2": "Pietrarossa: alta",
   "gui.another_dynamics.duct_node.redstone_mode.3": "Pietrarossa: disattivata",
+  "gui.another_dynamics.duct_node.list_logic.label.deny_wins": "Nega prima",
+  "gui.another_dynamics.duct_node.list_logic.label.allow_bypass": "Consenti prima",
   "gui.another_dynamics.duct_node.list_logic.tooltip.deny_wins": "Nega blocca Consenti: se un oggetto corrisponde a nega, è bloccato anche se corrisponde a consente.",
   "gui.another_dynamics.duct_node.list_logic.tooltip.allow_bypass": "Consenti aggira Nega: se un oggetto corrisponde a consente, le regole nega non lo bloccano.",
   "gui.another_dynamics.duct_node.amount.label.priority": "Priorità",

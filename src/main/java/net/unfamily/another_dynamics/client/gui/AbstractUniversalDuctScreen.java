@@ -685,7 +685,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             .build();
         addRenderableWidget(denyNavButton);
 
-        listLogicButton = Button.builder(Component.literal(">>>>>"), b -> {
+        listLogicButton = Button.builder(
+                listLogicButtonMessage(menu.getClientDenyOverridesAllow(activeFilterBank)),
+                b -> {
             playClickSound();
             if (subView == SubView.BUFFER_LIMITS) {
                 closeEnergyBufferSubview();
@@ -1504,6 +1506,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     0,
                     0);
         }
+    }
+
+    private static Component listLogicButtonMessage(boolean denyOverridesAllow) {
+        return Component.translatable(
+                denyOverridesAllow
+                        ? "gui.another_dynamics.duct_node.list_logic.label.deny_wins"
+                        : "gui.another_dynamics.duct_node.list_logic.label.allow_bypass");
     }
 
     private boolean shouldReturnToTransportHubInsteadOfClosing() {
@@ -4266,8 +4275,22 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         rebuildFilterEntryWidgets();
     }
 
+    private boolean shouldPushFiltersOnClose() {
+        if (!menu.shouldPushClientFiltersOnClose()) {
+            return false;
+        }
+        if (menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0) {
+            return false;
+        }
+        int tk = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
+        return tk != DuctTransportKind.ENERGY.ordinal() && tk != DuctTransportKind.HEAT.ordinal();
+    }
+
     private void reorderAndPushAllFilterBanks() {
         if (minecraft == null || minecraft.level == null) {
+            return;
+        }
+        if (!shouldPushFiltersOnClose()) {
             return;
         }
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
@@ -4308,11 +4331,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     @Override
     public void onClose() {
         flushPendingFilterEditsBeforeClose();
-        reorderAndPushAllFilterBanks();
+        if (shouldPushFiltersOnClose()) {
+            reorderAndPushAllFilterBanks();
+        }
         super.onClose();
     }
 
     private void pushFiltersToServer() {
+        menu.markClientFiltersDirty();
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         List<Integer> caps2 =
             activeFilterBank == DuctFaceNode.FilterBank.FILTER
@@ -4990,9 +5016,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             boolean denyOver = menu.getClientDenyOverridesAllow(
                 activeFilterBank
             );
-            listLogicButton.setMessage(
-                Component.literal(denyOver ? ">>>>>" : "<<<<<")
-            );
+            listLogicButton.setMessage(listLogicButtonMessage(denyOver));
         } else {
             denyNavButton.setMessage(
                 Component.translatable(
@@ -5009,9 +5033,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             allowNavButton.active = filtersActive;
             boolean denyOver =
                 menu.getSyncData().get(DuctMenuSync.DENY_OVERRIDES_ALLOW) != 0;
-            listLogicButton.setMessage(
-                Component.literal(denyOver ? ">>>>>" : "<<<<<")
-            );
+            listLogicButton.setMessage(listLogicButtonMessage(denyOver));
             if (filtersActive) {
                 denyNavButton.setTooltip(
                     Tooltip.create(

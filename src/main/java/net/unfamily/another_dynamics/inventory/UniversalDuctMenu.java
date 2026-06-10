@@ -81,4 +81,21 @@ public interface UniversalDuctMenu {
     default boolean isSettingsCopierVirtualEditor() {
         return false;
     }
+
+    /** True after all filter banks were received from server for the active transport kind. */
+    default boolean clientFiltersHydrated() {
+        return false;
+    }
+
+    /** True after the player edited filter lines locally in this menu session. */
+    default boolean clientFiltersDirty() {
+        return false;
+    }
+
+    default void markClientFiltersDirty() {}
+
+    /** Push pending filter edits on GUI close only when synced and edited. */
+    default boolean shouldPushClientFiltersOnClose() {
+        return clientFiltersHydrated() && clientFiltersDirty();
+    }
 }

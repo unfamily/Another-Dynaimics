@@ -4217,6 +4217,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
+        if (laneKind == DuctTransportKind.ENERGY || laneKind == DuctTransportKind.HEAT) {
+            return;
+        }
         DuctItemTransportSpec itemSpec = itemTransportSpec();
         DuctFluidTransportSpec fluidSpec = fluidTransportSpec();
         DuctGasTransportSpec gasSpec = gasTransportSpec();

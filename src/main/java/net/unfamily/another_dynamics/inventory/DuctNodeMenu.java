@@ -144,6 +144,8 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
     /** Server-side only: player that opened this menu, used to re-send filter sync on module changes. */
     private final @Nullable ServerPlayer menuPlayer;
 
+    private final ClientFilterPushState clientFilterPushState = new ClientFilterPushState();
+
     /** Client-side filter cache (filled by {@link #receiveFilterSync}). */
     private final List<String> clientAllowFiltersExtractor = new ArrayList<>();
     private final List<String> clientDenyFiltersExtractor = new ArrayList<>();
@@ -664,6 +666,27 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
             case RETRIEVER -> clientDenyOverridesAllowRetriever = denyOverridesAllow;
             case FILTER -> clientDenyOverridesAllowFilter = denyOverridesAllow;
         }
+        clientFilterPushState.onServerFilterSync(transportKindOrdinal, filterBankOrdinal);
+    }
+
+    @Override
+    public boolean clientFiltersHydrated() {
+        return clientFilterPushState.hydrated();
+    }
+
+    @Override
+    public boolean clientFiltersDirty() {
+        return clientFilterPushState.dirty();
+    }
+
+    @Override
+    public void markClientFiltersDirty() {
+        clientFilterPushState.markDirty();
+    }
+
+    @Override
+    public boolean shouldPushClientFiltersOnClose() {
+        return clientFilterPushState.shouldPushOnClose();
     }
 
     /** Keep {@link #clientDenyOverridesAllow} aligned with synced {@link DuctMenuSync#DENY_OVERRIDES_ALLOW} on client. */
@@ -675,6 +698,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
     }
 
     public void ensureClientFilterBufferSizes(boolean hybridFilterContext) {
+        if (clientEditingEnergyOrHeatLane()) {
+            return;
+        }
         int maxA = Math.max(0, filterAllowCap(hybridFilterContext));
         int maxD = Math.max(0, filterDenyCap(hybridFilterContext));
         clampClientList(clientAllowFiltersExtractor, maxA);

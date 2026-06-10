@@ -47,6 +47,8 @@ final class UniversalDuctMenuFilterBuffers {
     private boolean clientDenyOverridesAllowRetriever;
     private boolean clientDenyOverridesAllowFilter;
 
+    private final ClientFilterPushState pushState = new ClientFilterPushState();
+
     List<String> getClientAllowFilters(DuctFaceNode.FilterBank bank) {
         return switch (bank) {
             case EXTRACTOR -> clientAllowFiltersExtractor;
@@ -166,6 +168,23 @@ final class UniversalDuctMenuFilterBuffers {
             case RETRIEVER -> clientDenyOverridesAllowRetriever = denyOverridesAllow;
             case FILTER -> clientDenyOverridesAllowFilter = denyOverridesAllow;
         }
+        pushState.onServerFilterSync(transportKindOrdinal, filterBankOrdinal);
+    }
+
+    boolean clientFiltersHydrated() {
+        return pushState.hydrated();
+    }
+
+    boolean clientFiltersDirty() {
+        return pushState.dirty();
+    }
+
+    void markClientFiltersDirty() {
+        pushState.markDirty();
+    }
+
+    boolean shouldPushClientFiltersOnClose() {
+        return pushState.shouldPushOnClose();
     }
 
     void ensureClientFilterBufferSizes(
@@ -175,6 +194,9 @@ final class UniversalDuctMenuFilterBuffers {
             java.util.function.Function<Integer, ItemStack> moduleSlotStack,
             boolean unlimitedFilters,
             boolean hybridFilterContext) {
+        if (!unlimitedFilters && clientEditingEnergyOrHeatLane(syncData)) {
+            return;
+        }
         int maxA = Math.max(0, filterAllowCap(syncData, logicalId, moduleSlotCount, moduleSlotStack, unlimitedFilters, hybridFilterContext));
         int maxD = Math.max(0, filterDenyCap(syncData, logicalId, moduleSlotCount, moduleSlotStack, unlimitedFilters, hybridFilterContext));
         clampClientList(clientAllowFiltersExtractor, maxA);

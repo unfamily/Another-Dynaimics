@@ -698,6 +698,9 @@ public final class SettingsCopierVirtualSession {
         }
         lastFilterLane = laneKind;
         lastFilterBank = bank;
+        if (laneKind == DuctTransportKind.ENERGY || laneKind == DuctTransportKind.HEAT) {
+            return;
+        }
         DuctFaceNode node = faceNodeForTransportKind(laneKind);
         if (!lanes.nodeMode.usesItemFilterConfig()) {
             return;
