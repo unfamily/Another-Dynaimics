@@ -13,6 +13,7 @@ import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 
@@ -157,10 +158,19 @@ public final class DuctCapHelper {
                 continue;
             }
             if (!retrieverBe.passesItemFilters(
-                    retrieverInventoryFace, probe, level, DuctFaceNode.FilterBank.RETRIEVER)) {
+                    retrieverInventoryFace,
+                    probe,
+                    level,
+                    DuctFaceNode.FilterBank.RETRIEVER,
+                    DuctDirectionalEndpoint.connectionAtDuctFace(level, donorPos, donorFace))) {
                 continue;
             }
-            if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
+            if (!donorBe.passesItemFilters(
+                    donorFace,
+                    probe,
+                    level,
+                    DuctFaceNode.FilterBank.FILTER,
+                    DuctDirectionalEndpoint.connectionAtDuctFace(level, retrieverPos, retrieverInventoryFace))) {
                 continue;
             }
             if (!canInsertIntoFace(level, retrieverPos, retrieverInventoryFace, probe)) {
@@ -190,10 +200,19 @@ public final class DuctCapHelper {
                 continue;
             }
             if (!retrieverBe.passesItemFilters(
-                    retrieverInventoryFace, probe, level, DuctFaceNode.FilterBank.RETRIEVER)) {
+                    retrieverInventoryFace,
+                    probe,
+                    level,
+                    DuctFaceNode.FilterBank.RETRIEVER,
+                    DuctDirectionalEndpoint.connectionAtDuctFace(level, donorPos, donorFace))) {
                 continue;
             }
-            if (!donorBe.passesItemFilters(donorFace, probe, level, DuctFaceNode.FilterBank.FILTER)) {
+            if (!donorBe.passesItemFilters(
+                    donorFace,
+                    probe,
+                    level,
+                    DuctFaceNode.FilterBank.FILTER,
+                    DuctDirectionalEndpoint.connectionAtDuctFace(level, retrieverPos, retrieverInventoryFace))) {
                 continue;
             }
             if (!canInsertIntoFace(level, retrieverPos, retrieverInventoryFace, probe)) {

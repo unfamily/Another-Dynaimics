@@ -23,7 +23,7 @@ import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.network.SettingsCopierHubActionPayload;
-import net.neoforged.fml.ModList;
+import net.unfamily.another_dynamics.duct.filterimport.external.ExternalUpgradeFilterImportSource;
 
 /**
  * Settings copier: hub and virtual universal duct editor in one screen (root layer sync, no nested openMenu).
@@ -565,7 +565,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                                 CENTER_PANEL_W,
                                 BTN_H)
                         .build();
-        importFilterHubButton.active = ModList.get().isLoaded("pipez");
+        importFilterHubButton.active = ExternalUpgradeFilterImportSource.isCompanionModLoaded();
         addRenderableWidget(importFilterHubButton);
 
         renameBox = new EditBox(this.font, 0, 0, RENAME_BOX_W, BTN_H, Component.empty());

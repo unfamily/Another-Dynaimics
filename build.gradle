@@ -143,7 +143,7 @@ dependencies {
     compileOnly "curse.maven:mekanism-268560:7621971"
     localRuntime "curse.maven:mekanism-268560:7621971"
 
-    // Pipez (optional): filter import from upgrade data components; no compile-time API usage.
+    // Optional companion mod (localRuntime): upgrade filter import via data components; no compile-time API usage.
     localRuntime "curse.maven:pipez-443900:5609056"
 
     // FTB Ultimine (optional): logical duct id selection grouping.

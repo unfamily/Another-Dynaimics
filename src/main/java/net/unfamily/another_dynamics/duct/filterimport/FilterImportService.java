@@ -48,6 +48,7 @@ public final class FilterImportService {
                         primary,
                         preview.mainLines(),
                         preview.mainConcatChannels(),
+                        preview.mainRemoteNodes(),
                         primaryName,
                         channel,
                         registries);
@@ -62,6 +63,7 @@ public final class FilterImportService {
                             secondCopierSlot,
                             preview.invertedLines(),
                             preview.invertedConcatChannels(),
+                            preview.invertedRemoteNodes(),
                             secondaryName,
                             channel,
                             registries);

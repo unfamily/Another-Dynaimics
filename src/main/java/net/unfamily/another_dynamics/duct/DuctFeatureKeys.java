@@ -15,6 +15,7 @@ public final class DuctFeatureKeys {
     public static final String FILTER_MODID = "filter:modid";
     public static final String FILTER_NBT = "filter:nbt";
     public static final String FILTER_PREDEFINED = "filter:predefined";
+    public static final String FILTER_REMOTE_NODE = "filter:remote_node";
 
     private DuctFeatureKeys() {}
 

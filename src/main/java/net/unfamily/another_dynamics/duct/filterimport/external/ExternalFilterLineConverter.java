@@ -1,4 +1,4 @@
-package net.unfamily.another_dynamics.duct.filterimport.pipez;
+package net.unfamily.another_dynamics.duct.filterimport.external;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,23 +9,24 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportPreview;
 
-/**
- * Converts Pipez {@code Filters} NBT into duct filter line strings (id / {@code #tag} / {@code ?nbt} pairs).
- */
-public final class PipezFilterLineConverter {
+/** Converts external upgrade {@code Filters} NBT into duct filter line strings. */
+public final class ExternalFilterLineConverter {
     /** Matches {@code gui.another_dynamics.settings_copier.import.default_allow|default_deny}. */
-    public static final String DEFAULT_ALLOW = "Pipez imported Allow";
-    public static final String DEFAULT_DENY = "Pipez imported Deny";
+    public static final String DEFAULT_ALLOW = "Imported Allow";
+    public static final String DEFAULT_DENY = "Imported Deny";
 
-    private PipezFilterLineConverter() {}
+    private ExternalFilterLineConverter() {}
 
     public static FilterImportPreview convert(CompoundTag channelData) {
         List<String> main = new ArrayList<>();
         List<String> inverted = new ArrayList<>();
         List<Integer> mainConcat = new ArrayList<>();
         List<Integer> invertedConcat = new ArrayList<>();
+        List<DuctDirectionalEndpoint> mainRemote = new ArrayList<>();
+        List<DuctDirectionalEndpoint> invertedRemote = new ArrayList<>();
         boolean whitelist = isWhitelist(channelData);
         int mainChannel = 1;
         int invertedChannel = 1;
@@ -37,17 +38,23 @@ public final class PipezFilterLineConverter {
                     if (lines.isEmpty()) {
                         continue;
                     }
+                    DuctDirectionalEndpoint remote =
+                            entry.contains("Destination", Tag.TAG_COMPOUND)
+                                    ? DuctDirectionalEndpoint.fromTag(entry.getCompound("Destination"))
+                                    : null;
                     boolean invert = entry.getBoolean("Invert");
                     if (invert) {
                         for (String line : lines) {
                             inverted.add(line);
                             invertedConcat.add(invertedChannel);
+                            invertedRemote.add(remote);
                         }
                         invertedChannel++;
                     } else {
                         for (String line : lines) {
                             main.add(line);
                             mainConcat.add(mainChannel);
+                            mainRemote.add(remote);
                         }
                         mainChannel++;
                     }
@@ -61,6 +68,8 @@ public final class PipezFilterLineConverter {
                 inverted,
                 mainConcat,
                 invertedConcat,
+                mainRemote,
+                invertedRemote,
                 primaryName,
                 secondaryName,
                 !inverted.isEmpty());
@@ -110,7 +119,7 @@ public final class PipezFilterLineConverter {
     }
 
     /**
-     * Maps Pipez tag paths to duct filter syntax: exact ids use {@code -id} (same as ghost-slot presets in
+     * Maps external tag paths to duct filter syntax: exact ids use {@code -id} (same as ghost-slot presets in
      * {@link net.unfamily.another_dynamics.client.gui.AbstractUniversalDuctScreen}), tags use {@code #tag}.
      */
     static String formatDuctFilterLine(String path, String type) {

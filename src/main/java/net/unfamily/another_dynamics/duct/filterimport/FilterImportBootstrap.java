@@ -4,7 +4,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
-import net.unfamily.another_dynamics.duct.filterimport.pipez.PipezFilterImportSource;
+import net.unfamily.another_dynamics.duct.filterimport.external.ExternalUpgradeFilterImportSource;
 
 @EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class FilterImportBootstrap {
@@ -13,6 +13,6 @@ public final class FilterImportBootstrap {
     @SubscribeEvent
     public static void onCommonSetup(FMLCommonSetupEvent event) {
         event.enqueueWork(
-                () -> FilterImportRegistry.register(PipezFilterImportSource.INSTANCE));
+                () -> FilterImportRegistry.register(ExternalUpgradeFilterImportSource.INSTANCE));
     }
 }

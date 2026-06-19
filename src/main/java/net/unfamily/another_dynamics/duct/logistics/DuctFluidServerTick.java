@@ -14,6 +14,7 @@ import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctFluidAllowLimitLogic;
@@ -91,6 +92,9 @@ public final class DuctFluidServerTick {
             NodeMode sourceMode,
             DuctFaceNode node,
             DuctFluidTransportSpec spec) {
+        if (DuctFilterFluidRouting.tryExtractEntryFirst(level, sourceBe, sourceFace, sourceMode, node, spec)) {
+            return;
+        }
         BlockPos srcPos = sourceBe.getBlockPos();
         if (isFluidFaceStalled(sourceBe.getFaceLanes(sourceFace))) {
             return;
@@ -152,7 +156,7 @@ public final class DuctFluidServerTick {
             if (s.endpoint().insertionPriority() != maxP) {
                 break;
             }
-            probeFluidDestination(level, srcCap, available, s)
+            probeFluidDestinationForRouting(level, srcPos, sourceFace, node, srcCap, available, s)
                     .ifPresent(validInTier::add);
             if (validInTier.size() >= EXTRACT_ROUTE_RETRY_CAP) {
                 break;
@@ -163,7 +167,7 @@ public final class DuctFluidServerTick {
         }
         int[] rr = new int[] {node.roundRobinCursor};
         RoutingMode extractRm = node.routingForExtraction(sourceMode);
-        DestCandidate pick = pickWithinTier(level, validInTier, extractRm, rr);
+        DestCandidate pick = pickWithinTierForRouting(level, validInTier, extractRm, rr);
         if (pick == null) {
             return;
         }
@@ -199,6 +203,9 @@ public final class DuctFluidServerTick {
             Direction retrieverFace,
             DuctFaceNode node,
             DuctFluidTransportSpec spec) {
+        if (DuctFilterFluidRouting.tryRetrieveEntryFirst(level, retrieverBe, retrieverFace, node, spec)) {
+            return;
+        }
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         DuctFaceLanes retrieverLanes = retrieverBe.getFaceLanes(retrieverFace);
         IFluidHandler destCap =
@@ -267,7 +274,11 @@ public final class DuctFluidServerTick {
             NodeMode donorMode = donorLanes.nodeMode;
             if (donorMode == NodeMode.FILTERING_INSERTION
                     && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                            donorFluid, DuctFaceNode.FilterBank.FILTER, available, level)) {
+                            donorFluid,
+                            DuctFaceNode.FilterBank.FILTER,
+                            available,
+                            level,
+                            DuctDirectionalEndpoint.connectionAtDuctFace(level, retrieverPos, retrieverFace))) {
                 continue;
             }
             int keepCap =
@@ -288,7 +299,11 @@ public final class DuctFluidServerTick {
                 }
             }
             if (!DuctFluidFilterLogic.passesFluidFiltersForBank(
-                    node, DuctFaceNode.FilterBank.RETRIEVER, available, level)) {
+                    node,
+                    DuctFaceNode.FilterBank.RETRIEVER,
+                    available,
+                    level,
+                    DuctDirectionalEndpoint.connectionAtDuctFace(level, donor, donorFace))) {
                 continue;
             }
             int pendingSum = donorBe.pendingOutboundFluidMbFromFace(donorFace, available);
@@ -344,7 +359,7 @@ public final class DuctFluidServerTick {
         }
     }
 
-    private static List<DuctTargetSelector.DonorCandidate> listFluidRetrievingDonorCandidates(
+    static List<DuctTargetSelector.DonorCandidate> listFluidRetrievingDonorCandidates(
             ServerLevel level,
             BlockPos retrieverPos,
             Direction retrieverInventoryFace,
@@ -403,7 +418,11 @@ public final class DuctFluidServerTick {
                 }
                 if (donorMode == NodeMode.FILTERING_INSERTION
                         && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                                donorFluid, DuctFaceNode.FilterBank.FILTER, sample, level)) {
+                                donorFluid,
+                                DuctFaceNode.FilterBank.FILTER,
+                                sample,
+                                level,
+                                DuctDirectionalEndpoint.connectionAtDuctFace(level, retrieverPos, retrieverInventoryFace))) {
                     continue;
                 }
                 if (DuctFluidCapHelper.simulateFill(retrieverDestCap, sample) <= 0) {
@@ -494,7 +513,7 @@ public final class DuctFluidServerTick {
         }
     }
 
-    private static int capFillMbForRetrieverDestinationLimits(
+    static int capFillMbForRetrieverDestinationLimits(
             ServerLevel level,
             DuctBlockEntity destBe,
             Direction destFace,
@@ -527,13 +546,25 @@ public final class DuctFluidServerTick {
         return Math.min(simulatedFillMb, maxAdd);
     }
 
-    private static java.util.Optional<DestCandidate> probeFluidDestination(
-            ServerLevel level, IFluidHandler srcCap, FluidStack available, DuctRoutingEndpointIndex.ScoredEndpoint scored) {
+    static java.util.Optional<DestCandidate> probeFluidDestinationForRouting(
+            ServerLevel level,
+            BlockPos sourcePos,
+            Direction sourceFace,
+            DuctFaceNode sourceNode,
+            IFluidHandler srcCap,
+            FluidStack available,
+            DuctRoutingEndpointIndex.ScoredEndpoint scored) {
         DuctRoutingEndpointIndex.RoutingEndpoint ep = scored.endpoint();
         if (!(level.getBlockEntity(ep.pos()) instanceof DuctBlockEntity destBe)) {
             return java.util.Optional.empty();
         }
         Direction df = ep.face();
+        DuctDirectionalEndpoint destEp = DuctDirectionalEndpoint.connectionAtDuctFace(level, ep.pos(), df);
+        DuctDirectionalEndpoint sourceEp = DuctDirectionalEndpoint.connectionAtDuctFace(level, sourcePos, sourceFace);
+        if (!DuctFluidFilterLogic.passesFluidFiltersForBank(
+                sourceNode, DuctFaceNode.FilterBank.EXTRACTOR, available, level, destEp)) {
+            return java.util.Optional.empty();
+        }
         DuctFaceLanes destLanes = destBe.getFaceLanes(df);
         DuctFaceNode destNode = destLanes.fluid;
         NodeMode dm = destLanes.nodeMode;
@@ -549,7 +580,7 @@ public final class DuctFluidServerTick {
         }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
+                        destNode, DuctFaceNode.FilterBank.FILTER, toMove, level, sourceEp)) {
             return java.util.Optional.empty();
         }
         if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
@@ -591,6 +622,9 @@ public final class DuctFluidServerTick {
             return java.util.Optional.empty();
         }
         Direction df = ep.face();
+        DuctDirectionalEndpoint destEp = DuctDirectionalEndpoint.connectionAtDuctFace(level, ep.pos(), df);
+        DuctDirectionalEndpoint sourceEp =
+                DuctDirectionalEndpoint.connectionAtDuctFace(level, sourceBe.getBlockPos(), sourceFace);
         DuctFaceLanes destLanes = destBe.getFaceLanes(df);
         DuctFaceNode destNode = destLanes.fluid;
         NodeMode dm = destLanes.nodeMode;
@@ -604,14 +638,19 @@ public final class DuctFluidServerTick {
         if (simulated <= 0) {
             return java.util.Optional.empty();
         }
+        DuctFaceNode sourceNode = sourceBe.getFaceLanes(sourceFace).fluid;
+        if (!DuctFluidFilterLogic.passesFluidFiltersForBank(
+                sourceNode, DuctFaceNode.FilterBank.EXTRACTOR, toMove, level, destEp)) {
+            return java.util.Optional.empty();
+        }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
+                        destNode, DuctFaceNode.FilterBank.FILTER, toMove, level, sourceEp)) {
             return java.util.Optional.empty();
         }
         if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        destNode, DuctFaceNode.FilterBank.RETRIEVER, toMove, level)) {
+                        destNode, DuctFaceNode.FilterBank.RETRIEVER, toMove, level, sourceEp)) {
             return java.util.Optional.empty();
         }
         if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
@@ -644,9 +683,9 @@ public final class DuctFluidServerTick {
                 new DestCandidate(ep.pos(), df, ep.insertionPriority(), scored.distTicks(), simulated));
     }
 
-    private record DestCandidate(BlockPos ductPos, Direction face, int priority, long dist, int movedMb) {}
+    record DestCandidate(BlockPos ductPos, Direction face, int priority, long dist, int movedMb) {}
 
-    private static DestCandidate pickWithinTier(
+    static DestCandidate pickWithinTierForRouting(
             ServerLevel level, List<DestCandidate> tier, RoutingMode routing, int[] roundRobinState) {
         if (tier.isEmpty()) {
             return null;
@@ -705,11 +744,13 @@ public final class DuctFluidServerTick {
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
             return false;
         }
-        return pinnedFaceSimulatesOk(level, destBe, s);
+        return pinnedFaceSimulatesOk(level, sourceBe, destBe, s);
     }
 
     private static boolean pinnedFaceSimulatesOk(
-            ServerLevel level, DuctBlockEntity destBe, FluidTransitShipment s) {
+            ServerLevel level, DuctBlockEntity sourceBe, DuctBlockEntity destBe, FluidTransitShipment s) {
+        DuctDirectionalEndpoint sourceEp =
+                DuctDirectionalEndpoint.connectionAtDuctFace(level, sourceBe.getBlockPos(), s.sourceFace);
         BlockPos destPos = destBe.getBlockPos();
         Direction df = s.destFace;
         int dsm = destBe.getStorageMask();
@@ -730,12 +771,12 @@ public final class DuctFluidServerTick {
         }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        destLanes.fluid, DuctFaceNode.FilterBank.FILTER, s.fluid, level)) {
+                        destLanes.fluid, DuctFaceNode.FilterBank.FILTER, s.fluid, level, sourceEp)) {
             return false;
         }
         if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        destLanes.fluid, DuctFaceNode.FilterBank.RETRIEVER, s.fluid, level)) {
+                        destLanes.fluid, DuctFaceNode.FilterBank.RETRIEVER, s.fluid, level, sourceEp)) {
             return false;
         }
         IFluidHandler destCap =
@@ -785,14 +826,16 @@ public final class DuctFluidServerTick {
             return;
         }
         FluidStack toMove = s.fluid.copy();
+        DuctDirectionalEndpoint sourceEp =
+                DuctDirectionalEndpoint.connectionAtDuctFace(level, sourceBe.getBlockPos(), s.sourceFace);
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        destLanes.fluid, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
+                        destLanes.fluid, DuctFaceNode.FilterBank.FILTER, toMove, level, sourceEp)) {
             return;
         }
         if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        destLanes.fluid, DuctFaceNode.FilterBank.RETRIEVER, toMove, level)) {
+                        destLanes.fluid, DuctFaceNode.FilterBank.RETRIEVER, toMove, level, sourceEp)) {
             return;
         }
         IFluidHandler destCap =
@@ -905,7 +948,7 @@ public final class DuctFluidServerTick {
         }
         int[] rr = new int[] {node.roundRobinCursor};
         RoutingMode stallRm = node.routingForStallResend(sourceMode);
-        DestCandidate pick = pickWithinTier(level, validInTier, stallRm, rr);
+        DestCandidate pick = pickWithinTierForRouting(level, validInTier, stallRm, rr);
         if (pick == null) {
             return 0;
         }
@@ -941,7 +984,7 @@ public final class DuctFluidServerTick {
         return false;
     }
 
-    private static boolean isFluidFaceStalled(DuctFaceLanes lanes) {
+    static boolean isFluidFaceStalled(DuctFaceLanes lanes) {
         if (lanes == null) {
             return false;
         }

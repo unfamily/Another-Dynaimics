@@ -7,12 +7,16 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.DuctFilterLineReorder;
+import net.unfamily.another_dynamics.duct.DuctFilterRemoteNodeLogic;
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
 import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
 import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
+
+import org.jetbrains.annotations.Nullable;
 
 /** Writes FILTER-mode copier snapshots from imported line lists. */
 public final class FilterImportCopierWriter {
@@ -28,6 +32,15 @@ public final class FilterImportCopierWriter {
             List<Integer> caps,
             List<Integer> concatChannels,
             HolderLookup.Provider registries) {
+        optimizeImportedLines(lines, caps, concatChannels, null, registries);
+    }
+
+    public static void optimizeImportedLines(
+            List<String> lines,
+            List<Integer> caps,
+            List<Integer> concatChannels,
+            List<DuctDirectionalEndpoint> remoteNodes,
+            HolderLookup.Provider registries) {
         if (lines == null || lines.size() < 2) {
             return;
         }
@@ -35,7 +48,16 @@ public final class FilterImportCopierWriter {
         List<Integer> denyCaps = new ArrayList<>();
         List<Integer> denyConcat = new ArrayList<>();
         DuctFilterLineReorder.sortAllowDenyRows(
-                lines, deny, caps, denyCaps, registries, null, concatChannels, denyConcat);
+                lines,
+                deny,
+                caps,
+                denyCaps,
+                registries,
+                null,
+                concatChannels,
+                denyConcat,
+                remoteNodes,
+                null);
     }
 
     public static ItemStack writeFilterCopier(
@@ -54,6 +76,17 @@ public final class FilterImportCopierWriter {
             String customName,
             FilterImportChannel channel,
             HolderLookup.Provider registries) {
+        return writeFilterCopier(base, lines, concatChannels, null, customName, channel, registries);
+    }
+
+    public static ItemStack writeFilterCopier(
+            ItemStack base,
+            List<String> lines,
+            List<Integer> concatChannels,
+            List<@Nullable DuctDirectionalEndpoint> remoteNodes,
+            String customName,
+            FilterImportChannel channel,
+            HolderLookup.Provider registries) {
         ItemStack out = base.isEmpty() ? new ItemStack(base.getItem()) : base.copy();
         if (!(out.getItem() instanceof SettingsCopierItem)) {
             return ItemStack.EMPTY;
@@ -68,10 +101,15 @@ public final class FilterImportCopierWriter {
         while (mutableConcat.size() < mutableLines.size()) {
             mutableConcat.add(0);
         }
-        optimizeImportedLines(mutableLines, caps, mutableConcat, registries);
+        List<DuctDirectionalEndpoint> mutableRemote =
+                remoteNodes != null ? new ArrayList<>(remoteNodes) : new ArrayList<>();
+        DuctFilterRemoteNodeLogic.syncToLineSize(mutableRemote, mutableLines.size());
+        optimizeImportedLines(mutableLines, caps, mutableConcat, mutableRemote, registries);
 
         FilterListMaterialKind kind = FilterListMaterialKind.fromImportChannel(channel);
-        var snap = DuctFilterListSnapshot.buildPortableAllowList(mutableLines, caps, mutableConcat, kind);
+        var snap =
+                DuctFilterListSnapshot.buildPortableAllowList(
+                        mutableLines, caps, mutableConcat, mutableRemote, kind);
 
         DuctFaceSettingsSnapshot.writeToCopier(out, snap);
         SettingsCopierStoreKind.setMode(out, SettingsCopierStoreKind.FILTER);

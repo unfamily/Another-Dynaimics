@@ -13,6 +13,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlockItem;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctModuleItem;
+import net.unfamily.another_dynamics.item.RemoteNodeSelectorItem;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 
 public final class ModItems {
@@ -33,6 +34,11 @@ public final class ModItems {
 
     public static final DeferredItem<Item> BULKY_WRENCH =
             ITEMS.register("bulky_wrench", () -> new Item(new Item.Properties().stacksTo(1)));
+
+    public static final DeferredItem<RemoteNodeSelectorItem> REMOTE_NODE_SELECTOR =
+            ITEMS.register(
+                    "remote_node_selector",
+                    () -> new RemoteNodeSelectorItem(new Item.Properties().stacksTo(1)));
 
     public static final DeferredItem<DuctBlockItem> DUCT =
             ITEMS.register(

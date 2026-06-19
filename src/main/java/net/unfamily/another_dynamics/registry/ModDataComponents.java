@@ -9,6 +9,7 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 
 /**
@@ -60,6 +61,17 @@ public final class ModDataComponents {
                                     .persistent(Codec.BOOL)
                                     .networkSynchronized(ByteBufCodecs.BOOL)
                                     .build());
+
+    /** Bound duct face endpoint on {@link net.unfamily.another_dynamics.item.RemoteNodeSelectorItem}. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<DuctDirectionalEndpoint>>
+            REMOTE_NODE_ENDPOINT =
+                    TYPES.register(
+                            "remote_node_endpoint",
+                            () ->
+                                    DataComponentType.<DuctDirectionalEndpoint>builder()
+                                            .persistent(DuctDirectionalEndpoint.CODEC)
+                                            .networkSynchronized(DuctDirectionalEndpoint.STREAM_CODEC)
+                                            .build());
 
     private ModDataComponents() {}
 }

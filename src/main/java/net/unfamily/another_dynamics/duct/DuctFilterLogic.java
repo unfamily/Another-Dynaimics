@@ -1,5 +1,6 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import net.minecraft.core.HolderLookup;
@@ -8,6 +9,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Item filter precedence ({@link DuctFaceNode#denyOverridesAllow} per bank).
@@ -18,26 +21,107 @@ public final class DuctFilterLogic {
     private DuctFilterLogic() {}
 
     public static boolean passesItemFilters(DuctFaceNode node, ItemStack stack, Level level) {
+        return passesItemFilters(node, stack, level, null);
+    }
+
+    public static boolean passesItemFilters(
+            DuctFaceNode node, ItemStack stack, Level level, @Nullable DuctDirectionalEndpoint counterparty) {
+        return passesItemFiltersWithConcat(
+                node.denyOverridesAllow,
+                node.allowFilters,
+                node.denyFilters,
+                node.allowConcatChannels,
+                node.denyConcatChannels,
+                node.allowRemoteNodes,
+                node.denyRemoteNodes,
+                node.allowRemoteIgnoreChannel,
+                node.denyRemoteIgnoreChannel,
+                stack,
+                level,
+                counterparty);
+    }
+
+    /** Evaluate allow/deny banks with concat groups and optional per-line remote node bindings. */
+    public static boolean passesItemFiltersWithConcat(
+            boolean denyOverridesAllow,
+            List<String> allowFilters,
+            List<String> denyFilters,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
+            List<DuctDirectionalEndpoint> allowRemote,
+            List<DuctDirectionalEndpoint> denyRemote,
+            List<Boolean> allowIgnoreChannel,
+            List<Boolean> denyIgnoreChannel,
+            ItemStack stack,
+            Level level,
+            @Nullable DuctDirectionalEndpoint counterparty) {
         if (stack.isEmpty()) {
             return false;
         }
         HolderLookup.Provider reg = level.registryAccess();
-        boolean hasA = hasAnyNonEmpty(node.allowFilters);
-        boolean hasD = hasAnyNonEmpty(node.denyFilters);
-        if (!hasA && !hasD) {
-            return true;
-        }
-
         Item item = stack.getItem();
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
         String itemIdStr = itemId.toString();
         String itemModId = itemId.getNamespace();
 
+        if (counterparty != null) {
+            return DuctFilterUnitLogic.evaluateSequentialPrecedence(
+                    denyOverridesAllow,
+                    allowFilters,
+                    denyFilters,
+                    allowConcat,
+                    denyConcat,
+                    allowRemote,
+                    denyRemote,
+                    allowIgnoreChannel,
+                    denyIgnoreChannel,
+                    counterparty,
+                    (i, trimmed) ->
+                            matchesLineWithConcat(
+                                    allowFilters,
+                                    allowConcat,
+                                    allowRemote,
+                                    counterparty,
+                                    i,
+                                    trimmed,
+                                    stack,
+                                    item,
+                                    itemId,
+                                    itemIdStr,
+                                    itemModId,
+                                    reg,
+                                    false),
+                    (i, trimmed) ->
+                            matchesLineWithConcat(
+                                    denyFilters,
+                                    denyConcat,
+                                    denyRemote,
+                                    counterparty,
+                                    i,
+                                    trimmed,
+                                    stack,
+                                    item,
+                                    itemId,
+                                    itemIdStr,
+                                    itemModId,
+                                    reg,
+                                    false));
+        }
+
+        boolean hasA =
+                DuctFilterRemoteNodeLogic.hasAnyApplicableNonEmpty(allowFilters, allowRemote, counterparty);
+        boolean hasD =
+                DuctFilterRemoteNodeLogic.hasAnyApplicableNonEmpty(denyFilters, denyRemote, counterparty);
+        if (!hasA && !hasD) {
+            return true;
+        }
         boolean A =
                 hasA
                         && matchesAny(
-                                node.allowFilters,
-                                node.allowConcatChannels,
+                                allowFilters,
+                                allowConcat,
+                                allowRemote,
+                                counterparty,
                                 stack,
                                 item,
                                 itemId,
@@ -47,16 +131,74 @@ public final class DuctFilterLogic {
         boolean D =
                 hasD
                         && matchesAny(
-                                node.denyFilters,
-                                node.denyConcatChannels,
+                                denyFilters,
+                                denyConcat,
+                                denyRemote,
+                                counterparty,
                                 stack,
                                 item,
                                 itemId,
                                 itemIdStr,
                                 itemModId,
                                 reg);
+        return applyPrecedence(denyOverridesAllow, hasA, hasD, A, D);
+    }
 
-        if (node.denyOverridesAllow) {
+    public static boolean itemMatchesAllowUnit(
+            DuctFaceNode.FilterBank bank,
+            DuctFaceNode node,
+            DuctFilterUnitLogic.FilterUnit unit,
+            ItemStack stack,
+            Level level) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        HolderLookup.Provider reg = level.registryAccess();
+        Item item = stack.getItem();
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        String itemIdStr = itemId.toString();
+        String itemModId = itemId.getNamespace();
+        List<String> allow = node.bankAllowFilters(bank);
+        List<Integer> concat = node.bankAllowConcatChannels(bank);
+        return DuctFilterUnitLogic.unitTextMatches(
+                unit,
+                allow,
+                concat,
+                (i, trimmed) ->
+                        DuctFilterMatcher.matchesFilterEntry(
+                                stack, item, itemId, itemIdStr, itemModId, trimmed, reg));
+    }
+
+    public static boolean itemMatchesDenyForAllowUnit(
+            DuctFaceNode.FilterBank bank,
+            DuctFaceNode node,
+            DuctFilterUnitLogic.FilterUnit allowUnit,
+            ItemStack stack,
+            Level level,
+            @Nullable DuctDirectionalEndpoint counterparty) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        HolderLookup.Provider reg = level.registryAccess();
+        Item item = stack.getItem();
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        String itemIdStr = itemId.toString();
+        String itemModId = itemId.getNamespace();
+        return DuctFilterUnitLogic.denyBlocksAllowUnit(
+                allowUnit,
+                node.bankDenyFilters(bank),
+                node.bankDenyConcatChannels(bank),
+                node.bankDenyRemoteNodes(bank),
+                node.bankDenyRemoteIgnoreChannel(bank),
+                counterparty,
+                (i, trimmed) ->
+                        DuctFilterMatcher.matchesFilterEntry(
+                                stack, item, itemId, itemIdStr, itemModId, trimmed, reg));
+    }
+
+    private static boolean applyPrecedence(
+            boolean denyOverridesAllow, boolean hasA, boolean hasD, boolean A, boolean D) {
+        if (denyOverridesAllow) {
             if (D) {
                 return false;
             }
@@ -77,18 +219,33 @@ public final class DuctFilterLogic {
         return true;
     }
 
-    private static boolean hasAnyNonEmpty(List<String> list) {
-        for (String s : list) {
-            if (s != null && !s.trim().isEmpty()) {
-                return true;
-            }
+    private static boolean matchesLineWithConcat(
+            List<String> entries,
+            List<Integer> concatChannels,
+            List<DuctDirectionalEndpoint> remoteNodes,
+            @Nullable DuctDirectionalEndpoint counterparty,
+            int index,
+            String trimmed,
+            ItemStack stack,
+            Item item,
+            ResourceLocation itemId,
+            String itemIdStr,
+            String itemModId,
+            HolderLookup.Provider registries,
+            boolean checkRemote) {
+        if (checkRemote
+                && !DuctFilterRemoteNodeLogic.lineApplicable(index, remoteNodes, counterparty)) {
+            return false;
         }
-        return false;
+        return DuctFilterMatcher.matchesFilterEntry(
+                stack, item, itemId, itemIdStr, itemModId, trimmed, registries);
     }
 
     private static boolean matchesAny(
             List<String> entries,
             List<Integer> concatChannels,
+            List<DuctDirectionalEndpoint> remoteNodes,
+            @Nullable DuctDirectionalEndpoint counterparty,
             ItemStack stack,
             Item item,
             ResourceLocation itemId,
@@ -99,8 +256,20 @@ public final class DuctFilterLogic {
                 entries,
                 concatChannels,
                 (i, trimmed) ->
-                        DuctFilterMatcher.matchesFilterEntry(
-                                stack, item, itemId, itemIdStr, itemModId, trimmed, registries));
+                        matchesLineWithConcat(
+                                entries,
+                                concatChannels,
+                                remoteNodes,
+                                counterparty,
+                                i,
+                                trimmed,
+                                stack,
+                                item,
+                                itemId,
+                                itemIdStr,
+                                itemModId,
+                                registries,
+                                true));
     }
 
     public static int listHash(List<String> list) {

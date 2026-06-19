@@ -5,6 +5,9 @@ import java.util.List;
 
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
+
+import org.jetbrains.annotations.Nullable;
 
 final class DuctFilterPacketCodecs {
     /** Per-entry UTF-8 cap (NBT {@code ?} filters from ghost slot can be long). */
@@ -52,6 +55,54 @@ final class DuctFilterPacketCodecs {
                         List<Integer> list = new ArrayList<>(n);
                         for (int i = 0; i < n; i++) {
                             list.add(Math.max(0, buf.readVarInt()));
+                        }
+                        return list;
+                    });
+
+    static final StreamCodec<RegistryFriendlyByteBuf, List<Boolean>> BOOL_LIST =
+            StreamCodec.of(
+                    (buf, list) -> {
+                        buf.writeVarInt(list.size());
+                        for (Boolean v : list) {
+                            buf.writeBoolean(v != null && v);
+                        }
+                    },
+                    buf -> {
+                        int n = buf.readVarInt();
+                        if (n < 0 || n > MAX_LIST_ENTRIES) {
+                            throw new IllegalStateException("Invalid duct bool list size: " + n);
+                        }
+                        List<Boolean> list = new ArrayList<>(n);
+                        for (int i = 0; i < n; i++) {
+                            list.add(buf.readBoolean());
+                        }
+                        return list;
+                    });
+
+    static final StreamCodec<RegistryFriendlyByteBuf, List<@Nullable DuctDirectionalEndpoint>> REMOTE_NODE_LIST =
+            StreamCodec.of(
+                    (buf, list) -> {
+                        buf.writeVarInt(list.size());
+                        for (@Nullable DuctDirectionalEndpoint ep : list) {
+                            boolean has = ep != null;
+                            buf.writeBoolean(has);
+                            if (has) {
+                                DuctDirectionalEndpoint.STREAM_CODEC.encode(buf, ep);
+                            }
+                        }
+                    },
+                    buf -> {
+                        int n = buf.readVarInt();
+                        if (n < 0 || n > MAX_LIST_ENTRIES) {
+                            throw new IllegalStateException("Invalid duct remote-node list size: " + n);
+                        }
+                        List<@Nullable DuctDirectionalEndpoint> list = new ArrayList<>(n);
+                        for (int i = 0; i < n; i++) {
+                            if (buf.readBoolean()) {
+                                list.add(DuctDirectionalEndpoint.STREAM_CODEC.decode(buf));
+                            } else {
+                                list.add(null);
+                            }
                         }
                         return list;
                     });

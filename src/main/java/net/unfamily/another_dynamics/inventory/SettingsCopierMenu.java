@@ -18,6 +18,7 @@ import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctGuiLayout;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctMenuSync;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
@@ -106,7 +107,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     private final SimpleContainer importContainer = new SimpleContainer(2);
     /** Server: channel selected in import GUI (synced from client). */
     private int importChannelOrdinal;
-    /** Client-only: second copier slot visible when preview has inverted Pipez filters. */
+    /** Client-only: second copier slot visible when preview has inverted filter lists. */
     boolean clientImportNeedsSecondCopier;
 
     /**
@@ -345,6 +346,9 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         if (!isVirtualLayer() || virtualSession == null) {
             return;
         }
+        FilterSyncDebugLog.serverPacket(
+                "COPIER_RETURN_TO_HUB",
+                "player=" + player.getGameProfile().getName() + " persisting virtual session");
         ItemStack copier = virtualSession.getCopierStack();
         if (!copier.isEmpty()) {
             virtualSession.persistToCopier(copier);
@@ -407,58 +411,174 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     }
 
     @Override
+    public DuctTransportKind filterTransportKind() {
+        SettingsCopierStoreKind sk = storeKind(owner);
+        if (sk == SettingsCopierStoreKind.FILTER && isVirtualLayer()) {
+            FilterListMaterialKind mk =
+                    virtualSession != null
+                            ? virtualSession.filterListMaterialKind()
+                            : clientFilterListMaterialKind(owner);
+            if (mk != FilterListMaterialKind.NONE) {
+                return mk.toTransportKind();
+            }
+        }
+        DuctTransportKind[] kinds = DuctTransportKind.values();
+        return kinds[
+                Mth.clamp(
+                        syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
+                        0,
+                        kinds.length - 1)];
+    }
+
+    @Override
     public List<String> getClientAllowFilters(DuctFaceNode.FilterBank bank) {
-        return filterBuffers.getClientAllowFilters(bank);
+        return filterBuffers.getClientAllowFilters(filterTransportKindOrdinal(), bank);
     }
 
     @Override
     public List<String> getClientDenyFilters(DuctFaceNode.FilterBank bank) {
-        return filterBuffers.getClientDenyFilters(bank);
+        return filterBuffers.getClientDenyFilters(filterTransportKindOrdinal(), bank);
     }
 
     @Override
     public boolean getClientDenyOverridesAllow(DuctFaceNode.FilterBank bank) {
-        return filterBuffers.getClientDenyOverridesAllow(bank);
+        return filterBuffers.getClientDenyOverridesAllow(filterTransportKindOrdinal(), bank);
     }
 
     @Override
     public List<Integer> getClientAllowCaps(DuctFaceNode.FilterBank bank) {
-        return filterBuffers.getClientAllowCaps(bank);
+        return filterBuffers.getClientAllowCaps(filterTransportKindOrdinal(), bank);
     }
 
     @Override
     public List<Integer> getClientFilterKeepCaps() {
-        return filterBuffers.getClientFilterKeepCaps();
+        return filterBuffers.getClientFilterKeepCaps(filterTransportKindOrdinal());
     }
 
     @Override
     public List<Integer> getClientAllowConcatChannels(DuctFaceNode.FilterBank bank) {
-        return filterBuffers.getClientAllowConcatChannels(bank);
+        return filterBuffers.getClientAllowConcatChannels(filterTransportKindOrdinal(), bank);
     }
 
     @Override
     public List<Integer> getClientDenyConcatChannels(DuctFaceNode.FilterBank bank) {
-        return filterBuffers.getClientDenyConcatChannels(bank);
+        return filterBuffers.getClientDenyConcatChannels(filterTransportKindOrdinal(), bank);
+    }
+
+    @Override
+    public List<@Nullable DuctDirectionalEndpoint> getClientAllowRemoteNodes(DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientAllowRemoteNodes(filterTransportKindOrdinal(), bank);
+    }
+
+    @Override
+    public List<@Nullable DuctDirectionalEndpoint> getClientDenyRemoteNodes(DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientDenyRemoteNodes(filterTransportKindOrdinal(), bank);
+    }
+
+    @Override
+    public List<Boolean> getClientAllowRemoteIgnoreChannel(DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientAllowRemoteIgnoreChannel(filterTransportKindOrdinal(), bank);
+    }
+
+    @Override
+    public List<Boolean> getClientDenyRemoteIgnoreChannel(DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientDenyRemoteIgnoreChannel(filterTransportKindOrdinal(), bank);
+    }
+
+    @Override
+    public List<Boolean> getClientAllowRemoteAnyFace(DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientAllowRemoteAnyFace(filterTransportKindOrdinal(), bank);
+    }
+
+    @Override
+    public List<Boolean> getClientDenyRemoteAnyFace(DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientDenyRemoteAnyFace(filterTransportKindOrdinal(), bank);
     }
 
     @Override
     public boolean clientFiltersHydrated() {
-        return filterBuffers.clientFiltersHydrated();
+        return filterBuffers.clientFiltersHydrated(filterTransportKindOrdinal());
     }
 
     @Override
     public boolean clientFiltersDirty() {
-        return filterBuffers.clientFiltersDirty();
+        return filterBuffers.clientFiltersDirty(filterTransportKindOrdinal());
+    }
+
+    @Override
+    public boolean clientFiltersHydrated(int transportKindOrdinal) {
+        return filterBuffers.clientFiltersHydrated(transportKindOrdinal);
+    }
+
+    @Override
+    public boolean clientFiltersDirty(int transportKindOrdinal) {
+        return filterBuffers.clientFiltersDirty(transportKindOrdinal);
     }
 
     @Override
     public void markClientFiltersDirty() {
-        filterBuffers.markClientFiltersDirty();
+        filterBuffers.markClientFiltersDirty(filterTransportKindOrdinal());
     }
 
     @Override
     public boolean shouldPushClientFiltersOnClose() {
-        return filterBuffers.shouldPushClientFiltersOnClose();
+        return filterBuffers.shouldPushOnClose(filterTransportKindOrdinal());
+    }
+
+    @Override
+    public boolean shouldPushFiltersForTransport(int transportKindOrdinal) {
+        return filterBuffers.shouldPushOnClose(transportKindOrdinal);
+    }
+
+    @Override
+    public void pushAllFilterBanksForTransport(int transportKindOrdinal) {
+        if (!filterBuffers.shouldPushOnClose(transportKindOrdinal)) {
+            filterBuffers.logPushState(transportKindOrdinal, "pushAll_skip_not_dirty_or_hydrated");
+            return;
+        }
+        filterBuffers.logPushState(transportKindOrdinal, "pushAll_start");
+        ClientFilterLaneMirror mirror = filterBuffers.mirrorForTransport(transportKindOrdinal);
+        for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
+            List<Integer> caps2 =
+                    bank == DuctFaceNode.FilterBank.FILTER
+                            ? new java.util.ArrayList<>(mirror.filterKeepCaps())
+                            : List.of();
+            FilterSyncDebugLog.clientPush(
+                    "SettingsCopierMenu.pushAll",
+                    ductBlockPos,
+                    accessFace,
+                    transportKindOrdinal,
+                    bank.ordinal(),
+                    mirror.allowFilters(bank),
+                    mirror.denyFilters(bank),
+                    true);
+            ModNetwork.sendFilterUpdate(
+                    ductBlockPos,
+                    accessFace,
+                    transportKindOrdinal,
+                    bank.ordinal(),
+                    new java.util.ArrayList<>(mirror.allowFilters(bank)),
+                    new java.util.ArrayList<>(mirror.denyFilters(bank)),
+                    new java.util.ArrayList<>(mirror.allowCaps(bank)),
+                    caps2,
+                    new java.util.ArrayList<>(mirror.allowConcat(bank)),
+                    new java.util.ArrayList<>(mirror.denyConcat(bank)),
+                    new java.util.ArrayList<>(mirror.allowRemote(bank)),
+                    new java.util.ArrayList<>(mirror.denyRemote(bank)),
+                    new java.util.ArrayList<>(mirror.allowRemoteIgnoreChannel(bank)),
+                    new java.util.ArrayList<>(mirror.denyRemoteIgnoreChannel(bank)),
+                    new java.util.ArrayList<>(mirror.allowRemoteAnyFace(bank)),
+                    new java.util.ArrayList<>(mirror.denyRemoteAnyFace(bank)),
+                    mirror.denyOverridesAllow(bank));
+        }
+    }
+
+    @Override
+    public void reorderClientFilterBankForTransport(
+            int transportKindOrdinal,
+            DuctFaceNode.FilterBank bank,
+            net.minecraft.core.RegistryAccess registryAccess) {
+        filterBuffers.reorderFilterBank(transportKindOrdinal, bank, registryAccess);
     }
 
     @Override
@@ -473,11 +593,16 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             List<Integer> allowCaps2,
             List<Integer> allowConcat,
             List<Integer> denyConcat,
+            List<@Nullable DuctDirectionalEndpoint> allowRemote,
+            List<@Nullable DuctDirectionalEndpoint> denyRemote,
+            List<Boolean> allowRemoteIgnoreChannel,
+            List<Boolean> denyRemoteIgnoreChannel,
+            List<Boolean> allowRemoteAnyFace,
+            List<Boolean> denyRemoteAnyFace,
             boolean denyOverridesAllow) {
         filterBuffers.receiveFilterSync(
                 ductBlockPos,
                 accessFace,
-                syncData,
                 pos,
                 face,
                 transportKindOrdinal,
@@ -488,12 +613,19 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
                 allowCaps2,
                 allowConcat,
                 denyConcat,
+                allowRemote,
+                denyRemote,
+                allowRemoteIgnoreChannel,
+                denyRemoteIgnoreChannel,
+                allowRemoteAnyFace,
+                denyRemoteAnyFace,
                 denyOverridesAllow);
     }
 
     @Override
     public void ensureClientFilterBufferSizes(boolean hybridFilterContext) {
         filterBuffers.ensureClientFilterBufferSizes(
+                filterTransportKindOrdinal(),
                 syncData,
                 UNIVERSAL_LOGICAL_ID,
                 0,
@@ -511,18 +643,47 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             List<Integer> allowCaps2,
             List<Integer> allowConcat,
             List<Integer> denyConcat,
+            List<@Nullable DuctDirectionalEndpoint> allowRemote,
+            List<@Nullable DuctDirectionalEndpoint> denyRemote,
+            List<Boolean> allowRemoteIgnoreChannel,
+            List<Boolean> denyRemoteIgnoreChannel,
+            List<Boolean> allowRemoteAnyFace,
+            List<Boolean> denyRemoteAnyFace,
             boolean denyOverridesAllow,
             boolean editingAllowList) {
+        filterBuffers.logPushState(filterTransportKindOrdinal(), "before_push");
+        FilterSyncDebugLog.clientPush(
+                "SettingsCopierMenu",
+                ductBlockPos,
+                accessFace,
+                filterTransportKindOrdinal(),
+                bank.ordinal(),
+                allow,
+                deny,
+                editingAllowList);
+        FilterSyncDebugLog.log(
+                "CLIENT",
+                "RESOLVED_LANE",
+                "filterTk="
+                        + FilterSyncDebugLog.transportKindName(filterTransportKindOrdinal())
+                        + " activeSyncTk="
+                        + FilterSyncDebugLog.transportKindName(
+                                syncData.get(net.unfamily.another_dynamics.duct.DuctMenuSync.ACTIVE_TRANSPORT_KIND))
+                        + " virtual="
+                        + isVirtualLayer());
         if (virtualSession != null) {
-            DuctTransportKind[] kinds = DuctTransportKind.values();
-            int tk = syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
-            virtualSession.noteFilterListContext(
-                    kinds[Mth.clamp(tk, 0, kinds.length - 1)], bank, editingAllowList);
+            if (virtualSession.storeKind() == SettingsCopierStoreKind.FILTER) {
+                if (bank == DuctFaceNode.FilterBank.EXTRACTOR && editingAllowList) {
+                    virtualSession.noteFilterListContext(filterTransportKind(), bank, true);
+                }
+            } else {
+                virtualSession.noteFilterListContext(filterTransportKind(), bank, editingAllowList);
+            }
         }
         ModNetwork.sendFilterUpdate(
                 ductBlockPos,
                 accessFace,
-                syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
+                filterTransportKindOrdinal(),
                 bank.ordinal(),
                 allow,
                 deny,
@@ -530,6 +691,12 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
                 allowCaps2,
                 allowConcat,
                 denyConcat,
+                allowRemote,
+                denyRemote,
+                allowRemoteIgnoreChannel,
+                denyRemoteIgnoreChannel,
+                allowRemoteAnyFace,
+                denyRemoteAnyFace,
                 denyOverridesAllow);
     }
 

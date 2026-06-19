@@ -8,6 +8,8 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
@@ -22,6 +24,7 @@ import net.unfamily.another_dynamics.registry.ModDataComponents;
 import net.unfamily.another_dynamics.registry.ModItems;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 import net.unfamily.another_dynamics.network.ModNetwork;
+import net.unfamily.another_dynamics.item.RemoteNodeSelectorEvents;
 
 @Mod(AnotherDynamicsMod.MOD_ID)
 public final class AnotherDynamicsMod {
@@ -45,12 +48,25 @@ public final class AnotherDynamicsMod {
         ModAttachments.TYPES.register(modEventBus);
         ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
 
+        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        modEventBus.addListener(AnotherDynamicsMod::onConfigLoad);
+
         modEventBus.addListener(ModNetwork::register);
         modEventBus.addListener(AnotherDynamicsMod::onRegisterCapabilities);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
+        NeoForge.EVENT_BUS.addListener(RemoteNodeSelectorEvents::onRightClickBlock);
 
         initOptionalIntegrations();
+    }
+
+    private static void onConfigLoad(ModConfigEvent event) {
+        if (event.getConfig().getSpec() != Config.SPEC) {
+            return;
+        }
+        if (Config.FILTER_SYNC_DEBUG.get()) {
+            LOGGER.warn("[FILTER-DBG] dev.filterSyncDebug=true — heavy filter sync logging enabled");
+        }
     }
 
     private static void initOptionalIntegrations() {

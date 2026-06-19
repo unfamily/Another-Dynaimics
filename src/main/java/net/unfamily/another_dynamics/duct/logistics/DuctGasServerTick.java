@@ -87,6 +87,9 @@ public final class DuctGasServerTick {
             NodeMode sourceMode,
             DuctFaceNode node,
             DuctGasTransportSpec spec) {
+        if (DuctFilterGasRouting.tryExtractEntryFirst(level, sourceBe, sourceFace, sourceMode, node, spec)) {
+            return;
+        }
         BlockPos srcPos = sourceBe.getBlockPos();
         if (isGasFaceStalled(sourceBe.getFaceLanes(sourceFace))) {
             return;
@@ -157,7 +160,7 @@ public final class DuctGasServerTick {
             if (s.endpoint().insertionPriority() != maxP) {
                 break;
             }
-            probeGasDestination(level, available, s)
+            probeGasDestinationForRouting(level, srcPos, sourceFace, node, available, s)
                     .ifPresent(validInTier::add);
             if (validInTier.size() >= EXTRACT_ROUTE_RETRY_CAP) {
                 break;
@@ -169,7 +172,7 @@ public final class DuctGasServerTick {
 
         int[] rr = new int[] {node.roundRobinCursor};
         RoutingMode extractRm = node.routingForExtraction(sourceMode);
-        DestCandidate pick = pickWithinTier(level, validInTier, extractRm, rr);
+        DestCandidate pick = pickWithinTierForRouting(level, validInTier, extractRm, rr);
         if (pick == null) {
             return;
         }
@@ -220,6 +223,9 @@ public final class DuctGasServerTick {
             Direction retrieverFace,
             DuctFaceNode node,
             DuctGasTransportSpec spec) {
+        if (DuctFilterGasRouting.tryRetrieveEntryFirst(level, retrieverBe, retrieverFace, node, spec)) {
+            return;
+        }
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         DuctFaceLanes retrieverLanes = retrieverBe.getFaceLanes(retrieverFace);
         Object destHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, retrieverPos, retrieverFace);
@@ -292,7 +298,11 @@ public final class DuctGasServerTick {
             NodeMode donorMode = donorLanes.nodeMode;
             if (donorMode == NodeMode.FILTERING_INSERTION
                     && !DuctGasFilterLogic.passesGasFiltersForBank(
-                            donorGas, DuctFaceNode.FilterBank.FILTER, available, level)) {
+                            donorGas,
+                            DuctFaceNode.FilterBank.FILTER,
+                            available,
+                            level,
+                            DuctDirectionalEndpoint.connectionAtDuctFace(level, retrieverPos, retrieverFace))) {
                 continue;
             }
             long keepCap =
@@ -313,7 +323,11 @@ public final class DuctGasServerTick {
                 }
             }
             if (!DuctGasFilterLogic.passesGasFiltersForBank(
-                    node, DuctFaceNode.FilterBank.RETRIEVER, available, level)) {
+                    node,
+                    DuctFaceNode.FilterBank.RETRIEVER,
+                    available,
+                    level,
+                    DuctDirectionalEndpoint.connectionAtDuctFace(level, donor, donorFace))) {
                 continue;
             }
             long pendingSum = donorBe.pendingOutboundGasAmountFromFace(donorFace, available);
@@ -449,7 +463,7 @@ public final class DuctGasServerTick {
             if (s.endpoint().insertionPriority() != maxP) {
                 break;
             }
-            probeGasDestinationForStall(level, available, s)
+            probeGasDestinationForStall(level, sourceBe, sourceFace, node, available, s)
                     .ifPresent(validInTier::add);
             if (validInTier.size() >= EXTRACT_ROUTE_RETRY_CAP) {
                 break;
@@ -460,7 +474,7 @@ public final class DuctGasServerTick {
         }
         int[] rr = new int[] {node.roundRobinCursor};
         RoutingMode stallRm = node.routingForStallResend(sourceMode);
-        DestCandidate pick = pickWithinTier(level, validInTier, stallRm, rr);
+        DestCandidate pick = pickWithinTierForRouting(level, validInTier, stallRm, rr);
         if (pick == null) {
             return 0L;
         }
@@ -497,7 +511,7 @@ public final class DuctGasServerTick {
         return false;
     }
 
-    private static boolean isGasFaceStalled(DuctFaceLanes lanes) {
+    static boolean isGasFaceStalled(DuctFaceLanes lanes) {
         if (lanes == null) {
             return false;
         }
@@ -510,7 +524,7 @@ public final class DuctGasServerTick {
         return filled >= lanes.stalledGas.length;
     }
 
-    private static List<DuctTargetSelector.DonorCandidate> listGasRetrievingDonorCandidates(
+    static List<DuctTargetSelector.DonorCandidate> listGasRetrievingDonorCandidates(
             ServerLevel level,
             BlockPos retrieverPos,
             Direction retrieverInventoryFace,
@@ -569,7 +583,11 @@ public final class DuctGasServerTick {
                 }
                 if (donorMode == NodeMode.FILTERING_INSERTION
                         && !DuctGasFilterLogic.passesGasFiltersForBank(
-                                donorGas, DuctFaceNode.FilterBank.FILTER, sample, level)) {
+                                donorGas,
+                                DuctFaceNode.FilterBank.FILTER,
+                                sample,
+                                level,
+                                DuctDirectionalEndpoint.connectionAtDuctFace(level, retrieverPos, retrieverInventoryFace))) {
                     continue;
                 }
                 if (MekanismChemicalCompat.simulateInsert(retrieverDestHandler, sample) <= 0) {
@@ -668,7 +686,7 @@ public final class DuctGasServerTick {
         }
     }
 
-    private static long capInsertForRetrieverDestinationLimits(
+    static long capInsertForRetrieverDestinationLimits(
             ServerLevel level,
             DuctBlockEntity destBe,
             Direction destFace,
@@ -724,11 +742,13 @@ public final class DuctGasServerTick {
         if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
             return false;
         }
-        return pinnedGasFaceSimulatesOk(level, destBe, s);
+        return pinnedGasFaceSimulatesOk(level, sourceBe, destBe, s);
     }
 
     private static boolean pinnedGasFaceSimulatesOk(
-            ServerLevel level, DuctBlockEntity destBe, GasTransitShipment s) {
+            ServerLevel level, DuctBlockEntity sourceBe, DuctBlockEntity destBe, GasTransitShipment s) {
+        DuctDirectionalEndpoint sourceEp =
+                DuctDirectionalEndpoint.connectionAtDuctFace(level, sourceBe.getBlockPos(), s.sourceFace);
         BlockPos destPos = destBe.getBlockPos();
         Direction df = s.destFace;
         int dsm = destBe.getStorageMask();
@@ -749,12 +769,12 @@ public final class DuctGasServerTick {
         }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctGasFilterLogic.passesGasFiltersForBank(
-                        destLanes.gas, DuctFaceNode.FilterBank.FILTER, s.stack, level)) {
+                        destLanes.gas, DuctFaceNode.FilterBank.FILTER, s.stack, level, sourceEp)) {
             return false;
         }
         if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
                 && !DuctGasFilterLogic.passesGasFiltersForBank(
-                        destLanes.gas, DuctFaceNode.FilterBank.RETRIEVER, s.stack, level)) {
+                        destLanes.gas, DuctFaceNode.FilterBank.RETRIEVER, s.stack, level, sourceEp)) {
             return false;
         }
         Object destHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, destPos, df);
@@ -776,13 +796,24 @@ public final class DuctGasServerTick {
         return simulated > 0;
     }
 
-    private static Optional<DestCandidate> probeGasDestination(
-            ServerLevel level, Object available, DuctRoutingEndpointIndex.ScoredEndpoint scored) {
+    static Optional<DestCandidate> probeGasDestinationForRouting(
+            ServerLevel level,
+            BlockPos sourcePos,
+            Direction sourceFace,
+            DuctFaceNode sourceNode,
+            Object available,
+            DuctRoutingEndpointIndex.ScoredEndpoint scored) {
         DuctRoutingEndpointIndex.RoutingEndpoint ep = scored.endpoint();
         if (!(level.getBlockEntity(ep.pos()) instanceof DuctBlockEntity destBe)) {
             return Optional.empty();
         }
         Direction df = ep.face();
+        DuctDirectionalEndpoint destEp = DuctDirectionalEndpoint.connectionAtDuctFace(level, ep.pos(), df);
+        DuctDirectionalEndpoint sourceEp = DuctDirectionalEndpoint.connectionAtDuctFace(level, sourcePos, sourceFace);
+        if (!DuctGasFilterLogic.passesGasFiltersForBank(
+                sourceNode, DuctFaceNode.FilterBank.EXTRACTOR, available, level, destEp)) {
+            return Optional.empty();
+        }
         DuctFaceNode destNode = destBe.getFaceLanes(df).gas;
         NodeMode dm = destBe.getFaceLanes(df).nodeMode;
         Object destHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, ep.pos(), df);
@@ -799,7 +830,8 @@ public final class DuctGasServerTick {
             return Optional.empty();
         }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
-                && !DuctGasFilterLogic.passesGasFiltersForBank(destNode, DuctFaceNode.FilterBank.FILTER, available, level)) {
+                && !DuctGasFilterLogic.passesGasFiltersForBank(
+                        destNode, DuctFaceNode.FilterBank.FILTER, available, level, sourceEp)) {
             return Optional.empty();
         }
         if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
@@ -828,12 +860,20 @@ public final class DuctGasServerTick {
     }
 
     private static Optional<DestCandidate> probeGasDestinationForStall(
-            ServerLevel level, Object available, DuctRoutingEndpointIndex.ScoredEndpoint scored) {
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            DuctFaceNode sourceNode,
+            Object available,
+            DuctRoutingEndpointIndex.ScoredEndpoint scored) {
         DuctRoutingEndpointIndex.RoutingEndpoint ep = scored.endpoint();
         if (!(level.getBlockEntity(ep.pos()) instanceof DuctBlockEntity destBe)) {
             return Optional.empty();
         }
         Direction df = ep.face();
+        DuctDirectionalEndpoint destEp = DuctDirectionalEndpoint.connectionAtDuctFace(level, ep.pos(), df);
+        DuctDirectionalEndpoint sourceEp =
+                DuctDirectionalEndpoint.connectionAtDuctFace(level, sourceBe.getBlockPos(), sourceFace);
         DuctFaceNode destNode = destBe.getFaceLanes(df).gas;
         NodeMode dm = destBe.getFaceLanes(df).nodeMode;
         Object destHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, ep.pos(), df);
@@ -841,24 +881,30 @@ public final class DuctGasServerTick {
             return Optional.empty();
         }
         Object tryStack = MekanismChemicalCompat.copyWithAmount(available, MekanismChemicalCompat.getAmount(available));
+        if (!DuctGasFilterLogic.passesGasFiltersForBank(
+                sourceNode, DuctFaceNode.FilterBank.EXTRACTOR, tryStack, level, destEp)) {
+            return Optional.empty();
+        }
         long simulated = MekanismChemicalCompat.simulateInsert(destHandler, tryStack);
         if (simulated <= 0) {
             return Optional.empty();
         }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
-                && !DuctGasFilterLogic.passesGasFiltersForBank(destNode, DuctFaceNode.FilterBank.FILTER, tryStack, level)) {
+                && !DuctGasFilterLogic.passesGasFiltersForBank(
+                        destNode, DuctFaceNode.FilterBank.FILTER, tryStack, level, sourceEp)) {
             return Optional.empty();
         }
         if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
-                && !DuctGasFilterLogic.passesGasFiltersForBank(destNode, DuctFaceNode.FilterBank.RETRIEVER, tryStack, level)) {
+                && !DuctGasFilterLogic.passesGasFiltersForBank(
+                        destNode, DuctFaceNode.FilterBank.RETRIEVER, tryStack, level, sourceEp)) {
             return Optional.empty();
         }
         return Optional.of(new DestCandidate(ep.pos(), df, ep.insertionPriority(), scored.distTicks(), simulated));
     }
 
-    private record DestCandidate(BlockPos ductPos, Direction face, int priority, long dist, long moved) {}
+    record DestCandidate(BlockPos ductPos, Direction face, int priority, long dist, long moved) {}
 
-    private static DestCandidate pickWithinTier(
+    static DestCandidate pickWithinTierForRouting(
             ServerLevel level, List<DestCandidate> tier, RoutingMode routing, int[] roundRobinState) {
         if (tier.isEmpty()) {
             return null;

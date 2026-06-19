@@ -11,9 +11,10 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import net.unfamily.another_dynamics.duct.filterimport.external.ExternalUpgradeFilterImportSource;
 
 /**
- * Temporary beta nag: action-bar spam when a tester holds Pipez pipe items in main/off hand. Remove
+ * Temporary beta nag: action-bar spam when a tester holds legacy pipe items in main/off hand. Remove
  * this class (or set {@link #ENABLED} to {@code false}) before release.
  * REMOVE COMPLETY BEFORE RELEASE
  * REMOVE COMPLETY BEFORE RELEASE
@@ -28,7 +29,7 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
  * REMOVE COMPLETY BEFORE RELEASE
  */
 @EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.GAME)
-public final class BetaTesterPipezNag {
+public final class BetaTesterModNag {
     /** Set to {@code false} or delete this class for the final release build. */
     private static final boolean ENABLED = false;
 
@@ -37,13 +38,18 @@ public final class BetaTesterPipezNag {
     private static final TextColor NAG_TEXT_COLOR = TextColor.fromRgb(0x8B0000);
 
     private static final Set<ResourceLocation> NAG_PIPE_ITEMS = Set.of(
-            ResourceLocation.fromNamespaceAndPath("pipez", "item_pipe"),
-            ResourceLocation.fromNamespaceAndPath("pipez", "fluid_pipe"),
-            ResourceLocation.fromNamespaceAndPath("pipez", "energy_pipe"),
-            ResourceLocation.fromNamespaceAndPath("pipez", "universal_pipe"),
-            ResourceLocation.fromNamespaceAndPath("pipez", "gas_pipe"));
+            ResourceLocation.fromNamespaceAndPath(
+                    ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE, "item_pipe"),
+            ResourceLocation.fromNamespaceAndPath(
+                    ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE, "fluid_pipe"),
+            ResourceLocation.fromNamespaceAndPath(
+                    ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE, "energy_pipe"),
+            ResourceLocation.fromNamespaceAndPath(
+                    ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE, "universal_pipe"),
+            ResourceLocation.fromNamespaceAndPath(
+                    ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE, "gas_pipe"));
 
-    private BetaTesterPipezNag() {}
+    private BetaTesterModNag() {}
 
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Post event) {
@@ -62,12 +68,12 @@ public final class BetaTesterPipezNag {
 
     private static Component nagMessage() {
         Component modName =
-                Component.translatable("another_dynamics.beta.pipez_nag.mod_name")
+                Component.translatable("another_dynamics.beta.tester_nag.mod_name")
                         .withStyle(
                                 s -> s.withColor(NAG_TEXT_COLOR)
                                         .withBold(true)
                                         .withUnderlined(true));
-        return Component.translatable("another_dynamics.beta.pipez_nag", modName)
+        return Component.translatable("another_dynamics.beta.tester_nag", modName)
                 .withStyle(s -> s.withColor(NAG_TEXT_COLOR).withBold(true));
     }
 

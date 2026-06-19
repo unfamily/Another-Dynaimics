@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " E ",
+    " S ",
+    " S "
+  ],
+  "key": {
+    "E": {
+      "item": "minecraft:ender_pearl"
+    },
+    "S": {
+      "item": "another_dynamics:settings_copier"
+    }
+  },
+  "result": {
+    "id": "another_dynamics:remote_node_selector",
+    "count": 1
+  }
+}
