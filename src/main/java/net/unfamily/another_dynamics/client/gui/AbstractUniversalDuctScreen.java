@@ -2247,11 +2247,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         remoteIgnoreChannelButton.setHeight(BTN_H);
     }
 
+    /** Fixed bottom of the coord row for Respect/Ignore Channel placement (always {@link #BTN_H}, same as the editor). */
     private int remoteNodeCoordRowBottomScreenY(AdvancedRemoteNodeRowLayout row) {
-        if (remoteNodeCoordEditOpen) {
-            return row.coordTextScreenY() + BTN_H;
-        }
-        return row.coordTextScreenY() + this.font.lineHeight;
+        return row.coordTextScreenY() + BTN_H;
     }
 
     private int advancedCapLabelTopScreenY() {
