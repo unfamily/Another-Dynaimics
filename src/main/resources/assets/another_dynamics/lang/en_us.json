@@ -331,6 +331,8 @@
   "another_dynamics.universal_duct_imp.node": "Improved Universal Duct Node",
   "gui.another_dynamics.module.line.speed": "Travel Speed: %s",
   "gui.another_dynamics.module.value.instant": "Instant",
+  "gui.another_dynamics.module.value.every_seconds": "every %s s",
+  "gui.another_dynamics.module.value.seconds_per_block": "%s s/block",
   "gui.another_dynamics.module.line.filter": "Extra Filters: %s",
   "gui.another_dynamics.module.line.rate": "Extract Rate: %s",
   "gui.another_dynamics.module.line.quantity": "Extract Quantity: %s",

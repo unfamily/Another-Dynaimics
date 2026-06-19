@@ -1,4 +1,4 @@
-# Replication Extended Registry
+# Another Dynamics
 
 | Version | Support Status |
 |--------|---------------|

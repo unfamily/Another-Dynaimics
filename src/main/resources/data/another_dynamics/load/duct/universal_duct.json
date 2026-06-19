@@ -13,7 +13,7 @@
         "max": -1
       },
       "rate": {
-        "default": 30,
+        "default": 10,
         "min": 1
       },
       "speed": {
@@ -34,7 +34,7 @@
         "max": -1
       },
       "rate": {
-        "default": 30,
+        "default": 10,
         "min": 1
       },
       "speed": {
@@ -62,7 +62,7 @@
         "max": -1
       },
       "rate": {
-        "default": 30,
+        "default": 10,
         "min": 1
       },
       "speed": {

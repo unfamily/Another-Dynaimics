@@ -14,13 +14,17 @@ import net.unfamily.another_dynamics.duct.module.ModuleDefinition.ItemQuantityMo
 import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
 
 /**
- * Gray module hints using {@code gui.another_dynamics.module.line.*}. Rate uses ×2/×3 style only (no ÷/≤). Quantity
- * omits ≤ on set caps and appends {@code suffix.item} or {@code suffix.mb} next to values for item / fluid / gas
- * lanes.
+ * Gray module hints using {@code gui.another_dynamics.module.line.*}. Rate and speed show a × factor plus an
+ * effective interval from reference duct defaults ({@value #REFERENCE_RATE_TICKS} / {@value #REFERENCE_SPEED_TICKS}
+ * ticks). Quantity omits ≤ on set caps and appends {@code suffix.item} or {@code suffix.mb} for item / fluid / gas.
  */
 public final class ModuleUpgradeTooltip {
     private static final double EPS = 1e-9;
     private static final int INFINITE = Integer.MAX_VALUE;
+    /** Reference {@code rate.default} for item/fluid/gas ducts (tooltip preview). */
+    private static final int REFERENCE_RATE_TICKS = 10;
+    /** Reference {@code speed.default} for item/fluid/gas ducts (tooltip preview). */
+    private static final int REFERENCE_SPEED_TICKS = 10;
 
     private static final String LINE_SPEED = "gui.another_dynamics.module.line.speed";
     private static final String LINE_FILTER = "gui.another_dynamics.module.line.filter";
@@ -32,6 +36,8 @@ public final class ModuleUpgradeTooltip {
     private static final String SUFFIX_MB = "gui.another_dynamics.module.suffix.mb";
     /** Shown when {@code speed.mult} is {@code 0} (zero edge travel ticks). */
     private static final String VALUE_INSTANT = "gui.another_dynamics.module.value.instant";
+    private static final String VALUE_EVERY_SECONDS = "gui.another_dynamics.module.value.every_seconds";
+    private static final String VALUE_SECONDS_PER_BLOCK = "gui.another_dynamics.module.value.seconds_per_block";
 
     private ModuleUpgradeTooltip() {}
 
@@ -193,20 +199,20 @@ public final class ModuleUpgradeTooltip {
         double mult = m.multProduct();
         if (mult <= EPS) {
             parts.add(instantSpeedLabel());
-        } else if (Math.abs(mult - 1.0) > EPS) {
-            if (mult < 1.0 - EPS) {
-                parts.add("\u00d7" + reciprocalDisplay(mult));
-            } else {
-                parts.add("\u00d7" + formatMultPlain(mult));
+        } else {
+            if (Math.abs(mult - 1.0) > EPS) {
+                String factor = formatSpeedupFactor(mult);
+                if (factor != null) {
+                    parts.add(factor);
+                }
             }
+            int ticks = effectiveModifierTicks(REFERENCE_SPEED_TICKS, mult);
+            parts.add(secondsPerBlockLabel(ticks));
         }
         return parts.isEmpty() ? null : String.join(", ", parts);
     }
 
-    /**
-     * Extract rate: ×2/×3 style (mult &lt; 1 shown as ×reciprocal like speed). Optional tick cap / add after, no ≤ or
-     * ÷.
-     */
+    /** Extract rate: × factor plus effective action interval from reference duct {@code rate.default}. */
     private static String formatRateLane(ItemQuantityModifiers m) {
         if (inactive(m)) {
             return null;
@@ -214,11 +220,14 @@ public final class ModuleUpgradeTooltip {
         List<String> parts = new ArrayList<>();
         double mult = m.multProduct();
         if (Math.abs(mult - 1.0) > EPS) {
-            if (mult < 1.0 - EPS) {
-                parts.add("\u00d7" + reciprocalDisplay(mult));
-            } else {
-                parts.add("\u00d7" + formatMultPlain(mult));
+            String factor = formatSpeedupFactor(mult);
+            if (factor != null) {
+                parts.add(factor);
             }
+        }
+        if (mult > EPS) {
+            int ticks = effectiveModifierTicks(REFERENCE_RATE_TICKS, mult);
+            parts.add(everySecondsLabel(ticks));
         }
         if (m.hasSet()) {
             parts.add(formatSetValue(m.setValue()));
@@ -248,10 +257,9 @@ public final class ModuleUpgradeTooltip {
         List<String> parts = new ArrayList<>();
         double mult = m.multProduct();
         if (Math.abs(mult - 1.0) > EPS) {
-            if (mult < 1.0 - EPS) {
-                parts.add("\u00d7" + reciprocalDisplay(mult));
-            } else {
-                parts.add("\u00d7" + formatMultPlain(mult));
+            String factor = formatSpeedupFactor(mult);
+            if (factor != null) {
+                parts.add(factor);
             }
         }
         if (m.hasSet()) {
@@ -297,11 +305,38 @@ public final class ModuleUpgradeTooltip {
         return Component.translatable(VALUE_INSTANT).getString();
     }
 
-    private static int reciprocalDisplay(double mult) {
-        if (mult <= EPS) {
-            return 0;
+    private static String everySecondsLabel(int ticks) {
+        return Component.translatable(VALUE_EVERY_SECONDS, formatSecondsFromTicks(ticks)).getString();
+    }
+
+    private static String secondsPerBlockLabel(int ticks) {
+        return Component.translatable(VALUE_SECONDS_PER_BLOCK, formatSecondsFromTicks(ticks)).getString();
+    }
+
+    private static int effectiveModifierTicks(int baseTicks, double mult) {
+        return Math.max(1, (int) Math.round(baseTicks * mult));
+    }
+
+    /** {@code mult < 1} → faster → show ×(1/mult) with up to two decimals when needed. */
+    private static String formatSpeedupFactor(double mult) {
+        if (Math.abs(mult - 1.0) < EPS) {
+            return null;
         }
-        return (int) Math.round(1.0 / mult);
+        if (mult < 1.0 - EPS) {
+            return "\u00d7" + formatMultPlain(1.0 / mult);
+        }
+        return "\u00d7" + formatMultPlain(mult);
+    }
+
+    private static String formatSecondsFromTicks(int ticks) {
+        double seconds = ticks / 20.0;
+        if (seconds < 0.1) {
+            return String.format(Locale.ROOT, "%.2f", seconds);
+        }
+        if (Math.abs(seconds - Math.rint(seconds)) < 0.01) {
+            return Integer.toString((int) Math.rint(seconds));
+        }
+        return String.format(Locale.ROOT, "%.2f", seconds);
     }
 
     private static String formatMultPlain(double v) {

@@ -14,7 +14,7 @@
         "deny_hybrid": { "add": 4 }
       },
       "speed": { "mult": 0.85 },
-      "rate": { "mult": 0.85 }
+      "rate": { "mult": 0.75 }
     },
     {
       "for": "fluid",
@@ -28,7 +28,7 @@
         "deny_hybrid": { "add": 4 }
       },
       "speed": { "mult": 0.85 },
-      "rate": { "mult": 0.85 }
+      "rate": { "mult": 0.75 }
     },
     {
       "for": "gas",
@@ -42,7 +42,7 @@
         "deny_hybrid": { "add": 4 }
       },
       "speed": { "mult": 0.85 },
-      "rate": { "mult": 0.85 }
+      "rate": { "mult": 0.75 }
     },
     {
       "for": "energy",
@@ -50,7 +50,7 @@
         "mult": 5
       },
       "rate": {
-        "mult": 0.85
+        "mult": 0.75
       }
     },
     {
@@ -59,7 +59,7 @@
         "set": 4200
       },
       "rate": {
-        "mult": 0.85
+        "mult": 0.75
       }
     }
   ],
