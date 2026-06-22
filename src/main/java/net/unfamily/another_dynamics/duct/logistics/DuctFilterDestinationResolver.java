@@ -37,6 +37,7 @@ public final class DuctFilterDestinationResolver {
             int sourceChannel,
             boolean ignoreChannel,
             @Nullable DuctDirectionalEndpoint inventoryEndpoint,
+            boolean targetAnyFace,
             FilterRemoteNodeRole role,
             boolean allowSelfFeed,
             @Nullable Direction forbidSelfDestFace) {
@@ -74,7 +75,7 @@ public final class DuctFilterDestinationResolver {
                 DuctFaceNode node = faceNodeForKind(be, face, transportKind);
                 DuctDirectionalEndpoint connected =
                         DuctDirectionalEndpoint.connectionAtDuctFace(level, pos, face);
-                if (connected == null || !endpointMatches(connected, target)) {
+                if (connected == null || !endpointMatches(connected, target, targetAnyFace)) {
                     continue;
                 }
                 if (!ignoreChannel && !DuctChannelPolicy.sameChannel(sourceChannel, node.channelLetter)) {
@@ -112,8 +113,12 @@ public final class DuctFilterDestinationResolver {
         return out;
     }
 
-    private static boolean endpointMatches(DuctDirectionalEndpoint a, DuctDirectionalEndpoint b) {
-        return a.matches(b.pos(), b.face());
+    private static boolean endpointMatches(
+            DuctDirectionalEndpoint connected, DuctDirectionalEndpoint target, boolean anyFace) {
+        if (anyFace) {
+            return connected.pos().equals(target.pos());
+        }
+        return connected.matches(target.pos(), target.face());
     }
 
     private static boolean passesRoleGate(

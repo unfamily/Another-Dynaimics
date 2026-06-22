@@ -140,6 +140,38 @@ public final class DuctFilterUnitLogic {
             @Nullable DuctDirectionalEndpoint counterparty,
             BiPredicate<Integer, String> allowLineMatches,
             BiPredicate<Integer, String> denyLineMatches) {
+        return evaluateSequentialPrecedence(
+                denyOverridesAllow,
+                allowFilters,
+                denyFilters,
+                allowConcat,
+                denyConcat,
+                allowRemote,
+                denyRemote,
+                allowIgnoreChannel,
+                denyIgnoreChannel,
+                null,
+                null,
+                counterparty,
+                allowLineMatches,
+                denyLineMatches);
+    }
+
+    public static boolean evaluateSequentialPrecedence(
+            boolean denyOverridesAllow,
+            List<String> allowFilters,
+            List<String> denyFilters,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
+            List<DuctDirectionalEndpoint> allowRemote,
+            List<DuctDirectionalEndpoint> denyRemote,
+            List<Boolean> allowIgnoreChannel,
+            List<Boolean> denyIgnoreChannel,
+            @Nullable List<Boolean> allowAnyFace,
+            @Nullable List<Boolean> denyAnyFace,
+            @Nullable DuctDirectionalEndpoint counterparty,
+            BiPredicate<Integer, String> allowLineMatches,
+            BiPredicate<Integer, String> denyLineMatches) {
         boolean hasAllow = hasNonEmptyLine(allowFilters);
         boolean hasDeny = hasNonEmptyLine(denyFilters);
         if (!hasAllow && !hasDeny) {
@@ -147,10 +179,22 @@ public final class DuctFilterUnitLogic {
         }
         boolean allowHit =
                 findFirstFullyMatchingUnit(
-                        allowFilters, allowConcat, allowRemote, allowIgnoreChannel, counterparty, allowLineMatches);
+                        allowFilters,
+                        allowConcat,
+                        allowRemote,
+                        allowIgnoreChannel,
+                        allowAnyFace,
+                        counterparty,
+                        allowLineMatches);
         boolean denyHit =
                 findFirstFullyMatchingUnit(
-                        denyFilters, denyConcat, denyRemote, denyIgnoreChannel, counterparty, denyLineMatches);
+                        denyFilters,
+                        denyConcat,
+                        denyRemote,
+                        denyIgnoreChannel,
+                        denyAnyFace,
+                        counterparty,
+                        denyLineMatches);
         if (denyOverridesAllow) {
             if (denyHit) {
                 return false;
@@ -201,8 +245,28 @@ public final class DuctFilterUnitLogic {
             List<Boolean> denyIgnoreChannel,
             @Nullable DuctDirectionalEndpoint counterparty,
             BiPredicate<Integer, String> denyLineMatches) {
+        return denyBlocksAllowUnit(
+                allowUnit,
+                denyFilters,
+                denyConcat,
+                denyRemote,
+                denyIgnoreChannel,
+                null,
+                counterparty,
+                denyLineMatches);
+    }
+
+    public static boolean denyBlocksAllowUnit(
+            FilterUnit allowUnit,
+            List<String> denyFilters,
+            List<Integer> denyConcat,
+            List<DuctDirectionalEndpoint> denyRemote,
+            List<Boolean> denyIgnoreChannel,
+            @Nullable List<Boolean> denyAnyFace,
+            @Nullable DuctDirectionalEndpoint counterparty,
+            BiPredicate<Integer, String> denyLineMatches) {
         for (FilterUnit du : enumerateUnits(denyFilters, denyConcat)) {
-            UnitBinding db = unitBinding(du, denyRemote, denyIgnoreChannel);
+            UnitBinding db = unitBinding(du, denyRemote, denyIgnoreChannel, denyAnyFace);
             if (db == null) {
                 continue;
             }
@@ -222,10 +286,11 @@ public final class DuctFilterUnitLogic {
             List<Integer> concat,
             List<DuctDirectionalEndpoint> remote,
             List<Boolean> ignoreChannel,
+            @Nullable List<Boolean> anyFaceFlags,
             @Nullable DuctDirectionalEndpoint counterparty,
             BiPredicate<Integer, String> lineMatches) {
         for (FilterUnit unit : enumerateUnits(lines, concat)) {
-            UnitBinding binding = unitBinding(unit, remote, ignoreChannel);
+            UnitBinding binding = unitBinding(unit, remote, ignoreChannel, anyFaceFlags);
             if (binding == null) {
                 continue;
             }

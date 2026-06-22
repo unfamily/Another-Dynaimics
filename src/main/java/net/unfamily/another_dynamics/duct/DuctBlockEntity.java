@@ -98,6 +98,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     /** Throttle full-network stall drain scans (BFS destination lists) between successful drains. */
     private static final int ITEM_STALL_DRAIN_SCAN_INTERVAL = 4;
     private static final int NON_ITEM_STALL_DRAIN_SCAN_INTERVAL = 4;
+    /** Empty-hand destroy arming window after first shift+click (5 seconds at 20 tps). */
+    private static final long STALL_MEDIA_CLEAR_ARM_TICKS = 100L;
     private int itemStallDrainScanCooldown;
     private int nonItemStallDrainScanCooldown;
 
@@ -2088,6 +2090,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (lanes == null || stack == null || stack.isEmpty()) {
             return FluidStack.EMPTY;
         }
+        lanes.armedClearMediaUntilGameTime = 0L;
         FluidStack left = stack.copy();
         for (int i = 0; i < lanes.stalledFluids.length && !left.isEmpty(); i++) {
             FluidStack cur = lanes.stalledFluids[i];
@@ -2115,6 +2118,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 || MekanismChemicalCompat.getAmount(stack) <= 0) {
             return MekanismChemicalCompat.emptyStack();
         }
+        lanes.armedClearMediaUntilGameTime = 0L;
         Object left = stack;
         HolderLookup.Provider regs = level.registryAccess();
         for (int i = 0; i < lanes.stalledGas.length && !MekanismChemicalCompat.isEmptyStack(left); i++) {
@@ -2184,15 +2188,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public boolean tryExtractStalledMediaToHand(
             ServerLevel level, Direction face, Player player, InteractionHand hand) {
         DuctFaceLanes lanes = getFaceLanes(face);
-        boolean fluid = tryClearFluidBuffer(level, lanes, player, hand, false);
-        boolean gas = tryClearGasBuffer(level, lanes, player, hand, false);
-        if (fluid || gas) {
+        boolean moved = tryFillStalledMediaFromPlayerHands(level, player, lanes);
+        if (moved) {
+            lanes.armedClearMediaUntilGameTime = 0L;
             requestModelDataUpdate();
             syncStallVisualIfNeeded();
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             setChanged();
         }
-        return fluid || gas;
+        return moved;
     }
 
     /** Any physical stall/buffer on this face (independent of redstone / transport toggles). */
@@ -2297,9 +2301,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
         // Energy/Heat: do not clear on shift-click (buffering is not user-clearable and never refunds to source).
 
-        // Fluids / gas: fill held tank or bucket when possible; otherwise arm empty-hand destruction.
-        didAnything |= tryClearFluidBuffer(level, lanes, player, hand, true);
-        didAnything |= tryClearGasBuffer(level, lanes, player, hand, true);
+        // Fluids / gas: fill held containers when possible; otherwise unified empty-hand arm + destroy.
+        didAnything |= tryClearStalledMediaBuffers(level, lanes, player, true);
 
         for (ItemStack overflow : overflowBuffer.viewStacks()) {
             if (!overflow.isEmpty()) {
@@ -2343,54 +2346,51 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return false;
     }
 
-    /**
-     * @param allowEmptyHandDestroy when {@code true} (shift-click), empty-hand can arm then destroy buffered fluid.
-     */
-    private boolean tryClearFluidBuffer(
-            ServerLevel level, DuctFaceLanes lanes, Player player, InteractionHand hand, boolean allowEmptyHandDestroy) {
-        if (!hasStalledFluidInLanes(lanes)) {
-            lanes.armedClearFluidUntilGameTime = 0L;
-            return false;
-        }
+    private static boolean hasStalledMediaInLanes(DuctFaceLanes lanes) {
+        return hasStalledFluidInLanes(lanes) || hasStalledGasInLanes(lanes);
+    }
 
-        if (tryFillHeldFromStalledFluids(player, hand, lanes)) {
-            lanes.armedClearFluidUntilGameTime = 0L;
-            return true;
-        }
+    private static boolean isStallMediaClearArmed(DuctFaceLanes lanes, long now) {
+        return lanes.armedClearMediaUntilGameTime > 0L && now <= lanes.armedClearMediaUntilGameTime;
+    }
 
-        if (!allowEmptyHandDestroy) {
-            return false;
-        }
+    private static boolean playerHandsEmpty(Player player) {
+        return player.getMainHandItem().isEmpty() && player.getOffhandItem().isEmpty();
+    }
 
-        ItemStack held = player.getItemInHand(hand);
-        long now = level.getGameTime();
-        if (held.isEmpty() && lanes.armedClearFluidUntilGameTime > 0 && now <= lanes.armedClearFluidUntilGameTime) {
-            for (int i = 0; i < lanes.stalledFluids.length; i++) {
-                lanes.stalledFluids[i] = FluidStack.EMPTY;
+    private static boolean playerHoldsNonMediaContainer(Player player) {
+        for (InteractionHand h : InteractionHand.values()) {
+            ItemStack stack = player.getItemInHand(h);
+            if (!stack.isEmpty() && !heldStackCanReceiveStalledMedia(stack)) {
+                return true;
             }
-            lanes.armedClearFluidUntilGameTime = 0L;
+        }
+        return false;
+    }
+
+    private static boolean heldStackCanReceiveStalledMedia(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        if (FluidUtil.getFluidHandler(stack).isPresent()) {
             return true;
         }
-
-        lanes.armedClearFluidUntilGameTime = now + 100L;
-        player.displayClientMessage(
-                Component.literal("Buffered fluid: use a tank/bucket to extract, or empty-hand within 5s to destroy."),
-                true);
-        return true;
+        return MekanismChemicalCompat.isLoaded() && MekanismChemicalCompat.getChemicalHandlerItem(stack) != null;
     }
 
     /**
-     * @param allowEmptyHandDestroy when {@code true} (shift-click), empty-hand can arm then destroy buffered gas.
+     * Shift+click stall clear for fluid+gas on one face. Container fill (main or off hand) always wins; empty-hand
+     * destroy only on a second empty click within the armed window.
      */
-    private boolean tryClearGasBuffer(
-            ServerLevel level, DuctFaceLanes lanes, Player player, InteractionHand hand, boolean allowEmptyHandDestroy) {
-        if (!hasStalledGasInLanes(lanes)) {
-            lanes.armedClearGasUntilGameTime = 0L;
+    private boolean tryClearStalledMediaBuffers(
+            ServerLevel level, DuctFaceLanes lanes, Player player, boolean allowEmptyHandDestroy) {
+        if (!hasStalledMediaInLanes(lanes)) {
+            lanes.armedClearMediaUntilGameTime = 0L;
             return false;
         }
 
-        if (tryFillHeldFromStalledGas(level, player, hand, lanes)) {
-            lanes.armedClearGasUntilGameTime = 0L;
+        if (tryFillStalledMediaFromPlayerHands(level, player, lanes)) {
+            lanes.armedClearMediaUntilGameTime = 0L;
             return true;
         }
 
@@ -2398,21 +2398,49 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return false;
         }
 
-        ItemStack held = player.getItemInHand(hand);
+        if (playerHoldsNonMediaContainer(player)) {
+            player.displayClientMessage(Component.translatable("another_dynamics.stall_clear.incompatible_container"), true);
+            return false;
+        }
+
+        if (!playerHandsEmpty(player)) {
+            player.displayClientMessage(Component.translatable("another_dynamics.stall_clear.container_full_or_mismatch"), true);
+            return false;
+        }
+
         long now = level.getGameTime();
-        if (held.isEmpty() && lanes.armedClearGasUntilGameTime > 0 && now <= lanes.armedClearGasUntilGameTime) {
-            for (int i = 0; i < lanes.stalledGas.length; i++) {
-                lanes.stalledGas[i] = null;
-            }
-            lanes.armedClearGasUntilGameTime = 0L;
+        if (isStallMediaClearArmed(lanes, now)) {
+            destroyStalledMediaInLanes(lanes);
+            lanes.armedClearMediaUntilGameTime = 0L;
+            player.displayClientMessage(Component.translatable("another_dynamics.stall_clear.destroyed"), true);
             return true;
         }
 
-        lanes.armedClearGasUntilGameTime = now + 100L;
-        player.displayClientMessage(
-                Component.literal("Buffered gas: use a tank/cell to extract, or empty-hand within 5s to destroy."),
-                true);
+        lanes.armedClearMediaUntilGameTime = now + STALL_MEDIA_CLEAR_ARM_TICKS;
+        player.displayClientMessage(Component.translatable("another_dynamics.stall_clear.arm_warning"), true);
         return true;
+    }
+
+    private static void destroyStalledMediaInLanes(DuctFaceLanes lanes) {
+        for (int i = 0; i < lanes.stalledFluids.length; i++) {
+            lanes.stalledFluids[i] = FluidStack.EMPTY;
+        }
+        for (int i = 0; i < lanes.stalledGas.length; i++) {
+            lanes.stalledGas[i] = null;
+        }
+    }
+
+    private static boolean tryFillStalledMediaFromPlayerHands(ServerLevel level, Player player, DuctFaceLanes lanes) {
+        boolean filled = false;
+        for (InteractionHand hand : InteractionHand.values()) {
+            if (tryFillHeldFromStalledFluids(player, hand, lanes)) {
+                filled = true;
+            }
+            if (tryFillHeldFromStalledGas(level, player, hand, lanes)) {
+                filled = true;
+            }
+        }
+        return filled;
     }
 
     /**
@@ -2466,9 +2494,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     break;
                 }
                 Object payload = MekanismChemicalCompat.loadGasStackFromTag(tag, regs);
-                if (payload == null || MekanismChemicalCompat.isEmptyStack(payload) || MekanismChemicalCompat.getAmount(payload) <= 0) {
-                    lanes.stalledGas[i] = null;
-                    tag = null;
+                if (payload == null
+                        || MekanismChemicalCompat.isEmptyStack(payload)
+                        || MekanismChemicalCompat.getAmount(payload) <= 0) {
                     break;
                 }
                 Object left = MekanismChemicalCompat.insertExecute(itemHandler, payload);
@@ -4528,6 +4556,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 fullAllowIgnore.subList(0, Math.min(fullAllowIgnore.size(), allowCap)));
         view.denyRemoteIgnoreChannel.addAll(
                 fullDenyIgnore.subList(0, Math.min(fullDenyIgnore.size(), denyCap)));
+        List<Boolean> fullAllowAnyFace = node.bankAllowRemoteAnyFace(bank);
+        List<Boolean> fullDenyAnyFace = node.bankDenyRemoteAnyFace(bank);
+        view.allowRemoteAnyFace.addAll(
+                fullAllowAnyFace.subList(0, Math.min(fullAllowAnyFace.size(), allowCap)));
+        view.denyRemoteAnyFace.addAll(
+                fullDenyAnyFace.subList(0, Math.min(fullDenyAnyFace.size(), denyCap)));
         return DuctFilterLogic.passesItemFiltersWithConcat(
                 view.denyOverridesAllow,
                 view.allowFilters,
@@ -4538,6 +4572,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 view.denyRemoteNodes,
                 view.allowRemoteIgnoreChannel,
                 view.denyRemoteIgnoreChannel,
+                view.allowRemoteAnyFace,
+                view.denyRemoteAnyFace,
                 stack,
                 level,
                 counterparty);

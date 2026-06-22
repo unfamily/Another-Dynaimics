@@ -36,6 +36,8 @@ public final class DuctFilterLogic {
                 node.denyRemoteNodes,
                 node.allowRemoteIgnoreChannel,
                 node.denyRemoteIgnoreChannel,
+                node.allowRemoteAnyFace,
+                node.denyRemoteAnyFace,
                 stack,
                 level,
                 counterparty);
@@ -52,6 +54,38 @@ public final class DuctFilterLogic {
             List<DuctDirectionalEndpoint> denyRemote,
             List<Boolean> allowIgnoreChannel,
             List<Boolean> denyIgnoreChannel,
+            ItemStack stack,
+            Level level,
+            @Nullable DuctDirectionalEndpoint counterparty) {
+        return passesItemFiltersWithConcat(
+                denyOverridesAllow,
+                allowFilters,
+                denyFilters,
+                allowConcat,
+                denyConcat,
+                allowRemote,
+                denyRemote,
+                allowIgnoreChannel,
+                denyIgnoreChannel,
+                null,
+                null,
+                stack,
+                level,
+                counterparty);
+    }
+
+    public static boolean passesItemFiltersWithConcat(
+            boolean denyOverridesAllow,
+            List<String> allowFilters,
+            List<String> denyFilters,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
+            List<DuctDirectionalEndpoint> allowRemote,
+            List<DuctDirectionalEndpoint> denyRemote,
+            List<Boolean> allowIgnoreChannel,
+            List<Boolean> denyIgnoreChannel,
+            @Nullable List<Boolean> allowAnyFace,
+            @Nullable List<Boolean> denyAnyFace,
             ItemStack stack,
             Level level,
             @Nullable DuctDirectionalEndpoint counterparty) {
@@ -75,6 +109,8 @@ public final class DuctFilterLogic {
                     denyRemote,
                     allowIgnoreChannel,
                     denyIgnoreChannel,
+                    allowAnyFace,
+                    denyAnyFace,
                     counterparty,
                     (i, trimmed) ->
                             matchesLineWithConcat(

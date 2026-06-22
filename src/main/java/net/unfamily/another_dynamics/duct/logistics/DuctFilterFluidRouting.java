@@ -79,6 +79,7 @@ final class DuctFilterFluidRouting {
         List<Integer> allowConcat = subList(node.bankAllowConcatChannels(bank), allowSize);
         List<DuctDirectionalEndpoint> allowRemote = subListEndpoint(node.bankAllowRemoteNodes(bank), allowSize);
         List<Boolean> allowIgnore = subListBool(node.bankAllowRemoteIgnoreChannel(bank), allowSize);
+        List<Boolean> allowAnyFace = subListBool(node.bankAllowRemoteAnyFace(bank), allowSize);
 
         boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
         Direction forbidSelfDestFace = allowSelfFeed ? null : sourceFace;
@@ -89,7 +90,8 @@ final class DuctFilterFluidRouting {
         for (net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.FilterUnit unit :
                 net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.enumerateUnits(allow, allowConcat)) {
             net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.UnitBinding binding =
-                    net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.unitBinding(unit, allowRemote, allowIgnore);
+                    net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.unitBinding(
+                            unit, allowRemote, allowIgnore, allowAnyFace);
             if (binding == null) {
                 continue;
             }
@@ -112,17 +114,16 @@ final class DuctFilterFluidRouting {
                                 node.channelLetter,
                                 binding.ignoreChannel(),
                                 binding.endpoint(),
+                                binding.anyFace(),
                                 FilterRemoteNodeRole.EXTRACT_ROUTE,
                                 allowSelfFeed,
                                 forbidSelfDestFace);
                 for (DuctFilterDestinationResolver.ResolvedFace rf : faces) {
                     DuctDirectionalEndpoint destCounterparty =
                             DuctDirectionalEndpoint.connectionAtDuctFace(level, rf.ductPos(), rf.face());
-                    if (DuctFluidFilterLogic.fluidMatchesDenyForAllowUnit(
-                            bank, node, unit, available, level, destCounterparty)) {
-                        if (node.bankDenyOverridesAllow(bank)) {
-                            continue;
-                        }
+                    if (!DuctFluidFilterLogic.passesFluidFiltersForBank(
+                            node, bank, available, level, destCounterparty)) {
+                        continue;
                     }
                     if (tryScheduleExtract(
                             level,
@@ -165,11 +166,9 @@ final class DuctFilterFluidRouting {
                     DuctDirectionalEndpoint destEp =
                             DuctDirectionalEndpoint.connectionAtDuctFace(
                                     level, s.endpoint().pos(), s.endpoint().face());
-                    if (DuctFluidFilterLogic.fluidMatchesDenyForAllowUnit(
-                            bank, node, unit, available, level, destEp)) {
-                        if (node.bankDenyOverridesAllow(bank)) {
-                            continue;
-                        }
+                    if (!DuctFluidFilterLogic.passesFluidFiltersForBank(
+                            node, bank, available, level, destEp)) {
+                        continue;
                     }
                     probeFluidDestination(level, srcPos, sourceFace, node, srcCap, available, s)
                             .ifPresent(validInTier::add);
@@ -218,6 +217,7 @@ final class DuctFilterFluidRouting {
         List<Integer> allowConcat = subList(node.bankAllowConcatChannels(bank), allowSize);
         List<DuctDirectionalEndpoint> allowRemote = subListEndpoint(node.bankAllowRemoteNodes(bank), allowSize);
         List<Boolean> allowIgnore = subListBool(node.bankAllowRemoteIgnoreChannel(bank), allowSize);
+        List<Boolean> allowAnyFace = subListBool(node.bankAllowRemoteAnyFace(bank), allowSize);
 
         RoutingMode rm = node.routingForRetrieval(retrieverLanes.nodeMode);
         boolean roundRobinRetriever = rm == RoutingMode.ROUND_ROBIN;
@@ -227,7 +227,8 @@ final class DuctFilterFluidRouting {
         for (net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.FilterUnit unit :
                 net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.enumerateUnits(allow, allowConcat)) {
             net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.UnitBinding binding =
-                    net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.unitBinding(unit, allowRemote, allowIgnore);
+                    net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.unitBinding(
+                            unit, allowRemote, allowIgnore, allowAnyFace);
             if (binding == null) {
                 continue;
             }
@@ -243,6 +244,7 @@ final class DuctFilterFluidRouting {
                                 node.channelLetter,
                                 binding.ignoreChannel(),
                                 binding.endpoint(),
+                                binding.anyFace(),
                                 FilterRemoteNodeRole.RETRIEVE_PULL,
                                 true,
                                 retrieverFace);
@@ -469,16 +471,13 @@ final class DuctFilterFluidRouting {
                         DuctDirectionalEndpoint.connectionAtDuctFace(level, retrieverPos, retrieverFace))) {
             return false;
         }
-        if (DuctFluidFilterLogic.fluidMatchesDenyForAllowUnit(
-                bank,
+        if (!DuctFluidFilterLogic.passesFluidFiltersForBank(
                 node,
-                unit,
+                bank,
                 available,
                 level,
                 DuctDirectionalEndpoint.connectionAtDuctFace(level, donor, donorFace))) {
-            if (node.bankDenyOverridesAllow(bank)) {
-                return false;
-            }
+            return false;
         }
         int keepCap =
                 DuctFluidAllowLimitLogic.maxExtractRespectingKeepMb(

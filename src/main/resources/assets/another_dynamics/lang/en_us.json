@@ -368,6 +368,10 @@
   "another_dynamics.duct_replace.incompatible_types": "Cannot replace: the new duct does not support all transport types of the installed one.",
   "another_dynamics.duct_replace.module_slots_lost": "Cannot replace: installed modules would not fit in the new duct's module slots.",
   "another_dynamics.duct_replace.filter_slots_lost": "Cannot replace: active filters would be lost because the new duct has fewer filter slots.",
+  "another_dynamics.stall_clear.arm_warning": "Buffered fluid/gas: use a tank, bucket, or cell to extract, or empty-hand again within 5s to destroy.",
+  "another_dynamics.stall_clear.destroyed": "Buffered fluid/gas destroyed.",
+  "another_dynamics.stall_clear.incompatible_container": "Held item cannot extract buffered fluid or gas.",
+  "another_dynamics.stall_clear.container_full_or_mismatch": "Container is full or does not match the buffered fluid/gas.",
   "another_dynamics.beta.tester_nag": "Sono stufo di dirtelo, devi testare %s!",
   "another_dynamics.beta.tester_nag.mod_name": "Another Dynamics"
 }

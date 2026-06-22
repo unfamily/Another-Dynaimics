@@ -545,6 +545,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private @Nullable DuctDirectionalEndpoint originalRemoteNodeValue;
     private boolean editModeRemoteIgnoreChannelDraft;
     private boolean originalRemoteIgnoreChannelValue;
+    private boolean editModeRemoteAnyFaceDraft;
+    private boolean originalRemoteAnyFaceValue;
     private int editModeAllowCapValue;
     private int originalAllowCapValue;
     private int editModeAllowCap2Value;
@@ -2328,7 +2330,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         remoteNodeFaceButton.setSelection(
                 destinationBound,
                 destinationBound ? editModeRemoteNodeDraft.face() : null,
-                false);
+                destinationBound && editModeRemoteAnyFaceDraft);
     }
 
     private void syncRemoteNodeCoordEditButtonDisplay() {
@@ -2369,6 +2371,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (editModeRemoteNodeDraft == null || editModeFilterIndex < 0) {
             return;
         }
+        editModeRemoteAnyFaceDraft = selection.anyFace();
         if (!selection.anyFace() && selection.face() != null) {
             editModeRemoteNodeDraft =
                     new DuctDirectionalEndpoint(editModeRemoteNodeDraft.pos(), selection.face());
@@ -3026,16 +3029,23 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             originalRemoteNodeValue = editModeRemoteNodeDraft;
             editModeRemoteIgnoreChannelDraft = remoteIgnoreChannelAt(editModeFilterIndex);
             originalRemoteIgnoreChannelValue = editModeRemoteIgnoreChannelDraft;
+            editModeRemoteAnyFaceDraft = remoteAnyFaceAt(editModeFilterIndex);
+            originalRemoteAnyFaceValue = editModeRemoteAnyFaceDraft;
             if (editModeRemoteNodeDraft == null) {
                 editModeRemoteIgnoreChannelDraft = false;
                 originalRemoteIgnoreChannelValue = false;
+                editModeRemoteAnyFaceDraft = false;
+                originalRemoteAnyFaceValue = false;
                 setRemoteIgnoreChannelAt(editModeFilterIndex, false);
+                setRemoteAnyFaceAt(editModeFilterIndex, false);
             }
         } else {
             editModeRemoteNodeDraft = null;
             originalRemoteNodeValue = null;
             editModeRemoteIgnoreChannelDraft = false;
             originalRemoteIgnoreChannelValue = false;
+            editModeRemoteAnyFaceDraft = false;
+            originalRemoteAnyFaceValue = false;
         }
         subView = SubView.ADVANCED_FILTERING;
         reloadFilterEntryTextBoxFromList(false);
@@ -3526,6 +3536,25 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         flags.set(index, value);
     }
 
+    private List<Boolean> getEditingRemoteAnyFace() {
+        return isEditingAllowFilterList()
+                ? menu.getClientAllowRemoteAnyFace(activeFilterBank)
+                : menu.getClientDenyRemoteAnyFace(activeFilterBank);
+    }
+
+    private boolean remoteAnyFaceAt(int index) {
+        List<Boolean> flags = getEditingRemoteAnyFace();
+        return index >= 0 && index < flags.size() && Boolean.TRUE.equals(flags.get(index));
+    }
+
+    private void setRemoteAnyFaceAt(int index, boolean value) {
+        List<Boolean> flags = getEditingRemoteAnyFace();
+        while (flags.size() <= index) {
+            flags.add(false);
+        }
+        flags.set(index, value);
+    }
+
     private boolean filterRemoteNodeUiEnabled() {
         return !DuctFeaturePolicy.isDisabled(
                 DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId()).orElse(null),
@@ -3539,6 +3568,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         remoteNodes.set(index, null);
         setRemoteIgnoreChannelAt(index, false);
+        setRemoteAnyFaceAt(index, false);
     }
 
     private void setRemoteNodeAt(int index, @Nullable DuctDirectionalEndpoint endpoint) {
@@ -3549,6 +3579,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         remoteNodes.set(index, endpoint);
         if (endpoint == null) {
             setRemoteIgnoreChannelAt(index, false);
+            setRemoteAnyFaceAt(index, false);
         }
     }
 
@@ -4048,15 +4079,21 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             originalRemoteNodeValue = editModeRemoteNodeDraft;
             editModeRemoteIgnoreChannelDraft = remoteIgnoreChannelAt(index);
             originalRemoteIgnoreChannelValue = editModeRemoteIgnoreChannelDraft;
+            editModeRemoteAnyFaceDraft = remoteAnyFaceAt(index);
+            originalRemoteAnyFaceValue = editModeRemoteAnyFaceDraft;
             if (editModeRemoteNodeDraft == null) {
                 editModeRemoteIgnoreChannelDraft = false;
                 originalRemoteIgnoreChannelValue = false;
+                editModeRemoteAnyFaceDraft = false;
+                originalRemoteAnyFaceValue = false;
             }
         } else {
             editModeRemoteNodeDraft = null;
             originalRemoteNodeValue = null;
             editModeRemoteIgnoreChannelDraft = false;
             originalRemoteIgnoreChannelValue = false;
+            editModeRemoteAnyFaceDraft = false;
+            originalRemoteAnyFaceValue = false;
         }
         createEditModeUI();
         filterScrollOffset = Mth.clamp(
@@ -4300,9 +4337,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         originalRemoteNodeValue = editModeRemoteNodeDraft;
         if (editModeRemoteNodeDraft == null) {
             editModeRemoteIgnoreChannelDraft = false;
+            editModeRemoteAnyFaceDraft = false;
         }
         setRemoteIgnoreChannelAt(editModeFilterIndex, editModeRemoteIgnoreChannelDraft);
         originalRemoteIgnoreChannelValue = editModeRemoteIgnoreChannelDraft;
+        setRemoteAnyFaceAt(editModeFilterIndex, editModeRemoteAnyFaceDraft);
+        originalRemoteAnyFaceValue = editModeRemoteAnyFaceDraft;
     }
 
     /** Reverts filter text and Limit/Keep draft to last applied values (advanced filtering only). */
@@ -4324,6 +4364,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         editModeRemoteNodeDraft = originalRemoteNodeValue;
         editModeRemoteIgnoreChannelDraft = originalRemoteIgnoreChannelValue;
+        editModeRemoteAnyFaceDraft = originalRemoteAnyFaceValue;
         closeRemoteNodeCoordEdit(false);
         syncRemoteIgnoreChannelButtonDisplay();
         syncRemoteNodeFaceButtonDisplay();

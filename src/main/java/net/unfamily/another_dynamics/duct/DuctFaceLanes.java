@@ -74,9 +74,8 @@ public final class DuctFaceLanes {
     public int stalledEnergyCount;
     public int stalledHeatCount;
 
-    /** Shift+click clearing arming window (gameTime), per face. */
-    public long armedClearFluidUntilGameTime;
-    public long armedClearGasUntilGameTime;
+    /** Shift+click empty-hand destroy arming deadline (gameTime), unified for fluid+gas on this face. */
+    public long armedClearMediaUntilGameTime;
 
     public final DuctFaceNode item;
     public final DuctFaceNode fluid;
@@ -320,8 +319,7 @@ public final class DuctFaceLanes {
         CompoundTag stallMeta = new CompoundTag();
         stallMeta.putInt("Energy", stalledEnergyCount);
         stallMeta.putInt("Heat", stalledHeatCount);
-        stallMeta.putLong("ArmFluid", armedClearFluidUntilGameTime);
-        stallMeta.putLong("ArmGas", armedClearGasUntilGameTime);
+        stallMeta.putLong("ArmMedia", armedClearMediaUntilGameTime);
         tag.put("StallMeta", stallMeta);
 
         CompoundTag itemTag = new CompoundTag();
@@ -383,13 +381,15 @@ public final class DuctFaceLanes {
             CompoundTag meta = tag.getCompound("StallMeta");
             stalledEnergyCount = meta.getInt("Energy");
             stalledHeatCount = meta.getInt("Heat");
-            armedClearFluidUntilGameTime = meta.getLong("ArmFluid");
-            armedClearGasUntilGameTime = meta.getLong("ArmGas");
+            if (meta.contains("ArmMedia")) {
+                armedClearMediaUntilGameTime = meta.getLong("ArmMedia");
+            } else {
+                armedClearMediaUntilGameTime = Math.max(meta.getLong("ArmFluid"), meta.getLong("ArmGas"));
+            }
         } else {
             stalledEnergyCount = 0;
             stalledHeatCount = 0;
-            armedClearFluidUntilGameTime = 0L;
-            armedClearGasUntilGameTime = 0L;
+            armedClearMediaUntilGameTime = 0L;
         }
 
         CompoundTag rawItem = tag.contains("Item", Tag.TAG_COMPOUND) ? tag.getCompound("Item") : tag;
@@ -508,8 +508,7 @@ public final class DuctFaceLanes {
         }
         stalledEnergyCount = 0;
         stalledHeatCount = 0;
-        armedClearFluidUntilGameTime = 0L;
-        armedClearGasUntilGameTime = 0L;
+        armedClearMediaUntilGameTime = 0L;
         energyTicksUntilAction = 0;
         energyRoundRobinCursor = 0;
         energyInputBufferFe = 0;

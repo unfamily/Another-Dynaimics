@@ -63,10 +63,12 @@ final class DuctFilterItemRouting {
         List<Integer> allowConcat = subList(node.bankAllowConcatChannels(bank), allowSize);
         List<DuctDirectionalEndpoint> allowRemote = subListEndpoint(node.bankAllowRemoteNodes(bank), allowSize);
         List<Boolean> allowIgnore = subListBool(node.bankAllowRemoteIgnoreChannel(bank), allowSize);
+        List<Boolean> allowAnyFace = subListBool(node.bankAllowRemoteAnyFace(bank), allowSize);
 
         int unitIdx = 0;
         for (DuctFilterUnitLogic.FilterUnit unit : DuctFilterUnitLogic.enumerateUnits(allow, allowConcat)) {
-            DuctFilterUnitLogic.UnitBinding binding = DuctFilterUnitLogic.unitBinding(unit, allowRemote, allowIgnore);
+            DuctFilterUnitLogic.UnitBinding binding =
+                    DuctFilterUnitLogic.unitBinding(unit, allowRemote, allowIgnore, allowAnyFace);
             if (binding == null) {
                 unitIdx++;
                 continue;
@@ -90,17 +92,15 @@ final class DuctFilterItemRouting {
                                 node.channelLetter,
                                 binding.ignoreChannel(),
                                 binding.endpoint(),
+                                binding.anyFace(),
                                 FilterRemoteNodeRole.EXTRACT_ROUTE,
                                 allowSelfFeed,
                                 forbidSelfDestFace);
                 for (DuctFilterDestinationResolver.ResolvedFace rf : faces) {
                     DuctDirectionalEndpoint destCounterparty =
                             DuctDirectionalEndpoint.connectionAtDuctFace(level, rf.ductPos(), rf.face());
-                    if (DuctFilterLogic.itemMatchesDenyForAllowUnit(
-                            bank, node, unit, probe, level, destCounterparty)) {
-                        if (node.bankDenyOverridesAllow(bank)) {
-                            continue;
-                        }
+                    if (!self.passesItemFilters(face, probe, level, bank, destCounterparty)) {
+                        continue;
                     }
                     if (tryScheduleExtract(
                             self,
@@ -144,11 +144,8 @@ final class DuctFilterItemRouting {
                     }
                     DuctDirectionalEndpoint destCounterparty =
                             DuctDirectionalEndpoint.connectionAtDuctFace(level, dest, destFace);
-                    if (DuctFilterLogic.itemMatchesDenyForAllowUnit(
-                            bank, node, unit, probe, level, destCounterparty)) {
-                        if (node.bankDenyOverridesAllow(bank)) {
-                            continue;
-                        }
+                    if (!self.passesItemFilters(face, probe, level, bank, destCounterparty)) {
+                        continue;
                     }
                     NodeMode destMode = destBe.getFaceLanes(destFace).nodeMode;
                     if (!DuctCapHelper.canInsertIntoFace(level, dest, destFace, probe)) {
@@ -213,10 +210,12 @@ final class DuctFilterItemRouting {
         List<Integer> allowConcat = subList(node.bankAllowConcatChannels(bank), allowSize);
         List<DuctDirectionalEndpoint> allowRemote = subListEndpoint(node.bankAllowRemoteNodes(bank), allowSize);
         List<Boolean> allowIgnore = subListBool(node.bankAllowRemoteIgnoreChannel(bank), allowSize);
+        List<Boolean> allowAnyFace = subListBool(node.bankAllowRemoteAnyFace(bank), allowSize);
 
         int unitIdx = 0;
         for (DuctFilterUnitLogic.FilterUnit unit : DuctFilterUnitLogic.enumerateUnits(allow, allowConcat)) {
-            DuctFilterUnitLogic.UnitBinding binding = DuctFilterUnitLogic.unitBinding(unit, allowRemote, allowIgnore);
+            DuctFilterUnitLogic.UnitBinding binding =
+                    DuctFilterUnitLogic.unitBinding(unit, allowRemote, allowIgnore, allowAnyFace);
             if (binding == null) {
                 unitIdx++;
                 continue;
@@ -235,6 +234,7 @@ final class DuctFilterItemRouting {
                                 node.channelLetter,
                                 binding.ignoreChannel(),
                                 binding.endpoint(),
+                                binding.anyFace(),
                                 FilterRemoteNodeRole.RETRIEVE_PULL,
                                 true,
                                 retrieverFace);
@@ -458,23 +458,22 @@ final class DuctFilterItemRouting {
             if (!DuctFilterLogic.itemMatchesAllowUnit(bank, node, unit, probe, level)) {
                 continue;
             }
-            if (DuctFilterLogic.itemMatchesDenyForAllowUnit(
-                    bank,
-                    node,
-                    unit,
-                    probe,
-                    level,
-                    DuctDirectionalEndpoint.connectionAtDuctFace(level, donor, donorFace))) {
-                if (node.bankDenyOverridesAllow(bank)) {
-                    continue;
-                }
+            NodeMode donorMode = donorBe.getFaceLanes(donorFace).nodeMode;
+            if (donorMode == NodeMode.FILTERING_INSERTION
+                    && !donorBe.passesItemFilters(
+                            donorFace,
+                            probe,
+                            level,
+                            DuctFaceNode.FilterBank.FILTER,
+                            DuctDirectionalEndpoint.connectionAtDuctFace(level, self.getBlockPos(), retrieverFace))) {
+                continue;
             }
-            if (!donorBe.passesItemFilters(
-                    donorFace,
+            if (!self.passesItemFilters(
+                    retrieverFace,
                     probe,
                     level,
-                    DuctFaceNode.FilterBank.FILTER,
-                    DuctDirectionalEndpoint.connectionAtDuctFace(level, self.getBlockPos(), retrieverFace))) {
+                    bank,
+                    DuctDirectionalEndpoint.connectionAtDuctFace(level, donor, donorFace))) {
                 continue;
             }
             if (self.capExtractableForSourceKeepRouting(level, donor, donorFace, donorBe, probe, 1) <= 0) {
@@ -540,6 +539,7 @@ final class DuctFilterItemRouting {
         List<Integer> allowConcat = subList(node.bankAllowConcatChannels(bank), allowSize);
         List<DuctDirectionalEndpoint> allowRemote = subListEndpoint(node.bankAllowRemoteNodes(bank), allowSize);
         List<Boolean> allowIgnore = subListBool(node.bankAllowRemoteIgnoreChannel(bank), allowSize);
+        List<Boolean> allowAnyFace = subListBool(node.bankAllowRemoteAnyFace(bank), allowSize);
 
         for (int slot = 0; slot < lanes.stalledBuffer.getSlots(); slot++) {
             ItemStack st = lanes.stalledBuffer.getStackInSlot(slot);
@@ -549,7 +549,7 @@ final class DuctFilterItemRouting {
             int unitIdx = 0;
             for (DuctFilterUnitLogic.FilterUnit unit : DuctFilterUnitLogic.enumerateUnits(allow, allowConcat)) {
                 DuctFilterUnitLogic.UnitBinding binding =
-                        DuctFilterUnitLogic.unitBinding(unit, allowRemote, allowIgnore);
+                        DuctFilterUnitLogic.unitBinding(unit, allowRemote, allowIgnore, allowAnyFace);
                 if (binding == null) {
                     unitIdx++;
                     continue;
@@ -573,17 +573,15 @@ final class DuctFilterItemRouting {
                                     node.channelLetter,
                                     binding.ignoreChannel(),
                                     binding.endpoint(),
+                                    binding.anyFace(),
                                     FilterRemoteNodeRole.EXTRACT_ROUTE,
                                     allowSelfFeed,
                                     forbidSelfDestFace);
                     for (DuctFilterDestinationResolver.ResolvedFace rf : faces) {
                         DuctDirectionalEndpoint destCounterparty =
                                 DuctDirectionalEndpoint.connectionAtDuctFace(level, rf.ductPos(), rf.face());
-                        if (DuctFilterLogic.itemMatchesDenyForAllowUnit(
-                                bank, node, unit, probe, level, destCounterparty)) {
-                            if (node.bankDenyOverridesAllow(bank)) {
-                                continue;
-                            }
+                        if (!self.passesItemFilters(face, probe, level, bank, destCounterparty)) {
+                            continue;
                         }
                         if (tryScheduleStallResend(
                                 self,
@@ -619,11 +617,8 @@ final class DuctFilterItemRouting {
                         DuctDirectionalEndpoint destCounterparty =
                                 DuctDirectionalEndpoint.connectionAtDuctFace(
                                         level, cand.ductPos(), cand.face());
-                        if (DuctFilterLogic.itemMatchesDenyForAllowUnit(
-                                bank, node, unit, probe, level, destCounterparty)) {
-                            if (node.bankDenyOverridesAllow(bank)) {
-                                continue;
-                            }
+                        if (!self.passesItemFilters(face, probe, level, bank, destCounterparty)) {
+                            continue;
                         }
                         if (tryScheduleStallResend(
                                 self,

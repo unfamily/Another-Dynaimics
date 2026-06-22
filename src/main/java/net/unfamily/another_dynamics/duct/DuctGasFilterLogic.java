@@ -34,6 +34,8 @@ public final class DuctGasFilterLogic {
                 node.denyRemoteNodes,
                 node.allowRemoteIgnoreChannel,
                 node.denyRemoteIgnoreChannel,
+                node.allowRemoteAnyFace,
+                node.denyRemoteAnyFace,
                 chemicalStack,
                 level,
                 counterparty);
@@ -84,6 +86,12 @@ public final class DuctGasFilterLogic {
                 fullAllowIgnore.subList(0, Math.min(fullAllowIgnore.size(), ac)));
         view.denyRemoteIgnoreChannel.addAll(
                 fullDenyIgnore.subList(0, Math.min(fullDenyIgnore.size(), dc)));
+        List<Boolean> fullAllowAnyFace = node.bankAllowRemoteAnyFace(bank);
+        List<Boolean> fullDenyAnyFace = node.bankDenyRemoteAnyFace(bank);
+        view.allowRemoteAnyFace.addAll(
+                fullAllowAnyFace.subList(0, Math.min(fullAllowAnyFace.size(), ac)));
+        view.denyRemoteAnyFace.addAll(
+                fullDenyAnyFace.subList(0, Math.min(fullDenyAnyFace.size(), dc)));
         return view;
     }
 
@@ -97,6 +105,38 @@ public final class DuctGasFilterLogic {
             List<DuctDirectionalEndpoint> denyRemote,
             List<Boolean> allowIgnoreChannel,
             List<Boolean> denyIgnoreChannel,
+            Object chemicalStack,
+            ServerLevel level,
+            @Nullable DuctDirectionalEndpoint counterparty) {
+        return passesGasFiltersWithConcat(
+                denyOverridesAllow,
+                allowFilters,
+                denyFilters,
+                allowConcat,
+                denyConcat,
+                allowRemote,
+                denyRemote,
+                allowIgnoreChannel,
+                denyIgnoreChannel,
+                null,
+                null,
+                chemicalStack,
+                level,
+                counterparty);
+    }
+
+    public static boolean passesGasFiltersWithConcat(
+            boolean denyOverridesAllow,
+            List<String> allowFilters,
+            List<String> denyFilters,
+            List<Integer> allowConcat,
+            List<Integer> denyConcat,
+            List<DuctDirectionalEndpoint> allowRemote,
+            List<DuctDirectionalEndpoint> denyRemote,
+            List<Boolean> allowIgnoreChannel,
+            List<Boolean> denyIgnoreChannel,
+            @Nullable List<Boolean> allowAnyFace,
+            @Nullable List<Boolean> denyAnyFace,
             Object chemicalStack,
             ServerLevel level,
             @Nullable DuctDirectionalEndpoint counterparty) {
@@ -116,6 +156,8 @@ public final class DuctGasFilterLogic {
                     denyRemote,
                     allowIgnoreChannel,
                     denyIgnoreChannel,
+                    allowAnyFace,
+                    denyAnyFace,
                     counterparty,
                     (i, trimmed) -> DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, trimmed, reg),
                     (i, trimmed) -> DuctGasFilterMatcher.matchesFilterEntry(chemicalStack, trimmed, reg));
