@@ -63,6 +63,9 @@ public final class DuctFilterDestinationResolver {
                 if ((storageMask & (1 << face.ordinal())) == 0) {
                     continue;
                 }
+                if ((be.getUserDisconnectedFaceMask() & (1 << face.ordinal())) != 0) {
+                    continue;
+                }
                 if (pos.equals(sourcePos) && forbidSelfDestFace != null && face == forbidSelfDestFace) {
                     continue;
                 }

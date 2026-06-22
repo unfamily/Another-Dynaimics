@@ -100,26 +100,25 @@ public final class DuctOverflowRouting {
     }
 
     /**
-     * Retriever arrival: could not insert into retriever inventory — put back toward donor chest, then donor duct buffer;
-     * if anything remains (edge), retriever duct buffer (case 4 / 5).
+     * Retriever arrival: partial insert left items on the retriever duct — inbound stall on {@code destFace}, then
+     * retriever overflow; last resort spawn chain (never donor outbound stall for committed pulls).
      */
     public static void absorbRetrieverDestRemainder(
             ServerLevel level,
             OutboundShipment s,
             DuctBlockEntity retrieverBe,
-            DuctBlockEntity donorBe,
             ItemStack remainder,
             BlockPos scheduleOwnerDuct) {
         if (remainder.isEmpty()) {
             return;
         }
-        ItemStack r = donorBe.stallOntoFace(s.sourceFace, remainder.copy());
+        ItemStack r = retrieverBe.stallOntoFace(s.destFace, remainder.copy(), DuctStallKind.INBOUND);
         if (!r.isEmpty()) {
             retrieverBe.getOverflowBuffer().absorb(level, retrieverBe, r.copy());
             r = ItemStack.EMPTY;
         }
         if (!r.isEmpty()) {
-            tryRefundToSourceNoDrop(level, s, r, scheduleOwnerDuct, retrieverBe.getBlockPos(), donorBe.getBlockPos());
+            tryRefundToSourceNoDrop(level, s, r, scheduleOwnerDuct, retrieverBe.getBlockPos());
         }
     }
 

@@ -109,6 +109,29 @@ public final class DuctCapHelper {
                 return true;
             }
         }
+        for (int i = 0; i < lanes.inboundStallBuffer.getSlots(); i++) {
+            if (!lanes.inboundStallBuffer.getStackInSlot(i).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean outboundStallHasContent(DuctFaceLanes lanes) {
+        for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+            if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean inboundStallHasContent(DuctFaceLanes lanes) {
+        for (int i = 0; i < lanes.inboundStallBuffer.getSlots(); i++) {
+            if (!lanes.inboundStallBuffer.getStackInSlot(i).isEmpty()) {
+                return true;
+            }
+        }
         return false;
     }
 

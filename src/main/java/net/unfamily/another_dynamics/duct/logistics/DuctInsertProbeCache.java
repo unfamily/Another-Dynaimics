@@ -40,6 +40,8 @@ public final class DuctInsertProbeCache {
             return;
         }
         rejectsUntilTick.put(key(probe, ductPos, face), level.getGameTime() + REJECT_TTL_TICKS);
+        int ik = itemKey(probe);
+        accepts.keySet().removeIf(k -> k.ductPos.equals(ductPos) && k.face == face && k.itemKey == ik);
     }
 
     public static void cacheAccept(Level level, BlockPos ductPos, Direction face, ItemStack probe, boolean accepted) {

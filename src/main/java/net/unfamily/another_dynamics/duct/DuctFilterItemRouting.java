@@ -185,7 +185,7 @@ final class DuctFilterItemRouting {
             }
             unitIdx++;
         }
-        return true;
+        return false;
     }
 
     static boolean tryRetrieveEntryFirst(
@@ -295,7 +295,7 @@ final class DuctFilterItemRouting {
             }
             unitIdx++;
         }
-        return true;
+        return false;
     }
 
     private static ItemStack findProbeForUnit(

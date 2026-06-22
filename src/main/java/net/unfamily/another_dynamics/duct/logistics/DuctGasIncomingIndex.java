@@ -98,4 +98,38 @@ public final class DuctGasIncomingIndex {
             return out;
         }
     }
+
+    /** Snapshot omitting one in-flight reservation (same type + amount). */
+    public static List<Object> snapshotExcluding(ServerLevel level, BlockPos destDuct, Object exclude) {
+        if (exclude == null || MekanismChemicalCompat.isEmptyStack(exclude)) {
+            return snapshot(level, destDuct);
+        }
+        String id = MekanismChemicalCompat.getTypeRegistryName(exclude);
+        long amt = MekanismChemicalCompat.getAmount(exclude);
+        if (id == null || id.isEmpty() || amt <= 0) {
+            return snapshot(level, destDuct);
+        }
+        Map<BlockPos, List<Object>> dim = BY_LEVEL.get(level);
+        if (dim == null) {
+            return List.of();
+        }
+        List<Object> list = dim.get(destDuct);
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        synchronized (list) {
+            List<Object> out = new ArrayList<>(list.size());
+            boolean skipped = false;
+            for (Object s : list) {
+                if (!skipped && samePendingEntry(s, id, amt)) {
+                    skipped = true;
+                    continue;
+                }
+                if (s != null && !MekanismChemicalCompat.isEmptyStack(s)) {
+                    out.add(MekanismChemicalCompat.copyWithAmount(s, MekanismChemicalCompat.getAmount(s)));
+                }
+            }
+            return out;
+        }
+    }
 }

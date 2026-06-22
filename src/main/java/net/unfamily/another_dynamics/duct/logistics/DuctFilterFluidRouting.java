@@ -65,13 +65,13 @@ final class DuctFilterFluidRouting {
                 level.getCapability(
                         Capabilities.FluidHandler.BLOCK, srcPos.relative(sourceFace), sourceFace.getOpposite());
         if (srcCap == null) {
-            return true;
+            return false;
         }
         int wantMb = node.extractBatch > 0 ? node.extractBatch : spec.batchDefaultMb();
         wantMb = spec.clampedBatchMb(wantMb);
         FluidStack baseAvailable = DuctFluidCapHelper.drainProbe(srcCap, wantMb);
         if (baseAvailable.isEmpty()) {
-            return true;
+            return false;
         }
 
         int allowSize = Math.min(allowFull.size(), allowCap);
@@ -186,7 +186,7 @@ final class DuctFilterFluidRouting {
                 }
             }
         }
-        return true;
+        return false;
     }
 
     static boolean tryRetrieveEntryFirst(
@@ -210,7 +210,7 @@ final class DuctFilterFluidRouting {
                         retrieverPos.relative(retrieverFace),
                         retrieverFace.getOpposite());
         if (destCap == null) {
-            return true;
+            return false;
         }
         int allowSize = Math.min(allowFull.size(), allowCap);
         List<String> allow = allowFull.subList(0, allowSize);
@@ -312,7 +312,7 @@ final class DuctFilterFluidRouting {
                 }
             }
         }
-        return true;
+        return false;
     }
 
     private static FluidStack applyKeepCap(

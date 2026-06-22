@@ -59,13 +59,13 @@ final class DuctFilterGasRouting {
         BlockPos srcPos = sourceBe.getBlockPos();
         Object srcHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, srcPos, sourceFace);
         if (srcHandler == null) {
-            return true;
+            return false;
         }
         long want = node.extractBatch > 0 ? node.extractBatch : spec.batchDefault();
         want = spec.clampedBatch(want);
         Object baseAvailable = MekanismChemicalCompat.drainProbe(srcHandler, want);
         if (MekanismChemicalCompat.isEmptyStack(baseAvailable)) {
-            return true;
+            return false;
         }
 
         int allowSize = Math.min(allowFull.size(), allowCap);
@@ -198,7 +198,7 @@ final class DuctFilterGasRouting {
                 }
             }
         }
-        return true;
+        return false;
     }
 
     static boolean tryRetrieveEntryFirst(
@@ -218,7 +218,7 @@ final class DuctFilterGasRouting {
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         Object destHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, retrieverPos, retrieverFace);
         if (destHandler == null) {
-            return true;
+            return false;
         }
         int allowSize = Math.min(allowFull.size(), allowCap);
         List<String> allow = allowFull.subList(0, allowSize);
@@ -324,7 +324,7 @@ final class DuctFilterGasRouting {
                 }
             }
         }
-        return true;
+        return false;
     }
 
     private static Object applyKeepCap(

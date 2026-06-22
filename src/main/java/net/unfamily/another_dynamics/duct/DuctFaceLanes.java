@@ -58,8 +58,11 @@ public final class DuctFaceLanes {
     /** Shared module column; size follows {@link DuctDefinition#moduleSlotCount()} (clamped). */
     public DuctFaceModuleItemHandler moduleSlots;
 
-    /** Physical buffered items that could not be refunded; when full, this face is stalled. */
+    /** Physical buffered items that could not be refunded; when full, this face is stalled (outbound / extract resend). */
     public final ItemStackHandler stalledBuffer = new ItemStackHandler(5);
+
+    /** Inbound stall (failed delivery, retriever refund): drain toward attached inventory only. */
+    public final ItemStackHandler inboundStallBuffer = new ItemStackHandler(5);
 
     /** Physical buffered fluids (mB) that could not be refunded; up to 5 entries. */
     public final FluidStack[] stalledFluids = new FluidStack[5];
@@ -313,7 +316,8 @@ public final class DuctFaceLanes {
         tag.put("Shared", shared);
 
         tag.put(NBT_MODULES, moduleSlots.serializeNBT(registries));
-        tag.put("StallBuf", stalledBuffer.serializeNBT(registries));
+        tag.put("StallBufOut", stalledBuffer.serializeNBT(registries));
+        tag.put("StallBufIn", inboundStallBuffer.serializeNBT(registries));
         tag.put("StallFluids", saveStalledFluids(registries));
         tag.put("StallGas", saveStalledGas());
         CompoundTag stallMeta = new CompoundTag();
@@ -368,12 +372,31 @@ public final class DuctFaceLanes {
             migrateLegacyModulesFromItemNodeGui(registries, tag);
         }
 
-        if (tag.contains("StallBuf", Tag.TAG_COMPOUND)) {
-            stalledBuffer.deserializeNBT(registries, tag.getCompound("StallBuf"));
+        if (tag.contains("StallBufOut", Tag.TAG_COMPOUND)) {
+            stalledBuffer.deserializeNBT(registries, tag.getCompound("StallBufOut"));
+        } else if (tag.contains("StallBuf", Tag.TAG_COMPOUND)) {
+            CompoundTag legacy = tag.getCompound("StallBuf");
+            if (nodeMode == NodeMode.NONE || nodeMode == NodeMode.FILTERING_INSERTION) {
+                inboundStallBuffer.deserializeNBT(registries, legacy);
+                for (int i = 0; i < stalledBuffer.getSlots(); i++) {
+                    stalledBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
+                }
+            } else {
+                stalledBuffer.deserializeNBT(registries, legacy);
+                for (int i = 0; i < inboundStallBuffer.getSlots(); i++) {
+                    inboundStallBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
+                }
+            }
         } else {
             for (int i = 0; i < stalledBuffer.getSlots(); i++) {
                 stalledBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
             }
+            for (int i = 0; i < inboundStallBuffer.getSlots(); i++) {
+                inboundStallBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
+            }
+        }
+        if (tag.contains("StallBufIn", Tag.TAG_COMPOUND)) {
+            inboundStallBuffer.deserializeNBT(registries, tag.getCompound("StallBufIn"));
         }
         loadStalledFluids(registries, tag);
         loadStalledGas(tag);

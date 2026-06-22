@@ -107,6 +107,35 @@ public final class DuctIncomingIndex {
         }
     }
 
+    /** Snapshot for delivery/resize excluding one in-flight reservation id. */
+    public static List<ItemStack> snapshotExcluding(
+            ServerLevel level, BlockPos destDuct, Direction destFace, long excludeReservationId) {
+        if (destFace == null) {
+            destFace = Direction.NORTH;
+        }
+        Map<IncomingKey, List<Reservation>> dim = BY_DIMENSION.get(level.dimension());
+        if (dim == null) {
+            return List.of();
+        }
+        List<Reservation> list = dim.get(new IncomingKey(destDuct, destFace.ordinal()));
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        synchronized (list) {
+            List<ItemStack> out = new ArrayList<>(list.size());
+            for (Reservation r : list) {
+                if (r == null || r.stack() == null) {
+                    continue;
+                }
+                if (r.id() == excludeReservationId) {
+                    continue;
+                }
+                out.add(r.stack().copy());
+            }
+            return out;
+        }
+    }
+
     // Backward-compatible overloads (used only by legacy call sites; reservation id is auto-generated).
     public static void register(ServerLevel level, BlockPos destDuct, Direction destFace, ItemStack stack) {
         register(level, destDuct, destFace, newReservationId(), stack);

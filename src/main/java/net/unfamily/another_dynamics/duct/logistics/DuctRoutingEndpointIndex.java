@@ -165,6 +165,9 @@ public final class DuctRoutingEndpointIndex {
                 if ((storageMask & (1 << face.ordinal())) == 0) {
                     continue;
                 }
+                if ((be.getUserDisconnectedFaceMask() & (1 << face.ordinal())) != 0) {
+                    continue;
+                }
                 if (!be.isTransportKindEnabled(face, kind)) {
                     continue;
                 }

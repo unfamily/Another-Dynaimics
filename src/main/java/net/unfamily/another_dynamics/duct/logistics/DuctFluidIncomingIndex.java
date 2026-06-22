@@ -79,5 +79,35 @@ public final class DuctFluidIncomingIndex {
             return out;
         }
     }
+
+    /** Snapshot omitting one registered reservation (same fluid + amount), used at delivery for in-flight self. */
+    public static List<FluidStack> snapshotExcluding(
+            ServerLevel level, BlockPos destDuct, FluidStack exclude) {
+        if (exclude == null || exclude.isEmpty()) {
+            return snapshot(level, destDuct);
+        }
+        Map<BlockPos, List<FluidStack>> dim = BY_DIMENSION.get(level.dimension());
+        if (dim == null) {
+            return List.of();
+        }
+        List<FluidStack> list = dim.get(destDuct);
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        synchronized (list) {
+            List<FluidStack> out = new ArrayList<>(list.size());
+            boolean skipped = false;
+            for (FluidStack s : list) {
+                if (!skipped
+                        && FluidStack.isSameFluidSameComponents(s, exclude)
+                        && s.getAmount() == exclude.getAmount()) {
+                    skipped = true;
+                    continue;
+                }
+                out.add(s.copy());
+            }
+            return out;
+        }
+    }
 }
 

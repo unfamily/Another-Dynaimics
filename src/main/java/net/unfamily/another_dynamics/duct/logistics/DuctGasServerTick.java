@@ -434,6 +434,16 @@ public final class DuctGasServerTick {
         if (MekanismChemicalCompat.isEmptyStack(available) || MekanismChemicalCompat.getAmount(available) <= 0) {
             return 0L;
         }
+        if (sourceMode == NodeMode.NONE || sourceMode == NodeMode.FILTERING_INSERTION) {
+            Object localHandler = MekanismChemicalCompat.getChemicalHandlerOnFace(level, sourceBe.getBlockPos(), sourceFace);
+            if (localHandler == null) {
+                return 0L;
+            }
+            long before = MekanismChemicalCompat.getAmount(available);
+            Object left = MekanismChemicalCompat.insertExecute(localHandler, available);
+            long leftAmt = MekanismChemicalCompat.isEmptyStack(left) ? 0L : MekanismChemicalCompat.getAmount(left);
+            return Math.max(0L, before - leftAmt);
+        }
         if (!DuctGasFilterLogic.passesGasFiltersForBank(node, DuctFaceNode.FilterBank.EXTRACTOR, available, level)) {
             return 0L;
         }
@@ -686,13 +696,25 @@ public final class DuctGasServerTick {
         }
     }
 
-    static long capInsertForRetrieverDestinationLimits(
+    public static long capInsertForRetrieverDestinationLimits(
             ServerLevel level,
             DuctBlockEntity destBe,
             Direction destFace,
             Object movingProbe,
             Object destHandler,
             long simulatedInsert) {
+        return capInsertForRetrieverDestinationLimits(
+                level, destBe, destFace, movingProbe, destHandler, simulatedInsert, null);
+    }
+
+    public static long capInsertForRetrieverDestinationLimits(
+            ServerLevel level,
+            DuctBlockEntity destBe,
+            Direction destFace,
+            Object movingProbe,
+            Object destHandler,
+            long simulatedInsert,
+            @org.jetbrains.annotations.Nullable Object excludeFromIncoming) {
         if (simulatedInsert <= 0 || MekanismChemicalCompat.isEmptyStack(movingProbe)) {
             return 0L;
         }
@@ -704,6 +726,11 @@ public final class DuctGasServerTick {
         List<String> allowLines = destNode.bankAllowFilters(DuctFaceNode.FilterBank.RETRIEVER);
         List<Integer> caps = destNode.bankAllowCaps(DuctFaceNode.FilterBank.RETRIEVER);
         List<Integer> concat = destNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.RETRIEVER);
+        List<Object> prior =
+                excludeFromIncoming != null && !MekanismChemicalCompat.isEmptyStack(excludeFromIncoming)
+                        ? DuctGasIncomingIndex.snapshotExcluding(
+                                level, destBe.getBlockPos(), excludeFromIncoming)
+                        : DuctGasIncomingIndex.snapshot(level, destBe.getBlockPos());
         return Math.min(
                 simulatedInsert,
                 DuctGasAllowLimitLogic.maxAdditionalInsertForAllowLine(
@@ -714,8 +741,7 @@ public final class DuctGasServerTick {
                         movingProbe,
                         level.registryAccess(),
                         (line, reg) ->
-                                DuctGasAllowLimitLogic.countMatchingInStacks(
-                                        DuctGasIncomingIndex.snapshot(level, destBe.getBlockPos()), line, reg)));
+                                DuctGasAllowLimitLogic.countMatchingInStacks(prior, line, reg)));
     }
 
     public static boolean gasShipmentMidTransitValid(ServerLevel level, DuctBlockEntity sourceBe, GasTransitShipment s) {
