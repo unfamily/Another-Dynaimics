@@ -2517,6 +2517,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         );
     }
 
+    /** Ghost calibration slot: allow/deny line edit or {@link SubView#ADVANCED_FILTERING} entry editor. */
+    private boolean isGhostSlotJeiContext() {
+        return inEditMode()
+                && (isAllowOrDenyFilterListContext() || subView == SubView.ADVANCED_FILTERING);
+    }
+
     private int amountBlockLayoutKey(NodeMode nm, HybridPanel hybrid) {
         int transport = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
         int mode = amountFieldEditsPriority() ? 1 : 0;
@@ -8109,8 +8115,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     @Override
     @Nullable
     public IAnDynamicsGhostTarget.IGhostIngredientConsumer getGhostHandler() {
-        // Only allow drops when in edit mode and viewing filter lists
-        if (!inEditMode() || !isAllowOrDenyFilterListContext()) {
+        // Allow drops in allow/deny edit mode and in advanced filtering (same ghost calibration slot).
+        if (!isGhostSlotJeiContext()) {
             return null;
         }
 
@@ -8152,8 +8158,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     @Override
     @Nullable
     public net.minecraft.client.renderer.Rect2i getGhostTargetArea() {
-        // Only provide a drop area when in edit mode
-        if (!inEditMode()) {
+        if (!isGhostSlotJeiContext()) {
             return null;
         }
 
