@@ -1,14 +1,18 @@
 package net.unfamily.another_dynamics.inventory;
 
-import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
+import net.minecraft.world.inventory.ContainerData;
+import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctFilterLineReorder;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctGasTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
@@ -19,92 +23,120 @@ import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.duct.module.DuctModuleHelper;
 import net.unfamily.another_dynamics.duct.module.ModuleDefinition;
 import net.unfamily.another_dynamics.duct.module.ModuleDefinitionRegistry;
-import net.minecraft.world.inventory.ContainerData;
-import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierVirtualSession;
+
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Client-side filter list mirrors shared by {@link DuctNodeMenu} and {@link SettingsCopierMenu}.
+ * One {@link ClientFilterLaneMirror} per {@link DuctTransportKind} prevents cross-lane contamination.
  */
 final class UniversalDuctMenuFilterBuffers {
-    private final List<String> clientAllowFiltersExtractor = new ArrayList<>();
-    private final List<String> clientDenyFiltersExtractor = new ArrayList<>();
-    private final List<String> clientAllowFiltersRetriever = new ArrayList<>();
-    private final List<String> clientDenyFiltersRetriever = new ArrayList<>();
-    private final List<String> clientAllowFiltersFilter = new ArrayList<>();
-    private final List<String> clientDenyFiltersFilter = new ArrayList<>();
-    private final List<Integer> clientAllowCapsExtractor = new ArrayList<>();
-    private final List<Integer> clientAllowCapsRetriever = new ArrayList<>();
-    private final List<Integer> clientAllowCapsFilter = new ArrayList<>();
-    private final List<Integer> clientAllowCapsFilter2 = new ArrayList<>();
-    private final List<Integer> clientAllowConcatExtractor = new ArrayList<>();
-    private final List<Integer> clientDenyConcatExtractor = new ArrayList<>();
-    private final List<Integer> clientAllowConcatRetriever = new ArrayList<>();
-    private final List<Integer> clientDenyConcatRetriever = new ArrayList<>();
-    private final List<Integer> clientAllowConcatFilter = new ArrayList<>();
-    private final List<Integer> clientDenyConcatFilter = new ArrayList<>();
-    private boolean clientDenyOverridesAllowExtractor;
-    private boolean clientDenyOverridesAllowRetriever;
-    private boolean clientDenyOverridesAllowFilter;
+    private final ClientFilterMirrorStore mirrors = new ClientFilterMirrorStore();
+    private final EnumMap<DuctTransportKind, ClientFilterPushState> pushByKind =
+            new EnumMap<>(DuctTransportKind.class);
 
-    private final ClientFilterPushState pushState = new ClientFilterPushState();
-
-    List<String> getClientAllowFilters(DuctFaceNode.FilterBank bank) {
-        return switch (bank) {
-            case EXTRACTOR -> clientAllowFiltersExtractor;
-            case RETRIEVER -> clientAllowFiltersRetriever;
-            case FILTER -> clientAllowFiltersFilter;
-        };
+    private ClientFilterPushState pushState(DuctTransportKind kind) {
+        return pushByKind.computeIfAbsent(kind, k -> new ClientFilterPushState());
     }
 
-    List<String> getClientDenyFilters(DuctFaceNode.FilterBank bank) {
-        return switch (bank) {
-            case EXTRACTOR -> clientDenyFiltersExtractor;
-            case RETRIEVER -> clientDenyFiltersRetriever;
-            case FILTER -> clientDenyFiltersFilter;
-        };
+    private ClientFilterPushState pushState(int transportKindOrdinal) {
+        return pushState(DuctTransportKind.values()[
+                Mth.clamp(transportKindOrdinal, 0, DuctTransportKind.values().length - 1)]);
     }
 
-    boolean getClientDenyOverridesAllow(DuctFaceNode.FilterBank bank) {
-        return switch (bank) {
-            case EXTRACTOR -> clientDenyOverridesAllowExtractor;
-            case RETRIEVER -> clientDenyOverridesAllowRetriever;
-            case FILTER -> clientDenyOverridesAllowFilter;
-        };
+    private ClientFilterLaneMirror mirrorForKind(int filterTransportKindOrdinal) {
+        return mirrors.mirror(filterTransportKindOrdinal);
     }
 
-    List<Integer> getClientAllowCaps(DuctFaceNode.FilterBank bank) {
-        return switch (bank) {
-            case EXTRACTOR -> clientAllowCapsExtractor;
-            case RETRIEVER -> clientAllowCapsRetriever;
-            case FILTER -> clientAllowCapsFilter;
-        };
+    List<String> getClientAllowFilters(int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).allowFilters(bank);
     }
 
-    List<Integer> getClientFilterKeepCaps() {
-        return clientAllowCapsFilter2;
+    List<String> getClientDenyFilters(int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).denyFilters(bank);
     }
 
-    List<Integer> getClientAllowConcatChannels(DuctFaceNode.FilterBank bank) {
-        return switch (bank) {
-            case EXTRACTOR -> clientAllowConcatExtractor;
-            case RETRIEVER -> clientAllowConcatRetriever;
-            case FILTER -> clientAllowConcatFilter;
-        };
+    boolean getClientDenyOverridesAllow(int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).denyOverridesAllow(bank);
     }
 
-    List<Integer> getClientDenyConcatChannels(DuctFaceNode.FilterBank bank) {
-        return switch (bank) {
-            case EXTRACTOR -> clientDenyConcatExtractor;
-            case RETRIEVER -> clientDenyConcatRetriever;
-            case FILTER -> clientDenyConcatFilter;
-        };
+    List<Integer> getClientAllowCaps(int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).allowCaps(bank);
+    }
+
+    List<Integer> getClientFilterKeepCaps(int filterTransportKindOrdinal) {
+        return mirrorForKind(filterTransportKindOrdinal).filterKeepCaps();
+    }
+
+    List<Integer> getClientAllowConcatChannels(int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).allowConcat(bank);
+    }
+
+    List<Integer> getClientDenyConcatChannels(int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).denyConcat(bank);
+    }
+
+    List<@Nullable DuctDirectionalEndpoint> getClientAllowRemoteNodes(
+            int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).allowRemote(bank);
+    }
+
+    List<@Nullable DuctDirectionalEndpoint> getClientDenyRemoteNodes(
+            int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).denyRemote(bank);
+    }
+
+    List<Boolean> getClientAllowRemoteIgnoreChannel(
+            int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).allowRemoteIgnoreChannel(bank);
+    }
+
+    List<Boolean> getClientDenyRemoteIgnoreChannel(
+            int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).denyRemoteIgnoreChannel(bank);
+    }
+
+    List<Boolean> getClientAllowRemoteAnyFace(
+            int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).allowRemoteAnyFace(bank);
+    }
+
+    List<Boolean> getClientDenyRemoteAnyFace(
+            int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).denyRemoteAnyFace(bank);
+    }
+
+    ClientFilterLaneMirror mirrorForTransport(int transportKindOrdinal) {
+        return mirrors.mirror(transportKindOrdinal);
+    }
+
+    void reorderFilterBank(
+            int transportKindOrdinal,
+            DuctFaceNode.FilterBank bank,
+            net.minecraft.core.RegistryAccess registryAccess) {
+        ClientFilterLaneMirror mirror = mirrors.mirror(transportKindOrdinal);
+        List<Integer> keepCaps = bank == DuctFaceNode.FilterBank.FILTER ? mirror.filterKeepCaps() : null;
+        DuctFilterLineReorder.sortAllowDenyRows(
+                mirror.allowFilters(bank),
+                mirror.denyFilters(bank),
+                mirror.allowCaps(bank),
+                null,
+                registryAccess,
+                keepCaps,
+                mirror.allowConcat(bank),
+                mirror.denyConcat(bank),
+                mirror.allowRemote(bank),
+                mirror.denyRemote(bank),
+                mirror.allowRemoteIgnoreChannel(bank),
+                mirror.denyRemoteIgnoreChannel(bank),
+                mirror.allowRemoteAnyFace(bank),
+                mirror.denyRemoteAnyFace(bank));
     }
 
     void receiveFilterSync(
             BlockPos expectedPos,
             Direction expectedFace,
-            ContainerData syncData,
             BlockPos pos,
             Direction face,
             int transportKindOrdinal,
@@ -115,24 +147,48 @@ final class UniversalDuctMenuFilterBuffers {
             List<Integer> allowCaps2,
             List<Integer> allowConcat,
             List<Integer> denyConcat,
+            List<@Nullable DuctDirectionalEndpoint> allowRemote,
+            List<@Nullable DuctDirectionalEndpoint> denyRemote,
+            List<Boolean> allowRemoteIgnoreChannel,
+            List<Boolean> denyRemoteIgnoreChannel,
+            List<Boolean> allowRemoteAnyFace,
+            List<Boolean> denyRemoteAnyFace,
             boolean denyOverridesAllow) {
         if (!expectedPos.equals(pos) || expectedFace != face) {
+            FilterSyncDebugLog.log(
+                    "CLIENT",
+                    "RECEIVE_SYNC_REJECT",
+                    "pos/face mismatch expected="
+                            + FilterSyncDebugLog.posFace(expectedPos, expectedFace)
+                            + " got="
+                            + FilterSyncDebugLog.posFace(pos, face));
             return;
         }
-        if (transportKindOrdinal != syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND)) {
+        if (pushState(transportKindOrdinal).dirty()) {
+            FilterSyncDebugLog.clientReceiveSync(
+                    pos, face, transportKindOrdinal, filterBankOrdinal, allow, deny, true);
             return;
         }
+        FilterSyncDebugLog.clientReceiveSync(
+                pos, face, transportKindOrdinal, filterBankOrdinal, allow, deny, false);
         DuctFaceNode.FilterBank bank =
                 DuctFaceNode.FilterBank.values()[
                         Mth.clamp(
                                 filterBankOrdinal,
                                 0,
                                 DuctFaceNode.FilterBank.values().length - 1)];
-        List<String> a = getClientAllowFilters(bank);
-        List<String> d = getClientDenyFilters(bank);
-        List<Integer> caps = getClientAllowCaps(bank);
-        List<Integer> allowCh = getClientAllowConcatChannels(bank);
-        List<Integer> denyCh = getClientDenyConcatChannels(bank);
+        ClientFilterLaneMirror lane = mirrors.mirror(transportKindOrdinal);
+        List<String> a = lane.allowFilters(bank);
+        List<String> d = lane.denyFilters(bank);
+        List<Integer> caps = lane.allowCaps(bank);
+        List<Integer> allowCh = lane.allowConcat(bank);
+        List<Integer> denyCh = lane.denyConcat(bank);
+        List<@Nullable DuctDirectionalEndpoint> allowRemoteNodes = lane.allowRemote(bank);
+        List<@Nullable DuctDirectionalEndpoint> denyRemoteNodes = lane.denyRemote(bank);
+        List<Boolean> allowIgnore = lane.allowRemoteIgnoreChannel(bank);
+        List<Boolean> denyIgnore = lane.denyRemoteIgnoreChannel(bank);
+        List<Boolean> allowAnyFace = lane.allowRemoteAnyFace(bank);
+        List<Boolean> denyAnyFace = lane.denyRemoteAnyFace(bank);
         a.clear();
         a.addAll(allow);
         d.clear();
@@ -155,69 +211,122 @@ final class UniversalDuctMenuFilterBuffers {
                 denyCh.add(v != null ? Math.clamp(v, 0, 26) : 0);
             }
         }
+        allowRemoteNodes.clear();
+        if (allowRemote != null) {
+            allowRemoteNodes.addAll(allowRemote);
+        }
+        denyRemoteNodes.clear();
+        if (denyRemote != null) {
+            denyRemoteNodes.addAll(denyRemote);
+        }
+        allowIgnore.clear();
+        if (allowRemoteIgnoreChannel != null) {
+            for (Boolean v : allowRemoteIgnoreChannel) {
+                allowIgnore.add(v != null && v);
+            }
+        }
+        denyIgnore.clear();
+        if (denyRemoteIgnoreChannel != null) {
+            for (Boolean v : denyRemoteIgnoreChannel) {
+                denyIgnore.add(v != null && v);
+            }
+        }
+        allowAnyFace.clear();
+        if (allowRemoteAnyFace != null) {
+            for (Boolean v : allowRemoteAnyFace) {
+                allowAnyFace.add(v != null && v);
+            }
+        }
+        denyAnyFace.clear();
+        if (denyRemoteAnyFace != null) {
+            for (Boolean v : denyRemoteAnyFace) {
+                denyAnyFace.add(v != null && v);
+            }
+        }
         if (bank == DuctFaceNode.FilterBank.FILTER) {
-            clientAllowCapsFilter2.clear();
+            List<Integer> keep = lane.filterKeepCaps();
+            keep.clear();
             if (allowCaps2 != null) {
                 for (Integer v : allowCaps2) {
-                    clientAllowCapsFilter2.add(Math.max(0, v != null ? v : 0));
+                    keep.add(Math.max(0, v != null ? v : 0));
                 }
             }
         }
-        switch (bank) {
-            case EXTRACTOR -> clientDenyOverridesAllowExtractor = denyOverridesAllow;
-            case RETRIEVER -> clientDenyOverridesAllowRetriever = denyOverridesAllow;
-            case FILTER -> clientDenyOverridesAllowFilter = denyOverridesAllow;
-        }
-        pushState.onServerFilterSync(transportKindOrdinal, filterBankOrdinal);
+        lane.setDenyOverridesAllow(bank, denyOverridesAllow);
+        ClientFilterPushState state = pushState(transportKindOrdinal);
+        state.onServerFilterSync(transportKindOrdinal, filterBankOrdinal);
+        FilterSyncDebugLog.clientPushState(
+                "mirror",
+                transportKindOrdinal,
+                state.hydrated(),
+                state.dirty(),
+                state.syncBankMask(),
+                "after_receive_sync");
     }
 
-    boolean clientFiltersHydrated() {
-        return pushState.hydrated();
+    boolean clientFiltersHydrated(int filterTransportKindOrdinal) {
+        return pushState(filterTransportKindOrdinal).hydrated();
     }
 
-    boolean clientFiltersDirty() {
-        return pushState.dirty();
+    boolean clientFiltersDirty(int filterTransportKindOrdinal) {
+        return pushState(filterTransportKindOrdinal).dirty();
     }
 
-    void markClientFiltersDirty() {
-        pushState.markDirty();
+    void markClientFiltersDirty(int filterTransportKindOrdinal) {
+        pushState(filterTransportKindOrdinal).markDirty(filterTransportKindOrdinal);
     }
 
-    boolean shouldPushClientFiltersOnClose() {
-        return pushState.shouldPushOnClose();
+    void logPushState(int filterTransportKindOrdinal, String reason) {
+        ClientFilterPushState state = pushState(filterTransportKindOrdinal);
+        FilterSyncDebugLog.clientPushState(
+                "buffers",
+                filterTransportKindOrdinal,
+                state.hydrated(),
+                state.dirty(),
+                state.syncBankMask(),
+                reason);
+    }
+
+    boolean shouldPushOnClose(int filterTransportKindOrdinal) {
+        return pushState(filterTransportKindOrdinal).shouldPushOnClose();
     }
 
     void ensureClientFilterBufferSizes(
+            int filterTransportKindOrdinal,
             ContainerData syncData,
             String logicalId,
             int moduleSlotCount,
             java.util.function.Function<Integer, ItemStack> moduleSlotStack,
             boolean unlimitedFilters,
             boolean hybridFilterContext) {
-        if (!unlimitedFilters && clientEditingEnergyOrHeatLane(syncData)) {
+        if (!unlimitedFilters && clientEditingEnergyOrHeatLane(filterTransportKindOrdinal)) {
             return;
         }
-        int maxA = Math.max(0, filterAllowCap(syncData, logicalId, moduleSlotCount, moduleSlotStack, unlimitedFilters, hybridFilterContext));
-        int maxD = Math.max(0, filterDenyCap(syncData, logicalId, moduleSlotCount, moduleSlotStack, unlimitedFilters, hybridFilterContext));
-        clampClientList(clientAllowFiltersExtractor, maxA);
-        clampClientList(clientDenyFiltersExtractor, maxD);
-        clampClientList(clientAllowFiltersRetriever, maxA);
-        clampClientList(clientDenyFiltersRetriever, maxD);
-        clampClientList(clientAllowFiltersFilter, maxA);
-        clampClientList(clientDenyFiltersFilter, maxD);
-        clampClientIntList(clientAllowCapsExtractor, maxA);
-        clampClientIntList(clientAllowCapsRetriever, maxA);
-        clampClientIntList(clientAllowCapsFilter, maxA);
-        clampClientIntList(clientAllowCapsFilter2, maxA);
-        clampClientIntList(clientAllowConcatExtractor, maxA);
-        clampClientIntList(clientDenyConcatExtractor, maxD);
-        clampClientIntList(clientAllowConcatRetriever, maxA);
-        clampClientIntList(clientDenyConcatRetriever, maxD);
-        clampClientIntList(clientAllowConcatFilter, maxA);
-        clampClientIntList(clientDenyConcatFilter, maxD);
+        int maxA = Math.max(
+                0,
+                filterAllowCap(
+                        filterTransportKindOrdinal,
+                        syncData,
+                        logicalId,
+                        moduleSlotCount,
+                        moduleSlotStack,
+                        unlimitedFilters,
+                        hybridFilterContext));
+        int maxD = Math.max(
+                0,
+                filterDenyCap(
+                        filterTransportKindOrdinal,
+                        syncData,
+                        logicalId,
+                        moduleSlotCount,
+                        moduleSlotStack,
+                        unlimitedFilters,
+                        hybridFilterContext));
+        mirrorForKind(filterTransportKindOrdinal).clampSizes(maxA, maxD);
     }
 
     static int filterAllowCap(
+            int filterTransportKindOrdinal,
             ContainerData syncData,
             String logicalId,
             int moduleSlotCount,
@@ -227,23 +336,23 @@ final class UniversalDuctMenuFilterBuffers {
         if (unlimitedFilters) {
             return SettingsCopierVirtualSession.UNLIMITED_FILTER_LINES;
         }
-        if (clientEditingEnergyOrHeatLane(syncData)) {
+        if (clientEditingEnergyOrHeatLane(filterTransportKindOrdinal)) {
             return 0;
         }
         NodeMode nm = NodeMode.fromOrdinal(syncData.get(DuctMenuSync.NODE_MODE));
         DuctModuleEffects.FilterSlotBonuses fb =
                 clientFilterSlotBonusesFromModuleColumn(moduleSlotCount, moduleSlotStack);
-        if (clientEditingFluidLane(syncData)) {
-            return DuctModuleEffects.effectiveFluidAllowBank(
-                    fluidSpec(logicalId), nm, fb);
+        if (clientEditingFluidLane(filterTransportKindOrdinal)) {
+            return DuctModuleEffects.effectiveFluidAllowBank(fluidSpec(logicalId), nm, fb);
         }
-        if (clientEditingGasLane(syncData)) {
+        if (clientEditingGasLane(filterTransportKindOrdinal)) {
             return DuctModuleEffects.effectiveGasAllowBank(gasSpec(logicalId), nm, fb);
         }
         return DuctModuleEffects.effectiveItemAllowBank(itemSpec(logicalId), nm, fb);
     }
 
     static int filterDenyCap(
+            int filterTransportKindOrdinal,
             ContainerData syncData,
             String logicalId,
             int moduleSlotCount,
@@ -253,32 +362,32 @@ final class UniversalDuctMenuFilterBuffers {
         if (unlimitedFilters) {
             return SettingsCopierVirtualSession.UNLIMITED_FILTER_LINES;
         }
-        if (clientEditingEnergyOrHeatLane(syncData)) {
+        if (clientEditingEnergyOrHeatLane(filterTransportKindOrdinal)) {
             return 0;
         }
         NodeMode nm = NodeMode.fromOrdinal(syncData.get(DuctMenuSync.NODE_MODE));
         DuctModuleEffects.FilterSlotBonuses fb =
                 clientFilterSlotBonusesFromModuleColumn(moduleSlotCount, moduleSlotStack);
-        if (clientEditingFluidLane(syncData)) {
+        if (clientEditingFluidLane(filterTransportKindOrdinal)) {
             return DuctModuleEffects.effectiveFluidDenyBank(fluidSpec(logicalId), nm, fb);
         }
-        if (clientEditingGasLane(syncData)) {
+        if (clientEditingGasLane(filterTransportKindOrdinal)) {
             return DuctModuleEffects.effectiveGasDenyBank(gasSpec(logicalId), nm, fb);
         }
         return DuctModuleEffects.effectiveItemDenyBank(itemSpec(logicalId), nm, fb);
     }
 
-    private static boolean clientEditingFluidLane(ContainerData syncData) {
-        return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.FLUID.ordinal();
+    private static boolean clientEditingFluidLane(int filterTransportKindOrdinal) {
+        return filterTransportKindOrdinal == DuctTransportKind.FLUID.ordinal();
     }
 
-    private static boolean clientEditingGasLane(ContainerData syncData) {
-        return syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND) == DuctTransportKind.GAS.ordinal();
+    private static boolean clientEditingGasLane(int filterTransportKindOrdinal) {
+        return filterTransportKindOrdinal == DuctTransportKind.GAS.ordinal();
     }
 
-    private static boolean clientEditingEnergyOrHeatLane(ContainerData syncData) {
-        int o = syncData.get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
-        return o == DuctTransportKind.ENERGY.ordinal() || o == DuctTransportKind.HEAT.ordinal();
+    private static boolean clientEditingEnergyOrHeatLane(int filterTransportKindOrdinal) {
+        return filterTransportKindOrdinal == DuctTransportKind.ENERGY.ordinal()
+                || filterTransportKindOrdinal == DuctTransportKind.HEAT.ordinal();
     }
 
     private static DuctItemTransportSpec itemSpec(String logicalId) {
@@ -337,23 +446,5 @@ final class UniversalDuctMenuFilterBuffers {
                 new DuctModuleEffects.FilterSlotBonuses.PerKind(ia, idn, iah, idnh),
                 new DuctModuleEffects.FilterSlotBonuses.PerKind(fa, fd, fah, fdh),
                 new DuctModuleEffects.FilterSlotBonuses.PerKind(ga, gd, gah, gdh));
-    }
-
-    private static void clampClientList(List<String> list, int max) {
-        while (list.size() < max) {
-            list.add("");
-        }
-        while (list.size() > max) {
-            list.remove(list.size() - 1);
-        }
-    }
-
-    private static void clampClientIntList(List<Integer> list, int max) {
-        while (list.size() < max) {
-            list.add(0);
-        }
-        while (list.size() > max) {
-            list.remove(list.size() - 1);
-        }
     }
 }

@@ -6,7 +6,7 @@ public enum FilterImportChannel {
     FLUID,
     GAS;
 
-    public String pipezComponentId() {
+    public String componentSuffix() {
         return name().toLowerCase();
     }
 }

@@ -21,11 +21,26 @@ final class ClientFilterPushState {
         if (filterBankOrdinal >= 0 && filterBankOrdinal < DuctFaceNode.FilterBank.values().length) {
             syncBankMask |= 1 << filterBankOrdinal;
         }
+        boolean wasDirty = dirty;
         dirty = false;
+        FilterSyncDebugLog.log(
+                "CLIENT",
+                "PUSH_STATE_SYNC",
+                FilterSyncDebugLog.pushState(transportKindOrdinal, hydrated(), dirty, syncBankMask)
+                        + " bank="
+                        + FilterSyncDebugLog.bankName(filterBankOrdinal)
+                        + " wasDirty="
+                        + wasDirty);
     }
 
-    void markDirty() {
+    void markDirty(int transportKindOrdinal) {
         dirty = true;
+        FilterSyncDebugLog.log(
+                "CLIENT",
+                "PUSH_STATE_DIRTY",
+                FilterSyncDebugLog.pushState(transportKindOrdinal, hydrated(), dirty, syncBankMask)
+                        + " from="
+                        + FilterSyncDebugLog.caller(4));
     }
 
     boolean hydrated() {
@@ -44,5 +59,13 @@ final class ClientFilterPushState {
         syncTransportKind = -1;
         syncBankMask = 0;
         dirty = false;
+    }
+
+    int syncTransportKind() {
+        return syncTransportKind;
+    }
+
+    int syncBankMask() {
+        return syncBankMask;
     }
 }

@@ -115,6 +115,18 @@ public final class DuctFaceNode {
     public final List<Integer> allowConcatChannels = new ArrayList<>();
     /** Parallel to {@link #denyFilters}. */
     public final List<Integer> denyConcatChannels = new ArrayList<>();
+    /** Parallel to {@link #allowFilters}: optional destination binding per line. */
+    public final List<DuctDirectionalEndpoint> allowRemoteNodes = new ArrayList<>();
+    /** Parallel to {@link #denyFilters}. */
+    public final List<DuctDirectionalEndpoint> denyRemoteNodes = new ArrayList<>();
+    /** Parallel to {@link #allowRemoteNodes}: cross-channel routing for bound destinations. */
+    public final List<Boolean> allowRemoteIgnoreChannel = new ArrayList<>();
+    /** Parallel to {@link #denyRemoteNodes}. */
+    public final List<Boolean> denyRemoteIgnoreChannel = new ArrayList<>();
+    /** Parallel to {@link #allowRemoteNodes}: match block position only (any inventory face). */
+    public final List<Boolean> allowRemoteAnyFace = new ArrayList<>();
+    /** Parallel to {@link #denyRemoteNodes}. */
+    public final List<Boolean> denyRemoteAnyFace = new ArrayList<>();
 
     /** Hybrid: allow this face to consider itself as a destination (only used by Extr/Filt). */
     public boolean selfFeed;
@@ -128,6 +140,12 @@ public final class DuctFaceNode {
     public final List<Integer> allowAllowCapsExtractor = new ArrayList<>();
     public final List<Integer> allowConcatChannelsExtractor = new ArrayList<>();
     public final List<Integer> denyConcatChannelsExtractor = new ArrayList<>();
+    public final List<DuctDirectionalEndpoint> allowRemoteNodesExtractor = new ArrayList<>();
+    public final List<DuctDirectionalEndpoint> denyRemoteNodesExtractor = new ArrayList<>();
+    public final List<Boolean> allowRemoteIgnoreChannelExtractor = new ArrayList<>();
+    public final List<Boolean> denyRemoteIgnoreChannelExtractor = new ArrayList<>();
+    public final List<Boolean> allowRemoteAnyFaceExtractor = new ArrayList<>();
+    public final List<Boolean> denyRemoteAnyFaceExtractor = new ArrayList<>();
 
     public boolean denyOverridesAllowRetriever = true;
     public final List<String> allowFiltersRetriever = new ArrayList<>();
@@ -135,6 +153,12 @@ public final class DuctFaceNode {
     public final List<Integer> allowAllowCapsRetriever = new ArrayList<>();
     public final List<Integer> allowConcatChannelsRetriever = new ArrayList<>();
     public final List<Integer> denyConcatChannelsRetriever = new ArrayList<>();
+    public final List<DuctDirectionalEndpoint> allowRemoteNodesRetriever = new ArrayList<>();
+    public final List<DuctDirectionalEndpoint> denyRemoteNodesRetriever = new ArrayList<>();
+    public final List<Boolean> allowRemoteIgnoreChannelRetriever = new ArrayList<>();
+    public final List<Boolean> denyRemoteIgnoreChannelRetriever = new ArrayList<>();
+    public final List<Boolean> allowRemoteAnyFaceRetriever = new ArrayList<>();
+    public final List<Boolean> denyRemoteAnyFaceRetriever = new ArrayList<>();
 
     public boolean denyOverridesAllowFilter = true;
     public final List<String> allowFiltersFilter = new ArrayList<>();
@@ -144,6 +168,12 @@ public final class DuctFaceNode {
     public final List<Integer> allowAllowCapsFilterKeep = new ArrayList<>();
     public final List<Integer> allowConcatChannelsFilter = new ArrayList<>();
     public final List<Integer> denyConcatChannelsFilter = new ArrayList<>();
+    public final List<DuctDirectionalEndpoint> allowRemoteNodesFilter = new ArrayList<>();
+    public final List<DuctDirectionalEndpoint> denyRemoteNodesFilter = new ArrayList<>();
+    public final List<Boolean> allowRemoteIgnoreChannelFilter = new ArrayList<>();
+    public final List<Boolean> denyRemoteIgnoreChannelFilter = new ArrayList<>();
+    public final List<Boolean> allowRemoteAnyFaceFilter = new ArrayList<>();
+    public final List<Boolean> denyRemoteAnyFaceFilter = new ArrayList<>();
 
     public final ItemStackHandler guiSlots;
 
@@ -361,6 +391,12 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannels, allowFilters.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannels, denyFilters.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodes, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodes, denyFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteIgnoreChannel, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFace, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteIgnoreChannel, denyFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFace, denyFilters.size());
 
         int bankA = DuctModuleEffects.effectiveItemAllowBank(spec, sharedNodeMode, fb);
         int bankD = DuctModuleEffects.effectiveItemDenyBank(spec, sharedNodeMode, fb);
@@ -371,17 +407,41 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsExtractor, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsExtractor, denyFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesExtractor, allowFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodesExtractor, denyFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                allowRemoteIgnoreChannelExtractor, allowFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFaceExtractor, allowFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                denyRemoteIgnoreChannelExtractor, denyFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFaceExtractor, denyFiltersExtractor.size());
         clampList(allowFiltersRetriever, bankA);
         clampList(denyFiltersRetriever, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsRetriever, allowFiltersRetriever.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsRetriever, denyFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesRetriever, allowFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodesRetriever, denyFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                allowRemoteIgnoreChannelRetriever, allowFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFaceRetriever, allowFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                denyRemoteIgnoreChannelRetriever, denyFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFaceRetriever, denyFiltersRetriever.size());
         clampList(allowFiltersFilter, bankA);
         clampList(denyFiltersFilter, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsFilter, allowFiltersFilter.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodesFilter, denyFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                allowRemoteIgnoreChannelFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFaceFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                denyRemoteIgnoreChannelFilter, denyFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFaceFilter, denyFiltersFilter.size());
     }
 
     /** Same layout as {@link #clampFilterSizes(DuctItemTransportSpec, NodeMode, DuctModuleEffects.FilterSlotBonuses)} using fluid datapack caps. */
@@ -392,6 +452,12 @@ public final class DuctFaceNode {
         clampList(allowFilters, legacyA);
         clampList(denyFilters, legacyD);
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodes, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodes, denyFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteIgnoreChannel, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFace, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteIgnoreChannel, denyFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFace, denyFilters.size());
 
         int bankA = DuctModuleEffects.effectiveFluidAllowBank(spec, sharedNodeMode, fb);
         int bankD = DuctModuleEffects.effectiveFluidDenyBank(spec, sharedNodeMode, fb);
@@ -402,17 +468,41 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsExtractor, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsExtractor, denyFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesExtractor, allowFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodesExtractor, denyFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                allowRemoteIgnoreChannelExtractor, allowFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFaceExtractor, allowFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                denyRemoteIgnoreChannelExtractor, denyFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFaceExtractor, denyFiltersExtractor.size());
         clampList(allowFiltersRetriever, bankA);
         clampList(denyFiltersRetriever, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsRetriever, allowFiltersRetriever.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsRetriever, denyFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesRetriever, allowFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodesRetriever, denyFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                allowRemoteIgnoreChannelRetriever, allowFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFaceRetriever, allowFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                denyRemoteIgnoreChannelRetriever, denyFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFaceRetriever, denyFiltersRetriever.size());
         clampList(allowFiltersFilter, bankA);
         clampList(denyFiltersFilter, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsFilter, allowFiltersFilter.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodesFilter, denyFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                allowRemoteIgnoreChannelFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFaceFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                denyRemoteIgnoreChannelFilter, denyFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFaceFilter, denyFiltersFilter.size());
     }
 
     /** Same layout as item clamp using gas datapack caps. */
@@ -422,6 +512,12 @@ public final class DuctFaceNode {
         clampList(allowFilters, legacyA);
         clampList(denyFilters, legacyD);
         syncAllowCapsToAllowSize(allowAllowCaps, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodes, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodes, denyFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteIgnoreChannel, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFace, allowFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteIgnoreChannel, denyFilters.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFace, denyFilters.size());
 
         int bankA = DuctModuleEffects.effectiveGasAllowBank(spec, sharedNodeMode, fb);
         int bankD = DuctModuleEffects.effectiveGasDenyBank(spec, sharedNodeMode, fb);
@@ -432,17 +528,41 @@ public final class DuctFaceNode {
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsExtractor, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsExtractor, denyFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesExtractor, allowFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodesExtractor, denyFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                allowRemoteIgnoreChannelExtractor, allowFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFaceExtractor, allowFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                denyRemoteIgnoreChannelExtractor, denyFiltersExtractor.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFaceExtractor, denyFiltersExtractor.size());
         clampList(allowFiltersRetriever, bankA);
         clampList(denyFiltersRetriever, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsRetriever, allowFiltersRetriever.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsRetriever, allowFiltersRetriever.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsRetriever, denyFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesRetriever, allowFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodesRetriever, denyFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                allowRemoteIgnoreChannelRetriever, allowFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFaceRetriever, allowFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                denyRemoteIgnoreChannelRetriever, denyFiltersRetriever.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFaceRetriever, denyFiltersRetriever.size());
         clampList(allowFiltersFilter, bankA);
         clampList(denyFiltersFilter, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsFilterLimit, allowFiltersFilter.size());
         syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsFilter, allowFiltersFilter.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncToLineSize(denyRemoteNodesFilter, denyFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                allowRemoteIgnoreChannelFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowRemoteAnyFaceFilter, allowFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(
+                denyRemoteIgnoreChannelFilter, denyFiltersFilter.size());
+        DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyRemoteAnyFaceFilter, denyFiltersFilter.size());
     }
 
     private static void syncAllowCapsToAllowSize(List<Integer> caps, int allowSize) {
@@ -463,6 +583,12 @@ public final class DuctFaceNode {
         putAllowCapArray(f, allowAllowCaps);
         putConcatChannelArray(f, "AllowConcat", allowConcatChannels);
         putConcatChannelArray(f, "DenyConcat", denyConcatChannels);
+        DuctFilterRemoteNodeLogic.putRemoteNodeList(f, "AllowRemoteNode", allowRemoteNodes);
+        DuctFilterRemoteNodeLogic.putRemoteNodeList(f, "DenyRemoteNode", denyRemoteNodes);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(f, "AllowRemoteIgnoreChannel", allowRemoteIgnoreChannel);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(f, "AllowRemoteAnyFace", allowRemoteAnyFace);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(f, "DenyRemoteIgnoreChannel", denyRemoteIgnoreChannel);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(f, "DenyRemoteAnyFace", denyRemoteAnyFace);
 
         CompoundTag ex = new CompoundTag();
         ex.putBoolean("DenyOver", denyOverridesAllowExtractor);
@@ -471,6 +597,12 @@ public final class DuctFaceNode {
         putAllowCapArray(ex, allowAllowCapsExtractor);
         putConcatChannelArray(ex, "AllowConcat", allowConcatChannelsExtractor);
         putConcatChannelArray(ex, "DenyConcat", denyConcatChannelsExtractor);
+        DuctFilterRemoteNodeLogic.putRemoteNodeList(ex, "AllowRemoteNode", allowRemoteNodesExtractor);
+        DuctFilterRemoteNodeLogic.putRemoteNodeList(ex, "DenyRemoteNode", denyRemoteNodesExtractor);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(ex, "AllowRemoteIgnoreChannel", allowRemoteIgnoreChannelExtractor);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(ex, "AllowRemoteAnyFace", allowRemoteAnyFaceExtractor);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(ex, "DenyRemoteIgnoreChannel", denyRemoteIgnoreChannelExtractor);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(ex, "DenyRemoteAnyFace", denyRemoteAnyFaceExtractor);
         f.put("Extractor", ex);
 
         CompoundTag re = new CompoundTag();
@@ -480,6 +612,12 @@ public final class DuctFaceNode {
         putAllowCapArray(re, allowAllowCapsRetriever);
         putConcatChannelArray(re, "AllowConcat", allowConcatChannelsRetriever);
         putConcatChannelArray(re, "DenyConcat", denyConcatChannelsRetriever);
+        DuctFilterRemoteNodeLogic.putRemoteNodeList(re, "AllowRemoteNode", allowRemoteNodesRetriever);
+        DuctFilterRemoteNodeLogic.putRemoteNodeList(re, "DenyRemoteNode", denyRemoteNodesRetriever);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(re, "AllowRemoteIgnoreChannel", allowRemoteIgnoreChannelRetriever);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(re, "AllowRemoteAnyFace", allowRemoteAnyFaceRetriever);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(re, "DenyRemoteIgnoreChannel", denyRemoteIgnoreChannelRetriever);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(re, "DenyRemoteAnyFace", denyRemoteAnyFaceRetriever);
         f.put("Retriever", re);
 
         CompoundTag fi = new CompoundTag();
@@ -492,6 +630,12 @@ public final class DuctFaceNode {
         putAllowCapArray(fi, "AllowCapKeep", allowAllowCapsFilterKeep);
         putConcatChannelArray(fi, "AllowConcat", allowConcatChannelsFilter);
         putConcatChannelArray(fi, "DenyConcat", denyConcatChannelsFilter);
+        DuctFilterRemoteNodeLogic.putRemoteNodeList(fi, "AllowRemoteNode", allowRemoteNodesFilter);
+        DuctFilterRemoteNodeLogic.putRemoteNodeList(fi, "DenyRemoteNode", denyRemoteNodesFilter);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(fi, "AllowRemoteIgnoreChannel", allowRemoteIgnoreChannelFilter);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(fi, "AllowRemoteAnyFace", allowRemoteAnyFaceFilter);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(fi, "DenyRemoteIgnoreChannel", denyRemoteIgnoreChannelFilter);
+        DuctFilterRemoteNodeLogic.putIgnoreChannelArray(fi, "DenyRemoteAnyFace", denyRemoteAnyFaceFilter);
         f.put("Filter", fi);
         tag.put("FaceFilters", f);
     }
@@ -502,18 +646,36 @@ public final class DuctFaceNode {
         allowAllowCaps.clear();
         allowConcatChannels.clear();
         denyConcatChannels.clear();
+        allowRemoteNodes.clear();
+        denyRemoteNodes.clear();
+        allowRemoteIgnoreChannel.clear();
+        allowRemoteAnyFace.clear();
+        denyRemoteIgnoreChannel.clear();
+        denyRemoteAnyFace.clear();
         denyOverridesAllow = true;
         allowFiltersExtractor.clear();
         denyFiltersExtractor.clear();
         allowAllowCapsExtractor.clear();
         allowConcatChannelsExtractor.clear();
         denyConcatChannelsExtractor.clear();
+        allowRemoteNodesExtractor.clear();
+        denyRemoteNodesExtractor.clear();
+        allowRemoteIgnoreChannelExtractor.clear();
+        allowRemoteAnyFaceExtractor.clear();
+        denyRemoteIgnoreChannelExtractor.clear();
+        denyRemoteAnyFaceExtractor.clear();
         denyOverridesAllowExtractor = true;
         allowFiltersRetriever.clear();
         denyFiltersRetriever.clear();
         allowAllowCapsRetriever.clear();
         allowConcatChannelsRetriever.clear();
         denyConcatChannelsRetriever.clear();
+        allowRemoteNodesRetriever.clear();
+        denyRemoteNodesRetriever.clear();
+        allowRemoteIgnoreChannelRetriever.clear();
+        allowRemoteAnyFaceRetriever.clear();
+        denyRemoteIgnoreChannelRetriever.clear();
+        denyRemoteAnyFaceRetriever.clear();
         denyOverridesAllowRetriever = true;
         allowFiltersFilter.clear();
         denyFiltersFilter.clear();
@@ -521,6 +683,12 @@ public final class DuctFaceNode {
         allowAllowCapsFilterKeep.clear();
         allowConcatChannelsFilter.clear();
         denyConcatChannelsFilter.clear();
+        allowRemoteNodesFilter.clear();
+        denyRemoteNodesFilter.clear();
+        allowRemoteIgnoreChannelFilter.clear();
+        allowRemoteAnyFaceFilter.clear();
+        denyRemoteIgnoreChannelFilter.clear();
+        denyRemoteAnyFaceFilter.clear();
         denyOverridesAllowFilter = true;
         if (!tag.contains("FaceFilters", Tag.TAG_COMPOUND)) {
             return;
@@ -532,6 +700,16 @@ public final class DuctFaceNode {
         readAllowCapsInto(f, allowAllowCaps, allowFilters.size());
         readConcatChannelsInto(f, "AllowConcat", allowConcatChannels, allowFilters.size());
         readConcatChannelsInto(f, "DenyConcat", denyConcatChannels, denyFilters.size());
+        DuctFilterRemoteNodeLogic.readRemoteNodeListInto(f, "AllowRemoteNode", allowRemoteNodes, allowFilters.size());
+        DuctFilterRemoteNodeLogic.readRemoteNodeListInto(f, "DenyRemoteNode", denyRemoteNodes, denyFilters.size());
+        DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                f, "AllowRemoteIgnoreChannel", allowRemoteIgnoreChannel, allowFilters.size());
+        DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                f, "DenyRemoteIgnoreChannel", denyRemoteIgnoreChannel, denyFilters.size());
+        DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                f, "AllowRemoteAnyFace", allowRemoteAnyFace, allowFilters.size());
+        DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                f, "DenyRemoteAnyFace", denyRemoteAnyFace, denyFilters.size());
 
         boolean hasExtractor = f.contains("Extractor", Tag.TAG_COMPOUND);
         boolean hasRetriever = f.contains("Retriever", Tag.TAG_COMPOUND);
@@ -544,6 +722,18 @@ public final class DuctFaceNode {
             readAllowCapsInto(ex, allowAllowCapsExtractor, allowFiltersExtractor.size());
             readConcatChannelsInto(ex, "AllowConcat", allowConcatChannelsExtractor, allowFiltersExtractor.size());
             readConcatChannelsInto(ex, "DenyConcat", denyConcatChannelsExtractor, denyFiltersExtractor.size());
+            DuctFilterRemoteNodeLogic.readRemoteNodeListInto(
+                    ex, "AllowRemoteNode", allowRemoteNodesExtractor, allowFiltersExtractor.size());
+            DuctFilterRemoteNodeLogic.readRemoteNodeListInto(
+                    ex, "DenyRemoteNode", denyRemoteNodesExtractor, denyFiltersExtractor.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    ex, "AllowRemoteIgnoreChannel", allowRemoteIgnoreChannelExtractor, allowFiltersExtractor.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    ex, "DenyRemoteIgnoreChannel", denyRemoteIgnoreChannelExtractor, denyFiltersExtractor.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    ex, "AllowRemoteAnyFace", allowRemoteAnyFaceExtractor, allowFiltersExtractor.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    ex, "DenyRemoteAnyFace", denyRemoteAnyFaceExtractor, denyFiltersExtractor.size());
         }
         if (hasRetriever) {
             CompoundTag re = f.getCompound("Retriever");
@@ -553,6 +743,18 @@ public final class DuctFaceNode {
             readAllowCapsInto(re, allowAllowCapsRetriever, allowFiltersRetriever.size());
             readConcatChannelsInto(re, "AllowConcat", allowConcatChannelsRetriever, allowFiltersRetriever.size());
             readConcatChannelsInto(re, "DenyConcat", denyConcatChannelsRetriever, denyFiltersRetriever.size());
+            DuctFilterRemoteNodeLogic.readRemoteNodeListInto(
+                    re, "AllowRemoteNode", allowRemoteNodesRetriever, allowFiltersRetriever.size());
+            DuctFilterRemoteNodeLogic.readRemoteNodeListInto(
+                    re, "DenyRemoteNode", denyRemoteNodesRetriever, denyFiltersRetriever.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    re, "AllowRemoteIgnoreChannel", allowRemoteIgnoreChannelRetriever, allowFiltersRetriever.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    re, "DenyRemoteIgnoreChannel", denyRemoteIgnoreChannelRetriever, denyFiltersRetriever.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    re, "AllowRemoteAnyFace", allowRemoteAnyFaceRetriever, allowFiltersRetriever.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    re, "DenyRemoteAnyFace", denyRemoteAnyFaceRetriever, denyFiltersRetriever.size());
         }
         if (hasFilter) {
             CompoundTag fi = f.getCompound("Filter");
@@ -568,6 +770,18 @@ public final class DuctFaceNode {
             readAllowCapsInto(fi, "AllowCapKeep", allowAllowCapsFilterKeep, allowFiltersFilter.size());
             readConcatChannelsInto(fi, "AllowConcat", allowConcatChannelsFilter, allowFiltersFilter.size());
             readConcatChannelsInto(fi, "DenyConcat", denyConcatChannelsFilter, denyFiltersFilter.size());
+            DuctFilterRemoteNodeLogic.readRemoteNodeListInto(
+                    fi, "AllowRemoteNode", allowRemoteNodesFilter, allowFiltersFilter.size());
+            DuctFilterRemoteNodeLogic.readRemoteNodeListInto(
+                    fi, "DenyRemoteNode", denyRemoteNodesFilter, denyFiltersFilter.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    fi, "AllowRemoteIgnoreChannel", allowRemoteIgnoreChannelFilter, allowFiltersFilter.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    fi, "DenyRemoteIgnoreChannel", denyRemoteIgnoreChannelFilter, denyFiltersFilter.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    fi, "AllowRemoteAnyFace", allowRemoteAnyFaceFilter, allowFiltersFilter.size());
+            DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
+                    fi, "DenyRemoteAnyFace", denyRemoteAnyFaceFilter, denyFiltersFilter.size());
         }
         if (!hasExtractor && !hasRetriever && !hasFilter) {
             // Migration: legacy single-bank -> FILTER bank by default.
@@ -577,6 +791,12 @@ public final class DuctFaceNode {
             allowAllowCapsFilterLimit.addAll(allowAllowCaps);
             allowConcatChannelsFilter.addAll(allowConcatChannels);
             denyConcatChannelsFilter.addAll(denyConcatChannels);
+            allowRemoteNodesFilter.addAll(allowRemoteNodes);
+            denyRemoteNodesFilter.addAll(denyRemoteNodes);
+            allowRemoteIgnoreChannelFilter.addAll(allowRemoteIgnoreChannel);
+            denyRemoteIgnoreChannelFilter.addAll(denyRemoteIgnoreChannel);
+            allowRemoteAnyFaceFilter.addAll(allowRemoteAnyFace);
+            denyRemoteAnyFaceFilter.addAll(denyRemoteAnyFace);
             syncAllowCapsToAllowSize(allowAllowCapsFilterKeep, allowFiltersFilter.size());
         }
     }
@@ -639,6 +859,68 @@ public final class DuctFaceNode {
             case RETRIEVER -> denyConcatChannelsRetriever;
             case FILTER -> denyConcatChannelsFilter;
         };
+    }
+
+    public List<DuctDirectionalEndpoint> bankAllowRemoteNodes(FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> allowRemoteNodesExtractor;
+            case RETRIEVER -> allowRemoteNodesRetriever;
+            case FILTER -> allowRemoteNodesFilter;
+        };
+    }
+
+    public List<DuctDirectionalEndpoint> bankDenyRemoteNodes(FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> denyRemoteNodesExtractor;
+            case RETRIEVER -> denyRemoteNodesRetriever;
+            case FILTER -> denyRemoteNodesFilter;
+        };
+    }
+
+    public List<Boolean> bankAllowRemoteIgnoreChannel(FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> allowRemoteIgnoreChannelExtractor;
+            case RETRIEVER -> allowRemoteIgnoreChannelRetriever;
+            case FILTER -> allowRemoteIgnoreChannelFilter;
+        };
+    }
+
+    public List<Boolean> bankDenyRemoteIgnoreChannel(FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> denyRemoteIgnoreChannelExtractor;
+            case RETRIEVER -> denyRemoteIgnoreChannelRetriever;
+            case FILTER -> denyRemoteIgnoreChannelFilter;
+        };
+    }
+
+    public List<Boolean> bankAllowRemoteAnyFace(FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> allowRemoteAnyFaceExtractor;
+            case RETRIEVER -> allowRemoteAnyFaceRetriever;
+            case FILTER -> allowRemoteAnyFaceFilter;
+        };
+    }
+
+    public List<Boolean> bankDenyRemoteAnyFace(FilterBank bank) {
+        return switch (bank) {
+            case EXTRACTOR -> denyRemoteAnyFaceExtractor;
+            case RETRIEVER -> denyRemoteAnyFaceRetriever;
+            case FILTER -> denyRemoteAnyFaceFilter;
+        };
+    }
+
+    /** Migrates duct-position remote bindings saved before physical attachment endpoints. */
+    public boolean migrateLegacyRemoteNodeEndpoints(net.minecraft.world.level.Level level) {
+        boolean changed = false;
+        changed |= DuctFilterRemoteNodeLogic.migrateLegacyEndpointsInPlace(level, allowRemoteNodes);
+        changed |= DuctFilterRemoteNodeLogic.migrateLegacyEndpointsInPlace(level, denyRemoteNodes);
+        changed |= DuctFilterRemoteNodeLogic.migrateLegacyEndpointsInPlace(level, allowRemoteNodesExtractor);
+        changed |= DuctFilterRemoteNodeLogic.migrateLegacyEndpointsInPlace(level, denyRemoteNodesExtractor);
+        changed |= DuctFilterRemoteNodeLogic.migrateLegacyEndpointsInPlace(level, allowRemoteNodesRetriever);
+        changed |= DuctFilterRemoteNodeLogic.migrateLegacyEndpointsInPlace(level, denyRemoteNodesRetriever);
+        changed |= DuctFilterRemoteNodeLogic.migrateLegacyEndpointsInPlace(level, allowRemoteNodesFilter);
+        changed |= DuctFilterRemoteNodeLogic.migrateLegacyEndpointsInPlace(level, denyRemoteNodesFilter);
+        return changed;
     }
 
     private static void putConcatChannelArray(CompoundTag tag, String key, List<Integer> concat) {

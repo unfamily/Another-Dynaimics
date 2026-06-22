@@ -21,7 +21,9 @@ import net.unfamily.another_dynamics.registry.ModCreativeTabs;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 import net.unfamily.another_dynamics.registry.ModItems;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
+import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.network.ModNetwork;
+import net.unfamily.another_dynamics.item.RemoteNodeSelectorEvents;
 
 @Mod(AnotherDynamicsMod.MOD_ID)
 public final class AnotherDynamicsMod {
@@ -47,8 +49,10 @@ public final class AnotherDynamicsMod {
 
         modEventBus.addListener(ModNetwork::register);
         modEventBus.addListener(AnotherDynamicsMod::onRegisterCapabilities);
+        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.COMMON, Config.SPEC);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
+        NeoForge.EVENT_BUS.register(RemoteNodeSelectorEvents.class);
 
         initOptionalIntegrations();
     }

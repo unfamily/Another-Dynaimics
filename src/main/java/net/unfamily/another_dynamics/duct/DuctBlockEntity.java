@@ -65,6 +65,7 @@ import net.neoforged.neoforge.fluids.FluidUtil;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.fluids.capability.IFluidHandlerItem;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.unfamily.another_dynamics.inventory.FilterSyncDebugLog;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
@@ -4161,6 +4162,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public boolean passesItemFilters(Direction face, ItemStack stack, Level level, DuctFaceNode.FilterBank bank) {
+        return passesItemFilters(face, stack, level, bank, null);
+    }
+
+    public boolean passesItemFilters(
+            Direction face,
+            ItemStack stack,
+            Level level,
+            DuctFaceNode.FilterBank bank,
+            @org.jetbrains.annotations.Nullable DuctDirectionalEndpoint counterparty) {
         if (stack.isEmpty()) {
             return false;
         }
@@ -4190,7 +4200,39 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 fullAllowConcat.subList(0, Math.min(fullAllowConcat.size(), allowCap)));
         view.denyConcatChannels.addAll(
                 fullDenyConcat.subList(0, Math.min(fullDenyConcat.size(), denyCap)));
-        return DuctFilterLogic.passesItemFilters(view, stack, level);
+        List<DuctDirectionalEndpoint> fullAllowRemote = node.bankAllowRemoteNodes(bank);
+        List<DuctDirectionalEndpoint> fullDenyRemote = node.bankDenyRemoteNodes(bank);
+        view.allowRemoteNodes.addAll(
+                fullAllowRemote.subList(0, Math.min(fullAllowRemote.size(), allowCap)));
+        view.denyRemoteNodes.addAll(
+                fullDenyRemote.subList(0, Math.min(fullDenyRemote.size(), denyCap)));
+        List<Boolean> fullAllowIgnore = node.bankAllowRemoteIgnoreChannel(bank);
+        List<Boolean> fullDenyIgnore = node.bankDenyRemoteIgnoreChannel(bank);
+        view.allowRemoteIgnoreChannel.addAll(
+                fullAllowIgnore.subList(0, Math.min(fullAllowIgnore.size(), allowCap)));
+        view.denyRemoteIgnoreChannel.addAll(
+                fullDenyIgnore.subList(0, Math.min(fullDenyIgnore.size(), denyCap)));
+        List<Boolean> fullAllowAnyFace = node.bankAllowRemoteAnyFace(bank);
+        List<Boolean> fullDenyAnyFace = node.bankDenyRemoteAnyFace(bank);
+        view.allowRemoteAnyFace.addAll(
+                fullAllowAnyFace.subList(0, Math.min(fullAllowAnyFace.size(), allowCap)));
+        view.denyRemoteAnyFace.addAll(
+                fullDenyAnyFace.subList(0, Math.min(fullDenyAnyFace.size(), denyCap)));
+        return DuctFilterLogic.passesItemFiltersWithConcat(
+                view.denyOverridesAllow,
+                view.allowFilters,
+                view.denyFilters,
+                view.allowConcatChannels,
+                view.denyConcatChannels,
+                view.allowRemoteNodes,
+                view.denyRemoteNodes,
+                view.allowRemoteIgnoreChannel,
+                view.denyRemoteIgnoreChannel,
+                view.allowRemoteAnyFace,
+                view.denyRemoteAnyFace,
+                stack,
+                level,
+                counterparty);
     }
 
     public void clampFaceFiltersToSpec() {
@@ -4201,6 +4243,35 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             getFaceLanes(d).clampFilterSizes(itemSpec, fluidSpec, gasSpec);
         }
     }
+
+    private void migrateLegacyRemoteNodeEndpoints() {
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        boolean changed = false;
+        for (Direction d : Direction.values()) {
+            DuctFaceLanes lanes = getFaceLanes(d);
+            changed |= lanes.item.migrateLegacyRemoteNodeEndpoints(level);
+            changed |= lanes.fluid.migrateLegacyRemoteNodeEndpoints(level);
+            changed |= lanes.gas.migrateLegacyRemoteNodeEndpoints(level);
+        }
+        if (changed) {
+            setChanged();
+        }
+    }
+
+    private List<@org.jetbrains.annotations.Nullable DuctDirectionalEndpoint> migrateRemoteNodeEndpointList(
+            List<@org.jetbrains.annotations.Nullable DuctDirectionalEndpoint> in) {
+        if (level == null || in.isEmpty()) {
+            return in;
+        }
+        List<@org.jetbrains.annotations.Nullable DuctDirectionalEndpoint> out = new ArrayList<>(in.size());
+        for (@org.jetbrains.annotations.Nullable DuctDirectionalEndpoint ep : in) {
+            out.add(DuctDirectionalEndpoint.migrateLegacyStoredEndpoint(level, ep));
+        }
+        return out;
+    }
+
 
     public void applyServerFilterConfig(
             ServerPlayer player,
@@ -4213,6 +4284,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             List<Integer> allowCaps2In,
             List<Integer> allowConcatIn,
             List<Integer> denyConcatIn,
+            List<@org.jetbrains.annotations.Nullable DuctDirectionalEndpoint> allowRemoteIn,
+            List<@org.jetbrains.annotations.Nullable DuctDirectionalEndpoint> denyRemoteIn,
+            List<Boolean> allowRemoteIgnoreChannelIn,
+            List<Boolean> denyRemoteIgnoreChannelIn,
+            List<Boolean> allowRemoteAnyFaceIn,
+            List<Boolean> denyRemoteAnyFaceIn,
             boolean denyOverridesAllow) {
         if (level == null || level.isClientSide) {
             return;
@@ -4242,12 +4319,44 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (denyConcatIn == null) {
             denyConcatIn = List.of();
         }
+        if (allowRemoteIn == null) {
+            allowRemoteIn = List.of();
+        }
+        if (denyRemoteIn == null) {
+            denyRemoteIn = List.of();
+        }
+        if (allowRemoteIgnoreChannelIn == null) {
+            allowRemoteIgnoreChannelIn = List.of();
+        }
+        if (denyRemoteIgnoreChannelIn == null) {
+            denyRemoteIgnoreChannelIn = List.of();
+        }
+        if (allowRemoteAnyFaceIn == null) {
+            allowRemoteAnyFaceIn = List.of();
+        }
+        if (denyRemoteAnyFaceIn == null) {
+            denyRemoteAnyFaceIn = List.of();
+        }
+        if (allowIn == null) {
+            allowIn = List.of();
+        }
+        if (denyIn == null) {
+            denyIn = List.of();
+        }
+        allowRemoteIn = migrateRemoteNodeEndpointList(allowRemoteIn);
+        denyRemoteIn = migrateRemoteNodeEndpointList(denyRemoteIn);
         List<String> a = node.bankAllowFilters(bank);
         List<String> d = node.bankDenyFilters(bank);
         List<Integer> caps = node.bankAllowCaps(bank);
         List<Integer> caps2 = bank == DuctFaceNode.FilterBank.FILTER ? node.filterBankKeepCaps() : null;
         List<Integer> allowConcat = node.bankAllowConcatChannels(bank);
         List<Integer> denyConcat = node.bankDenyConcatChannels(bank);
+        List<DuctDirectionalEndpoint> allowRemote = node.bankAllowRemoteNodes(bank);
+        List<DuctDirectionalEndpoint> denyRemote = node.bankDenyRemoteNodes(bank);
+        List<Boolean> allowIgnoreChannel = node.bankAllowRemoteIgnoreChannel(bank);
+        List<Boolean> denyIgnoreChannel = node.bankDenyRemoteIgnoreChannel(bank);
+        List<Boolean> allowAnyFace = node.bankAllowRemoteAnyFace(bank);
+        List<Boolean> denyAnyFace = node.bankDenyRemoteAnyFace(bank);
         int maxA;
         int maxD;
         if (laneKind == DuctTransportKind.FLUID) {
@@ -4279,11 +4388,23 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         List<String> origD = new ArrayList<>(d);
         List<Integer> origAllowConcat = new ArrayList<>(allowConcat);
         List<Integer> origDenyConcat = new ArrayList<>(denyConcat);
+        List<DuctDirectionalEndpoint> origAllowDest = new ArrayList<>(allowRemote);
+        List<DuctDirectionalEndpoint> origDenyDest = new ArrayList<>(denyRemote);
+        List<Boolean> origAllowIgnore = new ArrayList<>(allowIgnoreChannel);
+        List<Boolean> origDenyIgnore = new ArrayList<>(denyIgnoreChannel);
+        List<Boolean> origAllowAnyFace = new ArrayList<>(allowAnyFace);
+        List<Boolean> origDenyAnyFace = new ArrayList<>(denyAnyFace);
         a.clear();
         d.clear();
         caps.clear();
         allowConcat.clear();
         denyConcat.clear();
+        allowRemote.clear();
+        denyRemote.clear();
+        allowIgnoreChannel.clear();
+        denyIgnoreChannel.clear();
+        allowAnyFace.clear();
+        denyAnyFace.clear();
         if (caps2 != null) {
             caps2.clear();
         }
@@ -4323,6 +4444,27 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             int concatVal = concatObj != null ? Math.clamp(concatObj, 0, FilterConcatChannel.MAX_LETTER) : 0;
             allowConcat.add(concatVal);
+            DuctDirectionalEndpoint remoteEp;
+            if (i < allowRemoteIn.size()) {
+                remoteEp = allowRemoteIn.get(i);
+            } else {
+                remoteEp = i < origAllowDest.size() ? origAllowDest.get(i) : null;
+            }
+            allowRemote.add(remoteEp);
+            Boolean ignoreObj;
+            if (i < allowRemoteIgnoreChannelIn.size()) {
+                ignoreObj = allowRemoteIgnoreChannelIn.get(i);
+            } else {
+                ignoreObj = i < origAllowIgnore.size() ? origAllowIgnore.get(i) : false;
+            }
+            allowIgnoreChannel.add(ignoreObj != null && ignoreObj);
+            Boolean anyFaceObj;
+            if (i < allowRemoteAnyFaceIn.size()) {
+                anyFaceObj = allowRemoteAnyFaceIn.get(i);
+            } else {
+                anyFaceObj = i < origAllowAnyFace.size() ? origAllowAnyFace.get(i) : false;
+            }
+            allowAnyFace.add(anyFaceObj != null && anyFaceObj);
         }
         for (int i = 0; i < maxD; i++) {
             String s;
@@ -4342,6 +4484,27 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             int concatVal = concatObj != null ? Math.clamp(concatObj, 0, FilterConcatChannel.MAX_LETTER) : 0;
             denyConcat.add(concatVal);
+            DuctDirectionalEndpoint remoteEp;
+            if (i < denyRemoteIn.size()) {
+                remoteEp = denyRemoteIn.get(i);
+            } else {
+                remoteEp = i < origDenyDest.size() ? origDenyDest.get(i) : null;
+            }
+            denyRemote.add(remoteEp);
+            Boolean denyIgnoreObj;
+            if (i < denyRemoteIgnoreChannelIn.size()) {
+                denyIgnoreObj = denyRemoteIgnoreChannelIn.get(i);
+            } else {
+                denyIgnoreObj = i < origDenyIgnore.size() ? origDenyIgnore.get(i) : false;
+            }
+            denyIgnoreChannel.add(denyIgnoreObj != null && denyIgnoreObj);
+            Boolean denyAnyFaceObj;
+            if (i < denyRemoteAnyFaceIn.size()) {
+                denyAnyFaceObj = denyRemoteAnyFaceIn.get(i);
+            } else {
+                denyAnyFaceObj = i < origDenyAnyFace.size() ? origDenyAnyFace.get(i) : false;
+            }
+            denyAnyFace.add(denyAnyFaceObj != null && denyAnyFaceObj);
         }
         // Restore entries beyond current capacity (inactive until capacity is restored).
         if (origA.size() > maxA) {
@@ -4349,6 +4512,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (origCaps.size() > maxA) caps.addAll(origCaps.subList(maxA, origCaps.size()));
             if (origAllowConcat.size() > maxA) {
                 allowConcat.addAll(origAllowConcat.subList(maxA, origAllowConcat.size()));
+            }
+            if (origAllowDest.size() > maxA) {
+                allowRemote.addAll(origAllowDest.subList(maxA, origAllowDest.size()));
+            }
+            if (origAllowIgnore.size() > maxA) {
+                allowIgnoreChannel.addAll(origAllowIgnore.subList(maxA, origAllowIgnore.size()));
+            }
+            if (origAllowAnyFace.size() > maxA) {
+                allowAnyFace.addAll(origAllowAnyFace.subList(maxA, origAllowAnyFace.size()));
             }
             if (caps2 != null && origCaps2 != null && origCaps2.size() > maxA) {
                 caps2.addAll(origCaps2.subList(maxA, origCaps2.size()));
@@ -4358,6 +4530,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             d.addAll(origD.subList(maxD, origD.size()));
             if (origDenyConcat.size() > maxD) {
                 denyConcat.addAll(origDenyConcat.subList(maxD, origDenyConcat.size()));
+            }
+            if (origDenyDest.size() > maxD) {
+                denyRemote.addAll(origDenyDest.subList(maxD, origDenyDest.size()));
+            }
+            if (origDenyIgnore.size() > maxD) {
+                denyIgnoreChannel.addAll(origDenyIgnore.subList(maxD, origDenyIgnore.size()));
+            }
+            if (origDenyAnyFace.size() > maxD) {
+                denyAnyFace.addAll(origDenyAnyFace.subList(maxD, origDenyAnyFace.size()));
             }
         }
         if (DuctFeaturePolicy.isUsable(def.orElse(null), DuctFeatureKeys.listPrecedenceKey(sharedMode, bank), hasModule)) {
@@ -4374,8 +4555,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         setChanged();
         refreshMenuData(face);
-        ModNetwork.sendFilterSyncToPlayer(player, this, face);
         syncVisualGeometryToClients();
+        FilterSyncDebugLog.serverApply(
+                getBlockPos(),
+                face,
+                laneKind.ordinal(),
+                bank.ordinal(),
+                allowIn,
+                denyIn,
+                a,
+                d,
+                "DuctBlockEntity.applyServerFilterConfig");
+        ModNetwork.sendFilterSyncToPlayer(player, this, face, laneKind);
     }
 
     public void toggleListLogicFromClient(

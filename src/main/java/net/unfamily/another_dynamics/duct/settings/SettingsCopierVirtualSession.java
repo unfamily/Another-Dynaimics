@@ -5,6 +5,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
@@ -21,7 +22,9 @@ import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.FilterConcatChannel;
 import net.unfamily.another_dynamics.duct.DuctFeatureKeys;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.DuctFeaturePolicy;
+import net.unfamily.another_dynamics.duct.DuctFilterRemoteNodeLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctGasTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
@@ -31,6 +34,7 @@ import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.unfamily.another_dynamics.inventory.FilterSyncDebugLog;
 import net.unfamily.another_dynamics.network.ModNetwork;
 
 /**
@@ -191,7 +195,9 @@ public final class SettingsCopierVirtualSession {
             }
         });
         lanes.nodeMode = NodeMode.EXTRACTION;
-        menuTransportKindIndex = Math.max(0, orderedKinds.indexOf(DuctTransportKind.ITEM));
+        if (storeKind != SettingsCopierStoreKind.FILTER || filterListMaterialKind == FilterListMaterialKind.NONE) {
+            menuTransportKindIndex = Math.max(0, orderedKinds.indexOf(DuctTransportKind.ITEM));
+        }
         lanes.ensureTransportEnabledMask(enabledKinds);
     }
 
@@ -207,8 +213,11 @@ public final class SettingsCopierVirtualSession {
                 kind != FilterListMaterialKind.NONE
                         ? faceNodeForTransportKind(kind.toTransportKind())
                         : lanes.item;
+        // FILTER copier stores a single portable allow list; load always targets EXTRACTOR allow.
         CompoundTag snap =
-                DuctFilterListSnapshot.captureList(node, lastFilterBank, lastFilterAllowList, kind);
+                DuctFilterListSnapshot.captureList(
+                        node, DuctFaceNode.FilterBank.EXTRACTOR, true, kind);
+        DuctFilterListSnapshot.trimTrailingEmptyLines(snap);
         DuctFaceSettingsSnapshot.writeToCopier(copier, snap);
     }
 
@@ -653,7 +662,9 @@ public final class SettingsCopierVirtualSession {
             lastFilterLane = tk;
         }
         refreshMenuData();
-        ModNetwork.sendFilterSyncForVirtual(player, this);
+        DuctTransportKind syncLane =
+                kind != FilterListMaterialKind.NONE ? kind.toTransportKind() : menuActiveTransportKind();
+        ModNetwork.sendFilterSyncForVirtual(player, this, syncLane);
     }
 
     private void copyFilterAllowListBetweenLanes(DuctTransportKind from, DuctTransportKind to) {
@@ -691,13 +702,24 @@ public final class SettingsCopierVirtualSession {
             List<Integer> allowCaps2In,
             List<Integer> allowConcatIn,
             List<Integer> denyConcatIn,
+            List<@org.jetbrains.annotations.Nullable DuctDirectionalEndpoint> allowRemoteIn,
+            List<@org.jetbrains.annotations.Nullable DuctDirectionalEndpoint> denyRemoteIn,
+            List<Boolean> allowRemoteIgnoreChannelIn,
+            List<Boolean> denyRemoteIgnoreChannelIn,
+            List<Boolean> allowRemoteAnyFaceIn,
+            List<Boolean> denyRemoteAnyFaceIn,
             boolean denyOverridesAllow) {
+        DuctTransportKind payloadLane = laneKind;
         if (storeKind == SettingsCopierStoreKind.FILTER
                 && filterListMaterialKind != FilterListMaterialKind.NONE) {
             laneKind = filterListMaterialKind.toTransportKind();
         }
+        if (storeKind == SettingsCopierStoreKind.FILTER && bank != DuctFaceNode.FilterBank.EXTRACTOR) {
+            return;
+        }
         lastFilterLane = laneKind;
         lastFilterBank = bank;
+        lastFilterAllowList = true;
         if (laneKind == DuctTransportKind.ENERGY || laneKind == DuctTransportKind.HEAT) {
             return;
         }
@@ -747,9 +769,70 @@ public final class SettingsCopierVirtualSession {
             }
             FilterConcatChannel.syncToLineSize(denyCh, d.size());
         }
+        if (allowRemoteIn != null) {
+            List<DuctDirectionalEndpoint> allowRemote = node.bankAllowRemoteNodes(bank);
+            allowRemote.clear();
+            allowRemote.addAll(allowRemoteIn);
+            DuctFilterRemoteNodeLogic.syncToLineSize(allowRemote, a.size());
+        }
+        if (denyRemoteIn != null) {
+            List<DuctDirectionalEndpoint> denyRemote = node.bankDenyRemoteNodes(bank);
+            denyRemote.clear();
+            denyRemote.addAll(denyRemoteIn);
+            DuctFilterRemoteNodeLogic.syncToLineSize(denyRemote, d.size());
+        }
+        if (allowRemoteIgnoreChannelIn != null) {
+            List<Boolean> allowIgnore = node.bankAllowRemoteIgnoreChannel(bank);
+            allowIgnore.clear();
+            for (int i = 0; i < allowRemoteIgnoreChannelIn.size(); i++) {
+                Boolean v = allowRemoteIgnoreChannelIn.get(i);
+                allowIgnore.add(v != null && v);
+            }
+            DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowIgnore, a.size());
+        }
+        if (denyRemoteIgnoreChannelIn != null) {
+            List<Boolean> denyIgnore = node.bankDenyRemoteIgnoreChannel(bank);
+            denyIgnore.clear();
+            for (int i = 0; i < denyRemoteIgnoreChannelIn.size(); i++) {
+                Boolean v = denyRemoteIgnoreChannelIn.get(i);
+                denyIgnore.add(v != null && v);
+            }
+            DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyIgnore, d.size());
+        }
+        if (allowRemoteAnyFaceIn != null) {
+            List<Boolean> allowAnyFace = node.bankAllowRemoteAnyFace(bank);
+            allowAnyFace.clear();
+            for (Boolean v : allowRemoteAnyFaceIn) {
+                allowAnyFace.add(v != null && v);
+            }
+            DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(allowAnyFace, a.size());
+        }
+        if (denyRemoteAnyFaceIn != null) {
+            List<Boolean> denyAnyFace = node.bankDenyRemoteAnyFace(bank);
+            denyAnyFace.clear();
+            for (Boolean v : denyRemoteAnyFaceIn) {
+                denyAnyFace.add(v != null && v);
+            }
+            DuctFilterRemoteNodeLogic.syncIgnoreChannelToLineSize(denyAnyFace, d.size());
+        }
         node.setBankDenyOverridesAllow(bank, denyOverridesAllow);
         refreshMenuData();
-        ModNetwork.sendFilterSyncForVirtual(player, this);
+        FilterSyncDebugLog.serverApply(
+                BlockPos.ZERO,
+                accessFace(),
+                laneKind.ordinal(),
+                bank.ordinal(),
+                allowIn,
+                denyIn,
+                a,
+                d,
+                "SettingsCopierVirtualSession.applyFilterConfig material="
+                        + filterListMaterialKind
+                        + " payloadTk="
+                        + FilterSyncDebugLog.transportKindName(payloadLane.ordinal())
+                        + " resolvedTk="
+                        + FilterSyncDebugLog.transportKindName(laneKind.ordinal()));
+        ModNetwork.sendFilterSyncForVirtual(player, this, laneKind);
     }
 
     private static void syncCapSize(List<Integer> caps, int size) {

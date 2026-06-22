@@ -61,5 +61,15 @@ public final class ModDataComponents {
                                     .networkSynchronized(ByteBufCodecs.BOOL)
                                     .build());
 
+    /** Bound inventory endpoint for {@link net.unfamily.another_dynamics.item.RemoteNodeSelectorItem}. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint>> REMOTE_NODE_ENDPOINT =
+            TYPES.register(
+                    "remote_node_endpoint",
+                    () ->
+                            DataComponentType.<net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint>builder()
+                                    .persistent(net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint.CODEC)
+                                    .networkSynchronized(net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint.STREAM_CODEC)
+                                    .build());
+
     private ModDataComponents() {}
 }

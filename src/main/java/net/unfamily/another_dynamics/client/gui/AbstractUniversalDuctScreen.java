@@ -45,10 +45,14 @@ import net.neoforged.neoforge.fluids.FluidUtil;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.network.DuctGuiFeedbackPayload;
 import net.unfamily.another_dynamics.network.SettingsCopierActionPayload;
+import net.unfamily.another_dynamics.duct.DestinationToolEndpointReader;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
+import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.duct.DuctFeatureKeys;
+import net.unfamily.another_dynamics.duct.DuctFeaturePolicy;
 import net.unfamily.another_dynamics.duct.DuctFilterLineReorder;
 import net.unfamily.another_dynamics.duct.FilterLineTextUtil;
 import net.unfamily.another_dynamics.duct.DuctGuiLayout;
@@ -67,11 +71,14 @@ import net.unfamily.another_dynamics.duct.settings.SettingsCopierVirtualSession;
 import net.unfamily.another_dynamics.integration.jei.ghost.IAnDynamicsGhostTarget;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.unfamily.another_dynamics.inventory.FilterSyncDebugLog;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.inventory.UniversalDuctMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.registry.ModAttachments;
+import net.unfamily.another_dynamics.registry.ModDataComponents;
+import net.unfamily.another_dynamics.registry.ModItems;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
@@ -178,6 +185,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         exitEditMode(false);
         subView = SubView.MAIN;
         hybridPanel = HybridPanel.NONE;
+        flushPendingFilterEditsBeforeClose();
+        if (shouldPushFiltersOnClose()) {
+            reorderAndPushAllFilterBanks();
+        }
         handleMenuButton(DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB);
         applySubViewVisibility();
         layoutMainChromeRowsForHubOrDetail();
@@ -186,6 +197,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void returnToSettingsCopierHubFromVirtual() {
+        flushPendingFilterEditsBeforeClose();
+        if (shouldPushFiltersOnClose()) {
+            reorderAndPushAllFilterBanks();
+        }
         playClickSound();
         ModNetwork.sendSettingsCopierReturnToHub();
     }
@@ -193,6 +208,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     /** Virtual editor X/Esc: one UI level up (Back may skip further to transport hub). */
     private void popSettingsCopierVirtualOneLevel() {
         if (subView == SubView.ADVANCED_FILTERING) {
+            if (popAdvancedFilterSubLevel()) {
+                return;
+            }
             closeAdvancedFiltering();
             return;
         }
@@ -278,6 +296,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/single_slot.png"
         );
+    private static final ResourceLocation SINGLE_SLOT_REMOTE_NODE =
+        ResourceLocation.fromNamespaceAndPath(
+            AnotherDynamicsMod.MOD_ID,
+            "textures/gui/single_slot_remote_node.png"
+        );
     private static final ResourceLocation MODULE_SLOT =
         ResourceLocation.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
@@ -303,6 +326,28 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         TEXTURE_WIDTH - CLOSE_BUTTON_SIZE - 5;
 
     private static final int REDSTONE_BUTTON_SIZE = 16;
+    private static final int ADVANCED_REMOTE_NODE_SLOT_SIZE = 18;
+    /** Vertical gap between the centered slot and coordinate line below. */
+    private static final int ADVANCED_REMOTE_NODE_COORD_GAP_Y = 2;
+    /**
+     * GUI-local Y of the centered remote-node slot in advanced filtering. Kept above
+     * {@link #ADVANCED_CAP_NUMERIC_ROW_GUI_Y} cap labels (Limit / Keep in Storage).
+     */
+    private static final int ADVANCED_REMOTE_NODE_ROW_GUI_Y = 20;
+    private static final int ADVANCED_REMOTE_NODE_COORD_MAX_WIDTH = 220;
+    /** Gap between the coordinate line (or coord editor) and the Respect/Ignore Channel button. */
+    private static final int ADVANCED_REMOTE_NODE_LINE_GAP_Y = 4;
+    /** Minimum clearance between the channel button bottom and the cap label row. */
+    private static final int ADVANCED_REMOTE_IGNORE_CHANNEL_CAP_LABEL_GAP = 2;
+    private static final int ADVANCED_REMOTE_NODE_SLOT_GUI_X =
+            (TEXTURE_WIDTH - ADVANCED_REMOTE_NODE_SLOT_SIZE) / 2;
+    private static final int REMOTE_NODE_COORD_EDIT_W = 44;
+    private static final int REMOTE_NODE_AXIS_LABEL_GAP = 1;
+
+    private record AdvancedRemoteNodeRowLayout(
+            int slotScreenX,
+            int slotScreenY,
+            int coordTextScreenY) {}
 
     private static final int CENTER_X = 38;
 
@@ -447,6 +492,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private int filterScrollOffset;
     /** Tracks {@link DuctMenuSync#MENU_VIEW_LAYER} for copier virtual hub → detail MAIN transition. */
     private int lastSyncedMenuViewLayer = -1;
+    /** Tracks {@link DuctMenuSync#ACTIVE_TRANSPORT_KIND} for multi-lane filter mirror flush/sync. */
+    private int lastActiveTransportKind = -1;
     private boolean isDraggingHandle;
     private int dragStartY;
     private int dragStartScrollOffset;
@@ -492,6 +539,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private Button editModeApplyButton;
     private Button editModeCloseButton;
     private Button advancedFilteringOpenButton;
+    /** Allow vs deny list that opened {@link SubView#ADVANCED_FILTERING}. */
+    private SubView advancedFilterParentSubview = SubView.ALLOW_FILTERS;
+    private @Nullable DuctDirectionalEndpoint editModeRemoteNodeDraft;
+    private @Nullable DuctDirectionalEndpoint originalRemoteNodeValue;
+    private boolean editModeRemoteIgnoreChannelDraft;
+    private boolean originalRemoteIgnoreChannelValue;
+    private boolean editModeRemoteAnyFaceDraft;
+    private boolean originalRemoteAnyFaceValue;
     private int editModeAllowCapValue;
     private int originalAllowCapValue;
     private int editModeAllowCap2Value;
@@ -508,6 +563,19 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private Button advCap2InfinityButton;
     private Button advCap2ApplyButton;
     private Button advCap2UndoButton;
+    private Button remoteIgnoreChannelButton;
+    private RemoteNodeFaceButton remoteNodeFaceButton;
+    private Button remoteNodeCoordEditButton;
+    private boolean remoteNodeCoordEditOpen;
+    private int remoteNodeCoordSnapshotX;
+    private int remoteNodeCoordSnapshotY;
+    private int remoteNodeCoordSnapshotZ;
+    private EditBox remoteNodeCoordXEditBox;
+    private EditBox remoteNodeCoordYEditBox;
+    private EditBox remoteNodeCoordZEditBox;
+    private Button remoteNodeCoordApplyButton;
+    private Button remoteNodeCoordUndoButton;
+    private int remoteNodeCoordAxisLabelScreenX;
     private boolean advCapEditHadFocus;
 
     private int energyBufExtractDraft;
@@ -584,6 +652,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         List<Integer> allowCaps2,
         List<Integer> allowConcat,
         List<Integer> denyConcat,
+        List<@Nullable DuctDirectionalEndpoint> allowRemote,
+        List<@Nullable DuctDirectionalEndpoint> denyRemote,
+        List<Boolean> allowRemoteIgnoreChannel,
+        List<Boolean> denyRemoteIgnoreChannel,
+        List<Boolean> allowRemoteAnyFace,
+        List<Boolean> denyRemoteAnyFace,
         boolean denyOverridesAllow
     ) {
         Minecraft mc = Minecraft.getInstance();
@@ -593,6 +667,21 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (!(mc.player.containerMenu instanceof UniversalDuctMenu menu)) {
             return;
         }
+        FilterSyncDebugLog.clientPacket(
+                "FILTER_SYNC_RX",
+                FilterSyncDebugLog.posFace(pos, face)
+                        + " tk="
+                        + FilterSyncDebugLog.transportKindName(transportKindOrdinal)
+                        + " bank="
+                        + FilterSyncDebugLog.bankName(filterBankOrdinal)
+                        + " allow="
+                        + FilterSyncDebugLog.listPreview(allow)
+                        + " deny="
+                        + FilterSyncDebugLog.listPreview(deny)
+                        + " dirty="
+                        + menu.clientFiltersDirty(transportKindOrdinal)
+                        + " hydrated="
+                        + menu.clientFiltersHydrated(transportKindOrdinal));
         menu.receiveFilterSync(
             pos,
             face,
@@ -604,15 +693,23 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             allowCaps2,
             allowConcat,
             denyConcat,
+            allowRemote,
+            denyRemote,
+            allowRemoteIgnoreChannel,
+            denyRemoteIgnoreChannel,
+            allowRemoteAnyFace,
+            denyRemoteAnyFace,
             denyOverridesAllow
         );
         if (
             mc.screen instanceof AbstractUniversalDuctScreen<?> screen &&
             screen.getMenu() == menu
         ) {
-            screen.menu.ensureClientFilterBufferSizes(
-                screen.useHybridFilterCaps()
-            );
+            if (!menu.clientFiltersDirty(transportKindOrdinal)) {
+                screen.menu.ensureClientFilterBufferSizes(
+                    screen.useHybridFilterCaps()
+                );
+            }
             screen.rebuildFilterEntryWidgets();
         }
     }
@@ -1063,6 +1160,71 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             .build();
         addRenderableWidget(advCap2UndoButton);
 
+        remoteIgnoreChannelButton = Button.builder(
+                Component.translatable(
+                        "gui.another_dynamics.duct_node.remote_node.ignore_channel.respect"),
+                b -> handleAdvancedRemoteIgnoreChannelToggle())
+            .bounds(0, 0, remoteIgnoreChannelButtonWidth(), BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.remote_node.ignore_channel.tooltip")))
+            .build();
+        addRenderableWidget(remoteIgnoreChannelButton);
+
+        remoteNodeFaceButton =
+                new RemoteNodeFaceButton(
+                        0,
+                        0,
+                        AMOUNT_ACTION_BTN,
+                        AMOUNT_ACTION_BTN,
+                        this::handleRemoteNodeFaceChanged);
+        addRenderableWidget(remoteNodeFaceButton);
+
+        remoteNodeCoordEditButton =
+                Button.builder(Component.literal("\u270E"), b -> openRemoteNodeCoordEdit())
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, AMOUNT_ACTION_BTN)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.duct_node.remote_node.coords_edit.tooltip")))
+                        .build();
+        addRenderableWidget(remoteNodeCoordEditButton);
+
+        remoteNodeCoordXEditBox =
+                new EditBox(this.font, 0, 0, REMOTE_NODE_COORD_EDIT_W, BTN_H, Component.empty());
+        remoteNodeCoordXEditBox.setMaxLength(6);
+        remoteNodeCoordXEditBox.setTextColor(FILTER_ENTRY_EDIT_TEXT_COLOR);
+        addRenderableWidget(remoteNodeCoordXEditBox);
+        remoteNodeCoordYEditBox =
+                new EditBox(this.font, 0, 0, REMOTE_NODE_COORD_EDIT_W, BTN_H, Component.empty());
+        remoteNodeCoordYEditBox.setMaxLength(6);
+        remoteNodeCoordYEditBox.setTextColor(FILTER_ENTRY_EDIT_TEXT_COLOR);
+        addRenderableWidget(remoteNodeCoordYEditBox);
+        remoteNodeCoordZEditBox =
+                new EditBox(this.font, 0, 0, REMOTE_NODE_COORD_EDIT_W, BTN_H, Component.empty());
+        remoteNodeCoordZEditBox.setMaxLength(6);
+        remoteNodeCoordZEditBox.setTextColor(FILTER_ENTRY_EDIT_TEXT_COLOR);
+        addRenderableWidget(remoteNodeCoordZEditBox);
+        remoteNodeCoordApplyButton =
+                Button.builder(Component.literal("A"), b -> applyRemoteNodeCoordEdit())
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.duct_node.filters.apply")))
+                        .build();
+        addRenderableWidget(remoteNodeCoordApplyButton);
+        remoteNodeCoordUndoButton =
+                Button.builder(Component.literal("\u2715"), b -> undoRemoteNodeCoordEdit())
+                        .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.duct_node.amount.undo.tooltip")))
+                        .build();
+        addRenderableWidget(remoteNodeCoordUndoButton);
+
         energyBufExtractMinus = Button.builder(Component.literal("-"), b -> adjustEnergyBufExtract(-1))
             .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
             .build();
@@ -1122,6 +1284,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         addRenderableWidget(energyBufInsertUndoButton);
 
         layoutAdvancedCapBlock();
+        layoutAdvancedRemoteNodeBlock();
         layoutEnergyBufferBlock();
 
         nodeModeButton = Button.builder(Component.empty(), b -> {
@@ -1378,6 +1541,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         layoutCopierColumn();
         applySubViewVisibility();
         bootstrapSettingsCopierInitialSubview();
+        lastActiveTransportKind = menu.filterTransportKindOrdinal();
+        if (menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) != 0) {
+            ModNetwork.sendFilterSyncRequest(menu.getDuctBlockPos(), menu.getAccessFace());
+        }
 
         // JEI (and some UI transitions) can cause a screen re-init that clears widgets.
         // If we are mid edit-mode, restore the edit widgets without grabbing keyboard focus.
@@ -1735,6 +1902,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             returnToSettingsCopierHubFromVirtual();
             return;
         }
+        flushPendingFilterEditsBeforeClose();
+        if (shouldPushFiltersOnClose()) {
+            reorderAndPushAllFilterBanks();
+        }
         exitEditMode(false);
         subView = SubView.MAIN;
         applySubViewVisibility();
@@ -1972,11 +2143,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void cycleCopierFilterMaterialKind() {
+        int prevLane = menu.filterTransportKindOrdinal();
+        reorderAndPushAllFilterBanksForTransport(prevLane);
         FilterListMaterialKind next = copierFilterMaterialKind().next();
         if (menu instanceof SettingsCopierMenu copier) {
             copier.setClientFilterListMaterialKind(next);
         }
         ModNetwork.sendSettingsCopierFilterMaterialKind(next.ordinal());
+        ModNetwork.sendFilterSyncRequest(menu.getDuctBlockPos(), menu.getAccessFace());
+        lastActiveTransportKind = next != FilterListMaterialKind.NONE
+                ? next.toTransportKind().ordinal()
+                : menu.filterTransportKindOrdinal();
         layoutCopierFilterTypeButton();
         rebuildFilterEntryWidgets();
     }
@@ -1992,12 +2169,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (menu instanceof SettingsCopierMenu sc) {
             SettingsCopierVirtualSession session = sc.virtualSession();
             if (session != null) {
-                DuctTransportKind[] kinds = DuctTransportKind.values();
-                int tk = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
-                DuctTransportKind lane =
-                        kinds[Mth.clamp(tk, 0, kinds.length - 1)];
                 session.noteFilterListContext(
-                        lane, activeFilterBank, target == SubView.ALLOW_FILTERS);
+                        menu.filterTransportKind(), activeFilterBank, target == SubView.ALLOW_FILTERS);
             }
         }
         openFilterSubview(target);
@@ -2011,12 +2184,331 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         return subView == SubView.ADVANCED_FILTERING;
     }
 
+    private boolean showsAdvancedCapEditors() {
+        return isAdvancedFilterCapSubview()
+                && advancedFilterParentSubview == SubView.ALLOW_FILTERS;
+    }
+
+    private boolean showsAdvancedRemoteNodeBlock() {
+        return isAdvancedFilterCapSubview()
+                && filterRemoteNodeUiEnabled()
+                && inEditMode();
+    }
+
+    private AdvancedRemoteNodeRowLayout advancedRemoteNodeRowLayout() {
+        int slotScreenX = this.leftPos + ADVANCED_REMOTE_NODE_SLOT_GUI_X;
+        int slotScreenY = this.topPos + ADVANCED_REMOTE_NODE_ROW_GUI_Y;
+        int coordTextScreenY =
+                slotScreenY + ADVANCED_REMOTE_NODE_SLOT_SIZE + ADVANCED_REMOTE_NODE_COORD_GAP_Y;
+        return new AdvancedRemoteNodeRowLayout(slotScreenX, slotScreenY, coordTextScreenY);
+    }
+
+    private int remoteIgnoreChannelButtonWidth() {
+        int respectWidth =
+                this.font.width(
+                        Component.translatable(
+                                        "gui.another_dynamics.duct_node.remote_node.ignore_channel.respect")
+                                .getString());
+        int ignoreWidth =
+                this.font.width(
+                        Component.translatable(
+                                        "gui.another_dynamics.duct_node.remote_node.ignore_channel.ignore")
+                                .getString());
+        return Math.max(respectWidth, ignoreWidth) + 8;
+    }
+
+    private void layoutAdvancedRemoteNodeBlock() {
+        if (remoteIgnoreChannelButton == null) {
+            return;
+        }
+        AdvancedRemoteNodeRowLayout row = advancedRemoteNodeRowLayout();
+        int slotX = row.slotScreenX();
+        int slotY = row.slotScreenY();
+        int flankY = slotY + (ADVANCED_REMOTE_NODE_SLOT_SIZE - AMOUNT_ACTION_BTN) / 2;
+
+        if (remoteNodeFaceButton != null) {
+            remoteNodeFaceButton.setPosition(
+                    slotX - AMOUNT_ACTION_BTN - ADJACENT_BTN_GAP, flankY);
+            remoteNodeFaceButton.setWidth(AMOUNT_ACTION_BTN);
+            remoteNodeFaceButton.setHeight(AMOUNT_ACTION_BTN);
+        }
+        if (remoteNodeCoordEditButton != null) {
+            remoteNodeCoordEditButton.setPosition(
+                    slotX + ADVANCED_REMOTE_NODE_SLOT_SIZE + ADJACENT_BTN_GAP, flankY);
+            remoteNodeCoordEditButton.setWidth(AMOUNT_ACTION_BTN);
+            remoteNodeCoordEditButton.setHeight(AMOUNT_ACTION_BTN);
+        }
+
+        layoutRemoteNodeCoordEditor(row);
+
+        int buttonWidth = remoteIgnoreChannelButtonWidth();
+        int ignoreButtonScreenY = remoteNodeIgnoreChannelButtonScreenY(row);
+        int buttonScreenX = this.leftPos + (TEXTURE_WIDTH - buttonWidth) / 2;
+        remoteIgnoreChannelButton.setPosition(buttonScreenX, ignoreButtonScreenY);
+        remoteIgnoreChannelButton.setWidth(buttonWidth);
+        remoteIgnoreChannelButton.setHeight(BTN_H);
+    }
+
+    /** Fixed bottom of the coord row for Respect/Ignore Channel placement (always {@link #BTN_H}, same as the editor). */
+    private int remoteNodeCoordRowBottomScreenY(AdvancedRemoteNodeRowLayout row) {
+        return row.coordTextScreenY() + BTN_H;
+    }
+
+    private int advancedCapLabelTopScreenY() {
+        return this.topPos
+                + ADVANCED_CAP_NUMERIC_ROW_GUI_Y
+                - this.font.lineHeight
+                - AMOUNT_LABEL_ABOVE_GAP;
+    }
+
+    private int remoteNodeIgnoreChannelButtonScreenY(AdvancedRemoteNodeRowLayout row) {
+        int y = remoteNodeCoordRowBottomScreenY(row) + ADVANCED_REMOTE_NODE_LINE_GAP_Y;
+        if (showsAdvancedCapEditors()) {
+            int maxTop =
+                    advancedCapLabelTopScreenY()
+                            - BTN_H
+                            - ADVANCED_REMOTE_IGNORE_CHANNEL_CAP_LABEL_GAP;
+            y = Math.min(y, maxTop);
+        }
+        return y;
+    }
+
+    private void layoutRemoteNodeCoordEditor(AdvancedRemoteNodeRowLayout row) {
+        if (remoteNodeCoordXEditBox == null) {
+            return;
+        }
+        String labelX =
+                Component.translatable("gui.another_dynamics.duct_node.remote_node.coords.axis.x")
+                        .getString();
+        String labelY =
+                Component.translatable("gui.another_dynamics.duct_node.remote_node.coords.axis.y")
+                        .getString();
+        String labelZ =
+                Component.translatable("gui.another_dynamics.duct_node.remote_node.coords.axis.z")
+                        .getString();
+        int labelW =
+                Math.max(
+                        this.font.width(labelX),
+                        Math.max(this.font.width(labelY), this.font.width(labelZ)));
+        int groupW = labelW + REMOTE_NODE_AXIS_LABEL_GAP + REMOTE_NODE_COORD_EDIT_W;
+        int actionW = AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP + AMOUNT_ACTION_BTN;
+        int totalW = groupW * 3 + AMOUNT_INNER_GAP * 2 + AMOUNT_INNER_GAP + actionW;
+        int rowY = row.coordTextScreenY();
+        int startX = this.leftPos + (TEXTURE_WIDTH - totalW) / 2;
+        remoteNodeCoordAxisLabelScreenX = startX;
+
+        int cursor = startX;
+        remoteNodeCoordXEditBox.setPosition(cursor + labelW + REMOTE_NODE_AXIS_LABEL_GAP, rowY);
+        remoteNodeCoordXEditBox.setWidth(REMOTE_NODE_COORD_EDIT_W);
+        remoteNodeCoordXEditBox.setHeight(BTN_H);
+        cursor += groupW + AMOUNT_INNER_GAP;
+
+        remoteNodeCoordYEditBox.setPosition(cursor + labelW + REMOTE_NODE_AXIS_LABEL_GAP, rowY);
+        remoteNodeCoordYEditBox.setWidth(REMOTE_NODE_COORD_EDIT_W);
+        remoteNodeCoordYEditBox.setHeight(BTN_H);
+        cursor += groupW + AMOUNT_INNER_GAP;
+
+        remoteNodeCoordZEditBox.setPosition(cursor + labelW + REMOTE_NODE_AXIS_LABEL_GAP, rowY);
+        remoteNodeCoordZEditBox.setWidth(REMOTE_NODE_COORD_EDIT_W);
+        remoteNodeCoordZEditBox.setHeight(BTN_H);
+
+        int actionX = cursor + groupW + AMOUNT_INNER_GAP;
+        remoteNodeCoordApplyButton.setPosition(actionX, rowY);
+        remoteNodeCoordApplyButton.setWidth(AMOUNT_ACTION_BTN);
+        remoteNodeCoordApplyButton.setHeight(BTN_H);
+        remoteNodeCoordUndoButton.setPosition(actionX + AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP, rowY);
+        remoteNodeCoordUndoButton.setWidth(AMOUNT_ACTION_BTN);
+        remoteNodeCoordUndoButton.setHeight(BTN_H);
+    }
+
+    private void syncRemoteNodeFaceButtonDisplay() {
+        if (remoteNodeFaceButton == null) {
+            return;
+        }
+        boolean remoteNodeBound = editModeRemoteNodeDraft != null;
+        remoteNodeFaceButton.active = remoteNodeBound;
+        remoteNodeFaceButton.setSelection(
+                remoteNodeBound,
+                remoteNodeBound ? editModeRemoteNodeDraft.face() : null,
+                remoteNodeBound && editModeRemoteAnyFaceDraft);
+    }
+
+    private void syncRemoteNodeCoordEditButtonDisplay() {
+        if (remoteNodeCoordEditButton == null) {
+            return;
+        }
+        boolean remoteNodeBound = editModeRemoteNodeDraft != null;
+        remoteNodeCoordEditButton.visible = showsAdvancedRemoteNodeBlock();
+        remoteNodeCoordEditButton.active = remoteNodeBound && !remoteNodeCoordEditOpen;
+    }
+
+    private void syncRemoteNodeCoordEditBoxes() {
+        if (remoteNodeCoordXEditBox == null || editModeRemoteNodeDraft == null) {
+            return;
+        }
+        BlockPos p = editModeRemoteNodeDraft.pos();
+        remoteNodeCoordXEditBox.setValue(Integer.toString(p.getX()));
+        remoteNodeCoordYEditBox.setValue(Integer.toString(p.getY()));
+        remoteNodeCoordZEditBox.setValue(Integer.toString(p.getZ()));
+    }
+
+    private void syncRemoteIgnoreChannelButtonDisplay() {
+        if (remoteIgnoreChannelButton == null) {
+            return;
+        }
+        boolean remoteNodeBound = editModeRemoteNodeDraft != null;
+        remoteIgnoreChannelButton.active = remoteNodeBound;
+        remoteIgnoreChannelButton.setMessage(
+                Component.translatable(
+                        remoteNodeBound && editModeRemoteIgnoreChannelDraft
+                                ? "gui.another_dynamics.duct_node.remote_node.ignore_channel.ignore"
+                                : "gui.another_dynamics.duct_node.remote_node.ignore_channel.respect"));
+        remoteIgnoreChannelButton.setWidth(remoteIgnoreChannelButtonWidth());
+        layoutAdvancedRemoteNodeBlock();
+    }
+
+    private void handleRemoteNodeFaceChanged(RemoteNodeFaceButton.FaceSelection selection) {
+        if (editModeRemoteNodeDraft == null || editModeFilterIndex < 0) {
+            return;
+        }
+        editModeRemoteAnyFaceDraft = selection.anyFace();
+        if (!selection.anyFace() && selection.face() != null) {
+            editModeRemoteNodeDraft =
+                    new DuctDirectionalEndpoint(editModeRemoteNodeDraft.pos(), selection.face());
+        }
+        commitRemoteNodeDraftToLine();
+        syncRemoteNodeFaceButtonDisplay();
+        pushFiltersToServer();
+        playClickSound();
+    }
+
+    private void openRemoteNodeCoordEdit() {
+        if (editModeRemoteNodeDraft == null || remoteNodeCoordEditOpen) {
+            return;
+        }
+        playClickSound();
+        BlockPos p = editModeRemoteNodeDraft.pos();
+        remoteNodeCoordSnapshotX = p.getX();
+        remoteNodeCoordSnapshotY = p.getY();
+        remoteNodeCoordSnapshotZ = p.getZ();
+        remoteNodeCoordEditOpen = true;
+        syncRemoteNodeCoordEditBoxes();
+        layoutAdvancedRemoteNodeBlock();
+        applySubViewVisibility();
+    }
+
+    private void closeRemoteNodeCoordEdit(boolean restoreSnapshot) {
+        if (!remoteNodeCoordEditOpen) {
+            return;
+        }
+        if (restoreSnapshot && editModeRemoteNodeDraft != null) {
+            editModeRemoteNodeDraft =
+                    new DuctDirectionalEndpoint(
+                            new BlockPos(
+                                    remoteNodeCoordSnapshotX,
+                                    remoteNodeCoordSnapshotY,
+                                    remoteNodeCoordSnapshotZ),
+                            editModeRemoteNodeDraft.face());
+            syncRemoteNodeCoordEditBoxes();
+        }
+        remoteNodeCoordEditOpen = false;
+        if (remoteNodeCoordXEditBox != null) {
+            remoteNodeCoordXEditBox.setFocused(false);
+            remoteNodeCoordYEditBox.setFocused(false);
+            remoteNodeCoordZEditBox.setFocused(false);
+        }
+        layoutAdvancedRemoteNodeBlock();
+        applySubViewVisibility();
+    }
+
+    private void undoRemoteNodeCoordEdit() {
+        if (!remoteNodeCoordEditOpen) {
+            return;
+        }
+        playClickSound();
+        closeRemoteNodeCoordEdit(true);
+    }
+
+    private boolean popAdvancedFilterSubLevel() {
+        if (remoteNodeCoordEditOpen) {
+            undoRemoteNodeCoordEdit();
+            return true;
+        }
+        return false;
+    }
+
+    private void applyRemoteNodeCoordEdit() {
+        if (!remoteNodeCoordEditOpen || editModeRemoteNodeDraft == null || editModeFilterIndex < 0) {
+            return;
+        }
+        Integer x = parseCoordEditBox(remoteNodeCoordXEditBox);
+        Integer y = parseCoordEditBox(remoteNodeCoordYEditBox);
+        Integer z = parseCoordEditBox(remoteNodeCoordZEditBox);
+        if (x == null || y == null || z == null) {
+            return;
+        }
+        playClickSound();
+        editModeRemoteNodeDraft =
+                new DuctDirectionalEndpoint(
+                        new BlockPos(x, y, z), editModeRemoteNodeDraft.face());
+        remoteNodeCoordSnapshotX = x;
+        remoteNodeCoordSnapshotY = y;
+        remoteNodeCoordSnapshotZ = z;
+        commitRemoteNodeDraftToLine();
+        remoteNodeCoordEditOpen = false;
+        if (remoteNodeCoordXEditBox != null) {
+            remoteNodeCoordXEditBox.setFocused(false);
+            remoteNodeCoordYEditBox.setFocused(false);
+            remoteNodeCoordZEditBox.setFocused(false);
+        }
+        layoutAdvancedRemoteNodeBlock();
+        applySubViewVisibility();
+        pushFiltersToServer();
+    }
+
+    private static @Nullable Integer parseCoordEditBox(@Nullable EditBox box) {
+        if (box == null) {
+            return null;
+        }
+        String t = box.getValue().trim();
+        if (t.isEmpty()) {
+            return null;
+        }
+        try {
+            return (int) Mth.clamp(Long.parseLong(t), Integer.MIN_VALUE, Integer.MAX_VALUE);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private int centeredPanelTextScreenX(String text) {
+        return this.leftPos + (TEXTURE_WIDTH - this.font.width(text)) / 2;
+    }
+
+    private String truncateRemoteNodeCoordText(String plain) {
+        return truncateRemoteNodeCoordText(plain, ADVANCED_REMOTE_NODE_COORD_MAX_WIDTH);
+    }
+
+    private String truncateRemoteNodeCoordText(String plain, int maxWidth) {
+        if (this.font.width(plain) <= maxWidth) {
+            return plain;
+        }
+        return this.font.plainSubstrByWidth(plain, maxWidth - this.font.width("...")) + "...";
+    }
+
     /** Subview that owns the filter line list / allow vs deny semantics (before help overlay). */
     private SubView effectiveFilterLineSubview() {
         if (subView == SubView.HOW_TO_USE) {
             return filterListBeforeHelp;
         }
+        if (subView == SubView.ADVANCED_FILTERING) {
+            return advancedFilterParentSubview;
+        }
         return subView;
+    }
+
+    private boolean isEditingAllowFilterList() {
+        return effectiveFilterLineSubview() == SubView.ALLOW_FILTERS;
     }
 
     private boolean isAllowOrDenyFilterListContext() {
@@ -2493,9 +2985,19 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void openAdvancedFiltering() {
-        if (subView != SubView.ALLOW_FILTERS || editModeFilterIndex < 0) {
+        SubView parent = effectiveFilterLineSubview();
+        if (editModeFilterIndex < 0) {
             return;
         }
+        if (parent == SubView.ALLOW_FILTERS) {
+            // Limit / Keep advanced editor.
+        } else if (parent == SubView.DENY_FILTERS && filterRemoteNodeUiEnabled()) {
+            // Deny advanced: remote node binding only.
+        } else {
+            return;
+        }
+        closeRemoteNodeCoordEdit(false);
+        advancedFilterParentSubview = parent;
         menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         if (editModeTextBox != null) {
             String value = editModeTextBox.getValue();
@@ -2506,19 +3008,44 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             list.set(editModeFilterIndex, value);
             originalFilterValue = value;
         }
-        List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
-        while (caps.size() <= editModeFilterIndex) {
-            caps.add(0);
-        }
-        editModeAllowCapValue = caps.get(editModeFilterIndex);
-        originalAllowCapValue = editModeAllowCapValue;
-        if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
-            List<Integer> caps2 = menu.getClientFilterKeepCaps();
-            while (caps2.size() <= editModeFilterIndex) {
-                caps2.add(0);
+        if (parent == SubView.ALLOW_FILTERS) {
+            List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+            while (caps.size() <= editModeFilterIndex) {
+                caps.add(0);
             }
-            editModeAllowCap2Value = caps2.get(editModeFilterIndex);
-            originalAllowCap2Value = editModeAllowCap2Value;
+            editModeAllowCapValue = caps.get(editModeFilterIndex);
+            originalAllowCapValue = editModeAllowCapValue;
+            if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
+                List<Integer> caps2 = menu.getClientFilterKeepCaps();
+                while (caps2.size() <= editModeFilterIndex) {
+                    caps2.add(0);
+                }
+                editModeAllowCap2Value = caps2.get(editModeFilterIndex);
+                originalAllowCap2Value = editModeAllowCap2Value;
+            }
+        }
+        if (filterRemoteNodeUiEnabled()) {
+            editModeRemoteNodeDraft = remoteNodeAt(editModeFilterIndex);
+            originalRemoteNodeValue = editModeRemoteNodeDraft;
+            editModeRemoteIgnoreChannelDraft = remoteIgnoreChannelAt(editModeFilterIndex);
+            originalRemoteIgnoreChannelValue = editModeRemoteIgnoreChannelDraft;
+            editModeRemoteAnyFaceDraft = remoteAnyFaceAt(editModeFilterIndex);
+            originalRemoteAnyFaceValue = editModeRemoteAnyFaceDraft;
+            if (editModeRemoteNodeDraft == null) {
+                editModeRemoteIgnoreChannelDraft = false;
+                originalRemoteIgnoreChannelValue = false;
+                editModeRemoteAnyFaceDraft = false;
+                originalRemoteAnyFaceValue = false;
+                setRemoteIgnoreChannelAt(editModeFilterIndex, false);
+                setRemoteAnyFaceAt(editModeFilterIndex, false);
+            }
+        } else {
+            editModeRemoteNodeDraft = null;
+            originalRemoteNodeValue = null;
+            editModeRemoteIgnoreChannelDraft = false;
+            originalRemoteIgnoreChannelValue = false;
+            editModeRemoteAnyFaceDraft = false;
+            originalRemoteAnyFaceValue = false;
         }
         subView = SubView.ADVANCED_FILTERING;
         reloadFilterEntryTextBoxFromList(false);
@@ -2527,7 +3054,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         layoutFilterNavAndHelpButtons();
         syncAllowCapEditBoxDisplay();
         syncAllowCap2EditBoxDisplay();
-        advCapEditHadFocus = advCapEditBox.isFocused();
+        if (advCapEditBox != null) {
+            advCapEditHadFocus = advCapEditBox.isFocused();
+        }
+        layoutAdvancedRemoteNodeBlock();
+        syncRemoteIgnoreChannelButtonDisplay();
+        syncRemoteNodeFaceButtonDisplay();
+        syncRemoteNodeCoordEditButtonDisplay();
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
     }
@@ -2536,11 +3069,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (subView != SubView.ADVANCED_FILTERING) {
             return;
         }
+        closeRemoteNodeCoordEdit(false);
         if (advCapEditBox != null) {
             advCapEditBox.setFocused(false);
         }
-        subView = SubView.ALLOW_FILTERS;
+        persistFilterEditDraftToClientBuffers(true);
+        subView = advancedFilterParentSubview;
         layoutAdvancedCapBlock();
+        layoutAdvancedRemoteNodeBlock();
         layoutEditModeWidgets();
         layoutFilterNavAndHelpButtons();
         applySubViewVisibility();
@@ -2613,7 +3149,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             !amountFieldEditsPriority();
         amountDiscardButton.visible = showAmountBlock;
 
-        boolean showAdvCapBlock = isAdvancedFilterCapSubview();
+        boolean showAdvCapBlock = showsAdvancedCapEditors();
         advCapMinusButton.visible = showAdvCapBlock;
         advCapPlusButton.visible = showAdvCapBlock;
         advCapEditBox.visible = showAdvCapBlock;
@@ -2658,6 +3194,33 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         advCap2InfinityButton.visible = filterBoth || filterRetrieveOnly;
         advCap2ApplyButton.visible = filterBoth || filterRetrieveOnly;
         advCap2UndoButton.visible = filterBoth || filterRetrieveOnly;
+
+        if (remoteIgnoreChannelButton != null) {
+            boolean showRemoteBlock = showsAdvancedRemoteNodeBlock();
+            remoteIgnoreChannelButton.visible = showRemoteBlock;
+            if (showRemoteBlock) {
+                syncRemoteIgnoreChannelButtonDisplay();
+            }
+        }
+        if (remoteNodeFaceButton != null) {
+            boolean showRemoteBlock = showsAdvancedRemoteNodeBlock();
+            remoteNodeFaceButton.visible = showRemoteBlock;
+            if (showRemoteBlock) {
+                syncRemoteNodeFaceButtonDisplay();
+            }
+        }
+        syncRemoteNodeCoordEditButtonDisplay();
+        boolean showCoordEditor =
+                showsAdvancedRemoteNodeBlock()
+                        && remoteNodeCoordEditOpen
+                        && editModeRemoteNodeDraft != null;
+        if (remoteNodeCoordXEditBox != null) {
+            remoteNodeCoordXEditBox.visible = showCoordEditor;
+            remoteNodeCoordYEditBox.visible = showCoordEditor;
+            remoteNodeCoordZEditBox.visible = showCoordEditor;
+            remoteNodeCoordApplyButton.visible = showCoordEditor;
+            remoteNodeCoordUndoButton.visible = showCoordEditor;
+        }
 
         // Hub layer: same widget positions as detail; only filters/routing/channel stay hidden (see detailMain).
         nodeModeButton.visible =
@@ -2743,14 +3306,24 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
             if (advancedFilteringOpenButton != null) {
                 SubView effLine = effectiveFilterLineSubview();
-                boolean allowOrDeny =
-                    effLine == SubView.ALLOW_FILTERS ||
-                    effLine == SubView.DENY_FILTERS;
                 advancedFilteringOpenButton.visible =
-                    showFilterEditChrome && allowOrDeny;
-                // In DENY list we show the button but keep it disabled (future feature hook).
+                    showFilterEditChrome
+                            && !isAdvancedFilterCapSubview()
+                            && (effLine == SubView.ALLOW_FILTERS
+                                    || (effLine == SubView.DENY_FILTERS
+                                            && filterRemoteNodeUiEnabled()));
                 advancedFilteringOpenButton.active =
-                    effLine == SubView.ALLOW_FILTERS;
+                    effLine == SubView.ALLOW_FILTERS
+                            || (effLine == SubView.DENY_FILTERS
+                                    && filterRemoteNodeUiEnabled());
+                if (advancedFilteringOpenButton.active) {
+                    String tooltipKey =
+                            effLine == SubView.DENY_FILTERS
+                                    ? "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip.deny_remote"
+                                    : "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip";
+                    advancedFilteringOpenButton.setTooltip(
+                            Tooltip.create(Component.translatable(tooltipKey)));
+                }
             }
             if (editModeApplyButton != null && editModeCloseButton != null) {
                 if (isAdvancedFilterCapSubview()) {
@@ -2864,6 +3437,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 playClickSound();
                 getEditingList().set(idx, "");
                 concatList.set(idx, 0);
+                clearRemoteNodeAt(idx);
                 if (effectiveFilterLineSubview() == SubView.ALLOW_FILTERS) {
                     List<Integer> caps = menu.getClientAllowCaps(
                         activeFilterBank
@@ -2910,9 +3484,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private int currentFilterMaxSlots() {
         boolean hyb = useHybridFilterCaps();
-        SubView eff = effectiveFilterLineSubview();
-        int raw = (eff == SubView.ALLOW_FILTERS ||
-            eff == SubView.ADVANCED_FILTERING)
+        int raw =
+            isEditingAllowFilterList()
             ? menu.filterAllowCap(hyb)
             : menu.filterDenyCap(hyb);
         return Math.max(0, raw);
@@ -2927,19 +3500,272 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private List<String> getEditingList() {
-        SubView eff = effectiveFilterLineSubview();
-        if (eff == SubView.ALLOW_FILTERS || eff == SubView.ADVANCED_FILTERING) {
-            return menu.getClientAllowFilters(activeFilterBank);
-        }
-        return menu.getClientDenyFilters(activeFilterBank);
+        return isEditingAllowFilterList()
+                ? menu.getClientAllowFilters(activeFilterBank)
+                : menu.getClientDenyFilters(activeFilterBank);
     }
 
     private List<Integer> getEditingConcatChannels() {
-        SubView eff = effectiveFilterLineSubview();
-        if (eff == SubView.ALLOW_FILTERS || eff == SubView.ADVANCED_FILTERING) {
-            return menu.getClientAllowConcatChannels(activeFilterBank);
+        return isEditingAllowFilterList()
+                ? menu.getClientAllowConcatChannels(activeFilterBank)
+                : menu.getClientDenyConcatChannels(activeFilterBank);
+    }
+
+    private List<@Nullable DuctDirectionalEndpoint> getEditingRemoteNodes() {
+        return isEditingAllowFilterList()
+                ? menu.getClientAllowRemoteNodes(activeFilterBank)
+                : menu.getClientDenyRemoteNodes(activeFilterBank);
+    }
+
+    private List<Boolean> getEditingRemoteIgnoreChannel() {
+        return isEditingAllowFilterList()
+                ? menu.getClientAllowRemoteIgnoreChannel(activeFilterBank)
+                : menu.getClientDenyRemoteIgnoreChannel(activeFilterBank);
+    }
+
+    private boolean remoteIgnoreChannelAt(int index) {
+        List<Boolean> flags = getEditingRemoteIgnoreChannel();
+        return index >= 0 && index < flags.size() && Boolean.TRUE.equals(flags.get(index));
+    }
+
+    private void setRemoteIgnoreChannelAt(int index, boolean value) {
+        List<Boolean> flags = getEditingRemoteIgnoreChannel();
+        while (flags.size() <= index) {
+            flags.add(false);
         }
-        return menu.getClientDenyConcatChannels(activeFilterBank);
+        flags.set(index, value);
+    }
+
+    private List<Boolean> getEditingRemoteAnyFace() {
+        return isEditingAllowFilterList()
+                ? menu.getClientAllowRemoteAnyFace(activeFilterBank)
+                : menu.getClientDenyRemoteAnyFace(activeFilterBank);
+    }
+
+    private boolean remoteAnyFaceAt(int index) {
+        List<Boolean> flags = getEditingRemoteAnyFace();
+        return index >= 0 && index < flags.size() && Boolean.TRUE.equals(flags.get(index));
+    }
+
+    private void setRemoteAnyFaceAt(int index, boolean value) {
+        List<Boolean> flags = getEditingRemoteAnyFace();
+        while (flags.size() <= index) {
+            flags.add(false);
+        }
+        flags.set(index, value);
+    }
+
+    private boolean filterRemoteNodeUiEnabled() {
+        return !DuctFeaturePolicy.isDisabled(
+                DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId()).orElse(null),
+                DuctFeatureKeys.FILTER_REMOTE_NODE);
+    }
+
+    private void clearRemoteNodeAt(int index) {
+        List<@Nullable DuctDirectionalEndpoint> remoteNodes = getEditingRemoteNodes();
+        while (remoteNodes.size() <= index) {
+            remoteNodes.add(null);
+        }
+        remoteNodes.set(index, null);
+        setRemoteIgnoreChannelAt(index, false);
+        setRemoteAnyFaceAt(index, false);
+    }
+
+    private void setRemoteNodeAt(int index, @Nullable DuctDirectionalEndpoint endpoint) {
+        List<@Nullable DuctDirectionalEndpoint> remoteNodes = getEditingRemoteNodes();
+        while (remoteNodes.size() <= index) {
+            remoteNodes.add(null);
+        }
+        remoteNodes.set(index, endpoint);
+        if (endpoint == null) {
+            setRemoteIgnoreChannelAt(index, false);
+            setRemoteAnyFaceAt(index, false);
+        }
+    }
+
+    @Nullable
+    private DuctDirectionalEndpoint remoteNodeAt(int index) {
+        List<@Nullable DuctDirectionalEndpoint> remoteNodes = getEditingRemoteNodes();
+        return index >= 0 && index < remoteNodes.size() ? remoteNodes.get(index) : null;
+    }
+
+    private Component remoteNodeTooltip(@Nullable DuctDirectionalEndpoint bound) {
+        if (bound == null) {
+            return Component.translatable("gui.another_dynamics.duct_node.remote_node.unbound");
+        }
+        BlockPos p = bound.pos();
+        return Component.translatable(
+                "gui.another_dynamics.duct_node.remote_node.bound",
+                p.getX(),
+                p.getY(),
+                p.getZ(),
+                bound.face().getSerializedName());
+    }
+
+    private void renderAdvancedRemoteNodeBlock(
+            GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!showsAdvancedRemoteNodeBlock()) {
+            return;
+        }
+        AdvancedRemoteNodeRowLayout row = advancedRemoteNodeRowLayout();
+        int slotX = row.slotScreenX();
+        int slotY = row.slotScreenY();
+        graphics.blit(
+                SINGLE_SLOT_REMOTE_NODE,
+                slotX,
+                slotY,
+                0,
+                0,
+                ADVANCED_REMOTE_NODE_SLOT_SIZE,
+                ADVANCED_REMOTE_NODE_SLOT_SIZE,
+                ADVANCED_REMOTE_NODE_SLOT_SIZE,
+                ADVANCED_REMOTE_NODE_SLOT_SIZE);
+        if (editModeRemoteNodeDraft != null) {
+            ItemStack icon = new ItemStack(ModItems.REMOTE_NODE_SELECTOR.get());
+            icon.set(ModDataComponents.REMOTE_NODE_ENDPOINT.get(), editModeRemoteNodeDraft);
+            graphics.renderItem(icon, slotX + 1, slotY + 1);
+        }
+        if (!remoteNodeCoordEditOpen) {
+            if (editModeRemoteNodeDraft != null) {
+                String coordLine =
+                        truncateRemoteNodeCoordText(
+                                remoteNodeCoordLabel(editModeRemoteNodeDraft).getString());
+                graphics.drawString(
+                        this.font,
+                        coordLine,
+                        centeredPanelTextScreenX(coordLine),
+                        row.coordTextScreenY(),
+                        0x404040,
+                        false);
+            } else {
+                String coordLine =
+                        truncateRemoteNodeCoordText(
+                                remoteNodeCoordLabel(null).getString());
+                graphics.drawString(
+                        this.font,
+                        coordLine,
+                        centeredPanelTextScreenX(coordLine),
+                        row.coordTextScreenY(),
+                        0x707070,
+                        false);
+            }
+        } else {
+            renderRemoteNodeCoordAxisLabels(graphics, row);
+        }
+
+        if (mouseX >= slotX
+                && mouseX < slotX + ADVANCED_REMOTE_NODE_SLOT_SIZE
+                && mouseY >= slotY
+                && mouseY < slotY + ADVANCED_REMOTE_NODE_SLOT_SIZE) {
+            MutableComponent tip = remoteNodeTooltip(editModeRemoteNodeDraft).copy();
+            tip.append("\n");
+            tip.append(
+                    Component.translatable(
+                                    "gui.another_dynamics.duct_node.remote_node.tooltip.apply")
+                            .withStyle(ChatFormatting.GRAY));
+            if (editModeRemoteNodeDraft != null) {
+                tip.append("\n");
+                tip.append(
+                        Component.translatable(
+                                        "gui.another_dynamics.duct_node.remote_node.tooltip.clear_slot")
+                                .withStyle(ChatFormatting.GRAY));
+            }
+            graphics.renderComponentTooltip(this.font, List.of(tip), mouseX, mouseY);
+        }
+    }
+
+    private void renderRemoteNodeCoordAxisLabels(
+            GuiGraphics graphics, AdvancedRemoteNodeRowLayout row) {
+        String labelX =
+                Component.translatable("gui.another_dynamics.duct_node.remote_node.coords.axis.x")
+                        .getString();
+        String labelY =
+                Component.translatable("gui.another_dynamics.duct_node.remote_node.coords.axis.y")
+                        .getString();
+        String labelZ =
+                Component.translatable("gui.another_dynamics.duct_node.remote_node.coords.axis.z")
+                        .getString();
+        int labelW =
+                Math.max(
+                        this.font.width(labelX),
+                        Math.max(this.font.width(labelY), this.font.width(labelZ)));
+        int groupW = labelW + REMOTE_NODE_AXIS_LABEL_GAP + REMOTE_NODE_COORD_EDIT_W;
+        int textY = row.coordTextScreenY() + (BTN_H - this.font.lineHeight) / 2;
+        int x = remoteNodeCoordAxisLabelScreenX;
+        graphics.drawString(this.font, labelX, x, textY, 0x404040, false);
+        x += groupW + AMOUNT_INNER_GAP;
+        graphics.drawString(this.font, labelY, x, textY, 0x404040, false);
+        x += groupW + AMOUNT_INNER_GAP;
+        graphics.drawString(this.font, labelZ, x, textY, 0x404040, false);
+    }
+
+    private Component remoteNodeCoordLabel(@Nullable DuctDirectionalEndpoint bound) {
+        if (bound == null) {
+            return Component.translatable("gui.another_dynamics.duct_node.remote_node.coords.any");
+        }
+        BlockPos p = bound.pos();
+        return Component.translatable(
+                "gui.another_dynamics.duct_node.remote_node.coords",
+                p.getX(),
+                p.getY(),
+                p.getZ(),
+                bound.face().getSerializedName());
+    }
+
+    private String remoteNodeSummaryCoordText(
+            @Nullable DuctDirectionalEndpoint bound, boolean ignoreChannel) {
+        if (bound == null) {
+            return Component.translatable("gui.another_dynamics.duct_node.remote_node.coords.any")
+                    .getString();
+        }
+        String base = remoteNodeCoordLabel(bound).getString();
+        if (!ignoreChannel) {
+            return base;
+        }
+        return base
+                + " "
+                + Component.translatable(
+                                "gui.another_dynamics.duct_node.remote_node.ignore_channel.summary_suffix")
+                        .getString();
+    }
+
+    private void handleAdvancedRemoteIgnoreChannelToggle() {
+        if (editModeRemoteNodeDraft == null || editModeFilterIndex < 0) {
+            return;
+        }
+        editModeRemoteIgnoreChannelDraft = !editModeRemoteIgnoreChannelDraft;
+        commitRemoteNodeDraftToLine();
+        syncRemoteIgnoreChannelButtonDisplay();
+        pushFiltersToServer();
+        playClickSound();
+    }
+
+    private void handleAdvancedRemoteNodeSlotClick() {
+        if (minecraft == null || minecraft.player == null || minecraft.level == null) {
+            return;
+        }
+        ItemStack carried = menu.getCarried();
+        DuctDirectionalEndpoint endpoint = null;
+        if (!carried.isEmpty()) {
+            if (!DestinationToolEndpointReader.isDestinationTool(carried)) {
+                return;
+            }
+            endpoint =
+                    DestinationToolEndpointReader.readFromItemStack(
+                            carried, minecraft.level.registryAccess());
+        }
+        editModeRemoteNodeDraft = endpoint;
+        if (endpoint == null) {
+            editModeRemoteIgnoreChannelDraft = false;
+        }
+        closeRemoteNodeCoordEdit(false);
+        commitRemoteNodeDraftToLine();
+        syncRemoteIgnoreChannelButtonDisplay();
+        syncRemoteNodeFaceButtonDisplay();
+        syncRemoteNodeCoordEditButtonDisplay();
+        applySubViewVisibility();
+        pushFiltersToServer();
+        playClickSound();
     }
 
     /** Same click lines as {@link #channelButton} (filter concat has no Shift reset). */
@@ -3164,7 +3990,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         leftArrowButton.setPosition(leftArrowX, buttonRowY);
         rightArrowButton.setPosition(rightArrowX, buttonRowY);
 
-        if (advancedFilteringOpenButton != null) {
+        if (advancedFilteringOpenButton != null && !isAdvancedFilterCapSubview()) {
             int advBtnW = ADVANCED_FILTER_BUTTON_WIDTH;
             int advBtnX = rightArrowX + buttonSize + buttonSpacing;
             int advBtnY = slotY + (slotSize - BTN_H) / 2;
@@ -3225,6 +4051,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             exitEditMode(true);
             return;
         }
+        if (editModeFilterIndex >= 0) {
+            persistFilterEditDraftToClientBuffers(false);
+        }
         exitEditMode(false);
         editModeFilterIndex = index;
         List<String> list = getEditingList();
@@ -3243,6 +4072,28 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         } else {
             editModeAllowCapValue = 0;
             originalAllowCapValue = 0;
+        }
+        if (filterRemoteNodeUiEnabled()) {
+            menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+            editModeRemoteNodeDraft = remoteNodeAt(index);
+            originalRemoteNodeValue = editModeRemoteNodeDraft;
+            editModeRemoteIgnoreChannelDraft = remoteIgnoreChannelAt(index);
+            originalRemoteIgnoreChannelValue = editModeRemoteIgnoreChannelDraft;
+            editModeRemoteAnyFaceDraft = remoteAnyFaceAt(index);
+            originalRemoteAnyFaceValue = editModeRemoteAnyFaceDraft;
+            if (editModeRemoteNodeDraft == null) {
+                editModeRemoteIgnoreChannelDraft = false;
+                originalRemoteIgnoreChannelValue = false;
+                editModeRemoteAnyFaceDraft = false;
+                originalRemoteAnyFaceValue = false;
+            }
+        } else {
+            editModeRemoteNodeDraft = null;
+            originalRemoteNodeValue = null;
+            editModeRemoteIgnoreChannelDraft = false;
+            originalRemoteIgnoreChannelValue = false;
+            editModeRemoteAnyFaceDraft = false;
+            originalRemoteAnyFaceValue = false;
         }
         createEditModeUI();
         filterScrollOffset = Mth.clamp(
@@ -3263,20 +4114,27 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 list.add("");
             }
             list.set(editModeFilterIndex, originalFilterValue);
-            SubView eff = effectiveFilterLineSubview();
-            if (
-                eff == SubView.ALLOW_FILTERS ||
-                eff == SubView.ADVANCED_FILTERING
-            ) {
+            if (isEditingAllowFilterList()) {
                 List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
                 while (caps.size() <= editModeFilterIndex) {
                     caps.add(0);
                 }
                 caps.set(editModeFilterIndex, originalAllowCapValue);
             }
+            if (filterRemoteNodeUiEnabled()) {
+                setRemoteNodeAt(editModeFilterIndex, originalRemoteNodeValue);
+                setRemoteIgnoreChannelAt(
+                        editModeFilterIndex, originalRemoteIgnoreChannelValue);
+                editModeRemoteNodeDraft = originalRemoteNodeValue;
+            }
         }
         editModeFilterIndex = -1;
         originalFilterValue = "";
+        originalAllowCapValue = 0;
+        originalRemoteNodeValue = null;
+        originalRemoteIgnoreChannelValue = false;
+        editModeRemoteNodeDraft = null;
+        closeRemoteNodeCoordEdit(false);
         removeEditModeUI();
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
@@ -3335,9 +4193,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 )
                 .build();
             addRenderableWidget(advancedFilteringOpenButton);
-            // Visible but disabled in deny list (future feature hook).
+            SubView effLine = effectiveFilterLineSubview();
             advancedFilteringOpenButton.active =
-                effectiveFilterLineSubview() == SubView.ALLOW_FILTERS;
+                    effLine == SubView.ALLOW_FILTERS
+                            || (effLine == SubView.DENY_FILTERS
+                                    && filterRemoteNodeUiEnabled());
         }
 
         editModeTextBox = new EditBox(
@@ -3393,6 +4253,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
         editModeCloseButton = Button.builder(Component.literal("\u2715"), b -> {
             if (isAdvancedFilterCapSubview()) {
+                if (popAdvancedFilterSubLevel()) {
+                    return;
+                }
                 undoFilterEditDraft();
             } else {
                 playClickSound();
@@ -3429,6 +4292,15 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return;
         }
         playClickSound();
+        persistFilterEditDraftToClientBuffers(true);
+    }
+
+    /** Writes the open filter line editor into client buffers; optionally pushes to the server. */
+    private void persistFilterEditDraftToClientBuffers(boolean pushToServer) {
+        if (editModeTextBox == null || editModeFilterIndex < 0) {
+            return;
+        }
+        menu.markClientFiltersDirty();
         String value = sanitizeFilterLineForCommit(editModeTextBox.getValue());
         editModeTextBox.setValue(value);
         editModeTextBox.setCursorPosition(value.length());
@@ -3438,14 +4310,39 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             list.add("");
         }
         list.set(editModeFilterIndex, value);
-        List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
-        while (caps.size() <= editModeFilterIndex) {
-            caps.add(0);
+        if (isEditingAllowFilterList()) {
+            List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+            while (caps.size() <= editModeFilterIndex) {
+                caps.add(0);
+            }
+            caps.set(editModeFilterIndex, editModeAllowCapValue);
+            originalAllowCapValue = editModeAllowCapValue;
         }
-        caps.set(editModeFilterIndex, editModeAllowCapValue);
-        originalAllowCapValue = editModeAllowCapValue;
         originalFilterValue = value;
-        pushFiltersToServer();
+        commitRemoteNodeDraftToLine();
+        if (pushToServer) {
+            pushFiltersToServer();
+        }
+    }
+
+    private void commitRemoteNodeDraftToLine() {
+        if (!filterRemoteNodeUiEnabled() || editModeFilterIndex < 0) {
+            return;
+        }
+        // Remote binding is advanced-only; plain filter-line apply must leave client buffers unchanged.
+        if (!isAdvancedFilterCapSubview()) {
+            return;
+        }
+        setRemoteNodeAt(editModeFilterIndex, editModeRemoteNodeDraft);
+        originalRemoteNodeValue = editModeRemoteNodeDraft;
+        if (editModeRemoteNodeDraft == null) {
+            editModeRemoteIgnoreChannelDraft = false;
+            editModeRemoteAnyFaceDraft = false;
+        }
+        setRemoteIgnoreChannelAt(editModeFilterIndex, editModeRemoteIgnoreChannelDraft);
+        originalRemoteIgnoreChannelValue = editModeRemoteIgnoreChannelDraft;
+        setRemoteAnyFaceAt(editModeFilterIndex, editModeRemoteAnyFaceDraft);
+        originalRemoteAnyFaceValue = editModeRemoteAnyFaceDraft;
     }
 
     /** Reverts filter text and Limit/Keep draft to last applied values (advanced filtering only). */
@@ -3462,7 +4359,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         editModeTextBox.setCursorPosition(0);
         editModeTextBox.setHighlightPos(0);
         editModeAllowCapValue = originalAllowCapValue;
-        syncAllowCapEditBoxDisplay();
+        if (showsAdvancedCapEditors()) {
+            syncAllowCapEditBoxDisplay();
+        }
+        editModeRemoteNodeDraft = originalRemoteNodeValue;
+        editModeRemoteIgnoreChannelDraft = originalRemoteIgnoreChannelValue;
+        editModeRemoteAnyFaceDraft = originalRemoteAnyFaceValue;
+        closeRemoteNodeCoordEdit(false);
+        syncRemoteIgnoreChannelButtonDisplay();
+        syncRemoteNodeFaceButtonDisplay();
+        syncRemoteNodeCoordEditButtonDisplay();
+        applySubViewVisibility();
     }
 
     private static String sanitizeFilterLineForCommit(String raw) {
@@ -3474,17 +4381,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private void applyEditModeAndClose() {
         if (editModeTextBox != null && editModeFilterIndex >= 0) {
+            menu.markClientFiltersDirty();
             String value = sanitizeFilterLineForCommit(editModeTextBox.getValue());
             List<String> list = getEditingList();
             while (list.size() <= editModeFilterIndex) {
                 list.add("");
             }
             list.set(editModeFilterIndex, value);
-            SubView eff = effectiveFilterLineSubview();
-            if (
-                eff == SubView.ALLOW_FILTERS ||
-                eff == SubView.ADVANCED_FILTERING
-            ) {
+            if (isEditingAllowFilterList()) {
                 List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
                 while (caps.size() <= editModeFilterIndex) {
                     caps.add(0);
@@ -4266,23 +5170,28 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 minecraft.level.registryAccess(),
                 keepCaps,
                 menu.getClientAllowConcatChannels(bank),
-                menu.getClientDenyConcatChannels(bank));
+                menu.getClientDenyConcatChannels(bank),
+                menu.getClientAllowRemoteNodes(bank),
+                menu.getClientDenyRemoteNodes(bank),
+                menu.getClientAllowRemoteIgnoreChannel(bank),
+                menu.getClientDenyRemoteIgnoreChannel(bank),
+                menu.getClientAllowRemoteAnyFace(bank),
+                menu.getClientDenyRemoteAnyFace(bank));
     }
 
     private void reorderActiveFilterLines() {
+        menu.markClientFiltersDirty();
         reorderFilterBank(activeFilterBank);
         filterScrollOffset = 0;
         rebuildFilterEntryWidgets();
+        pushFiltersToServer();
     }
 
     private boolean shouldPushFiltersOnClose() {
         if (!menu.shouldPushClientFiltersOnClose()) {
             return false;
         }
-        if (menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0) {
-            return false;
-        }
-        int tk = menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND);
+        int tk = menu.filterTransportKindOrdinal();
         return tk != DuctTransportKind.ENERGY.ordinal() && tk != DuctTransportKind.HEAT.ordinal();
     }
 
@@ -4290,11 +5199,33 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (minecraft == null || minecraft.level == null) {
             return;
         }
-        if (!shouldPushFiltersOnClose()) {
+        if (!menu.clientFiltersDirty()) {
+            FilterSyncDebugLog.clientScreenAction(
+                    "CLOSE_PUSH_SKIP",
+                    menu.filterTransportKindOrdinal(),
+                    menu.clientFiltersHydrated(),
+                    false,
+                    "not dirty");
             return;
         }
-        menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+        int tk = menu.filterTransportKindOrdinal();
+        if (tk == DuctTransportKind.ENERGY.ordinal() || tk == DuctTransportKind.HEAT.ordinal()) {
+            return;
+        }
+        boolean pushAllBanks = menu.clientFiltersHydrated();
+        FilterSyncDebugLog.clientScreenAction(
+                "CLOSE_PUSH_ALL_BANKS",
+                tk,
+                pushAllBanks,
+                true,
+                "pushAllBanks=" + pushAllBanks + " activeBank=" + activeFilterBank);
         for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
+            if (isSettingsCopierFilterListEditor() && bank != DuctFaceNode.FilterBank.EXTRACTOR) {
+                continue;
+            }
+            if (!pushAllBanks && bank != activeFilterBank) {
+                continue;
+            }
             reorderFilterBank(bank);
             List<Integer> caps2 =
                     bank == DuctFaceNode.FilterBank.FILTER
@@ -4310,9 +5241,45 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     caps2,
                     new ArrayList<>(menu.getClientAllowConcatChannels(bank)),
                     new ArrayList<>(menu.getClientDenyConcatChannels(bank)),
+                    new ArrayList<>(menu.getClientAllowRemoteNodes(bank)),
+                    new ArrayList<>(menu.getClientDenyRemoteNodes(bank)),
+                    new ArrayList<>(menu.getClientAllowRemoteIgnoreChannel(bank)),
+                    new ArrayList<>(menu.getClientDenyRemoteIgnoreChannel(bank)),
+                    new ArrayList<>(menu.getClientAllowRemoteAnyFace(bank)),
+                    new ArrayList<>(menu.getClientDenyRemoteAnyFace(bank)),
                     menu.getClientDenyOverridesAllow(bank),
                     allowListCtx);
         }
+    }
+
+    private void reorderAndPushAllFilterBanksForTransport(int transportKindOrdinal) {
+        if (minecraft == null || minecraft.level == null) {
+            return;
+        }
+        if (!menu.shouldPushFiltersForTransport(transportKindOrdinal)) {
+            return;
+        }
+        if (transportKindOrdinal == DuctTransportKind.ENERGY.ordinal()
+                || transportKindOrdinal == DuctTransportKind.HEAT.ordinal()) {
+            return;
+        }
+        var registryAccess = minecraft.level.registryAccess();
+        for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
+            menu.reorderClientFilterBankForTransport(transportKindOrdinal, bank, registryAccess);
+        }
+        menu.pushAllFilterBanksForTransport(transportKindOrdinal);
+    }
+
+    private boolean shouldFlushFiltersBeforeMenuButton(int id) {
+        if (id == DuctBlockEntity.MENU_BUTTON_BACK_TO_HUB) {
+            return true;
+        }
+        if (id >= DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE
+                && id < DuctBlockEntity.MENU_BUTTON_TRANSPORT_KIND_BASE + DuctTransportKind.values().length) {
+            return true;
+        }
+        return id >= DuctBlockEntity.MENU_BUTTON_TRANSPORT_TOGGLE_BASE
+                && id < DuctBlockEntity.MENU_BUTTON_TRANSPORT_TOGGLE_BASE + DuctTransportKind.values().length;
     }
 
     private void flushPendingFilterEditsBeforeClose() {
@@ -4331,6 +5298,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     @Override
     public void onClose() {
         flushPendingFilterEditsBeforeClose();
+        FilterSyncDebugLog.clientScreenAction(
+                "ON_CLOSE",
+                menu.filterTransportKindOrdinal(),
+                menu.clientFiltersHydrated(),
+                menu.clientFiltersDirty(),
+                "shouldPush=" + shouldPushFiltersOnClose());
         if (shouldPushFiltersOnClose()) {
             reorderAndPushAllFilterBanks();
         }
@@ -4338,8 +5311,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void pushFiltersToServer() {
+        FilterSyncDebugLog.clientScreenAction(
+                "LIVE_PUSH",
+                menu.filterTransportKindOrdinal(),
+                menu.clientFiltersHydrated(),
+                menu.clientFiltersDirty(),
+                "bank=" + activeFilterBank
+                        + " allow="
+                        + FilterSyncDebugLog.listPreview(menu.getClientAllowFilters(activeFilterBank))
+                        + " deny="
+                        + FilterSyncDebugLog.listPreview(menu.getClientDenyFilters(activeFilterBank)));
         menu.markClientFiltersDirty();
-        menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
         List<Integer> caps2 =
             activeFilterBank == DuctFaceNode.FilterBank.FILTER
                 ? new ArrayList<>(menu.getClientFilterKeepCaps())
@@ -4352,8 +5334,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             caps2,
             new ArrayList<>(menu.getClientAllowConcatChannels(activeFilterBank)),
             new ArrayList<>(menu.getClientDenyConcatChannels(activeFilterBank)),
+            new ArrayList<>(menu.getClientAllowRemoteNodes(activeFilterBank)),
+            new ArrayList<>(menu.getClientDenyRemoteNodes(activeFilterBank)),
+            new ArrayList<>(menu.getClientAllowRemoteIgnoreChannel(activeFilterBank)),
+            new ArrayList<>(menu.getClientDenyRemoteIgnoreChannel(activeFilterBank)),
+            new ArrayList<>(menu.getClientAllowRemoteAnyFace(activeFilterBank)),
+            new ArrayList<>(menu.getClientDenyRemoteAnyFace(activeFilterBank)),
             menu.getClientDenyOverridesAllow(activeFilterBank),
-            subView == SubView.ALLOW_FILTERS);
+            isEditingAllowFilterList());
     }
 
     private void syncAllowCapEditBoxDisplay() {
@@ -4623,6 +5611,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void handleMenuButton(int id) {
+        if (shouldFlushFiltersBeforeMenuButton(id)) {
+            flushPendingFilterEditsBeforeClose();
+            reorderAndPushAllFilterBanks();
+        }
         if (id == 1 || id == 11) {
             NodeMode nm = NodeMode.fromOrdinal(
                 menu.getSyncData().get(DuctMenuSync.NODE_MODE)
@@ -5199,17 +6191,19 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             layoutAmountBlock();
             if (isAdvancedFilterCapSubview()) {
                 layoutAdvancedCapBlock();
+                layoutAdvancedRemoteNodeBlock();
                 layoutEditModeWidgets();
             }
             applySubViewVisibility();
         }
-        if (isAdvancedFilterCapSubview()) {
+        if (showsAdvancedCapEditors()) {
             int eligOrd = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
             int capLayoutKey =
                 (activeFilterBank.ordinal() << 8) + (eligOrd & 0xFF);
             if (advCapLayoutCache != capLayoutKey) {
                 advCapLayoutCache = capLayoutKey;
                 layoutAdvancedCapBlock();
+                layoutAdvancedRemoteNodeBlock();
                 layoutEditModeWidgets();
             }
         }
@@ -5255,7 +6249,29 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
         // Server can change MENU_VIEW_LAYER / ACTIVE_TRANSPORT_KIND without node-mode layout key changing; keep hub vs detail visibility and positions in sync.
         int menuLayer = menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER);
+        int transportKind = menu.filterTransportKindOrdinal();
+        if (lastActiveTransportKind < 0) {
+            lastActiveTransportKind = transportKind;
+        } else if (transportKind != lastActiveTransportKind) {
+            FilterSyncDebugLog.clientScreenAction(
+                    "LANE_CHANGE_FLUSH",
+                    lastActiveTransportKind,
+                    menu.clientFiltersHydrated(lastActiveTransportKind),
+                    menu.clientFiltersDirty(lastActiveTransportKind),
+                    "newTk=" + FilterSyncDebugLog.transportKindName(transportKind));
+            reorderAndPushAllFilterBanksForTransport(lastActiveTransportKind);
+            FilterSyncDebugLog.clientPacket(
+                    "FILTER_SYNC_REQUEST",
+                    FilterSyncDebugLog.posFace(menu.getDuctBlockPos(), menu.getAccessFace())
+                            + " reason=lane_change");
+            ModNetwork.sendFilterSyncRequest(menu.getDuctBlockPos(), menu.getAccessFace());
+            lastActiveTransportKind = transportKind;
+            rebuildFilterEntryWidgets();
+        }
         if (lastSyncedMenuViewLayer < 0) {
+            lastSyncedMenuViewLayer = menuLayer;
+        } else if (lastSyncedMenuViewLayer == 0 && menuLayer != 0) {
+            ModNetwork.sendFilterSyncRequest(menu.getDuctBlockPos(), menu.getAccessFace());
             lastSyncedMenuViewLayer = menuLayer;
         } else if (isSettingsCopierAllVirtualMultiTransport() && lastSyncedMenuViewLayer != menuLayer) {
             exitEditMode(false);
@@ -5636,6 +6652,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
         } else if (subView == SubView.ADVANCED_FILTERING && inEditMode()) {
             renderEditModeSlot(graphics);
+            renderAdvancedRemoteNodeBlock(graphics, mouseX, mouseY);
         }
 
         if (isSettingsCopierFilterListEditor()) {
@@ -5679,7 +6696,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             renderFilterRowSlotIcon(graphics, filter, slotX, slotY);
 
             int textX = slotX + 18 + 6;
-            int textY = entryY + (ENTRY_HEIGHT - this.font.lineHeight) / 2;
             int buttonSize = 12;
             int buttonMargin = 4;
             int buttonSpacing = 2;
@@ -5692,7 +6708,22 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 displayText =
                         font.plainSubstrByWidth(displayText, maxTextWidth - font.width("...")) + "...";
             }
-            graphics.drawString(font, displayText, textX, textY, 0x404040, false);
+            @Nullable DuctDirectionalEndpoint boundRemote =
+                    filterRemoteNodeUiEnabled() ? remoteNodeAt(idx) : null;
+            if (boundRemote != null) {
+                int filterTextY = entryY + 4;
+                graphics.drawString(font, displayText, textX, filterTextY, 0x404040, false);
+                String coordLine =
+                        truncateRemoteNodeCoordText(
+                                remoteNodeSummaryCoordText(
+                                        boundRemote, remoteIgnoreChannelAt(idx)),
+                                maxTextWidth);
+                int coordY = filterTextY + font.lineHeight + 1;
+                graphics.drawString(font, coordLine, textX, coordY, 0x707070, false);
+            } else {
+                int textY = entryY + (ENTRY_HEIGHT - font.lineHeight) / 2;
+                graphics.drawString(font, displayText, textX, textY, 0x404040, false);
+            }
         }
 
         // After entry rows so the handle draws above the list edge (DeepDrawerExtractorScreen order).
@@ -6104,6 +7135,18 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return true;
         }
         if (inEditMode() && button == 0) {
+            if (showsAdvancedRemoteNodeBlock()) {
+                AdvancedRemoteNodeRowLayout row = advancedRemoteNodeRowLayout();
+                int remoteSlotX = row.slotScreenX();
+                int remoteSlotY = row.slotScreenY();
+                if (mouseX >= remoteSlotX
+                        && mouseX < remoteSlotX + ADVANCED_REMOTE_NODE_SLOT_SIZE
+                        && mouseY >= remoteSlotY
+                        && mouseY < remoteSlotY + ADVANCED_REMOTE_NODE_SLOT_SIZE) {
+                    handleAdvancedRemoteNodeSlotClick();
+                    return true;
+                }
+            }
             int slotX = editModeSlotX();
             int slotY = editModeSlotY();
             if (
@@ -6251,6 +7294,19 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return true;
         }
 
+        if (remoteNodeCoordEditOpen) {
+            if (keyCode == InputConstants.KEY_RETURN) {
+                applyRemoteNodeCoordEdit();
+                return true;
+            }
+            if (keyCode == InputConstants.KEY_ESCAPE) {
+                if (!jeiIsHandlingKeyboard() && isMouseInsideOurGui()) {
+                    undoRemoteNodeCoordEdit();
+                    return true;
+                }
+            }
+        }
+
         if (
             keyCode == GLFW.GLFW_KEY_S &&
             isAdvancedFilterCapSubview() &&
@@ -6338,6 +7394,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
             if (subView == SubView.ADVANCED_FILTERING) {
                 playClickSound();
+                if (popAdvancedFilterSubLevel()) {
+                    return true;
+                }
                 closeAdvancedFiltering();
                 return true;
             }
@@ -6688,9 +7747,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 yield Component.translatable(
                         DuctIds.nodeScreenTranslationKey(menu.getClientDuctLogicalId()));
             }
-            case ADVANCED_FILTERING -> Component.translatable(
-                "gui.another_dynamics.duct_node.advanced_filtering.title"
-            );
+            case ADVANCED_FILTERING -> advancedFilterParentSubview == SubView.DENY_FILTERS
+                    ? Component.translatable(
+                            "gui.another_dynamics.duct_node.advanced_filtering.title.deny_remote")
+                    : Component.translatable(
+                            "gui.another_dynamics.duct_node.advanced_filtering.title");
             case DENY_FILTERS -> {
                 NodeMode nm = NodeMode.fromOrdinal(
                     menu.getSyncData().get(DuctMenuSync.NODE_MODE)
@@ -6775,7 +7836,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             renderEnergyBufferColumnLabels(graphics);
         }
 
-        if (isAdvancedFilterCapSubview()) {
+        if (showsAdvancedCapEditors()) {
             boolean limitCtx;
             if (isSettingsCopierFilterListEditor()) {
                 limitCtx = true;

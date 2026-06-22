@@ -1,4 +1,4 @@
-package net.unfamily.another_dynamics.duct.filterimport.pipez;
+package net.unfamily.another_dynamics.duct.filterimport.external;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -11,11 +11,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportChannel;
 
-/** Reads Pipez upgrade data components from stacks without a compile-time Pipez dependency. */
-final class PipezStackComponents {
-    private static final String PIPEZ = "pipez";
-
-    private PipezStackComponents() {}
+/** Reads upgrade filter data components from stacks without a compile-time mod dependency. */
+final class ExternalUpgradeStackComponents {
+    private ExternalUpgradeStackComponents() {}
 
     @Nullable
     static CompoundTag readChannelData(ItemStack stack, FilterImportChannel channel, HolderLookup.Provider registries) {
@@ -31,14 +29,14 @@ final class PipezStackComponents {
             return null;
         }
         CompoundTag components = root.getCompound("components");
-        String key = PIPEZ + ":" + channel.componentSuffix();
+        String key = ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE + ":" + channel.componentSuffix();
         if (components.contains(key, Tag.TAG_COMPOUND)) {
             return components.getCompound(key);
         }
         return null;
     }
 
-    static boolean hasAnyPipezChannel(ItemStack stack, HolderLookup.Provider registries) {
+    static boolean hasAnyChannelData(ItemStack stack, HolderLookup.Provider registries) {
         for (FilterImportChannel ch : FilterImportChannel.values()) {
             if (readChannelData(stack, ch, registries) != null) {
                 return true;
@@ -47,8 +45,10 @@ final class PipezStackComponents {
         return false;
     }
 
-    static boolean isPipezUpgrade(ItemStack stack) {
+    static boolean isUpgradeItem(ItemStack stack) {
         ResourceLocation id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem());
-        return id != null && PIPEZ.equals(id.getNamespace()) && id.getPath().endsWith("_upgrade");
+        return id != null
+                && ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE.equals(id.getNamespace())
+                && id.getPath().endsWith("_upgrade");
     }
 }

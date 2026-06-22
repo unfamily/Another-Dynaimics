@@ -26,6 +26,7 @@ import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierVirtualSession;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
+import net.unfamily.another_dynamics.inventory.FilterSyncDebugLog;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
 import net.unfamily.another_dynamics.inventory.UniversalDuctMenu;
 
@@ -37,6 +38,7 @@ import net.unfamily.another_dynamics.duct.filterimport.FilterImportService;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.registry.ModAttachments;
 import net.minecraft.world.InteractionHand;
+import java.util.ArrayList;
 import java.util.List;
 
 public final class ModNetwork {
@@ -98,6 +100,22 @@ public final class ModNetwork {
         reg.playToServer(DuctFilterUpdatePayload.TYPE, DuctFilterUpdatePayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
                 ServerPlayer player = (ServerPlayer) ctx.player();
+                FilterSyncDebugLog.serverPacket(
+                        "FILTER_UPDATE_RX",
+                        "player="
+                                + player.getGameProfile().getName()
+                                + " pos="
+                                + payload.pos()
+                                + " face="
+                                + payload.faceOrdinal()
+                                + " tk="
+                                + FilterSyncDebugLog.transportKindName(payload.transportKindOrdinal())
+                                + " bank="
+                                + FilterSyncDebugLog.bankName(payload.filterBankOrdinal())
+                                + " allow="
+                                + FilterSyncDebugLog.listPreview(payload.allow())
+                                + " deny="
+                                + FilterSyncDebugLog.listPreview(payload.deny()));
                 SettingsCopierVirtualSession session = virtualCopierSession(player);
                 if (session != null) {
                     DuctTransportKind[] kinds = DuctTransportKind.values();
@@ -118,6 +136,12 @@ public final class ModNetwork {
                             payload.allowCaps2(),
                             payload.allowConcat(),
                             payload.denyConcat(),
+                            payload.allowRemote(),
+                            payload.denyRemote(),
+                            payload.allowRemoteIgnoreChannel(),
+                            payload.denyRemoteIgnoreChannel(),
+                            payload.allowRemoteAnyFace(),
+                            payload.denyRemoteAnyFace(),
                             payload.denyOverridesAllow());
                     ((SettingsCopierMenu) player.containerMenu).broadcastChanges();
                     return;
@@ -150,9 +174,69 @@ public final class ModNetwork {
                         payload.allowCaps2(),
                         payload.allowConcat(),
                         payload.denyConcat(),
+                        payload.allowRemote(),
+                        payload.denyRemote(),
+                        payload.allowRemoteIgnoreChannel(),
+                        payload.denyRemoteIgnoreChannel(),
+                        payload.allowRemoteAnyFace(),
+                        payload.denyRemoteAnyFace(),
                         payload.denyOverridesAllow());
             });
         });
+
+        reg.playToServer(
+                DuctFilterSyncRequestPayload.TYPE,
+                DuctFilterSyncRequestPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        int fo = payload.faceOrdinal();
+                        if (fo < 0 || fo >= Direction.values().length) {
+                            return;
+                        }
+                        Direction face = Direction.values()[fo];
+                        SettingsCopierVirtualSession session = virtualCopierSession(player);
+                        if (session != null) {
+                            if (!(player.containerMenu instanceof SettingsCopierMenu menu)) {
+                                return;
+                            }
+                            if (!menu.getDuctBlockPos().equals(payload.pos()) || menu.getAccessFace() != face) {
+                                return;
+                            }
+                            FilterSyncDebugLog.serverPacket(
+                                    "FILTER_SYNC_REQUEST",
+                                    "virtual player="
+                                            + player.getGameProfile().getName()
+                                            + " "
+                                            + FilterSyncDebugLog.posFace(payload.pos(), face));
+                            sendFilterSyncForVirtualNow(player, session);
+                            return;
+                        }
+                        if (!(player.containerMenu instanceof DuctNodeMenu menu)) {
+                            return;
+                        }
+                        if (!menu.getDuctBlockPos().equals(payload.pos()) || menu.getAccessFace() != face) {
+                            return;
+                        }
+                        if (!validateDuctGuiInteraction(player, payload.pos())) {
+                            return;
+                        }
+                        BlockEntity be = player.level().getBlockEntity(payload.pos());
+                        if (!(be instanceof DuctBlockEntity duct) || duct.isRemoved()) {
+                            return;
+                        }
+                        if (duct.isMenuHubLayer()) {
+                            return;
+                        }
+                        FilterSyncDebugLog.serverPacket(
+                                "FILTER_SYNC_REQUEST",
+                                "duct player="
+                                        + player.getGameProfile().getName()
+                                        + " "
+                                        + FilterSyncDebugLog.posFace(payload.pos(), face));
+                        sendFilterSyncToPlayerNow(player, duct, face);
+                    });
+                });
 
         reg.playToServer(DuctListLogicPayload.TYPE, DuctListLogicPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(() -> {
@@ -463,6 +547,12 @@ public final class ModNetwork {
                                 payload.allowCaps2(),
                                 payload.allowConcat(),
                                 payload.denyConcat(),
+                                payload.allowRemote(),
+                                payload.denyRemote(),
+                                payload.allowRemoteIgnoreChannel(),
+                                payload.denyRemoteIgnoreChannel(),
+                                payload.allowRemoteAnyFace(),
+                                payload.denyRemoteAnyFace(),
                                 payload.denyOverridesAllow());
                     });
         });
@@ -552,6 +642,12 @@ public final class ModNetwork {
             java.util.List<Integer> allowCaps2,
             java.util.List<Integer> allowConcat,
             java.util.List<Integer> denyConcat,
+            java.util.List<net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint> allowRemote,
+            java.util.List<net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint> denyRemote,
+            java.util.List<Boolean> allowRemoteIgnoreChannel,
+            java.util.List<Boolean> denyRemoteIgnoreChannel,
+            java.util.List<Boolean> allowRemoteAnyFace,
+            java.util.List<Boolean> denyRemoteAnyFace,
             boolean denyOverridesAllow) {
         PacketDistributor.sendToServer(
                 new DuctFilterUpdatePayload(
@@ -565,7 +661,18 @@ public final class ModNetwork {
                         allowCaps2,
                         allowConcat,
                         denyConcat,
+                        allowRemote,
+                        denyRemote,
+                        allowRemoteIgnoreChannel,
+                        denyRemoteIgnoreChannel,
+                        allowRemoteAnyFace,
+                        denyRemoteAnyFace,
                         denyOverridesAllow));
+    }
+
+    /** Client duct GUI is open; server sends filter snapshots for the active transport kind. */
+    public static void sendFilterSyncRequest(BlockPos pos, Direction face) {
+        PacketDistributor.sendToServer(new DuctFilterSyncRequestPayload(pos, face.ordinal()));
     }
 
     public static void sendListLogicToggle(BlockPos pos, Direction face, int transportKindOrdinal, int filterBankOrdinal) {
@@ -656,28 +763,46 @@ public final class ModNetwork {
     }
 
     public static void sendFilterSyncForVirtual(ServerPlayer player, SettingsCopierVirtualSession session) {
+        sendFilterSyncForVirtual(player, session, session.menuActiveTransportKind());
+    }
+
+    public static void sendFilterSyncForVirtual(
+            ServerPlayer player, SettingsCopierVirtualSession session, DuctTransportKind lane) {
         var server = player.getServer();
         if (server == null) {
-            sendFilterSyncForVirtualNow(player, session);
+            sendFilterSyncForVirtualNow(player, session, lane);
             return;
         }
         server.execute(() -> {
             if (player.hasDisconnected()) {
                 return;
             }
-            sendFilterSyncForVirtualNow(player, session);
+            sendFilterSyncForVirtualNow(player, session, lane);
         });
     }
 
     private static void sendFilterSyncForVirtualNow(ServerPlayer player, SettingsCopierVirtualSession session) {
-        DuctFaceNode node = session.activeMenuFaceNode();
-        int tk = session.menuActiveTransportKind().ordinal();
+        sendFilterSyncForVirtualNow(player, session, session.menuActiveTransportKind());
+    }
+
+    private static void sendFilterSyncForVirtualNow(
+            ServerPlayer player, SettingsCopierVirtualSession session, DuctTransportKind lane) {
+        DuctFaceNode node = session.faceNodeForTransportKind(lane);
+        int tk = lane.ordinal();
         Direction face = session.accessFace();
         for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
             java.util.List<Integer> caps2 =
                     bank == DuctFaceNode.FilterBank.FILTER
-                            ? java.util.List.copyOf(node.filterBankKeepCaps())
+                            ? copyFilterSyncList(node.filterBankKeepCaps())
                             : java.util.List.of();
+            FilterSyncDebugLog.serverSyncSend(
+                    "virtual",
+                    BlockPos.ZERO,
+                    face,
+                    tk,
+                    bank.ordinal(),
+                    node.bankAllowFilters(bank),
+                    node.bankDenyFilters(bank));
             PacketDistributor.sendToPlayer(
                     player,
                     new DuctFilterSyncPayload(
@@ -685,12 +810,18 @@ public final class ModNetwork {
                             face.ordinal(),
                             tk,
                             bank.ordinal(),
-                            java.util.List.copyOf(node.bankAllowFilters(bank)),
-                            java.util.List.copyOf(node.bankDenyFilters(bank)),
-                            java.util.List.copyOf(node.bankAllowCaps(bank)),
+                            copyFilterSyncList(node.bankAllowFilters(bank)),
+                            copyFilterSyncList(node.bankDenyFilters(bank)),
+                            copyFilterSyncList(node.bankAllowCaps(bank)),
                             caps2,
-                            java.util.List.copyOf(node.bankAllowConcatChannels(bank)),
-                            java.util.List.copyOf(node.bankDenyConcatChannels(bank)),
+                            copyFilterSyncList(node.bankAllowConcatChannels(bank)),
+                            copyFilterSyncList(node.bankDenyConcatChannels(bank)),
+                            copyFilterSyncList(node.bankAllowRemoteNodes(bank)),
+                            copyFilterSyncList(node.bankDenyRemoteNodes(bank)),
+                            copyBoolSyncList(node.bankAllowRemoteIgnoreChannel(bank)),
+                            copyBoolSyncList(node.bankDenyRemoteIgnoreChannel(bank)),
+                            copyBoolSyncList(node.bankAllowRemoteAnyFace(bank)),
+                            copyBoolSyncList(node.bankDenyRemoteAnyFace(bank)),
                             node.bankDenyOverridesAllow(bank)));
         }
     }
@@ -719,9 +850,14 @@ public final class ModNetwork {
      * and screen exist before the packet is handled (avoids dropped or invisible updates).
      */
     public static void sendFilterSyncToPlayer(ServerPlayer player, DuctBlockEntity duct, Direction face) {
+        sendFilterSyncToPlayer(player, duct, face, duct.menuActiveTransportKind());
+    }
+
+    public static void sendFilterSyncToPlayer(
+            ServerPlayer player, DuctBlockEntity duct, Direction face, DuctTransportKind lane) {
         var server = player.getServer();
         if (server == null) {
-            sendFilterSyncToPlayerNow(player, duct, face);
+            sendFilterSyncToPlayerNow(player, duct, face, lane);
             return;
         }
         server.execute(
@@ -732,18 +868,31 @@ public final class ModNetwork {
                     if (player.level().getBlockEntity(duct.getBlockPos()) != duct) {
                         return;
                     }
-                    sendFilterSyncToPlayerNow(player, duct, face);
+                    sendFilterSyncToPlayerNow(player, duct, face, lane);
                 });
     }
 
     private static void sendFilterSyncToPlayerNow(ServerPlayer player, DuctBlockEntity duct, Direction face) {
-        var node = duct.activeMenuFaceNode(face);
-        int tk = duct.menuActiveTransportKind().ordinal();
+        sendFilterSyncToPlayerNow(player, duct, face, duct.menuActiveTransportKind());
+    }
+
+    private static void sendFilterSyncToPlayerNow(
+            ServerPlayer player, DuctBlockEntity duct, Direction face, DuctTransportKind lane) {
+        var node = duct.faceNodeForTransportKind(face, lane);
+        int tk = lane.ordinal();
         for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
             java.util.List<Integer> caps2 =
                     bank == DuctFaceNode.FilterBank.FILTER
-                            ? java.util.List.copyOf(node.filterBankKeepCaps())
+                            ? copyFilterSyncList(node.filterBankKeepCaps())
                             : java.util.List.of();
+            FilterSyncDebugLog.serverSyncSend(
+                    "duct",
+                    duct.getBlockPos(),
+                    face,
+                    tk,
+                    bank.ordinal(),
+                    node.bankAllowFilters(bank),
+                    node.bankDenyFilters(bank));
             PacketDistributor.sendToPlayer(
                     player,
                     new DuctFilterSyncPayload(
@@ -751,14 +900,42 @@ public final class ModNetwork {
                             face.ordinal(),
                             tk,
                             bank.ordinal(),
-                            java.util.List.copyOf(node.bankAllowFilters(bank)),
-                            java.util.List.copyOf(node.bankDenyFilters(bank)),
-                            java.util.List.copyOf(node.bankAllowCaps(bank)),
+                            copyFilterSyncList(node.bankAllowFilters(bank)),
+                            copyFilterSyncList(node.bankDenyFilters(bank)),
+                            copyFilterSyncList(node.bankAllowCaps(bank)),
                             caps2,
-                            java.util.List.copyOf(node.bankAllowConcatChannels(bank)),
-                            java.util.List.copyOf(node.bankDenyConcatChannels(bank)),
+                            copyFilterSyncList(node.bankAllowConcatChannels(bank)),
+                            copyFilterSyncList(node.bankDenyConcatChannels(bank)),
+                            copyFilterSyncList(node.bankAllowRemoteNodes(bank)),
+                            copyFilterSyncList(node.bankDenyRemoteNodes(bank)),
+                            copyBoolSyncList(node.bankAllowRemoteIgnoreChannel(bank)),
+                            copyBoolSyncList(node.bankDenyRemoteIgnoreChannel(bank)),
+                            copyBoolSyncList(node.bankAllowRemoteAnyFace(bank)),
+                            copyBoolSyncList(node.bankDenyRemoteAnyFace(bank)),
                             node.bankDenyOverridesAllow(bank)));
         }
+    }
+
+    /**
+     * Copies filter sync lists for packets. {@link List#copyOf} rejects null elements; remote-node slots use null
+     * placeholders for empty bindings.
+     */
+    private static <T> List<T> copyFilterSyncList(List<T> source) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+        return new ArrayList<>(source);
+    }
+
+    private static List<Boolean> copyBoolSyncList(List<Boolean> source) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+        List<Boolean> out = new ArrayList<>(source.size());
+        for (Boolean v : source) {
+            out.add(v != null && v);
+        }
+        return out;
     }
 
     private static @Nullable SettingsCopierVirtualSession virtualCopierSession(ServerPlayer player) {
