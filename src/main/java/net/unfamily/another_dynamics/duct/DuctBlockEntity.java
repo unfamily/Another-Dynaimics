@@ -148,6 +148,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     /**
      * Removes a task from the queue: clears incoming reservations. Refunds only when items were already extracted
      * ({@link OutboundShipment#sourceExtractCommitted} / legacy physical buffer). Planned-only tasks drop the plan only.
+     * Overflow from a full stall buffer is absorbed on {@code refundDuct} (never inserted into the source machine).
      */
     private void cancelOutboundShipment(
             ServerLevel level, OutboundShipment s, @Nullable Iterator<OutboundShipment> it, BlockPos... extraOverflowDucts) {
@@ -158,7 +159,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!lump.isEmpty() && physical) {
             if (!tryRefundOrStall(level, s, lump)) {
                 DuctOverflowRouting.tryRefundToSourceNoDrop(
-                        level, s, lump, mergeScheduleOwnerWithExtras(worldPosition, extraOverflowDucts));
+                        level,
+                        s,
+                        lump,
+                        mergeScheduleOwnerWithExtras(worldPosition, s.refundDuct, extraOverflowDucts));
             }
         }
         setChanged();
@@ -1218,6 +1222,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     /** Stall buffer kind for failed retriever deliveries still on the item network. */
     public static DuctStallKind resolveRefundStallKind(ServerLevel level, OutboundShipment s) {
+        if (isDestStorageFaceDisconnected(level, s)) {
+            return DuctStallKind.OUTBOUND;
+        }
+        if (DuctTransitTopology.shouldAllowItemDeliveryDespiteBrokenPath(level, s)) {
+            if (level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity) {
+                return DuctStallKind.INBOUND;
+            }
+        }
         if (!s.sourceExtractCommitted) {
             return DuctStallKind.OUTBOUND;
         }
@@ -1231,6 +1243,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return DuctStallKind.OUTBOUND;
         }
         if (!isRetrieverReachableFromDonor(level, s.refundDuct, s.destDuct)) {
+            return DuctStallKind.OUTBOUND;
+        }
+        if (!DuctTransitTopology.isItemShipmentPathIntact(level, s)) {
             return DuctStallKind.OUTBOUND;
         }
         return DuctStallKind.INBOUND;
@@ -1355,6 +1370,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     transitVisualSync = true;
                     continue;
                 }
+                if (!DuctTransitTopology.isItemShipmentPathIntact(level, s)
+                        && DuctTransitTopology.shouldCancelCommittedItemTransitForPathBreak(level, s)) {
+                    cancelOutboundShipment(level, s, it);
+                    shipmentsDirty = true;
+                    transitVisualSync = true;
+                    continue;
+                }
+                if (isDestStorageFaceDisconnected(level, s)) {
+                    cancelOutboundShipment(level, s, it);
+                    shipmentsDirty = true;
+                    transitVisualSync = true;
+                    continue;
+                }
                 if (!resizePendingShipment(level, s, it)) {
                     shipmentsDirty = true;
                     transitVisualSync = true;
@@ -1378,6 +1406,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             if (!level.isLoaded(s.destDuct)) {
+                continue;
+            }
+            if (!DuctTransitTopology.isItemShipmentPathIntact(level, s)
+                    && !DuctTransitTopology.shouldAllowItemDeliveryDespiteBrokenPath(level, s)) {
+                cancelOutboundShipment(level, s, it);
+                shipmentsDirty = true;
+                transitVisualSync = true;
+                continue;
+            }
+            if (isDestStorageFaceDisconnected(level, s)) {
+                cancelOutboundShipment(level, s, it);
+                shipmentsDirty = true;
+                transitVisualSync = true;
                 continue;
             }
             boolean deliveryDeferred = false;
@@ -1505,7 +1546,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             if (s.travelTicks > 0) {
-                if (DuctTransitTopology.firstBrokenFluidPathEdge(level, s.ductPath).isPresent()) {
+                if (shouldRefundFluidTransitForBrokenPath(level, s)) {
                     refundBufferedFluidToSourceOrStall(level, s.sourceFace, s.fluid);
                     DuctFluidIncomingIndex.unregister(level, s.destDuct, s.fluid);
                     it.remove();
@@ -1524,6 +1565,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 if (s.travelTicks <= 0 || (Math.max(1, s.edgeTicks) > 0 && s.travelTicks % Math.max(1, s.edgeTicks) == 0)) {
                     transitVisualSync = true;
                 }
+                continue;
+            }
+            if (shouldRefundFluidTransitForBrokenPath(level, s)) {
+                refundBufferedFluidToSourceOrStall(level, s.sourceFace, s.fluid);
+                DuctFluidIncomingIndex.unregister(level, s.destDuct, s.fluid);
+                it.remove();
+                transitVisualSync = true;
                 continue;
             }
             DuctFluidServerTick.tryExecutePlannedFluidTransfer(level, this, s);
@@ -1601,7 +1649,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
 
             if (s.travelTicks > 0) {
-                if (DuctTransitTopology.firstBrokenGasPathEdge(level, s.ductPath).isPresent()) {
+                if (shouldRefundGasTransitForBrokenPath(level, s)) {
                     refundBufferedGasToSourceOrStall(level, s.sourceFace, s.stack);
                     DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
                     it.remove();
@@ -1644,6 +1692,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
 
+            if (shouldRefundGasTransitForBrokenPath(level, s)) {
+                refundBufferedGasToSourceOrStall(level, s.sourceFace, s.stack);
+                DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
+                it.remove();
+                transitVisualSync = true;
+                continue;
+            }
             try {
                 tryExecutePlannedGasTransfer(level, this, s);
             } catch (Throwable t) {
@@ -1866,14 +1921,38 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return true;
     }
 
-    private static BlockPos[] mergeScheduleOwnerWithExtras(BlockPos scheduleOwner, BlockPos[] extras) {
-        if (extras == null || extras.length == 0) {
-            return new BlockPos[] {scheduleOwner};
+    private static BlockPos[] mergeScheduleOwnerWithExtras(BlockPos scheduleOwner, BlockPos... extras) {
+        java.util.LinkedHashSet<BlockPos> merged = new java.util.LinkedHashSet<>();
+        if (scheduleOwner != null) {
+            merged.add(scheduleOwner.immutable());
         }
-        BlockPos[] merged = new BlockPos[1 + extras.length];
-        merged[0] = scheduleOwner;
-        System.arraycopy(extras, 0, merged, 1, extras.length);
-        return merged;
+        if (extras != null) {
+            for (BlockPos p : extras) {
+                if (p != null) {
+                    merged.add(p.immutable());
+                }
+            }
+        }
+        return merged.toArray(BlockPos[]::new);
+    }
+
+    private static BlockPos[] mergeScheduleOwnerWithExtras(
+            BlockPos scheduleOwner, BlockPos refundDuct, BlockPos[] extraOverflowDucts) {
+        java.util.LinkedHashSet<BlockPos> merged = new java.util.LinkedHashSet<>();
+        if (scheduleOwner != null) {
+            merged.add(scheduleOwner.immutable());
+        }
+        if (refundDuct != null) {
+            merged.add(refundDuct.immutable());
+        }
+        if (extraOverflowDucts != null) {
+            for (BlockPos p : extraOverflowDucts) {
+                if (p != null) {
+                    merged.add(p.immutable());
+                }
+            }
+        }
+        return merged.toArray(BlockPos[]::new);
     }
 
     private void removeShipmentFromList(OutboundShipment s, @Nullable Iterator<OutboundShipment> removalIt) {
@@ -1909,48 +1988,388 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     /**
      * When a duct on an in-flight path is removed, stall committed stacks on the source face (owners may be other ducts
-     * in the same item network).
+     * in the same item/fluid/gas network).
      */
     public static void onItemDuctRemoved(ServerLevel level, BlockPos removedPos) {
-        java.util.Set<BlockPos> net = itemNetworkAroundRemovedDuct(level, removedPos);
-        for (BlockPos p : net) {
+        java.util.LinkedHashSet<BlockPos> ducts = new java.util.LinkedHashSet<>();
+        seedTransitFlushDuctEndpoints(level, removedPos, removedPos, ducts);
+        collectDuctNetworkAround(level, removedPos, DuctNetworkType.ITEM, ducts);
+        collectDuctNetworkAround(level, removedPos, DuctNetworkType.FLUID, ducts);
+        collectDuctNetworkAround(level, removedPos, DuctNetworkType.GAS, ducts);
+        for (BlockPos p : ducts) {
             if (level.getBlockEntity(p) instanceof DuctBlockEntity be) {
-                be.stallInTransitThroughRemovedDuct(level, removedPos);
+                be.flushInFlightTransitsForRemovedDuct(level, removedPos);
             }
         }
     }
 
-    private static java.util.Set<BlockPos> itemNetworkAroundRemovedDuct(ServerLevel level, BlockPos removedPos) {
+    /**
+     * Immediately cancels in-flight item/fluid/gas tasks whose scheduled path used the broken edge {@code a}-{@code b}
+     * (wrench disconnect).
+     */
+    public static void onTransitEdgeBroken(ServerLevel level, BlockPos a, BlockPos b) {
+        java.util.LinkedHashSet<BlockPos> ducts = new java.util.LinkedHashSet<>();
+        seedTransitFlushDuctEndpoints(level, a, b, ducts);
+        collectDuctNetworkAround(level, a, DuctNetworkType.ITEM, ducts);
+        collectDuctNetworkAround(level, b, DuctNetworkType.ITEM, ducts);
+        collectDuctNetworkAround(level, a, DuctNetworkType.FLUID, ducts);
+        collectDuctNetworkAround(level, b, DuctNetworkType.FLUID, ducts);
+        collectDuctNetworkAround(level, a, DuctNetworkType.GAS, ducts);
+        collectDuctNetworkAround(level, b, DuctNetworkType.GAS, ducts);
+        for (BlockPos p : ducts) {
+            if (level.getBlockEntity(p) instanceof DuctBlockEntity be) {
+                be.flushInFlightTransitsForBrokenEdge(level, a, b);
+            }
+        }
+    }
+
+    /**
+     * Wrench disconnect on a destination node's storage face (node cap toward chest/inventory): cancel in-flight
+     * deliveries targeting that face and stall at source.
+     */
+    public static void onTransitDestStorageFaceDisconnected(
+            ServerLevel level, BlockPos destDuct, Direction destFace) {
+        java.util.LinkedHashSet<BlockPos> ducts = new java.util.LinkedHashSet<>();
+        ducts.add(destDuct.immutable());
+        collectDuctNetworkAround(level, destDuct, DuctNetworkType.ITEM, ducts);
+        collectDuctNetworkAround(level, destDuct, DuctNetworkType.FLUID, ducts);
+        collectDuctNetworkAround(level, destDuct, DuctNetworkType.GAS, ducts);
+        for (BlockPos p : ducts) {
+            if (level.getBlockEntity(p) instanceof DuctBlockEntity be) {
+                be.flushInFlightTransitsForDestStorageDisconnect(level, destDuct, destFace);
+            }
+        }
+    }
+
+    private static void seedTransitFlushDuctEndpoints(
+            ServerLevel level, BlockPos a, BlockPos b, java.util.Set<BlockPos> out) {
+        if (level.getBlockEntity(a) instanceof DuctBlockEntity) {
+            out.add(a.immutable());
+        }
+        if (level.getBlockEntity(b) instanceof DuctBlockEntity) {
+            out.add(b.immutable());
+        }
+    }
+
+    private static void collectDuctNetworkAround(
+            ServerLevel level, BlockPos pos, DuctNetworkType type, java.util.Set<BlockPos> out) {
         for (Direction d : Direction.values()) {
-            BlockPos n = removedPos.relative(d);
-            if (DuctConnectable.isSameNetwork(level, n, DuctNetworkType.ITEM)) {
-                return DuctNetworkCache.connectedDucts(level, n, DuctNetworkType.ITEM);
+            BlockPos n = pos.relative(d);
+            if (DuctConnectable.isSameNetwork(level, n, type)) {
+                out.addAll(DuctNetworkCache.connectedDucts(level, n, type));
+                return;
             }
         }
-        if (DuctConnectable.isSameNetwork(level, removedPos, DuctNetworkType.ITEM)) {
-            return DuctNetworkCache.connectedDucts(level, removedPos, DuctNetworkType.ITEM);
+        if (DuctConnectable.isSameNetwork(level, pos, type)) {
+            out.addAll(DuctNetworkCache.connectedDucts(level, pos, type));
         }
-        return java.util.Set.of();
     }
 
-    private void stallInTransitThroughRemovedDuct(ServerLevel level, BlockPos removedPos) {
+    private void flushInFlightTransitsForRemovedDuct(ServerLevel level, BlockPos removedPos) {
+        boolean any = flushItemTransitsForTopologyBreak(level, null, null, removedPos, true);
+        any |= flushFluidTransitsForTopologyBreak(level, null, null, removedPos, true);
+        any |= flushGasTransitsForTopologyBreak(level, null, null, removedPos, true);
+        if (any) {
+            pushTransitSnapshotToClients(level);
+            setChanged();
+        }
+    }
+
+    private void flushInFlightTransitsForBrokenEdge(ServerLevel level, BlockPos a, BlockPos b) {
+        boolean any = flushItemTransitsForTopologyBreak(level, a, b, null, false);
+        any |= flushFluidTransitsForTopologyBreak(level, a, b, null, false);
+        any |= flushGasTransitsForTopologyBreak(level, a, b, null, false);
+        if (any) {
+            pushTransitSnapshotToClients(level);
+            setChanged();
+        }
+    }
+
+    private void flushInFlightTransitsForDestStorageDisconnect(
+            ServerLevel level, BlockPos destDuct, Direction destFace) {
+        boolean any = flushItemTransitsForDestStorageDisconnect(level, destDuct, destFace);
+        any |= flushFluidTransitsForDestStorageDisconnect(level, destDuct, destFace);
+        any |= flushGasTransitsForDestStorageDisconnect(level, destDuct, destFace);
+        if (any) {
+            pushTransitSnapshotToClients(level);
+            setChanged();
+        }
+    }
+
+    private boolean flushItemTransitsForDestStorageDisconnect(
+            ServerLevel level, BlockPos destDuct, Direction destFace) {
         Iterator<OutboundShipment> it = outboundShipments.iterator();
         boolean any = false;
         while (it.hasNext()) {
             OutboundShipment s = it.next();
-            if (s.travelTicks <= 0 || s.stack.isEmpty()) {
-                continue;
-            }
-            if (DuctTransitTopology.edgeIndexForBlockOnPath(s.ductPath, removedPos).isEmpty()) {
+            if (!targetsDestStorageFace(s, destDuct, destFace)) {
                 continue;
             }
             cancelOutboundShipment(level, s, it);
             any = true;
         }
-        if (any) {
-            pushTransitSnapshotToClients(level);
-            setChanged();
+        return any;
+    }
+
+    private boolean flushFluidTransitsForDestStorageDisconnect(
+            ServerLevel level, BlockPos destDuct, Direction destFace) {
+        Iterator<FluidTransitShipment> it = fluidTransitShipments.iterator();
+        boolean any = false;
+        while (it.hasNext()) {
+            FluidTransitShipment s = it.next();
+            if (!targetsDestStorageFace(s.destDuct, s.destFace, destDuct, destFace)) {
+                continue;
+            }
+            refundBufferedFluidToSourceOrStall(level, s.sourceFace, s.fluid);
+            DuctFluidIncomingIndex.unregister(level, s.destDuct, s.fluid);
+            it.remove();
+            any = true;
         }
+        return any;
+    }
+
+    private boolean flushGasTransitsForDestStorageDisconnect(
+            ServerLevel level, BlockPos destDuct, Direction destFace) {
+        Iterator<GasTransitShipment> it = gasTransitShipments.iterator();
+        boolean any = false;
+        while (it.hasNext()) {
+            GasTransitShipment s = it.next();
+            if (s.stack == null || MekanismChemicalCompat.isEmptyStack(s.stack)) {
+                continue;
+            }
+            if (!targetsDestStorageFace(s.destDuct, s.destFace, destDuct, destFace)) {
+                continue;
+            }
+            refundBufferedGasToSourceOrStall(level, s.sourceFace, s.stack);
+            DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
+            it.remove();
+            any = true;
+        }
+        return any;
+    }
+
+    private static boolean targetsDestStorageFace(OutboundShipment s, BlockPos destDuct, Direction destFace) {
+        return !s.stack.isEmpty() && s.destDuct.equals(destDuct) && s.destFace == destFace;
+    }
+
+    private static boolean targetsDestStorageFace(
+            BlockPos shipmentDestDuct, Direction shipmentDestFace, BlockPos destDuct, Direction destFace) {
+        return shipmentDestDuct.equals(destDuct) && shipmentDestFace == destFace;
+    }
+
+    private static boolean isDestStorageFaceDisconnected(ServerLevel level, OutboundShipment s) {
+        if (!(level.getBlockEntity(s.destDuct) instanceof DuctBlockEntity destBe)) {
+            return false;
+        }
+        return (destBe.getUserDisconnectedFaceMask() & (1 << s.destFace.ordinal())) != 0;
+    }
+
+    private boolean flushItemTransitsForTopologyBreak(
+            ServerLevel level,
+            @Nullable BlockPos edgeA,
+            @Nullable BlockPos edgeB,
+            @Nullable BlockPos removedPos,
+            boolean requireInTransit) {
+        Iterator<OutboundShipment> it = outboundShipments.iterator();
+        boolean any = false;
+        while (it.hasNext()) {
+            OutboundShipment s = it.next();
+            if (!shouldCancelItemTransitForTopologyBreak(level, s, edgeA, edgeB, removedPos)) {
+                continue;
+            }
+            if (requireInTransit && s.travelTicks <= 0) {
+                continue;
+            }
+            cancelOutboundShipment(level, s, it);
+            any = true;
+        }
+        return any;
+    }
+
+    private static boolean shouldCancelItemTransitForTopologyBreak(
+            ServerLevel level,
+            OutboundShipment s,
+            @Nullable BlockPos edgeA,
+            @Nullable BlockPos edgeB,
+            @Nullable BlockPos removedPos) {
+        if (s.stack.isEmpty()) {
+            return false;
+        }
+        if (removedPos != null) {
+            java.util.OptionalInt idx = DuctTransitTopology.edgeIndexForBlockOnPath(s.ductPath, removedPos);
+            if (idx.isEmpty()) {
+                return false;
+            }
+            if (removedPos.equals(s.refundDuct) || removedPos.equals(s.destDuct)) {
+                return true;
+            }
+            DuctTransitTopology.PathBreakSite site =
+                    DuctTransitTopology.classifyPathBreakSite(
+                            s.ductPath, idx.getAsInt(), s.refundDuct, s.destDuct);
+            return DuctTransitTopology.shouldCancelItemTransitForPathBreakSite(site, s);
+        }
+        if (edgeA != null
+                && edgeB != null) {
+            if (s.destDuct.equals(edgeA) || s.destDuct.equals(edgeB)) {
+                return true;
+            }
+            if (DuctTransitTopology.pathUsesAdjacentEdge(s.ductPath, edgeA, edgeB)) {
+                DuctTransitTopology.PathBreakSite site =
+                        DuctTransitTopology.classifyPathBreakForWrenchEdge(
+                                s.ductPath, edgeA, edgeB, s.refundDuct, s.destDuct);
+                return DuctTransitTopology.shouldCancelItemTransitForPathBreakSite(site, s);
+            }
+        }
+        if (!DuctTransitTopology.isItemShipmentPathIntact(level, s)) {
+            return DuctTransitTopology.shouldCancelCommittedItemTransitForPathBreak(level, s);
+        }
+        return false;
+    }
+
+    private boolean flushFluidTransitsForTopologyBreak(
+            ServerLevel level,
+            @Nullable BlockPos edgeA,
+            @Nullable BlockPos edgeB,
+            @Nullable BlockPos removedPos,
+            boolean requireInTransit) {
+        Iterator<FluidTransitShipment> it = fluidTransitShipments.iterator();
+        boolean any = false;
+        while (it.hasNext()) {
+            FluidTransitShipment s = it.next();
+            if (s.fluid.isEmpty()) {
+                continue;
+            }
+            if (!shouldCancelFluidTransitForTopologyBreak(s, edgeA, edgeB, removedPos, level)) {
+                continue;
+            }
+            if (requireInTransit && s.travelTicks <= 0) {
+                continue;
+            }
+            refundBufferedFluidToSourceOrStall(level, s.sourceFace, s.fluid);
+            DuctFluidIncomingIndex.unregister(level, s.destDuct, s.fluid);
+            it.remove();
+            any = true;
+        }
+        return any;
+    }
+
+    private boolean flushGasTransitsForTopologyBreak(
+            ServerLevel level,
+            @Nullable BlockPos edgeA,
+            @Nullable BlockPos edgeB,
+            @Nullable BlockPos removedPos,
+            boolean requireInTransit) {
+        Iterator<GasTransitShipment> it = gasTransitShipments.iterator();
+        boolean any = false;
+        while (it.hasNext()) {
+            GasTransitShipment s = it.next();
+            if (s.stack == null || MekanismChemicalCompat.isEmptyStack(s.stack)) {
+                continue;
+            }
+            if (!shouldCancelGasTransitForTopologyBreak(s, edgeA, edgeB, removedPos, level)) {
+                continue;
+            }
+            if (requireInTransit && s.travelTicks <= 0) {
+                continue;
+            }
+            refundBufferedGasToSourceOrStall(level, s.sourceFace, s.stack);
+            DuctGasIncomingIndex.unregister(level, s.destDuct, s.stack);
+            it.remove();
+            any = true;
+        }
+        return any;
+    }
+
+    private boolean shouldRefundFluidTransitForBrokenPath(ServerLevel level, FluidTransitShipment s) {
+        if (DuctTransitTopology.isFluidPathIntact(level, s.ductPath)) {
+            return false;
+        }
+        return shouldCancelFluidTransitForTopologyBreak(s, null, null, null, level);
+    }
+
+    private boolean shouldRefundGasTransitForBrokenPath(ServerLevel level, GasTransitShipment s) {
+        if (DuctTransitTopology.isGasPathIntact(level, s.ductPath)) {
+            return false;
+        }
+        return shouldCancelGasTransitForTopologyBreak(s, null, null, null, level);
+    }
+
+    private boolean shouldCancelFluidTransitForTopologyBreak(
+            FluidTransitShipment s,
+            @Nullable BlockPos edgeA,
+            @Nullable BlockPos edgeB,
+            @Nullable BlockPos removedPos,
+            ServerLevel level) {
+        BlockPos sourceDuct = worldPosition;
+        if (removedPos != null) {
+            java.util.OptionalInt idx = DuctTransitTopology.edgeIndexForBlockOnPath(s.ductPath, removedPos);
+            if (idx.isEmpty()) {
+                return false;
+            }
+            if (removedPos.equals(sourceDuct) || removedPos.equals(s.destDuct)) {
+                return true;
+            }
+            DuctTransitTopology.PathBreakSite site =
+                    DuctTransitTopology.classifyPathBreakSite(
+                            s.ductPath, idx.getAsInt(), sourceDuct, s.destDuct);
+            return DuctTransitTopology.shouldCancelFluidTransitForPathBreakSite(site);
+        }
+        if (edgeA != null
+                && edgeB != null) {
+            if (s.destDuct.equals(edgeA) || s.destDuct.equals(edgeB)) {
+                return true;
+            }
+            if (DuctTransitTopology.pathUsesAdjacentEdge(s.ductPath, edgeA, edgeB)) {
+                DuctTransitTopology.PathBreakSite site =
+                        DuctTransitTopology.classifyPathBreakForWrenchEdge(
+                                s.ductPath, edgeA, edgeB, sourceDuct, s.destDuct);
+                return DuctTransitTopology.shouldCancelFluidTransitForPathBreakSite(site);
+            }
+        }
+        if (!DuctTransitTopology.isFluidPathIntact(level, s.ductPath)) {
+            return DuctTransitTopology.shouldCancelFluidTransitForPathBreakSite(
+                    DuctTransitTopology.classifyFluidShipmentPathBreak(level, s, sourceDuct));
+        }
+        return false;
+    }
+
+    private boolean shouldCancelGasTransitForTopologyBreak(
+            GasTransitShipment s,
+            @Nullable BlockPos edgeA,
+            @Nullable BlockPos edgeB,
+            @Nullable BlockPos removedPos,
+            ServerLevel level) {
+        BlockPos sourceDuct = worldPosition;
+        if (removedPos != null) {
+            java.util.OptionalInt idx = DuctTransitTopology.edgeIndexForBlockOnPath(s.ductPath, removedPos);
+            if (idx.isEmpty()) {
+                return false;
+            }
+            if (removedPos.equals(sourceDuct) || removedPos.equals(s.destDuct)) {
+                return true;
+            }
+            DuctTransitTopology.PathBreakSite site =
+                    DuctTransitTopology.classifyPathBreakSite(
+                            s.ductPath, idx.getAsInt(), sourceDuct, s.destDuct);
+            return DuctTransitTopology.shouldCancelGasTransitForPathBreakSite(site);
+        }
+        if (edgeA != null
+                && edgeB != null) {
+            if (s.destDuct.equals(edgeA) || s.destDuct.equals(edgeB)) {
+                return true;
+            }
+            if (DuctTransitTopology.pathUsesAdjacentEdge(s.ductPath, edgeA, edgeB)) {
+                DuctTransitTopology.PathBreakSite site =
+                        DuctTransitTopology.classifyPathBreakForWrenchEdge(
+                                s.ductPath, edgeA, edgeB, sourceDuct, s.destDuct);
+                return DuctTransitTopology.shouldCancelGasTransitForPathBreakSite(site);
+            }
+        }
+        if (!DuctTransitTopology.isGasPathIntact(level, s.ductPath)) {
+            return DuctTransitTopology.shouldCancelGasTransitForPathBreakSite(
+                    DuctTransitTopology.classifyGasShipmentPathBreak(level, s, sourceDuct));
+        }
+        return false;
     }
 
     public void dropAllStalledItems(ServerLevel level) {
@@ -5701,6 +6120,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return false;
     }
 
+    private boolean isStorageAttachmentFace(Direction face) {
+        return (getStorageMask() & (1 << face.ordinal())) != 0;
+    }
+
     public void applyWrenchDisconnect(Level level, Direction face) {
         orUserDisconnectedFace(face);
         BlockPos npos = worldPosition.relative(face);
@@ -5716,6 +6139,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         refreshFromWorld();
         if (level instanceof ServerLevel serverLevel) {
             DuctNetworkCache.invalidate(serverLevel);
+            if (isStorageAttachmentFace(face)) {
+                onTransitDestStorageFaceDisconnected(serverLevel, worldPosition, face);
+            }
+            onTransitEdgeBroken(serverLevel, worldPosition, npos);
         }
         syncStallVisualIfNeeded();
         propagateNeighborRefreshAfterWrench(level, npos);

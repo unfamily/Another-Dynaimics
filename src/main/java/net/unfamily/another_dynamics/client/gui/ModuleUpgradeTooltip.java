@@ -329,20 +329,31 @@ public final class ModuleUpgradeTooltip {
     }
 
     private static String formatSecondsFromTicks(int ticks) {
-        double seconds = ticks / 20.0;
-        if (seconds < 0.1) {
-            return String.format(Locale.ROOT, "%.2f", seconds);
-        }
-        if (Math.abs(seconds - Math.rint(seconds)) < 0.01) {
-            return Integer.toString((int) Math.rint(seconds));
-        }
-        return String.format(Locale.ROOT, "%.2f", seconds);
+        return formatTrimmedDecimal(ticks / 20.0, 2);
     }
 
     private static String formatMultPlain(double v) {
-        if (Math.abs(v - Math.rint(v)) < 1e-5) {
-            return Integer.toString((int) Math.rint(v));
+        return formatTrimmedDecimal(v, 2);
+    }
+
+    /** Rounds to {@code maxFractionDigits}, then drops trailing zeros (3.003 → "3", 2.5 → "2.5"). */
+    private static String formatTrimmedDecimal(double v, int maxFractionDigits) {
+        double scale = Math.pow(10, maxFractionDigits);
+        double rounded = Math.round(v * scale) / scale;
+        if (Math.abs(rounded - Math.rint(rounded)) < EPS) {
+            return Integer.toString((int) Math.rint(rounded));
         }
-        return String.format(Locale.ROOT, "%.2f", v);
+        String s = String.format(Locale.ROOT, "%." + maxFractionDigits + "f", rounded);
+        if (s.indexOf('.') >= 0) {
+            int end = s.length();
+            while (end > 0 && s.charAt(end - 1) == '0') {
+                end--;
+            }
+            if (end > 0 && s.charAt(end - 1) == '.') {
+                end--;
+            }
+            s = s.substring(0, end);
+        }
+        return s;
     }
 }

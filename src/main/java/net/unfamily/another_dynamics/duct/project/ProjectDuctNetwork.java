@@ -50,6 +50,41 @@ public final class ProjectDuctNetwork {
         return out;
     }
 
+    /** {@code true} when {@code a} and {@code b} are project ducts in the same pipe-connected component. */
+    public static boolean sameConnectedComponent(Level level, BlockPos a, BlockPos b) {
+        if (level == null || a == null || b == null) {
+            return false;
+        }
+        if (a.equals(b)) {
+            return isProjectDuct(level.getBlockState(a).getBlock());
+        }
+        if (!isProjectDuct(level.getBlockState(a).getBlock()) || !isProjectDuct(level.getBlockState(b).getBlock())) {
+            return false;
+        }
+        Set<BlockPos> seen = new HashSet<>();
+        ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+        queue.add(a);
+        seen.add(a);
+        while (!queue.isEmpty()) {
+            BlockPos current = queue.removeFirst();
+            if (current.equals(b)) {
+                return true;
+            }
+            for (Direction direction : Direction.values()) {
+                BlockPos neighbor = current.relative(direction);
+                if (seen.contains(neighbor)) {
+                    continue;
+                }
+                if (!arePipeConnected(level, current, neighbor, direction)) {
+                    continue;
+                }
+                seen.add(neighbor);
+                queue.addLast(neighbor);
+            }
+        }
+        return false;
+    }
+
     /** True when two adjacent project ducts share an connected (non-wrench-disconnected) pipe face. */
     public static boolean arePipeConnected(Level level, BlockPos from, BlockPos to, Direction fromTo) {
         if (!isProjectDuct(level.getBlockState(from).getBlock()) || !isProjectDuct(level.getBlockState(to).getBlock())) {

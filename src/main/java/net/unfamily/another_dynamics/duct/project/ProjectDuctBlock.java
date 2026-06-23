@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Block;
@@ -162,8 +163,10 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
         int bit = 1 << face.ordinal();
         level.setBlock(pos, state.setValue(DISCONNECTED, disconnectedMask(state) | bit), Block.UPDATE_ALL);
         BlockPos neighborPos = pos.relative(face);
-        BlockState neighborState = level.getBlockState(neighborPos);
         syncWrenchDisconnectToNeighbor(level, pos, face, true);
+        if (level instanceof ServerLevel serverLevel) {
+            DuctBlockEntity.onTransitEdgeBroken(serverLevel, pos, neighborPos);
+        }
     }
 
     public static void tryReconnectFace(LevelAccessor level, BlockPos pos, Direction face) {
@@ -202,6 +205,9 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
             }
             duct.setChanged();
             duct.refreshFromWorld();
+        }
+        if (disconnect && level instanceof ServerLevel serverLevel) {
+            DuctBlockEntity.onTransitEdgeBroken(serverLevel, pos, neighborPos);
         }
     }
 
