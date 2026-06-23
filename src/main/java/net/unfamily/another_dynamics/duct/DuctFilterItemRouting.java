@@ -16,6 +16,7 @@ import net.unfamily.another_dynamics.duct.logistics.DuctInsertProbeCache;
 import net.unfamily.another_dynamics.duct.logistics.DuctNetworkCache;
 import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
 import net.unfamily.another_dynamics.duct.logistics.DuctTargetSelector;
+import net.unfamily.another_dynamics.duct.logistics.DuctTransitDebugLog;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects.FilterSlotBonuses;
 
@@ -404,6 +405,11 @@ final class DuctFilterItemRouting {
         if (destCap < plannedCount) {
             plannedCount = destCap;
             planned.setCount(plannedCount);
+        }
+        if (self.wouldExceedStallKindCap(planned)) {
+            DuctTransitDebugLog.extractionGatedByUnsatisfiableTasks(
+                    level, self.getBlockPos(), self.distinctUnsatisfiableBlockedKindsForDebug());
+            return false;
         }
         ItemStack extracted =
                 DuctCapHelper.extractMatchingUpToOnFace(

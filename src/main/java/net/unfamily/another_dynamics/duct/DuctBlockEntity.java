@@ -284,7 +284,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         IItemHandler handler = DuctCapHelper.getHandlerOnFace(level, destDuct, destFace);
         if (handler != null && DuctItemInsertProbe.canAcceptOne(handler, chunk)) {
-            return true;
+            int physicalCap = DuctItemInsertProbe.estimateMaxInsertable(handler, chunk, chunk.getCount());
+            int pendingSame = 0;
+            for (ItemStack p : incomingPendingExcludingSelf(level, s)) {
+                if (ItemStack.isSameItemSameComponents(p, chunk)) {
+                    pendingSame += p.getCount();
+                }
+            }
+            if (physicalCap > pendingSame) {
+                return true;
+            }
         }
         finishItemDeliveryStallRemainder(
                 level, s, it, s.stack.copy(), DuctTransitDebugLog.DeliveryFailDetail.INSERT_CAP_ZERO);
@@ -1273,6 +1282,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private void drainFaceStallsToSource(ServerLevel level) {
         boolean changed = false;
         int storageMask = getStorageMask();
+        boolean stallKindGated = distinctUnsatisfiableBlockedKinds() >= MAX_UNSATISFIABLE_BLOCKED_KINDS;
+        int maxSendsPerFace =
+                stallKindGated
+                        ? STALL_DRAIN_MAX_SENDS_PER_FACE_PER_TICK * 2
+                        : STALL_DRAIN_MAX_SENDS_PER_FACE_PER_TICK;
         for (Direction face : Direction.values()) {
             int ord = face.ordinal();
             if ((storageMask & (1 << ord)) == 0) {
@@ -1285,11 +1299,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (!DuctCapHelper.outboundStallHasContent(lanes)) {
                 continue;
             }
-            if (itemStallDrainFaceCooldown[ord] > 0) {
+            if (itemStallDrainFaceCooldown[ord] > 0 && !stallKindGated) {
                 continue;
             }
             int sends = 0;
-            while (sends < STALL_DRAIN_MAX_SENDS_PER_FACE_PER_TICK
+            while (sends < maxSendsPerFace
                     && DuctCapHelper.outboundStallHasContent(lanes)) {
                 if (!tryDrainItemStallForFace(level, itemTransportSpec(), face, getFaceNode(face))) {
                     break;
@@ -3644,12 +3658,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void tickExtractionPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction face, DuctFaceNode node) {
-        int blockedKinds = distinctUnsatisfiableBlockedKinds();
-        if (blockedKinds >= MAX_UNSATISFIABLE_BLOCKED_KINDS) {
-            DuctTransitDebugLog.extractionGatedByUnsatisfiableTasks(level, worldPosition, blockedKinds);
-            return;
-        }
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
+            DuctTransitDebugLog.extractionGatedByOverflow(level, worldPosition, overflowBuffer.nonEmptyLineCount());
             return;
         }
         DuctFaceLanes faceLanes = getFaceLanes(face);
@@ -3826,6 +3836,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 plannedCount = destCap;
                 planned.setCount(plannedCount);
             }
+            if (wouldExceedStallKindCap(planned)) {
+                DuctTransitDebugLog.extractionGatedByUnsatisfiableTasks(
+                        level, worldPosition, distinctUnsatisfiableBlockedKinds());
+                continue;
+            }
             ItemStack extracted =
                     DuctCapHelper.extractMatchingUpToOnFace(
                             level, worldPosition, face, planned, plannedCount);
@@ -3855,12 +3870,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void tickRetrieverPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction retrieverFace, DuctFaceNode node) {
-        int blockedKinds = distinctUnsatisfiableBlockedKinds();
-        if (blockedKinds >= MAX_UNSATISFIABLE_BLOCKED_KINDS) {
-            DuctTransitDebugLog.extractionGatedByUnsatisfiableTasks(level, worldPosition, blockedKinds);
-            return;
-        }
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
+            DuctTransitDebugLog.extractionGatedByOverflow(level, worldPosition, overflowBuffer.nonEmptyLineCount());
             return;
         }
         DuctFaceLanes retrieverLanes = getFaceLanes(retrieverFace);
@@ -4026,6 +4037,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 if (destCap < plannedCount) {
                     plannedCount = destCap;
                     planned.setCount(plannedCount);
+                }
+                if (wouldExceedStallKindCap(planned)) {
+                    DuctTransitDebugLog.extractionGatedByUnsatisfiableTasks(
+                            level, worldPosition, distinctUnsatisfiableBlockedKinds());
+                    continue;
                 }
                 ItemStack extracted =
                         DuctCapHelper.extractMatchingUpToOnFace(
@@ -4277,12 +4293,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return false;
         }
         if (DuctInsertProbeCache.isRejected(level, dest, destFace, st)) {
+            DuctTransitDebugLog.stallDrainFailed(level, worldPosition, face, "probeReject");
             return false;
         }
         int plannedCount = Math.min(st.getCount(), tubeOperationBatchSizeRouting(spec, face));
         int destCap =
                 maxSchedulableTowardFaceRoutingForStall(level, dest, destBe, destFace, st, plannedCount);
         if (destCap <= 0) {
+            DuctTransitDebugLog.stallDrainFailed(level, worldPosition, face, "destCapZero");
             return false;
         }
         DuctDirectionalEndpoint destCounterparty =
@@ -4396,6 +4414,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             plannedCount = destCap;
             planned.setCount(plannedCount);
         }
+        if (wouldExceedStallKindCap(planned)) {
+            DuctTransitDebugLog.extractionGatedByUnsatisfiableTasks(
+                    level, worldPosition, distinctUnsatisfiableBlockedKinds());
+            return false;
+        }
         ItemStack extracted =
                 DuctCapHelper.extractMatchingUpToOnFace(level, donor, donorFace, planned, plannedCount);
         if (extracted.isEmpty()) {
@@ -4465,7 +4488,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!forStallResend && overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return 0;
         }
-        if (destBe.getOverflowBuffer().isSchedulingUnavailableForNewPulls()) {
+        if (!forStallResend && destBe.getOverflowBuffer().isSchedulingUnavailableForNewPulls()) {
             return 0;
         }
         if (!DuctRedstoneLogic.isFaceTransportActive(level, destDuct, destBe.getFaceLanes(destFace).redstoneMode)) {
@@ -4498,14 +4521,36 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return schedulable;
     }
 
+    /** Exposed for debug logging from filter routing paths. */
+    int distinctUnsatisfiableBlockedKindsForDebug() {
+        return distinctUnsatisfiableBlockedKinds();
+    }
+
     private int distinctUnsatisfiableBlockedKinds() {
         List<ItemStack> kinds = new ArrayList<>();
+        collectDistinctStallKinds(kinds);
+        return kinds.size();
+    }
+
+    /** True when scheduling a new pull of {@code candidate} would add a 6th distinct stalled item kind. */
+    boolean wouldExceedStallKindCap(ItemStack candidate) {
+        if (candidate.isEmpty()) {
+            return false;
+        }
+        List<ItemStack> kinds = new ArrayList<>();
+        collectDistinctStallKinds(kinds);
+        if (containsItemKind(kinds, candidate)) {
+            return false;
+        }
+        return kinds.size() >= MAX_UNSATISFIABLE_BLOCKED_KINDS;
+    }
+
+    private void collectDistinctStallKinds(List<ItemStack> kinds) {
         for (Direction dir : Direction.values()) {
             DuctFaceLanes lanes = getFaceLanes(dir);
             accumulateDistinctStallKinds(kinds, lanes.stalledBuffer);
             accumulateDistinctStallKinds(kinds, lanes.inboundStallBuffer);
         }
-        return kinds.size();
     }
 
     private static void accumulateDistinctStallKinds(List<ItemStack> kinds, net.neoforged.neoforge.items.ItemStackHandler handler) {

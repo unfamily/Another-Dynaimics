@@ -94,6 +94,28 @@ public final class DuctTransitDebugLog {
         LOG.info("[DUCT-TRN] extraction gated blockedKinds={} duct={}", blockedKinds, ductPos);
     }
 
+    public static void extractionGatedByOverflow(ServerLevel level, BlockPos ductPos, int overflowLines) {
+        if (!Config.DUCT_TRANSIT_DEBUG.get()) {
+            return;
+        }
+        long t = level.getGameTime();
+        if ((t + ductPos.asLong()) % 100L != 0L) {
+            return;
+        }
+        LOG.info("[DUCT-TRN] extraction gated overflowLines={} duct={}", overflowLines, ductPos);
+    }
+
+    public static void stallDrainFailed(ServerLevel level, BlockPos ductPos, Direction face, String reason) {
+        if (!Config.DUCT_TRANSIT_DEBUG.get()) {
+            return;
+        }
+        long t = level.getGameTime();
+        if ((t + ductPos.asLong()) % 40L != 0L) {
+            return;
+        }
+        LOG.info("[DUCT-TRN] stall drain failed duct={} face={} reason={}", ductPos, face, reason);
+    }
+
     public static void scheduleExtract(
             ServerLevel level,
             BlockPos sourceDuct,

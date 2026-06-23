@@ -113,9 +113,49 @@ public class DuctBlock extends AbstractDuctBlock {
         double lx = l.x - pos.getX();
         double ly = l.y - pos.getY();
         double lz = l.z - pos.getZ();
-        int settingsMask = duct.getSettingsFaceMask();
+        return DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
+    }
+
+    /** Whether the player may open the node GUI / shift-clear stall on this face. */
+    private static boolean canInteractWithActiveStorageNode(DuctBlockEntity duct, Direction face) {
+        return duct.faceShowsActiveStorageNode(face);
+    }
+
+    /**
+     * Target face for shift+module equip: active storage node voxel only (matches world model / collision).
+     */
+    public static Optional<Direction> resolveModuleEquipFace(
+            DuctBlockEntity duct, BlockPos pos, Direction clickedBlockFace, Vec3 hitLocation) {
+        double lx = hitLocation.x - pos.getX();
+        double ly = hitLocation.y - pos.getY();
+        double lz = hitLocation.z - pos.getZ();
         Optional<Direction> fromShape =
-                DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), settingsMask, lx, ly, lz);
+                DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
+        if (fromShape.isEmpty()) {
+            return Optional.empty();
+        }
+        Direction face = fromShape.get();
+        return canInteractWithActiveStorageNode(duct, face) ? Optional.of(face) : Optional.empty();
+    }
+
+    private static Optional<Direction> resolveNodeFaceForModuleEquip(
+            BlockPos pos, BlockHitResult hit, DuctBlockEntity duct) {
+        return resolveModuleEquipFace(duct, pos, hit.getDirection(), hit.getLocation());
+    }
+
+    /** Settings copier may target latched faces without a live storage neighbor. */
+    private static Optional<Direction> settingsFaceFromHitForCopier(
+            BlockPos pos, BlockHitResult hit, DuctBlockEntity duct) {
+        Vec3 l = hit.getLocation();
+        double lx = l.x - pos.getX();
+        double ly = l.y - pos.getY();
+        double lz = l.z - pos.getZ();
+        int settingsMask = duct.getSettingsFaceMask();
+        if (settingsMask == 0) {
+            return Optional.empty();
+        }
+        Optional<Direction> fromShape =
+                DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
         if (fromShape.isPresent()) {
             return fromShape;
         }
@@ -124,44 +164,6 @@ public class DuctBlock extends AbstractDuctBlock {
             return Optional.of(hitFace);
         }
         return Optional.empty();
-    }
-
-    /**
-     * Target face for shift+module equip: node voxel, clicked block face in settings mask, sole settings face,
-     * or closest storage node to the hit.
-     */
-    public static Optional<Direction> resolveModuleEquipFace(
-            DuctBlockEntity duct, BlockPos pos, Direction clickedBlockFace, Vec3 hitLocation) {
-        double lx = hitLocation.x - pos.getX();
-        double ly = hitLocation.y - pos.getY();
-        double lz = hitLocation.z - pos.getZ();
-        int mask = duct.getSettingsFaceMask();
-        if (mask == 0) {
-            return Optional.empty();
-        }
-        Optional<Direction> fromShape =
-                DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), mask, lx, ly, lz);
-        if (fromShape.isPresent()) {
-            return fromShape;
-        }
-        if ((mask & (1 << clickedBlockFace.ordinal())) != 0) {
-            return Optional.of(clickedBlockFace);
-        }
-        if (Integer.bitCount(mask & 0x3F) == 1) {
-            for (Direction d : Direction.values()) {
-                if ((mask & (1 << d.ordinal())) != 0) {
-                    return Optional.of(d);
-                }
-            }
-        }
-        BlockHitResult synthetic =
-                new BlockHitResult(hitLocation, clickedBlockFace, pos, false);
-        return nodeFaceFromHitLocation(pos, synthetic, duct);
-    }
-
-    private static Optional<Direction> resolveNodeFaceForModuleEquip(
-            BlockPos pos, BlockHitResult hit, DuctBlockEntity duct) {
-        return resolveModuleEquipFace(duct, pos, hit.getDirection(), hit.getLocation());
     }
 
     /** Shift+right-click with a module item on a duct node face (block or item {@link UseOnContext} entry). */
@@ -222,7 +224,7 @@ public class DuctBlock extends AbstractDuctBlock {
         if (copierOpt.isEmpty()) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
-        Optional<Direction> nodeFace = nodeFaceFromHitLocation(pos, hit, duct);
+        Optional<Direction> nodeFace = settingsFaceFromHitForCopier(pos, hit, duct);
         if (nodeFace.isEmpty()) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
@@ -256,7 +258,7 @@ public class DuctBlock extends AbstractDuctBlock {
                 duct.refreshFromWorld();
             }
             Optional<Direction> face = nodeFaceFromHitLocation(pos, hit, duct);
-            if (face.isEmpty()) {
+            if (face.isEmpty() || !canInteractWithActiveStorageNode(duct, face.get())) {
                 return InteractionResult.PASS;
             }
             if (player.isShiftKeyDown()) {
@@ -323,7 +325,10 @@ public class DuctBlock extends AbstractDuctBlock {
                 return ItemInteractionResult.sidedSuccess(level.isClientSide());
             }
             Optional<Direction> nodeFace = resolveNodeFaceForModuleEquip(pos, hitResult, duct);
-            if (player.isShiftKeyDown() && nodeFace.isPresent() && duct.hasAnyStallOnFace(nodeFace.get())) {
+            if (player.isShiftKeyDown()
+                    && nodeFace.isPresent()
+                    && canInteractWithActiveStorageNode(duct, nodeFace.get())
+                    && duct.hasAnyStallOnFace(nodeFace.get())) {
                 if (level.isClientSide()) {
                     return ItemInteractionResult.SUCCESS;
                 }
@@ -377,7 +382,7 @@ public class DuctBlock extends AbstractDuctBlock {
                 return DuctReplaceHelper.tryReplace(player, level, pos, duct, newLogicalId, hand);
             }
             Optional<Direction> face = nodeFaceFromHitLocation(pos, hitResult, duct);
-            if (face.isEmpty()) {
+            if (face.isEmpty() || !canInteractWithActiveStorageNode(duct, face.get())) {
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
             }
             if (!player.isShiftKeyDown()
