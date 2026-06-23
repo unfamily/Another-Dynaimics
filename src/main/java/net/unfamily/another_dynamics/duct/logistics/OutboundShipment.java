@@ -63,6 +63,12 @@ public final class OutboundShipment {
     /** Server game time when this leg started (for client smoothing). */
     public long journeyStartGameTime;
 
+    /** Ticks remaining before retrying delivery after a transient destination failure. */
+    public int deliveryDeferTicks;
+
+    /** Total defer ticks consumed on this leg (budget cap prevents infinite wait at destination). */
+    public int deliveryDeferSpent;
+
     public OutboundShipment(
             ItemStack plannedStack,
             BlockPos destDuct,

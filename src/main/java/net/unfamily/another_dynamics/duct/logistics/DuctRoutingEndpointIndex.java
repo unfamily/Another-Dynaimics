@@ -69,7 +69,7 @@ public final class DuctRoutingEndpointIndex {
             return List.of();
         }
         List<RoutingEndpoint> raw =
-                getOrBuildRaw(level, members, networkType, transportKind, radioactiveGasSubgraph);
+                getOrBuildRaw(level, sourcePos, members, networkType, transportKind, radioactiveGasSubgraph);
         List<ScoredEndpoint> scored = new ArrayList<>();
         for (RoutingEndpoint ep : raw) {
             if (ep.pos.equals(sourcePos) && forbidSelfDestFace != null && ep.face == forbidSelfDestFace) {
@@ -125,12 +125,17 @@ public final class DuctRoutingEndpointIndex {
 
     private static List<RoutingEndpoint> getOrBuildRaw(
             ServerLevel level,
+            BlockPos sourcePos,
             Set<BlockPos> members,
             DuctNetworkType networkType,
             DuctTransportKind transportKind,
             boolean radioactiveGasSubgraph) {
         LevelCache levelCache = BY_LEVEL.computeIfAbsent(level, k -> new LevelCache());
-        long networkKey = networkCacheKey(members, networkType, transportKind, radioactiveGasSubgraph);
+        long componentId =
+                radioactiveGasSubgraph
+                        ? DuctNetworkCache.radioactiveGasComponentId(level, sourcePos)
+                        : DuctNetworkCache.componentId(level, sourcePos, networkType);
+        long networkKey = networkCacheKey(componentId, transportKind, radioactiveGasSubgraph);
         CachedRaw cached = levelCache.rawByNetworkKey.get(networkKey);
         if (cached != null
                 && cached.topologyGeneration == levelCache.topologyGeneration
@@ -138,16 +143,15 @@ public final class DuctRoutingEndpointIndex {
             return cached.endpoints;
         }
         List<RoutingEndpoint> built = buildRawEndpoints(level, members, transportKind);
+        DuctTransitDebugLog.endpointCacheBuild(level, componentId, networkType, built.size(), members.size());
         levelCache.rawByNetworkKey.put(
                 networkKey,
                 new CachedRaw(levelCache.topologyGeneration, levelCache.settingsGeneration, built));
         return built;
     }
 
-    private static long networkCacheKey(
-            Set<BlockPos> members, DuctNetworkType networkType, DuctTransportKind kind, boolean radioactiveGas) {
-        long hash = members.hashCode();
-        hash = 31L * hash + networkType.ordinal();
+    private static long networkCacheKey(long componentId, DuctTransportKind kind, boolean radioactiveGas) {
+        long hash = componentId;
         hash = 31L * hash + kind.ordinal();
         hash = 31L * hash + (radioactiveGas ? 1 : 0);
         return hash;

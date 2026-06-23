@@ -84,6 +84,12 @@ public final class DuctIncomingIndex {
     }
 
     public static List<ItemStack> snapshot(ServerLevel level, BlockPos destDuct, Direction destFace) {
+        return snapshotExcluding(level, destDuct, destFace, -1L);
+    }
+
+    /** Like {@link #snapshot} but omits the reservation with {@code excludeReservationId} when {@code >= 0}. */
+    public static List<ItemStack> snapshotExcluding(
+            ServerLevel level, BlockPos destDuct, Direction destFace, long excludeReservationId) {
         if (destFace == null) {
             destFace = Direction.NORTH;
         }
@@ -99,6 +105,9 @@ public final class DuctIncomingIndex {
             List<ItemStack> out = new ArrayList<>(list.size());
             for (Reservation r : list) {
                 if (r == null || r.stack() == null) {
+                    continue;
+                }
+                if (excludeReservationId >= 0L && r.id() == excludeReservationId) {
                     continue;
                 }
                 out.add(r.stack().copy());

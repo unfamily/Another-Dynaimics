@@ -367,7 +367,7 @@ final class DuctFilterItemRouting {
             path = List.of(self.getBlockPos());
         } else {
             Optional<List<BlockPos>> p =
-                    DuctNetworkCache.shortestPath(level, self.getBlockPos(), dest, DuctNetworkType.ITEM);
+                    DuctPathfinder.shortestItemPathForScheduling(level, self.getBlockPos(), dest, spec);
             if (p.isEmpty()) {
                 return false;
             }
@@ -487,7 +487,7 @@ final class DuctFilterItemRouting {
                 path = List.of(self.getBlockPos());
             } else {
                 Optional<List<BlockPos>> p =
-                        DuctNetworkCache.shortestPath(level, donor, self.getBlockPos(), DuctNetworkType.ITEM);
+                        DuctPathfinder.shortestItemPathForScheduling(level, donor, self.getBlockPos(), spec);
                 if (p.isEmpty()) {
                     return false;
                 }

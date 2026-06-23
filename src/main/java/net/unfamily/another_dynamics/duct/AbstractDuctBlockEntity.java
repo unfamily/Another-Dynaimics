@@ -99,7 +99,9 @@ public abstract class AbstractDuctBlockEntity extends BlockEntity {
             requestModelDataUpdate();
             if (!level.isClientSide()) {
                 if (level instanceof ServerLevel serverLevel) {
-                    DuctNetworkCache.invalidate(serverLevel);
+                    for (DuctNetworkType net : ductNetworkTypesForGeometry()) {
+                        DuctNetworkCache.invalidate(serverLevel, net);
+                    }
                 }
                 setChanged();
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);

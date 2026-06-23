@@ -77,6 +77,10 @@ public final class DuctTransitTopology {
             if (!level.isLoaded(a) || !level.isLoaded(b)) {
                 continue;
             }
+            if (DuctPipeAdjacency.isDuctBlockEntityPending(level, a)
+                    || DuctPipeAdjacency.isDuctBlockEntityPending(level, b)) {
+                continue;
+            }
             if (!neighborItemDuctEdgeWhenChunksPresent(level, a, b)) {
                 return OptionalInt.of(k);
             }
@@ -286,6 +290,10 @@ public final class DuctTransitTopology {
             if (!level.isLoaded(a) || !level.isLoaded(b)) {
                 continue;
             }
+            if (DuctPipeAdjacency.isDuctBlockEntityPending(level, a)
+                    || DuctPipeAdjacency.isDuctBlockEntityPending(level, b)) {
+                continue;
+            }
             if (!DuctPipeAdjacency.areFluidPipeNeighbors(level, a, b)) {
                 return OptionalInt.of(k);
             }
@@ -305,6 +313,10 @@ public final class DuctTransitTopology {
             BlockPos a = path.get(k);
             BlockPos b = path.get(k + 1);
             if (!level.isLoaded(a) || !level.isLoaded(b)) {
+                continue;
+            }
+            if (DuctPipeAdjacency.isDuctBlockEntityPending(level, a)
+                    || DuctPipeAdjacency.isDuctBlockEntityPending(level, b)) {
                 continue;
             }
             if (!DuctPipeAdjacency.areGasPipeNeighbors(level, a, b)) {

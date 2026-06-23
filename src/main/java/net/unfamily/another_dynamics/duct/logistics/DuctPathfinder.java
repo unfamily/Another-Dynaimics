@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.function.BiPredicate;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
@@ -327,6 +328,21 @@ public final class DuctPathfinder {
 
     /** Result of {@link #shortestPathForTransit}: when {@link #incompleteWorld()} is true, defer path-based actions. */
     public record TransitPathResult(Optional<List<BlockPos>> path, boolean incompleteWorld) {}
+
+    /**
+     * Item shipment scheduling: chunk-aware path with defer when the world is incomplete along the route.
+     */
+    public static Optional<List<BlockPos>> shortestItemPathForScheduling(
+            ServerLevel level, BlockPos from, BlockPos to, DuctItemTransportSpec spec) {
+        if (from.equals(to)) {
+            return Optional.of(List.of(from));
+        }
+        TransitPathResult result = shortestPathForTransit(level, from, to, spec, DuctNetworkType.ITEM);
+        if (result.incompleteWorld()) {
+            return Optional.empty();
+        }
+        return result.path();
+    }
 
     /**
      * Total travel ticks along an already-resolved path: {@code speed} × number of duct blocks on the path (each

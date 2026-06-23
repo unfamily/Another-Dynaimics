@@ -24,25 +24,44 @@ import net.unfamily.another_dynamics.duct.DuctNetworkType;
  */
 public final class DuctNetworkCache {
     private static final Map<ServerLevel, LevelCache> BY_LEVEL = new WeakHashMap<>();
+    private static final ThreadLocal<Boolean> SELF_HEAL_ACTIVE = ThreadLocal.withInitial(() -> false);
 
     private DuctNetworkCache() {}
+
+    /** Stable component identity for endpoint-index caching; {@code 0} when not on a network. */
+    public static long componentId(ServerLevel level, BlockPos start, DuctNetworkType network) {
+        NetworkComponent comp = componentContaining(level, start, network, false);
+        return comp != null ? comp.componentId : 0L;
+    }
+
+    /** Stable identity for the radioactive gas subgraph; {@code 0} when absent. */
+    public static long radioactiveGasComponentId(ServerLevel level, BlockPos start) {
+        NetworkComponent comp = componentContaining(level, start, DuctNetworkType.GAS, true);
+        return comp != null ? comp.componentId : 0L;
+    }
 
     /** Invalidate all network types on this level. */
     public static void invalidate(ServerLevel level) {
         LevelCache cache = BY_LEVEL.get(level);
+        int gen = cache != null ? peekTopologyGeneration(cache) : 0;
+        int components = cache != null ? cache.approxComponentCount() : 0;
         if (cache != null) {
             cache.invalidateAll();
         }
         DuctRoutingEndpointIndex.onTopologyInvalidated(level);
+        DuctTransitDebugLog.cacheInvalidate(level, null, gen, components);
     }
 
     /** Invalidate one network type (and radioactive gas subgraph when {@code GAS}). */
     public static void invalidate(ServerLevel level, DuctNetworkType network) {
         LevelCache cache = BY_LEVEL.get(level);
+        int gen = cache != null ? peekTopologyGeneration(cache) : 0;
+        int components = cache != null ? cache.approxComponentCount() : 0;
         if (cache != null) {
             cache.invalidate(network);
         }
         DuctRoutingEndpointIndex.onTopologyInvalidated(level);
+        DuctTransitDebugLog.cacheInvalidate(level, network, gen, components);
     }
 
     public static Set<BlockPos> connectedDucts(ServerLevel level, BlockPos start, DuctNetworkType network) {
@@ -72,7 +91,7 @@ public final class DuctNetworkCache {
         BfsSnapshot snap = snapshotFrom(level, comp, from);
         Long d = snap.distances.get(to);
         if (d == null) {
-            return OptionalLong.empty();
+            return selfHealHopDistance(level, from, to, network, radioactiveGasSubgraph, comp);
         }
         return OptionalLong.of(d);
     }
@@ -117,10 +136,60 @@ public final class DuctNetworkCache {
         }
         BfsSnapshot snap = snapshotFrom(level, comp, from);
         if (!snap.distances.containsKey(to)) {
-            return Optional.empty();
+            return selfHealShortestPath(level, from, to, network, radioactiveGasSubgraph, comp);
         }
         List<BlockPos> path = reconstructPath(from, to, snap.prev);
         return path.isEmpty() ? Optional.empty() : Optional.of(path);
+    }
+
+    private static OptionalLong selfHealHopDistance(
+            ServerLevel level,
+            BlockPos from,
+            BlockPos to,
+            DuctNetworkType network,
+            boolean radioactiveGasSubgraph,
+            NetworkComponent comp) {
+        if (!Boolean.TRUE.equals(SELF_HEAL_ACTIVE.get())) {
+            SELF_HEAL_ACTIVE.set(true);
+            try {
+                evictComponent(level, comp);
+                return hopDistance(level, from, to, network, radioactiveGasSubgraph);
+            } finally {
+                SELF_HEAL_ACTIVE.set(false);
+            }
+        }
+        DuctTransitDebugLog.bfsReachabilityMismatch(
+                level, from, to, network, comp.componentId, comp.members.size(), radioactiveGasSubgraph);
+        return OptionalLong.empty();
+    }
+
+    private static Optional<List<BlockPos>> selfHealShortestPath(
+            ServerLevel level,
+            BlockPos from,
+            BlockPos to,
+            DuctNetworkType network,
+            boolean radioactiveGasSubgraph,
+            NetworkComponent comp) {
+        if (!Boolean.TRUE.equals(SELF_HEAL_ACTIVE.get())) {
+            SELF_HEAL_ACTIVE.set(true);
+            try {
+                evictComponent(level, comp);
+                return shortestPath(level, from, to, network, radioactiveGasSubgraph);
+            } finally {
+                SELF_HEAL_ACTIVE.set(false);
+            }
+        }
+        DuctTransitDebugLog.bfsReachabilityMismatch(
+                level, from, to, network, comp.componentId, comp.members.size(), radioactiveGasSubgraph);
+        return Optional.empty();
+    }
+
+    private static void evictComponent(ServerLevel level, NetworkComponent comp) {
+        NetworkState st = stateFor(level, comp.network, comp.radioactiveGasSubgraph);
+        for (BlockPos p : comp.members) {
+            st.memberToComponent.remove(p);
+        }
+        st.snapshotsByComponent.remove(comp);
     }
 
     private static NetworkComponent componentContaining(
@@ -137,8 +206,9 @@ public final class DuctNetworkCache {
         if (members.isEmpty()) {
             return null;
         }
+        long id = st.nextComponentId++;
         NetworkComponent comp =
-                new NetworkComponent(members, st.topologyGeneration, network, radioactiveGasSubgraph);
+                new NetworkComponent(id, members, st.topologyGeneration, network, radioactiveGasSubgraph);
         for (BlockPos p : members) {
             st.memberToComponent.put(p, comp);
         }
@@ -267,6 +337,17 @@ public final class DuctNetworkCache {
         return levelCache.state(network, radioactiveGasSubgraph);
     }
 
+    private static int peekTopologyGeneration(LevelCache cache) {
+        int max = 0;
+        for (NetworkState st : cache.standard.values()) {
+            max = Math.max(max, st.topologyGeneration);
+        }
+        if (cache.radioactiveGas != null) {
+            max = Math.max(max, cache.radioactiveGas.topologyGeneration);
+        }
+        return max;
+    }
+
     private static final class LevelCache {
         private final EnumMap<DuctNetworkType, NetworkState> standard = new EnumMap<>(DuctNetworkType.class);
         private NetworkState radioactiveGas;
@@ -279,6 +360,17 @@ public final class DuctNetworkCache {
                 return radioactiveGas;
             }
             return standard.computeIfAbsent(network, n -> new NetworkState(n, false));
+        }
+
+        int approxComponentCount() {
+            int sum = 0;
+            for (NetworkState st : standard.values()) {
+                sum += st.memberToComponent.size();
+            }
+            if (radioactiveGas != null) {
+                sum += radioactiveGas.memberToComponent.size();
+            }
+            return sum;
         }
 
         void invalidateAll() {
@@ -305,6 +397,7 @@ public final class DuctNetworkCache {
         final DuctNetworkType network;
         final boolean radioactiveGasSubgraph;
         int topologyGeneration;
+        long nextComponentId = 1L;
         final Map<BlockPos, NetworkComponent> memberToComponent = new HashMap<>();
         final Map<NetworkComponent, Map<BlockPos, BfsSnapshot>> snapshotsByComponent = new HashMap<>();
 
@@ -320,13 +413,20 @@ public final class DuctNetworkCache {
         }
     }
 
-    private static final class NetworkComponent {
+    static final class NetworkComponent {
+        final long componentId;
         final DuctNetworkType network;
         final boolean radioactiveGasSubgraph;
         final Set<BlockPos> members;
         final int topologyGeneration;
 
-        NetworkComponent(Set<BlockPos> members, int topologyGeneration, DuctNetworkType network, boolean radioactiveGasSubgraph) {
+        NetworkComponent(
+                long componentId,
+                Set<BlockPos> members,
+                int topologyGeneration,
+                DuctNetworkType network,
+                boolean radioactiveGasSubgraph) {
+            this.componentId = componentId;
             this.members = members;
             this.topologyGeneration = topologyGeneration;
             this.network = network;

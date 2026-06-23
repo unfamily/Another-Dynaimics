@@ -133,7 +133,7 @@ public final class DuctTargetSelector {
             return Optional.of(new ExtractionRouting(List.of(extractorPos), pick.face));
         }
         Optional<List<BlockPos>> path =
-                DuctNetworkCache.shortestPath(level, extractorPos, pick.ductPos, DuctNetworkType.ITEM);
+                DuctPathfinder.shortestItemPathForScheduling(level, extractorPos, pick.ductPos, spec);
         return path.map(positions -> new ExtractionRouting(positions, pick.face));
     }
 
@@ -385,7 +385,7 @@ public final class DuctTargetSelector {
             return Optional.of(new RetrieverRouting(List.of(retrieverPos), pick.ductPos, pick.face));
         }
         Optional<List<BlockPos>> path =
-                DuctNetworkCache.shortestPath(level, pick.ductPos, retrieverPos, DuctNetworkType.ITEM);
+                DuctPathfinder.shortestItemPathForScheduling(level, pick.ductPos, retrieverPos, spec);
         return path.map(positions -> new RetrieverRouting(positions, pick.ductPos, pick.face));
     }
 

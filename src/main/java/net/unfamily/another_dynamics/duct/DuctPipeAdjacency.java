@@ -12,6 +12,18 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class DuctPipeAdjacency {
     private DuctPipeAdjacency() {}
 
+    /**
+     * After chunk load, block state can show a duct before the {@link DuctBlockEntity} is attached; treat as pending,
+     * not broken.
+     */
+    public static boolean isDuctBlockEntityPending(Level level, BlockPos pos) {
+        if (level == null || !level.isLoaded(pos)) {
+            return false;
+        }
+        return level.getBlockState(pos).getBlock() instanceof AbstractDuctBlock
+                && !(level.getBlockEntity(pos) instanceof DuctBlockEntity);
+    }
+
     public static boolean areItemPipeNeighbors(Level level, BlockPos a, BlockPos b) {
         if (level == null) {
             return false;
@@ -28,6 +40,10 @@ public final class DuctPipeAdjacency {
         }
         if (faceDisconnected(level, a, fromA) || faceDisconnected(level, b, fromA.getOpposite())) {
             return false;
+        }
+        if (isDuctBlockEntityPending(level, a) || isDuctBlockEntityPending(level, b)) {
+            return DuctConnectable.isSameNetwork(level, a, DuctNetworkType.ITEM)
+                    && DuctConnectable.isSameNetwork(level, b, DuctNetworkType.ITEM);
         }
         BlockState sa = level.getBlockState(a);
         BlockState sb = level.getBlockState(b);
@@ -67,6 +83,10 @@ public final class DuctPipeAdjacency {
         if (faceDisconnected(level, a, fromA) || faceDisconnected(level, b, fromA.getOpposite())) {
             return false;
         }
+        if (isDuctBlockEntityPending(level, a) || isDuctBlockEntityPending(level, b)) {
+            return DuctConnectable.isSameNetwork(level, a, DuctNetworkType.FLUID)
+                    && DuctConnectable.isSameNetwork(level, b, DuctNetworkType.FLUID);
+        }
         BlockState sa = level.getBlockState(a);
         BlockState sb = level.getBlockState(b);
         Block ba = sa.getBlock();
@@ -104,6 +124,10 @@ public final class DuctPipeAdjacency {
         }
         if (faceDisconnected(level, a, fromA) || faceDisconnected(level, b, fromA.getOpposite())) {
             return false;
+        }
+        if (isDuctBlockEntityPending(level, a) || isDuctBlockEntityPending(level, b)) {
+            return DuctConnectable.isSameNetwork(level, a, DuctNetworkType.GAS)
+                    && DuctConnectable.isSameNetwork(level, b, DuctNetworkType.GAS);
         }
         BlockState sa = level.getBlockState(a);
         BlockState sb = level.getBlockState(b);
