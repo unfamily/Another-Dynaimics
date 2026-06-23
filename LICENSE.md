@@ -2,8 +2,6 @@ MIT License
 
 Copyright (c) 2026 Unfamily
 
-This license applies to the template files as supplied by github.com/NeoForged/MDK
-
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
