@@ -99,8 +99,7 @@ public final class DuctGasServerTick {
             return;
         }
 
-        long want = node.extractBatch > 0 ? node.extractBatch : spec.batchDefault();
-        want = spec.clampedBatch(want);
+        long want = DuctModuleEffects.effectiveGasExtractBatch(sourceBe, sourceFace, spec);
         Object available = MekanismChemicalCompat.drainProbe(srcHandler, want);
         if (MekanismChemicalCompat.isEmptyStack(available)) {
             return;
@@ -266,8 +265,7 @@ public final class DuctGasServerTick {
             if (srcHandler == null) {
                 continue;
             }
-            long want = node.extractBatch > 0 ? node.extractBatch : spec.batchDefault();
-            want = spec.clampedBatch(want);
+            long want = DuctModuleEffects.effectiveGasExtractBatch(retrieverBe, retrieverFace, spec);
             Object available = MekanismChemicalCompat.drainProbe(srcHandler, want);
             if (MekanismChemicalCompat.isEmptyStack(available)) {
                 continue;

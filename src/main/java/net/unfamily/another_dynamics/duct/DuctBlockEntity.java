@@ -3997,10 +3997,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     /**
-     * Items per extract/delivery step for {@code ownerDuct}'s {@code face}. Uses {@link DuctFaceNode#extractBatch}
-     * when {@code > 0} (value set on the tube in the GUI / NBT), otherwise datapack {@code batch.default}; then
-     * clamped by {@link #computeExtractBatchSettingCap} (datapack max / default rules). Does not use chest stack
-     * size, total items in storage, or item max stack size.
+     * Items per extract/delivery step for {@code ownerDuct}'s {@code face}. Runtime batch respects the GUI node value
+     * when set; modules affect only the default path and the configurable cap ({@link #computeExtractBatchSettingCap}).
      */
     private int tubeOperationBatchSize(DuctItemTransportSpec spec, DuctBlockEntity ownerDuct, Direction face) {
         if (ownerDuct == null) {
@@ -4303,9 +4301,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctFaceNode itemNode = itemOn ? getFaceNode(face) : null;
         DuctFaceNode fluidNode = fluidOn ? getFluidFaceNode(face) : null;
         DuctFaceNode gasNode = gasOn ? getGasFaceNode(face) : null;
-        boolean itemPinned = itemNode != null && isExtractBatchPinnedToCap(itemNode);
-        boolean fluidPinned = fluidNode != null && isExtractBatchPinnedToCap(fluidNode);
-        boolean gasPinned = gasNode != null && isExtractBatchPinnedToCap(gasNode);
+        boolean itemPinned = itemNode != null && itemNode.isExtractBatchPinnedToCap();
+        boolean fluidPinned = fluidNode != null && fluidNode.isExtractBatchPinnedToCap();
+        boolean gasPinned = gasNode != null && gasNode.isExtractBatchPinnedToCap();
         int pinnedCount = (itemPinned ? 1 : 0) + (fluidPinned ? 1 : 0) + (gasPinned ? 1 : 0);
         int enabledCount = (itemOn ? 1 : 0) + (fluidOn ? 1 : 0) + (gasOn ? 1 : 0);
         boolean bothSidesMax = enabledCount >= 2 && pinnedCount >= 2;
@@ -4324,8 +4322,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private static boolean isExtractBatchPinnedToCap(DuctFaceNode node) {
-        int memo = node.lastExtractBatchSettingCapApplied;
-        return memo > 0 && node.extractBatch >= memo;
+        return node.isExtractBatchPinnedToCap();
     }
 
     /**
@@ -5487,14 +5484,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (itemNode.extractBatch <= 0) {
                 itemNode.extractBatch = itemTransportSpec().batchDefault();
             }
-            clampExtractAmount(itemNode, face);
         }
         if (def.map(d -> d.enabledTransportKinds().contains(DuctTransportKind.FLUID)).orElse(false)) {
             DuctFaceNode fluidNode = lanes.fluid;
             if (fluidNode.extractBatch <= 0) {
                 fluidNode.extractBatch = fluidTransportSpec().batchDefaultMb();
             }
-            clampFluidExtractAmount(fluidNode, face);
         }
         if (def.map(d -> d.enabledTransportKinds().contains(DuctTransportKind.GAS)).orElse(false)) {
             DuctFaceNode gasNode = lanes.gas;
@@ -5502,8 +5497,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 long defAmt = gasTransportSpec().batchDefault();
                 gasNode.extractBatch = (int) Math.min(defAmt, Integer.MAX_VALUE);
             }
-            clampGasExtractAmount(gasNode, face);
         }
+        clampAllTransportExtractBatchesForFace(face);
     }
 
     private boolean isFluidLaneNode(DuctFaceNode node) {
@@ -5547,6 +5542,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         } else {
             clampExtractAmount(node, accessFace);
         }
+        int cap =
+                switch (kind) {
+                    case FLUID -> computeFluidExtractBatchSettingCap(accessFace);
+                    case GAS -> computeGasExtractBatchSettingCap(accessFace);
+                    case ENERGY, HEAT -> 0;
+                    case ITEM -> computeExtractBatchSettingCap(accessFace);
+                };
+        node.extractBatchPinnedToMax = cap > 0 && node.extractBatch >= cap;
         setChanged();
         invalidateRoutingEndpointCache();
         refreshMenuData(accessFace);
@@ -5582,13 +5585,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private static void applyExtractBatchAgainstCap(DuctFaceNode node, int cap, boolean trackMaxOnCapIncrease) {
         int prev = node.extractBatch;
-        int memo = node.lastExtractBatchSettingCapApplied;
-        if (trackMaxOnCapIncrease && memo > 0 && prev >= memo && cap > memo) {
+        boolean pinned = node.isExtractBatchPinnedToCap();
+        if (trackMaxOnCapIncrease && pinned) {
             node.extractBatch = cap;
-        } else if (trackMaxOnCapIncrease && memo > 0 && prev >= memo && cap < memo) {
-            node.extractBatch = cap;
+            node.extractBatchPinnedToMax = true;
         } else {
             node.extractBatch = Mth.clamp(prev, 0, cap);
+            if (node.extractBatch < cap) {
+                node.extractBatchPinnedToMax = false;
+            }
         }
         node.lastExtractBatchSettingCapApplied = cap;
     }
@@ -5988,6 +5993,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (getFaceLanes(d).nodeMode.usesExtractBatchField()) {
                 clampExtractAmount(getFaceNode(d), d);
                 clampFluidExtractAmount(getFluidFaceNode(d), d);
+                clampGasExtractAmount(getGasFaceNode(d), d);
             }
         }
         if (level != null && level.isClientSide()) {

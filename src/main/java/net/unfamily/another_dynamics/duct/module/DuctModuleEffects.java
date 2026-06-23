@@ -371,21 +371,75 @@ public final class DuctModuleEffects {
     }
 
     /**
-     * Items moved per extract/retrieve scheduling action after {@code affects[].for=item.quantity} on this face.
-     * GUI {@link net.unfamily.another_dynamics.duct.DuctFaceNode#extractBatch} (when {@code > 0}) is the base before
-     * module stacking, same role as datapack {@code batch.default} when unset.
+     * Items moved per extract/retrieve scheduling action. GUI {@link net.unfamily.another_dynamics.duct.DuctFaceNode#extractBatch}
+     * when {@code > 0} is used as-is (capped); modules apply only to datapack default when unset and to the setting cap.
      */
     public static int effectiveItemExtractBatch(DuctBlockEntity duct, Direction face, DuctItemTransportSpec spec) {
-        int guiOrDefault =
-                duct.getFaceNode(face).extractBatch <= 0 ? spec.batchDefault() : duct.getFaceNode(face).extractBatch;
-        int settingCap = duct.computeExtractBatchSettingCap(face);
-        if (!faceModuleEffectsEnabled(duct, face)) {
-            return Math.max(1, spec.clampedBatch(Math.min(guiOrDefault, settingCap)));
+        return effectiveExtractBatchQuantity(
+                duct,
+                face,
+                spec.batchDefault(),
+                duct.getFaceNode(face).extractBatch,
+                duct.computeExtractBatchSettingCap(face),
+                spec::clampedBatch,
+                ModuleDefinition::itemQuantityModifiers);
+    }
+
+    /** Fluid mB per extract/retrieve; same precedence rules as {@link #effectiveItemExtractBatch}. */
+    public static int effectiveFluidExtractBatchMb(
+            DuctBlockEntity duct, Direction face, DuctFluidTransportSpec spec) {
+        return effectiveExtractBatchQuantity(
+                duct,
+                face,
+                spec.batchDefaultMb(),
+                duct.getFluidFaceNode(face).extractBatch,
+                duct.computeFluidExtractBatchSettingCap(face),
+                spec::clampedBatchMb,
+                ModuleDefinition::fluidQuantityModifiers);
+    }
+
+    /** Gas units per extract/retrieve; same precedence rules as {@link #effectiveItemExtractBatch}. */
+    public static long effectiveGasExtractBatch(DuctBlockEntity duct, Direction face, DuctGasTransportSpec spec) {
+        int stored = duct.getGasFaceNode(face).extractBatch;
+        long settingCap = duct.computeGasExtractBatchSettingCap(face);
+        long baseline = spec.batchDefault();
+        long runtime;
+        if (stored <= 0) {
+            int baselineInt = (int) Math.min(baseline, Integer.MAX_VALUE);
+            if (!faceModuleEffectsEnabled(duct, face)) {
+                runtime = baseline;
+            } else {
+                ModuleDefinition.ItemQuantityModifiers agg =
+                        aggregateTimingLike(duct, face, ModuleDefinition::gasQuantityModifiers);
+                runtime = applyStackedQuantityToBase(agg, baselineInt);
+            }
+        } else {
+            runtime = stored;
         }
-        ModuleDefinition.ItemQuantityModifiers agg =
-                aggregateTimingLike(duct, face, ModuleDefinition::itemQuantityModifiers);
-        int raw = applyStackedQuantityToBase(agg, guiOrDefault);
-        return Math.max(1, spec.clampedBatch(Math.min(raw, settingCap)));
+        long capped = Math.min(runtime, settingCap);
+        return Math.max(1L, spec.clampedBatch(capped));
+    }
+
+    private static int effectiveExtractBatchQuantity(
+            DuctBlockEntity duct,
+            Direction face,
+            int batchDefault,
+            int storedExtractBatch,
+            int settingCap,
+            java.util.function.IntUnaryOperator clampToDatapackMax,
+            Function<ModuleDefinition, ModuleDefinition.ItemQuantityModifiers> quantityPick) {
+        int runtime;
+        if (storedExtractBatch <= 0) {
+            if (!faceModuleEffectsEnabled(duct, face)) {
+                runtime = batchDefault;
+            } else {
+                ModuleDefinition.ItemQuantityModifiers agg = aggregateTimingLike(duct, face, quantityPick);
+                runtime = applyStackedQuantityToBase(agg, batchDefault);
+            }
+        } else {
+            runtime = storedExtractBatch;
+        }
+        return Math.max(1, clampToDatapackMax.applyAsInt(Math.min(runtime, settingCap)));
     }
 
     public static long effectiveItemEdgeTravelTicks(DuctBlockEntity duct, Direction face, DuctItemTransportSpec spec) {

@@ -6484,10 +6484,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return;
         }
         playClickSound();
+        int cap = syncedExtractBatchCap();
         syncingAmountBoxFromServer = true;
-        routingPriorityBox.setValue(Integer.toString(syncedExtractBatchCap()));
+        routingPriorityBox.setValue(Integer.toString(cap));
         syncingAmountBoxFromServer = false;
-        amountFieldsDirty = true;
+        pushAmountFields(syncedInsertionPriority(), cap);
+        amountFieldsDirty = false;
     }
 
     private void amountApplyField() {

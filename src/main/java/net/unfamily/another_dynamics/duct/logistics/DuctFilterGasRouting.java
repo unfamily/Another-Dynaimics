@@ -62,8 +62,7 @@ final class DuctFilterGasRouting {
         if (srcHandler == null) {
             return false;
         }
-        long want = node.extractBatch > 0 ? node.extractBatch : spec.batchDefault();
-        want = spec.clampedBatch(want);
+        long want = DuctModuleEffects.effectiveGasExtractBatch(sourceBe, sourceFace, spec);
         Object baseAvailable = MekanismChemicalCompat.drainProbe(srcHandler, want);
         if (MekanismChemicalCompat.isEmptyStack(baseAvailable)) {
             return false;
@@ -475,8 +474,7 @@ final class DuctFilterGasRouting {
         }
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         DuctFaceNode.FilterBank bank = DuctFaceNode.FilterBank.RETRIEVER;
-        long want = node.extractBatch > 0 ? node.extractBatch : spec.batchDefault();
-        want = spec.clampedBatch(want);
+        long want = DuctModuleEffects.effectiveGasExtractBatch(retrieverBe, retrieverFace, spec);
         Object available = MekanismChemicalCompat.drainProbe(srcHandler, want);
         if (MekanismChemicalCompat.isEmptyStack(available)) {
             return false;

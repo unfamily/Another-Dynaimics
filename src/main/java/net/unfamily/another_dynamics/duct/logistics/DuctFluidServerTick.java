@@ -105,8 +105,7 @@ public final class DuctFluidServerTick {
         if (srcCap == null) {
             return;
         }
-        int wantMb = node.extractBatch > 0 ? node.extractBatch : spec.batchDefaultMb();
-        wantMb = spec.clampedBatchMb(wantMb);
+        int wantMb = DuctModuleEffects.effectiveFluidExtractBatchMb(sourceBe, sourceFace, spec);
         FluidStack available = DuctFluidCapHelper.drainProbe(srcCap, wantMb);
         if (available.isEmpty()) {
             return;
@@ -264,8 +263,7 @@ public final class DuctFluidServerTick {
             if (srcCap == null) {
                 continue;
             }
-            int wantMb = node.extractBatch > 0 ? node.extractBatch : spec.batchDefaultMb();
-            wantMb = spec.clampedBatchMb(wantMb);
+            int wantMb = DuctModuleEffects.effectiveFluidExtractBatchMb(retrieverBe, retrieverFace, spec);
             FluidStack available = DuctFluidCapHelper.drainProbe(srcCap, wantMb);
             if (available.isEmpty()) {
                 continue;

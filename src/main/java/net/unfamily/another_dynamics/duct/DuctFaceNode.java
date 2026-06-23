@@ -94,6 +94,11 @@ public final class DuctFaceNode {
      * {@link #extractBatch} to the new cap.
      */
     public int lastExtractBatchSettingCapApplied;
+    /**
+     * When true, {@link net.unfamily.another_dynamics.duct.DuctBlockEntity} keeps {@link #extractBatch} at the current
+     * setting cap when modules or mode changes raise the cap.
+     */
+    public boolean extractBatchPinnedToMax;
     public int channelLetter = 1;
     public int roundRobinCursor;
     /** Retriever: next donor inventory slot index to probe (round-robin across slots). */
@@ -235,10 +240,29 @@ public final class DuctFaceNode {
         insertionPriority = 0;
         extractBatch = 0;
         lastExtractBatchSettingCapApplied = 0;
+        extractBatchPinnedToMax = false;
         roundRobinCursor = 0;
         retrieverPullSlotCursor = 0;
         selfFeed = false;
         ticksUntilAction = 0;
+    }
+
+    /** Whether extract batch should track the GUI setting cap when modules raise it. */
+    public boolean isExtractBatchPinnedToCap() {
+        if (extractBatchPinnedToMax) {
+            return true;
+        }
+        return lastExtractBatchSettingCapApplied > 0 && extractBatch >= lastExtractBatchSettingCapApplied;
+    }
+
+    private void loadExtractBatchPinnedFromTag(CompoundTag tag) {
+        if (tag.contains("ExtractBatchPinned")) {
+            extractBatchPinnedToMax = tag.getBoolean("ExtractBatchPinned");
+        } else {
+            extractBatchPinnedToMax =
+                    lastExtractBatchSettingCapApplied > 0
+                            && extractBatch >= lastExtractBatchSettingCapApplied;
+        }
     }
 
     /** Settings copier: lane configuration without {@code NodeGui} or per-tick cursors. */
@@ -249,6 +273,7 @@ public final class DuctFaceNode {
         tag.putInt("InsertionPriority", insertionPriority);
         tag.putInt("ExtractBatch", extractBatch);
         tag.putInt("ExtractBatchCapMemo", lastExtractBatchSettingCapApplied);
+        tag.putBoolean("ExtractBatchPinned", extractBatchPinnedToMax);
         tag.putByte("Channel", (byte) channelLetter);
         tag.putBoolean("SelfFeed", selfFeed);
         tag.putByte("EligMode", (byte) eligibilityMode.ordinal());
@@ -278,6 +303,7 @@ public final class DuctFaceNode {
         }
         lastExtractBatchSettingCapApplied =
                 tag.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? tag.getInt("ExtractBatchCapMemo") : 0;
+        loadExtractBatchPinnedFromTag(tag);
         channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
         selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
         eligibilityMode =
@@ -295,6 +321,7 @@ public final class DuctFaceNode {
         tag.putInt("InsertionPriority", insertionPriority);
         tag.putInt("ExtractBatch", extractBatch);
         tag.putInt("ExtractBatchCapMemo", lastExtractBatchSettingCapApplied);
+        tag.putBoolean("ExtractBatchPinned", extractBatchPinnedToMax);
         tag.putByte("Channel", (byte) channelLetter);
         tag.putInt("RrCursor", roundRobinCursor);
         tag.putInt("RtrPullSlot", retrieverPullSlotCursor);
@@ -327,6 +354,7 @@ public final class DuctFaceNode {
         }
         lastExtractBatchSettingCapApplied =
                 tag.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? tag.getInt("ExtractBatchCapMemo") : 0;
+        loadExtractBatchPinnedFromTag(tag);
         channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
         roundRobinCursor = tag.getInt("RrCursor");
         retrieverPullSlotCursor = tag.contains("RtrPullSlot", Tag.TAG_INT) ? tag.getInt("RtrPullSlot") : 0;
@@ -361,6 +389,7 @@ public final class DuctFaceNode {
         }
         lastExtractBatchSettingCapApplied =
                 root.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? root.getInt("ExtractBatchCapMemo") : 0;
+        loadExtractBatchPinnedFromTag(root);
         if (!root.contains("InsertionPriority")
                 && !root.contains("InsPriority")
                 && !root.contains("ExtractBatch")

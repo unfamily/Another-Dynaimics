@@ -68,8 +68,7 @@ final class DuctFilterFluidRouting {
         if (srcCap == null) {
             return false;
         }
-        int wantMb = node.extractBatch > 0 ? node.extractBatch : spec.batchDefaultMb();
-        wantMb = spec.clampedBatchMb(wantMb);
+        int wantMb = DuctModuleEffects.effectiveFluidExtractBatchMb(sourceBe, sourceFace, spec);
         FluidStack baseAvailable = DuctFluidCapHelper.drainProbe(srcCap, wantMb);
         if (baseAvailable.isEmpty()) {
             return false;
@@ -452,8 +451,7 @@ final class DuctFilterFluidRouting {
         }
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         DuctFaceNode.FilterBank bank = DuctFaceNode.FilterBank.RETRIEVER;
-        int wantMb = node.extractBatch > 0 ? node.extractBatch : spec.batchDefaultMb();
-        wantMb = spec.clampedBatchMb(wantMb);
+        int wantMb = DuctModuleEffects.effectiveFluidExtractBatchMb(retrieverBe, retrieverFace, spec);
         FluidStack available = DuctFluidCapHelper.drainProbe(srcCap, wantMb);
         if (available.isEmpty()) {
             return false;
