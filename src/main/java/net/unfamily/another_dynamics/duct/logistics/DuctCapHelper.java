@@ -102,7 +102,7 @@ public final class DuctCapHelper {
         return Optional.empty();
     }
 
-    public static boolean faceHasItemStallContent(DuctFaceLanes lanes) {
+    public static boolean outboundStallHasContent(DuctFaceLanes lanes) {
         for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
             if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
                 return true;
@@ -111,13 +111,26 @@ public final class DuctCapHelper {
         return false;
     }
 
+    public static boolean inboundStallHasContent(DuctFaceLanes lanes) {
+        for (int i = 0; i < lanes.inboundStallBuffer.getSlots(); i++) {
+            if (!lanes.inboundStallBuffer.getStackInSlot(i).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean faceHasItemStallContent(DuctFaceLanes lanes) {
+        return outboundStallHasContent(lanes) || inboundStallHasContent(lanes);
+    }
+
     /**
      * Cheap donor pre-check for retriever routing lists: attached handler has any extractable stack, or the face stall
      * buffer is non-empty. Full filter/insert probes run only when a donor is actually visited.
      */
     public static boolean donorMaySupplyRetriever(Level level, BlockPos donorPos, Direction donorFace, DuctBlockEntity donorBe) {
         DuctFaceLanes lanes = donorBe.getFaceLanes(donorFace);
-        if (faceHasItemStallContent(lanes)) {
+        if (outboundStallHasContent(lanes) || inboundStallHasContent(lanes)) {
             return true;
         }
         IItemHandler h = getHandlerOnFace(level, donorPos, donorFace);

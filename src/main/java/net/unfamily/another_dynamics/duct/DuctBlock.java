@@ -264,7 +264,7 @@ public class DuctBlock extends AbstractDuctBlock {
                     return duct.hasAnyStallOnFace(face.get()) ? InteractionResult.SUCCESS : InteractionResult.PASS;
                 }
                 if (level instanceof ServerLevel sl) {
-                    return duct.tryShiftClearStalledOnFace(sl, face.get(), player, InteractionHand.MAIN_HAND)
+                    return duct.tryShiftClearStalledOnFace(sl, face.get(), player)
                             ? InteractionResult.CONSUME
                             : InteractionResult.PASS;
                 }
@@ -328,7 +328,7 @@ public class DuctBlock extends AbstractDuctBlock {
                     return ItemInteractionResult.SUCCESS;
                 }
                 if (level instanceof ServerLevel sl) {
-                    return duct.tryShiftClearStalledOnFace(sl, nodeFace.get(), player, hand)
+                    return duct.tryShiftClearStalledOnFace(sl, nodeFace.get(), player)
                             ? ItemInteractionResult.CONSUME
                             : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
                 }

@@ -28,14 +28,17 @@ final class DuctFilterItemRouting {
     private DuctFilterItemRouting() {}
 
     static boolean hasNonEmptyAllowLines(List<String> lines, int cap) {
-        int n = Math.min(lines.size(), cap);
-        for (int i = 0; i < n; i++) {
-            String s = lines.get(i);
-            if (s != null && !s.trim().isEmpty()) {
-                return true;
-            }
-        }
-        return false;
+        return DuctStallAllowBank.hasNonEmptyAllowLines(lines, cap);
+    }
+
+    static boolean hasStallRoutableAllowBank(
+            List<String> allow, int allowCap, List<DuctDirectionalEndpoint> remote) {
+        return DuctStallAllowBank.hasStallRoutableAllowBank(allow, allowCap, remote);
+    }
+
+    static boolean hasOnlyBoundAllowBank(
+            List<String> allow, int allowCap, List<DuctDirectionalEndpoint> remote) {
+        return DuctStallAllowBank.hasOnlyBoundAllowBank(allow, allowCap, remote);
     }
 
     static boolean tryExtractEntryFirst(
@@ -521,7 +524,7 @@ final class DuctFilterItemRouting {
         FilterSlotBonuses fb = DuctModuleEffects.filterSlotBonuses(self, face);
         int allowCap = DuctModuleEffects.effectiveItemAllowBank(spec, lanes.nodeMode, fb);
         List<String> allowFull = node.bankAllowFilters(bank);
-        if (!hasNonEmptyAllowLines(allowFull, allowCap)) {
+        if (!hasStallRoutableAllowBank(allowFull, allowCap, node.bankAllowRemoteNodes(bank))) {
             return false;
         }
         RoutingMode rm =
@@ -554,7 +557,15 @@ final class DuctFilterItemRouting {
                     unitIdx++;
                     continue;
                 }
-                if (!DuctFilterLogic.itemMatchesAllowUnit(bank, node, unit, st, level)) {
+                String allowLine =
+                        unit.headIndex() >= 0 && unit.headIndex() < allow.size()
+                                ? allow.get(unit.headIndex())
+                                : "";
+                boolean boundOnlyUnit =
+                        binding.endpoint() != null
+                                && (allowLine == null || allowLine.trim().isEmpty());
+                if (!boundOnlyUnit
+                        && !DuctFilterLogic.itemMatchesAllowUnit(bank, node, unit, st, level)) {
                     unitIdx++;
                     continue;
                 }

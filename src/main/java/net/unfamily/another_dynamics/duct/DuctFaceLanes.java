@@ -58,8 +58,10 @@ public final class DuctFaceLanes {
     /** Shared module column; size follows {@link DuctDefinition#moduleSlotCount()} (clamped). */
     public DuctFaceModuleItemHandler moduleSlots;
 
-    /** Physical buffered items that could not be refunded; when full, this face is stalled. */
+    /** Outbound stall: re-send toward network extract destinations. */
     public final ItemStackHandler stalledBuffer = new ItemStackHandler(5);
+    /** Inbound stall: retriever-side buffer drained into adjacent inventory every tick. */
+    public final ItemStackHandler inboundStallBuffer = new ItemStackHandler(5);
 
     /** Physical buffered fluids (mB) that could not be refunded; up to 5 entries. */
     public final FluidStack[] stalledFluids = new FluidStack[5];
@@ -74,9 +76,15 @@ public final class DuctFaceLanes {
     public int stalledEnergyCount;
     public int stalledHeatCount;
 
-    /** Shift+click clearing arming window (gameTime), per face. */
-    public long armedClearFluidUntilGameTime;
-    public long armedClearGasUntilGameTime;
+    /**
+     * Game tick when empty-hand shift+click armed media destroy (0 = not armed). Destroy only on a later tick within
+     * {@link net.unfamily.another_dynamics.duct.DuctBlockEntity}'s arm window. Runtime only, not persisted on save.
+     */
+    public long armedClearMediaArmedAtGameTime;
+
+    public ItemStackHandler stallBufferForKind(DuctStallKind kind) {
+        return kind == DuctStallKind.INBOUND ? inboundStallBuffer : stalledBuffer;
+    }
 
     public final DuctFaceNode item;
     public final DuctFaceNode fluid;
@@ -314,14 +322,17 @@ public final class DuctFaceLanes {
         tag.put("Shared", shared);
 
         tag.put(NBT_MODULES, moduleSlots.serializeNBT(registries));
+        tag.put("StallBufOut", stalledBuffer.serializeNBT(registries));
+        tag.put("StallBufIn", inboundStallBuffer.serializeNBT(registries));
+        // Legacy key for older saves (read in load only).
         tag.put("StallBuf", stalledBuffer.serializeNBT(registries));
         tag.put("StallFluids", saveStalledFluids(registries));
         tag.put("StallGas", saveStalledGas());
         CompoundTag stallMeta = new CompoundTag();
         stallMeta.putInt("Energy", stalledEnergyCount);
         stallMeta.putInt("Heat", stalledHeatCount);
-        stallMeta.putLong("ArmFluid", armedClearFluidUntilGameTime);
-        stallMeta.putLong("ArmGas", armedClearGasUntilGameTime);
+        // Arm window is runtime-only; do not persist (avoids surprise void after chunk reload).
+        stallMeta.putLong("ArmMedia", 0L);
         tag.put("StallMeta", stallMeta);
 
         CompoundTag itemTag = new CompoundTag();
@@ -370,11 +381,20 @@ public final class DuctFaceLanes {
             migrateLegacyModulesFromItemNodeGui(registries, tag);
         }
 
-        if (tag.contains("StallBuf", Tag.TAG_COMPOUND)) {
+        if (tag.contains("StallBufOut", Tag.TAG_COMPOUND)) {
+            stalledBuffer.deserializeNBT(registries, tag.getCompound("StallBufOut"));
+        } else if (tag.contains("StallBuf", Tag.TAG_COMPOUND)) {
             stalledBuffer.deserializeNBT(registries, tag.getCompound("StallBuf"));
         } else {
             for (int i = 0; i < stalledBuffer.getSlots(); i++) {
                 stalledBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
+            }
+        }
+        if (tag.contains("StallBufIn", Tag.TAG_COMPOUND)) {
+            inboundStallBuffer.deserializeNBT(registries, tag.getCompound("StallBufIn"));
+        } else {
+            for (int i = 0; i < inboundStallBuffer.getSlots(); i++) {
+                inboundStallBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
             }
         }
         loadStalledFluids(registries, tag);
@@ -383,13 +403,11 @@ public final class DuctFaceLanes {
             CompoundTag meta = tag.getCompound("StallMeta");
             stalledEnergyCount = meta.getInt("Energy");
             stalledHeatCount = meta.getInt("Heat");
-            armedClearFluidUntilGameTime = meta.getLong("ArmFluid");
-            armedClearGasUntilGameTime = meta.getLong("ArmGas");
+            armedClearMediaArmedAtGameTime = 0L;
         } else {
             stalledEnergyCount = 0;
             stalledHeatCount = 0;
-            armedClearFluidUntilGameTime = 0L;
-            armedClearGasUntilGameTime = 0L;
+            armedClearMediaArmedAtGameTime = 0L;
         }
 
         CompoundTag rawItem = tag.contains("Item", Tag.TAG_COMPOUND) ? tag.getCompound("Item") : tag;
@@ -508,8 +526,7 @@ public final class DuctFaceLanes {
         }
         stalledEnergyCount = 0;
         stalledHeatCount = 0;
-        armedClearFluidUntilGameTime = 0L;
-        armedClearGasUntilGameTime = 0L;
+        armedClearMediaArmedAtGameTime = 0L;
         energyTicksUntilAction = 0;
         energyRoundRobinCursor = 0;
         energyInputBufferFe = 0;

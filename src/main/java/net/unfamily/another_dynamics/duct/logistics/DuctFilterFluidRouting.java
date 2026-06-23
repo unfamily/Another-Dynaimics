@@ -20,6 +20,7 @@ import net.unfamily.another_dynamics.duct.DuctFluidFilterLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
+import net.unfamily.another_dynamics.duct.DuctStallAllowBank;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.FilterRemoteNodeRole;
 import net.unfamily.another_dynamics.duct.NodeMode;
@@ -585,5 +586,123 @@ final class DuctFilterFluidRouting {
 
     private static List<Boolean> subListBool(List<Boolean> in, int size) {
         return in.subList(0, Math.min(in.size(), size));
+    }
+
+    /**
+     * Re-sends stalled fluid using entry-first bound filter destinations. Returns true if anything was scheduled.
+     */
+    static boolean tryDrainStallEntryFirst(
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            NodeMode sourceMode,
+            DuctFaceNode node,
+            DuctFluidTransportSpec spec,
+            DuctFaceLanes lanes) {
+        DuctFaceNode.FilterBank bank = DuctFaceNode.FilterBank.EXTRACTOR;
+        FilterSlotBonuses fb = DuctModuleEffects.filterSlotBonuses(sourceBe, sourceFace);
+        int allowCap = DuctModuleEffects.effectiveFluidAllowBank(spec, sourceMode, fb);
+        List<String> allowFull = node.bankAllowFilters(bank);
+        List<DuctDirectionalEndpoint> allowRemote = node.bankAllowRemoteNodes(bank);
+        if (!DuctStallAllowBank.hasStallRoutableAllowBank(
+                allowFull, allowCap, allowRemote)) {
+            return false;
+        }
+        BlockPos srcPos = sourceBe.getBlockPos();
+        boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+        Direction forbidSelfDestFace = allowSelfFeed ? null : sourceFace;
+        long edgeTicks = DuctModuleEffects.effectiveFluidEdgeTravelTicks(sourceBe, sourceFace, spec);
+        int allowSize = Math.min(allowFull.size(), allowCap);
+        List<String> allow = allowFull.subList(0, allowSize);
+        List<Integer> allowConcat = subList(node.bankAllowConcatChannels(bank), allowSize);
+        List<DuctDirectionalEndpoint> remotes = subListEndpoint(allowRemote, allowSize);
+        List<Boolean> allowIgnore = subListBool(node.bankAllowRemoteIgnoreChannel(bank), allowSize);
+        List<Boolean> allowAnyFace = subListBool(node.bankAllowRemoteAnyFace(bank), allowSize);
+
+        for (int slot = 0; slot < lanes.stalledFluids.length; slot++) {
+            FluidStack stalled = lanes.stalledFluids[slot];
+            if (stalled == null || stalled.isEmpty() || stalled.getAmount() <= 0) {
+                continue;
+            }
+            for (net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.FilterUnit unit :
+                    net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.enumerateUnits(allow, allowConcat)) {
+                net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.UnitBinding binding =
+                        net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.unitBinding(
+                                unit, remotes, allowIgnore, allowAnyFace);
+                if (binding == null || binding.endpoint() == null) {
+                    continue;
+                }
+                String allowLine =
+                        unit.headIndex() >= 0 && unit.headIndex() < allow.size()
+                                ? allow.get(unit.headIndex())
+                                : "";
+                boolean boundOnly = allowLine == null || allowLine.trim().isEmpty();
+                if (!boundOnly
+                        && !DuctFluidFilterLogic.fluidMatchesAllowUnit(bank, node, unit, stalled, level)) {
+                    continue;
+                }
+                List<DuctFilterDestinationResolver.ResolvedFace> faces =
+                        DuctFilterDestinationResolver.findFacesForInventoryEndpoint(
+                                level,
+                                srcPos,
+                                sourceFace,
+                                DuctNetworkType.FLUID,
+                                DuctTransportKind.FLUID,
+                                spec.edgeTravelTicks(),
+                                node.channelLetter,
+                                binding.ignoreChannel(),
+                                binding.endpoint(),
+                                binding.anyFace(),
+                                FilterRemoteNodeRole.EXTRACT_ROUTE,
+                                allowSelfFeed,
+                                forbidSelfDestFace);
+                for (DuctFilterDestinationResolver.ResolvedFace rf : faces) {
+                    DuctDirectionalEndpoint destCounterparty =
+                            DuctDirectionalEndpoint.connectionAtDuctFace(level, rf.ductPos(), rf.face());
+                    if (!DuctFluidFilterLogic.passesFluidFiltersForBank(
+                            node, bank, stalled, level, destCounterparty)) {
+                        continue;
+                    }
+                    if (!(level.getBlockEntity(rf.ductPos()) instanceof DuctBlockEntity destBe)) {
+                        continue;
+                    }
+                    IFluidHandler destCap =
+                            level.getCapability(
+                                    Capabilities.FluidHandler.BLOCK,
+                                    rf.ductPos().relative(rf.face()),
+                                    rf.face().getOpposite());
+                    if (destCap == null) {
+                        continue;
+                    }
+                    int moved = DuctFluidCapHelper.simulateFill(destCap, stalled);
+                    if (moved <= 0) {
+                        continue;
+                    }
+                    FluidStack planned = new FluidStack(stalled.getFluid(), moved);
+                    List<BlockPos> rawPath;
+                    if (rf.ductPos().equals(srcPos)) {
+                        rawPath = List.of(srcPos);
+                    } else {
+                        rawPath =
+                                DuctNetworkCache.shortestPath(level, srcPos, rf.ductPos(), DuctNetworkType.FLUID)
+                                        .orElseGet(() -> List.of(srcPos, rf.ductPos()));
+                    }
+                    sourceBe.scheduleFluidTransitPending(
+                            level,
+                            planned,
+                            OutboundShipment.copyPath(rawPath),
+                            sourceFace,
+                            rf.face(),
+                            rf.ductPos(),
+                            spec,
+                            edgeTicks);
+                    stalled.shrink(moved);
+                    lanes.stalledFluids[slot] = stalled.isEmpty() ? FluidStack.EMPTY : stalled;
+                    sourceBe.setChanged();
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

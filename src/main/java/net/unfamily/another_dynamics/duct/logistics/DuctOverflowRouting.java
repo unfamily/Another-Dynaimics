@@ -4,11 +4,13 @@ import java.util.HashSet;
 import java.util.Set;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctStallKind;
 
 /**
  * Overflow / refund paths for item logistics (plan cases 0–6). Prefers chest insert and duct overflow buffers; only
@@ -113,7 +115,13 @@ public final class DuctOverflowRouting {
         if (remainder.isEmpty()) {
             return;
         }
-        ItemStack r = donorBe.stallOntoFace(s.sourceFace, remainder.copy());
+        DuctStallKind kind = DuctBlockEntity.resolveRefundStallKind(level, s);
+        ItemStack r;
+        if (kind == DuctStallKind.INBOUND) {
+            r = retrieverBe.stallOntoFace(s.destFace, remainder.copy(), DuctStallKind.INBOUND);
+        } else {
+            r = donorBe.stallOntoFace(s.sourceFace, remainder.copy(), DuctStallKind.OUTBOUND);
+        }
         if (!r.isEmpty()) {
             retrieverBe.getOverflowBuffer().absorb(level, retrieverBe, r.copy());
             r = ItemStack.EMPTY;
@@ -142,7 +150,13 @@ public final class DuctOverflowRouting {
         if (!(level.getBlockEntity(s.refundDuct) instanceof DuctBlockEntity duct)) {
             return stack.copy();
         }
-        return duct.stallOntoFace(s.sourceFace, stack.copy());
+        DuctStallKind kind = DuctBlockEntity.resolveRefundStallKind(level, s);
+        BlockPos stallPos = kind == DuctStallKind.INBOUND ? s.destDuct : s.refundDuct;
+        Direction stallFace = kind == DuctStallKind.INBOUND ? s.destFace : s.sourceFace;
+        if (!(level.getBlockEntity(stallPos) instanceof DuctBlockEntity stallBe)) {
+            return stack.copy();
+        }
+        return stallBe.stallOntoFace(stallFace, stack.copy(), kind);
     }
 
     /**

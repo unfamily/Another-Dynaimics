@@ -22,6 +22,7 @@ import net.unfamily.another_dynamics.duct.DuctFluidFilterLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
+import net.unfamily.another_dynamics.duct.DuctStallAllowBank;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.RoutingMode;
@@ -656,6 +657,7 @@ public final class DuctFluidServerTick {
             ServerLevel level,
             DuctBlockEntity sourceBe,
             Direction sourceFace,
+            DuctFaceNode sourceNode,
             FluidStack available,
             DuctRoutingEndpointIndex.ScoredEndpoint scored) {
         DuctRoutingEndpointIndex.RoutingEndpoint ep = scored.endpoint();
@@ -663,6 +665,13 @@ public final class DuctFluidServerTick {
             return java.util.Optional.empty();
         }
         Direction df = ep.face();
+        DuctDirectionalEndpoint destEp = DuctDirectionalEndpoint.connectionAtDuctFace(level, ep.pos(), df);
+        DuctDirectionalEndpoint sourceEp =
+                DuctDirectionalEndpoint.connectionAtDuctFace(level, sourceBe.getBlockPos(), sourceFace);
+        if (!DuctFluidFilterLogic.passesFluidFiltersForBank(
+                sourceNode, DuctFaceNode.FilterBank.EXTRACTOR, available, level, destEp)) {
+            return java.util.Optional.empty();
+        }
         DuctFaceLanes destLanes = destBe.getFaceLanes(df);
         DuctFaceNode destNode = destLanes.fluid;
         NodeMode dm = destLanes.nodeMode;
@@ -678,12 +687,12 @@ public final class DuctFluidServerTick {
         }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        destNode, DuctFaceNode.FilterBank.FILTER, toMove, level)) {
+                        destNode, DuctFaceNode.FilterBank.FILTER, toMove, level, sourceEp)) {
             return java.util.Optional.empty();
         }
         if ((dm == NodeMode.RETRIEVING || dm == NodeMode.RETRIEVING_EXTRACTION)
                 && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                        destNode, DuctFaceNode.FilterBank.RETRIEVER, toMove, level)) {
+                        destNode, DuctFaceNode.FilterBank.RETRIEVER, toMove, level, sourceEp)) {
             return java.util.Optional.empty();
         }
         if (dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING) {
@@ -916,6 +925,19 @@ public final class DuctFluidServerTick {
         if (!hasStalledFluid(lanes)) {
             return false;
         }
+        if (DuctFilterFluidRouting.tryDrainStallEntryFirst(
+                level, sourceBe, sourceFace, sourceMode, node, spec, lanes)) {
+            return true;
+        }
+        DuctModuleEffects.FilterSlotBonuses fb = DuctModuleEffects.filterSlotBonuses(sourceBe, sourceFace);
+        int allowCap = DuctModuleEffects.effectiveFluidAllowBank(spec, sourceMode, fb);
+        List<String> allowFull = node.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR);
+        if (DuctStallAllowBank.hasStallRoutableAllowBank(
+                        allowFull, allowCap, node.bankAllowRemoteNodes(DuctFaceNode.FilterBank.EXTRACTOR))
+                && DuctStallAllowBank.hasOnlyBoundAllowBank(
+                        allowFull, allowCap, node.bankAllowRemoteNodes(DuctFaceNode.FilterBank.EXTRACTOR))) {
+            return false;
+        }
         for (int slot = 0; slot < lanes.stalledFluids.length; slot++) {
             FluidStack stalled = lanes.stalledFluids[slot];
             if (stalled == null || stalled.isEmpty() || stalled.getAmount() <= 0) {
@@ -971,7 +993,7 @@ public final class DuctFluidServerTick {
             if (s.endpoint().insertionPriority() != maxP) {
                 break;
             }
-            probeFluidDestinationForStall(level, sourceBe, sourceFace, available, s)
+            probeFluidDestinationForStall(level, sourceBe, sourceFace, node, available, s)
                     .ifPresent(validInTier::add);
             if (validInTier.size() >= EXTRACT_ROUTE_RETRY_CAP) {
                 break;

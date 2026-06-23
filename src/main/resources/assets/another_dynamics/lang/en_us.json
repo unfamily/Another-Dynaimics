@@ -371,5 +371,8 @@
   "gui.another_dynamics.duct_node.remote_node.coords.axis.z": "Z:",
   "gui.another_dynamics.duct_node.advanced_filtering.title.deny_remote": "Advanced (remote node)",
   "gui.another_dynamics.duct_node.advanced_filtering.button.tooltip.deny_remote": "Bind a remote duct face to this deny line.",
-  "gui.another_dynamics.duct_node.remote_node.network_unreachable": "Not reachable on this network"
+  "gui.another_dynamics.duct_node.remote_node.network_unreachable": "Not reachable on this network",
+  "another_dynamics.stall_clear.arm_warning": "Buffered fluid/gas: use a tank or bucket to extract, or empty both hands and shift-click again within 5s to destroy.",
+  "another_dynamics.stall_clear.incompatible_container": "Held item cannot receive stalled fluid or gas.",
+  "another_dynamics.stall_clear.container_full_or_mismatch": "Container is full or does not match the stalled fluid or gas."
 }

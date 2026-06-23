@@ -17,6 +17,7 @@ import net.unfamily.another_dynamics.duct.DuctGasFilterLogic;
 import net.unfamily.another_dynamics.duct.DuctGasTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
+import net.unfamily.another_dynamics.duct.DuctStallAllowBank;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.FilterRemoteNodeRole;
 import net.unfamily.another_dynamics.duct.NodeMode;
@@ -604,5 +605,132 @@ final class DuctFilterGasRouting {
 
     private static List<Boolean> subListBool(List<Boolean> in, int size) {
         return in.subList(0, Math.min(in.size(), size));
+    }
+
+    /** Re-sends stalled gas using entry-first bound filter destinations. */
+    static boolean tryDrainStallEntryFirst(
+            ServerLevel level,
+            DuctBlockEntity sourceBe,
+            Direction sourceFace,
+            NodeMode sourceMode,
+            DuctFaceNode node,
+            DuctGasTransportSpec spec,
+            DuctFaceLanes lanes) {
+        if (!MekanismChemicalCompat.isLoaded()) {
+            return false;
+        }
+        DuctFaceNode.FilterBank bank = DuctFaceNode.FilterBank.EXTRACTOR;
+        FilterSlotBonuses fb = DuctModuleEffects.filterSlotBonuses(sourceBe, sourceFace);
+        int allowCap = DuctModuleEffects.effectiveGasAllowBank(spec, sourceMode, fb);
+        List<String> allowFull = node.bankAllowFilters(bank);
+        List<DuctDirectionalEndpoint> allowRemote = node.bankAllowRemoteNodes(bank);
+        if (!DuctStallAllowBank.hasStallRoutableAllowBank(
+                allowFull, allowCap, allowRemote)) {
+            return false;
+        }
+        BlockPos srcPos = sourceBe.getBlockPos();
+        boolean allowSelfFeed = sourceMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+        Direction forbidSelfDestFace = allowSelfFeed ? null : sourceFace;
+        long edgeTicks = DuctModuleEffects.effectiveGasEdgeTravelTicks(sourceBe, sourceFace, spec);
+        int allowSize = Math.min(allowFull.size(), allowCap);
+        List<String> allow = allowFull.subList(0, allowSize);
+        List<Integer> allowConcat = subList(node.bankAllowConcatChannels(bank), allowSize);
+        List<DuctDirectionalEndpoint> remotes = subListEndpoint(allowRemote, allowSize);
+        List<Boolean> allowIgnore = subListBool(node.bankAllowRemoteIgnoreChannel(bank), allowSize);
+        List<Boolean> allowAnyFace = subListBool(node.bankAllowRemoteAnyFace(bank), allowSize);
+        var regs = level.registryAccess();
+
+        for (int slot = 0; slot < lanes.stalledGas.length; slot++) {
+            var tag = lanes.stalledGas[slot];
+            if (tag == null || tag.isEmpty()) {
+                continue;
+            }
+            Object stalled = MekanismChemicalCompat.loadGasStackFromTag(tag, regs);
+            if (stalled == null
+                    || MekanismChemicalCompat.isEmptyStack(stalled)
+                    || MekanismChemicalCompat.getAmount(stalled) <= 0) {
+                continue;
+            }
+            for (net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.FilterUnit unit :
+                    net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.enumerateUnits(allow, allowConcat)) {
+                net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.UnitBinding binding =
+                        net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.unitBinding(
+                                unit, remotes, allowIgnore, allowAnyFace);
+                if (binding == null || binding.endpoint() == null) {
+                    continue;
+                }
+                String allowLine =
+                        unit.headIndex() >= 0 && unit.headIndex() < allow.size()
+                                ? allow.get(unit.headIndex())
+                                : "";
+                boolean boundOnly = allowLine == null || allowLine.trim().isEmpty();
+                if (!boundOnly
+                        && !DuctGasFilterLogic.gasMatchesAllowUnit(bank, node, unit, stalled, level)) {
+                    continue;
+                }
+                List<DuctFilterDestinationResolver.ResolvedFace> faces =
+                        DuctFilterDestinationResolver.findFacesForInventoryEndpoint(
+                                level,
+                                srcPos,
+                                sourceFace,
+                                DuctNetworkType.GAS,
+                                DuctTransportKind.GAS,
+                                spec.edgeTravelTicks(),
+                                node.channelLetter,
+                                binding.ignoreChannel(),
+                                binding.endpoint(),
+                                binding.anyFace(),
+                                FilterRemoteNodeRole.EXTRACT_ROUTE,
+                                allowSelfFeed,
+                                forbidSelfDestFace);
+                for (DuctFilterDestinationResolver.ResolvedFace rf : faces) {
+                    DuctDirectionalEndpoint destCounterparty =
+                            DuctDirectionalEndpoint.connectionAtDuctFace(level, rf.ductPos(), rf.face());
+                    if (!DuctGasFilterLogic.passesGasFiltersForBank(
+                            node, bank, stalled, level, destCounterparty)) {
+                        continue;
+                    }
+                    Object destHandler =
+                            MekanismChemicalCompat.getChemicalHandlerOnFace(level, rf.ductPos(), rf.face());
+                    if (destHandler == null) {
+                        continue;
+                    }
+                    long moved = MekanismChemicalCompat.simulateInsert(destHandler, stalled);
+                    if (moved <= 0) {
+                        continue;
+                    }
+                    Object planned = MekanismChemicalCompat.copyWithAmount(stalled, moved);
+                    List<BlockPos> rawPath;
+                    if (rf.ductPos().equals(srcPos)) {
+                        rawPath = List.of(srcPos);
+                    } else {
+                        rawPath =
+                                DuctNetworkCache.shortestPath(level, srcPos, rf.ductPos(), DuctNetworkType.GAS)
+                                        .orElseGet(() -> List.of(srcPos, rf.ductPos()));
+                    }
+                    sourceBe.scheduleGasTransitPending(
+                            level,
+                            planned,
+                            OutboundShipment.copyPath(rawPath),
+                            sourceFace,
+                            rf.face(),
+                            rf.ductPos(),
+                            spec,
+                            edgeTicks);
+                    long left = MekanismChemicalCompat.getAmount(stalled) - moved;
+                    if (left <= 0) {
+                        lanes.stalledGas[slot] = new net.minecraft.nbt.CompoundTag();
+                    } else {
+                        Object rem = MekanismChemicalCompat.copyWithAmount(stalled, left);
+                        net.minecraft.nbt.CompoundTag nt = new net.minecraft.nbt.CompoundTag();
+                        MekanismChemicalCompat.saveGasStackToTag(rem, nt);
+                        lanes.stalledGas[slot] = nt;
+                    }
+                    sourceBe.setChanged();
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
