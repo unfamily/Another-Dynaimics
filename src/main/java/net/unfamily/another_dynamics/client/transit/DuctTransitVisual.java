@@ -39,6 +39,8 @@ public final class DuctTransitVisual {
     public final int travelTicks;
     public final int edgeTicks;
     public final long journeyStartGameTime;
+    /** Stable leg identity from server {@link OutboundShipment#incomingReservationId}. */
+    public final long incomingReservationId;
     /**
      * Client-only: world game time when this leg’s progress was 0, derived at sync as
      * {@code clientGameTime - max(0, totalTravelTicks - travelTicks)} so each shipment stays distinct and motion
@@ -56,6 +58,7 @@ public final class DuctTransitVisual {
             int travelTicks,
             int edgeTicks,
             long journeyStartGameTime,
+            long incomingReservationId,
             long progressAnchorGameTime,
             @Nullable Direction sourceAttachFace,
             @Nullable Direction destAttachFace) {
@@ -67,6 +70,7 @@ public final class DuctTransitVisual {
         this.travelTicks = travelTicks;
         this.edgeTicks = Math.max(0, edgeTicks);
         this.journeyStartGameTime = journeyStartGameTime;
+        this.incomingReservationId = incomingReservationId;
         this.progressAnchorGameTime = progressAnchorGameTime;
         Direction pathStartFace = sourceAttachFace;
         Direction pathEndFace = destAttachFace;
@@ -97,6 +101,7 @@ public final class DuctTransitVisual {
                 s.travelTicks,
                 s.edgeTicks,
                 s.journeyStartGameTime,
+                s.incomingReservationId,
                 anchor,
                 s.sourceFace,
                 s.destFace);
@@ -146,6 +151,7 @@ public final class DuctTransitVisual {
             int tr = t.getInt("Tr");
             int elapsed = Math.max(0, tot - tr);
             long anchor = clientWorldGameTime - elapsed;
+            long inId = t.contains("InId", Tag.TAG_LONG) ? t.getLong("InId") : 0L;
             out.add(
                     new DuctTransitVisual(
                             ownerDuct,
@@ -155,6 +161,7 @@ public final class DuctTransitVisual {
                             tr,
                             t.getInt("Ed"),
                             t.getLong("J0"),
+                            inId,
                             anchor,
                             srcFace,
                             dstFace));
@@ -175,7 +182,9 @@ public final class DuctTransitVisual {
      * Arc-length progress along the full path polyline (0 = outside source node, 1 = outside destination node).
      */
     public float progress01(@Nullable Level level, float partialTick) {
-        long key = DuctTransitMotion.legKey(journeyStartGameTime, totalTravelTicks, ductPath);
+        long key =
+                DuctTransitMotion.legKey(
+                        journeyStartGameTime, totalTravelTicks, ductPath, incomingReservationId);
         float elapsed = DuctTransitMotion.smoothElapsedTicks(key, totalTravelTicks, travelTicks, level, partialTick);
         if (totalTravelTicks <= 0) {
             return 1f;

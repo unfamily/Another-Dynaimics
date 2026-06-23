@@ -62,6 +62,10 @@ public final class DuctTransitClientState {
 
     private static DuctTransitVisual findMatchingLeg(List<DuctTransitVisual> list, DuctTransitVisual probe) {
         for (DuctTransitVisual v : list) {
+            if (probe.incomingReservationId != 0L
+                    && v.incomingReservationId == probe.incomingReservationId) {
+                return v;
+            }
             if (v.journeyStartGameTime == probe.journeyStartGameTime
                     && v.totalTravelTicks == probe.totalTravelTicks
                     && v.edgeTicks == probe.edgeTicks
@@ -110,7 +114,8 @@ public final class DuctTransitClientState {
     private static void clearMotion(List<DuctTransitVisual> visuals) {
         for (DuctTransitVisual v : visuals) {
             DuctTransitMotion.removeLeg(
-                    DuctTransitMotion.legKey(v.journeyStartGameTime, v.totalTravelTicks, v.ductPath));
+                    DuctTransitMotion.legKey(
+                            v.journeyStartGameTime, v.totalTravelTicks, v.ductPath, v.incomingReservationId));
         }
     }
 

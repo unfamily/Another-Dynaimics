@@ -1,7 +1,9 @@
 package net.unfamily.another_dynamics.duct.logistics;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
@@ -90,6 +92,95 @@ public final class DuctTransitDebugLog {
             return;
         }
         LOG.info("[DUCT-TRN] extraction gated blockedKinds={} duct={}", blockedKinds, ductPos);
+    }
+
+    public static void scheduleExtract(
+            ServerLevel level,
+            BlockPos sourceDuct,
+            BlockPos destDuct,
+            Direction destFace,
+            int extracted,
+            int destCap,
+            ItemStack stack) {
+        if (!Config.DUCT_TRANSIT_DEBUG.get()) {
+            return;
+        }
+        long t = level.getGameTime();
+        if ((t + sourceDuct.asLong()) % 40L != 0L) {
+            return;
+        }
+        LOG.info(
+                "[DUCT-TRN] schedule extract={} destCap={} source={} dest={} face={} item={}",
+                extracted,
+                destCap,
+                sourceDuct,
+                destDuct,
+                destFace,
+                stack.isEmpty() ? "empty" : stack.getHoverName().getString());
+    }
+
+    public static void deliveryPartialInsert(ServerLevel level, OutboundShipment s, int inserted, int remainder) {
+        if (!Config.DUCT_TRANSIT_DEBUG.get()) {
+            return;
+        }
+        long t = level.getGameTime();
+        if ((t + s.destDuct.asLong()) % 40L != 0L) {
+            return;
+        }
+        LOG.info(
+                "[DUCT-TRN] delivery partial insert inserted={} remainder={} source={} dest={} item={}",
+                inserted,
+                remainder,
+                s.refundDuct,
+                s.destDuct,
+                s.stack.isEmpty() ? "empty" : s.stack.getHoverName().getString());
+    }
+
+    public static void itemDeliveryStallRemainder(
+            ServerLevel level,
+            OutboundShipment s,
+            ItemStack refund,
+            DeliveryFailDetail detail) {
+        if (!Config.DUCT_TRANSIT_DEBUG.get()) {
+            return;
+        }
+        long t = level.getGameTime();
+        if ((t + s.destDuct.asLong()) % 40L != 0L) {
+            return;
+        }
+        LOG.info(
+                "[DUCT-TRN] delivery stall remainder detail={} source={} dest={} count={} item={}",
+                detail,
+                s.refundDuct,
+                s.destDuct,
+                refund.isEmpty() ? 0 : refund.getCount(),
+                refund.isEmpty() ? "empty" : refund.getHoverName().getString());
+    }
+
+    public static void itemDeliveryStallImmediate(
+            ServerLevel level,
+            OutboundShipment s,
+            DeliveryFailDetail detail,
+            ItemStack refund,
+            int pendingSame,
+            int physicalCap) {
+        if (!Config.DUCT_TRANSIT_DEBUG.get()) {
+            return;
+        }
+        long t = level.getGameTime();
+        if ((t + s.destDuct.asLong()) % 40L != 0L) {
+            return;
+        }
+        LOG.info(
+                "[DUCT-TRN] delivery stall immediate detail={} source={} dest={} pendingSame={} physicalCap={} "
+                        + "count={} item={}",
+                detail,
+                s.refundDuct,
+                s.destDuct,
+                pendingSame,
+                physicalCap,
+                refund.isEmpty() ? 0 : refund.getCount(),
+                refund.isEmpty() ? "empty" : refund.getHoverName().getString());
     }
 
     public static void itemDeliveryDefer(ServerLevel level, OutboundShipment s, DeliveryFailDetail detail) {

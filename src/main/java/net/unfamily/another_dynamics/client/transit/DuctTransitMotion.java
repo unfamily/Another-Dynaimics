@@ -20,9 +20,15 @@ public final class DuctTransitMotion {
     private DuctTransitMotion() {}
 
     public static long legKey(long journeyStartGameTime, int totalTravelTicks, List<BlockPos> ductPath) {
+        return legKey(journeyStartGameTime, totalTravelTicks, ductPath, 0L);
+    }
+
+    public static long legKey(
+            long journeyStartGameTime, int totalTravelTicks, List<BlockPos> ductPath, long incomingReservationId) {
         long h = 0x9E3779B97F4A7C15L;
         h ^= journeyStartGameTime;
         h ^= (long) totalTravelTicks << 32;
+        h ^= incomingReservationId;
         if (ductPath != null && !ductPath.isEmpty()) {
             h ^= ductPath.getFirst().asLong();
             h ^= Long.rotateLeft(ductPath.getLast().asLong(), 16);

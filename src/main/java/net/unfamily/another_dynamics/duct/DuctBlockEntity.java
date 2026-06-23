@@ -107,10 +107,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     /** ~5s at 20 TPS for shift+click empty-hand stall media destroy confirmation. */
     private static final long STALL_MEDIA_CLEAR_ARM_TICKS = 100L;
     private static final int STALL_DRAIN_MAX_SENDS_PER_FACE_PER_TICK = 8;
-    /** Wait this many ticks before retrying delivery when the destination is temporarily full. */
-    private static final int ITEM_DELIVERY_DEFER_TICKS = 4;
-    /** Max total defer ticks per shipment leg before cancel + stall refund. */
-    private static final int ITEM_DELIVERY_DEFER_BUDGET = 200;
     /** Per-face throttle after successful outbound stall network drain (inbound drain has no cooldown). */
     private final int[] itemStallDrainFaceCooldown = new int[FACE_COUNT];
     private final int[] nonItemStallDrainFaceCooldown = new int[FACE_COUNT];
@@ -192,6 +188,80 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
         }
         setChanged();
+        if (!level.isClientSide()) {
+            pushTransitSnapshotToClients(level);
+        }
+    }
+
+    /**
+     * Destination insert failed after extract-at-schedule: refund to stall immediately (no delivery defer).
+     */
+    private void finishItemDeliveryStallImmediate(
+            ServerLevel level,
+            OutboundShipment s,
+            @Nullable Iterator<OutboundShipment> it,
+            ItemStack lump,
+            DuctTransitDebugLog.DeliveryFailDetail detail) {
+        if (!lump.isEmpty()) {
+            recordDestInsertRejected(level, s.destDuct, s.destFace, lump);
+        }
+        DuctInsertProbeCache.invalidateFace(s.destDuct, s.destFace);
+        ItemStack refund = lump.isEmpty() ? s.stack.copy() : lump.copy();
+        int pendingSame = -1;
+        int physicalCap = -1;
+        if (detail == DuctTransitDebugLog.DeliveryFailDetail.INSERT_CAP_ZERO && !refund.isEmpty()) {
+            List<ItemStack> prior = incomingPendingExcludingSelf(level, s);
+            IItemHandler destHandler = DuctCapHelper.getHandlerOnFace(level, s.destDuct, s.destFace);
+            if (destHandler != null) {
+                physicalCap = DuctItemInsertProbe.estimateMaxInsertable(destHandler, refund, refund.getCount());
+            }
+            for (ItemStack p : prior) {
+                if (ItemStack.isSameItemSameComponents(p, refund)) {
+                    pendingSame = Math.max(0, pendingSame) + p.getCount();
+                }
+            }
+            if (pendingSame < 0) {
+                pendingSame = 0;
+            }
+        }
+        DuctTransitDebugLog.itemDeliveryStallImmediate(level, s, detail, refund, pendingSame, physicalCap);
+        s.stack = ItemStack.EMPTY;
+        removeShipmentFromList(level, s, it);
+        if (!refund.isEmpty()) {
+            if (!tryRefundOrStall(level, s, refund)) {
+                DuctOverflowRouting.tryRefundToSourceNoDrop(
+                        level, s, refund, mergeScheduleOwnerWithExtras(worldPosition, s.refundDuct));
+            }
+        }
+        pushTransitSnapshotToClients(level);
+        setChanged();
+    }
+
+    /**
+     * Undeliverable remainder after extract-at-schedule: stall on {@code refundDuct} and close the shipment.
+     */
+    private void finishItemDeliveryStallRemainder(
+            ServerLevel level,
+            OutboundShipment s,
+            @Nullable Iterator<OutboundShipment> it,
+            ItemStack undeliverable,
+            DuctTransitDebugLog.DeliveryFailDetail detail) {
+        if (!undeliverable.isEmpty()) {
+            recordDestInsertRejected(level, s.destDuct, s.destFace, undeliverable);
+        }
+        DuctInsertProbeCache.invalidateFace(s.destDuct, s.destFace);
+        ItemStack refund = undeliverable.isEmpty() ? s.stack.copy() : undeliverable.copy();
+        DuctTransitDebugLog.itemDeliveryStallRemainder(level, s, refund, detail);
+        s.stack = ItemStack.EMPTY;
+        removeShipmentFromList(level, s, it);
+        if (!refund.isEmpty()) {
+            if (!tryRefundOrStall(level, s, refund)) {
+                DuctOverflowRouting.tryRefundToSourceNoDrop(
+                        level, s, refund, mergeScheduleOwnerWithExtras(worldPosition, s.refundDuct));
+            }
+        }
+        pushTransitSnapshotToClients(level);
+        setChanged();
     }
 
     private static List<ItemStack> incomingPendingExcludingSelf(ServerLevel level, OutboundShipment s) {
@@ -199,29 +269,30 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     /**
-     * @return {@code true} when delivery should be retried later; {@code false} when the shipment was cancelled.
+     * @return {@code true} to retry delivery next tick (in-flight siblings still hold cap); {@code false} if resolved.
      */
-    private boolean tryDeferItemDeliveryOrCancel(
+    private boolean handleDeliveryInsertCapZero(
             ServerLevel level,
             OutboundShipment s,
-            Iterator<OutboundShipment> it,
-            DuctTransitDebugLog.DeliveryFailDetail detail) {
-        if (s.deliveryDeferSpent >= ITEM_DELIVERY_DEFER_BUDGET) {
-            recordDestInsertRejected(level, s.destDuct, s.destFace, s.stack);
-            cancelOutboundShipment(
-                    level,
-                    s,
-                    it,
-                    DuctTransitDebugLog.CancelReason.DELIVERY_FAIL,
-                    DuctTransitDebugLog.DeliveryFailDetail.DEFER_TIMEOUT);
+            @Nullable Iterator<OutboundShipment> it,
+            BlockPos destDuct,
+            Direction destFace,
+            ItemStack chunk,
+            int take) {
+        if (take > 0) {
             return false;
         }
-        s.deliveryDeferTicks = ITEM_DELIVERY_DEFER_TICKS;
-        s.deliveryDeferSpent += ITEM_DELIVERY_DEFER_TICKS;
-        DuctInsertProbeCache.invalidateFace(s.destDuct, s.destFace);
-        DuctTransitDebugLog.itemDeliveryDefer(level, s, detail);
-        setChanged();
-        return true;
+        IItemHandler handler = DuctCapHelper.getHandlerOnFace(level, destDuct, destFace);
+        if (handler != null && DuctItemInsertProbe.canAcceptOne(handler, chunk)) {
+            return true;
+        }
+        finishItemDeliveryStallRemainder(
+                level, s, it, s.stack.copy(), DuctTransitDebugLog.DeliveryFailDetail.INSERT_CAP_ZERO);
+        return false;
+    }
+
+    private void applyPartialDeliveryRemainder(ServerLevel level, OutboundShipment s, int inserted, int remainder) {
+        DuctTransitDebugLog.deliveryPartialInsert(level, s, inserted, remainder);
     }
 
     private final DuctFaceLanes[] faceLanes = new DuctFaceLanes[FACE_COUNT];
@@ -777,7 +848,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     @Override
     public void setLevel(Level level) {
         super.setLevel(level);
-        if (level != null && level.isClientSide && !outboundShipments.isEmpty()) {
+        if (level != null && level.isClientSide()) {
             DuctTransitClientState.syncFromOutboundShipments(worldPosition, outboundShipments, level);
         }
     }
@@ -1445,11 +1516,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (!level.isLoaded(s.destDuct)) {
                 continue;
             }
-            if (s.deliveryDeferTicks > 0) {
-                s.deliveryDeferTicks--;
-                shipmentsDirty = true;
-                continue;
-            }
             if (!DuctTransitTopology.isItemShipmentPathIntact(level, s)
                     && !DuctTransitTopology.shouldAllowItemDeliveryDespiteBrokenPath(level, s)) {
                 cancelOutboundShipment(level, s, it, DuctTransitDebugLog.CancelReason.PATH_BREAK);
@@ -1463,23 +1529,25 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 transitVisualSync = true;
                 continue;
             }
-            boolean deliveryDeferred = false;
+            // In-flight reservations only: arrived shipments no longer block scheduling or sibling delivery.
+            DuctIncomingIndex.unregister(level, s.destDuct, s.destFace, s.incomingReservationId);
+            boolean deliveryPending = false;
             int deliverPasses = 0;
-            while (!deliveryDeferred && !s.stack.isEmpty() && deliverPasses < 64) {
+            while (!deliveryPending && !s.stack.isEmpty() && deliverPasses < 64) {
                 deliverPasses++;
                 if (s.destDuct.equals(worldPosition)) {
                     NodeMode destMode = getFaceLanes(s.destFace).nodeMode;
                     boolean retrieverInbound =
                             destMode == NodeMode.RETRIEVING || destMode == NodeMode.RETRIEVING_EXTRACTION;
-                    deliveryDeferred =
+                    deliveryPending =
                             retrieverInbound
                                     ? finishRetrieverArrival(level, s, it)
                                     : finishExtractionDelivery(level, s, it);
                 } else {
-                    deliveryDeferred = finishExtractionDelivery(level, s, it);
+                    deliveryPending = finishExtractionDelivery(level, s, it);
                 }
             }
-            if (deliveryDeferred) {
+            if (deliveryPending) {
                 continue;
             }
             transitVisualSync = true;
@@ -3120,9 +3188,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         maxInsertableAfterPendingOnFaceRespectingAllowLimit(
                                 level, s.destDuct, s.destFace, destBe, chunk, chunk.getCount(), priorR, false);
                 take = Math.min(take, maxIns);
+                if (handleDeliveryInsertCapZero(level, s, it, s.destDuct, s.destFace, chunk, take)) {
+                    return true;
+                }
                 if (take <= 0) {
-                    return tryDeferItemDeliveryOrCancel(
-                            level, s, it, DuctTransitDebugLog.DeliveryFailDetail.INSERT_CAP_ZERO);
+                    return false;
                 }
                 chunk.setCount(take);
             }
@@ -3147,16 +3217,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                             : DuctCapHelper.insertIntoFace(level, s.destDuct, s.destFace, toInsert);
             int inserted = DuctCapHelper.countAccepted(toInsert, remainder);
             if (inserted <= 0) {
-                return tryDeferItemDeliveryOrCancel(
-                        level, s, it, DuctTransitDebugLog.DeliveryFailDetail.INSERTED_ZERO);
+                finishItemDeliveryStallImmediate(
+                        level, s, it, chunk, DuctTransitDebugLog.DeliveryFailDetail.INSERTED_ZERO);
+                return false;
             }
             DuctInsertProbeCache.cacheAccept(level, s.destDuct, s.destFace, chunk, true);
-            s.deliveryDeferTicks = 0;
-            s.deliveryDeferSpent = 0;
             if (inserted < planned) {
                 s.stack.shrink(inserted);
-                s.registeredIncoming = s.stack.copy();
-                syncIncomingReservation(level, s);
+                applyPartialDeliveryRemainder(level, s, inserted, s.stack.getCount());
             } else {
                 s.stack = ItemStack.EMPTY;
                 removeShipmentFromList(level, s, it);
@@ -3265,8 +3333,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctInsertProbeCache.cacheAccept(level, s.destDuct, s.destFace, extracted, true);
         if (inserted < planned) {
             s.stack.shrink(inserted);
-            s.registeredIncoming = s.stack.copy();
-            syncIncomingReservation(level, s);
+            applyPartialDeliveryRemainder(level, s, inserted, s.stack.getCount());
         } else {
             s.stack = ItemStack.EMPTY;
             removeShipmentFromList(level, s, it);
@@ -3321,9 +3388,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         maxInsertableAfterPendingOnFaceRespectingAllowLimit(
                                 level, worldPosition, s.destFace, this, chunk, chunk.getCount(), priorR, false);
                 take = Math.min(take, maxIns);
+                if (handleDeliveryInsertCapZero(level, s, it, worldPosition, s.destFace, chunk, take)) {
+                    return true;
+                }
                 if (take <= 0) {
-                    return tryDeferItemDeliveryOrCancel(
-                            level, s, it, DuctTransitDebugLog.DeliveryFailDetail.INSERT_CAP_ZERO);
+                    return false;
                 }
                 chunk.setCount(take);
             }
@@ -3348,16 +3417,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                             : DuctCapHelper.insertIntoFace(level, worldPosition, s.destFace, toInsert);
             int inserted = DuctCapHelper.countAccepted(toInsert, remainder);
             if (inserted <= 0) {
-                return tryDeferItemDeliveryOrCancel(
-                        level, s, it, DuctTransitDebugLog.DeliveryFailDetail.INSERTED_ZERO);
+                finishItemDeliveryStallImmediate(
+                        level, s, it, chunk, DuctTransitDebugLog.DeliveryFailDetail.INSERTED_ZERO);
+                return false;
             }
             DuctInsertProbeCache.cacheAccept(level, worldPosition, s.destFace, chunk, true);
-            s.deliveryDeferTicks = 0;
-            s.deliveryDeferSpent = 0;
             if (inserted < planned) {
                 s.stack.shrink(inserted);
-                s.registeredIncoming = s.stack.copy();
-                syncIncomingReservation(level, s);
+                applyPartialDeliveryRemainder(level, s, inserted, s.stack.getCount());
             } else {
                 s.stack = ItemStack.EMPTY;
                 removeShipmentFromList(level, s, it);
@@ -3450,8 +3517,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctInsertProbeCache.cacheAccept(level, worldPosition, s.destFace, extracted, true);
         if (inserted < planned) {
             s.stack.shrink(inserted);
-            s.registeredIncoming = s.stack.copy();
-            syncIncomingReservation(level, s);
+            applyPartialDeliveryRemainder(level, s, inserted, s.stack.getCount());
         } else {
             s.stack = ItemStack.EMPTY;
             removeShipmentFromList(level, s, it);
@@ -3766,6 +3832,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (extracted.isEmpty()) {
                 continue;
             }
+            DuctTransitDebugLog.scheduleExtract(level, worldPosition, dest, destFace, extracted.getCount(), destCap, extracted);
             OutboundShipment sh =
                     new OutboundShipment(
                             extracted, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
@@ -4407,15 +4474,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct, destFace);
         ItemStack t = template.copy();
         t.setCount(want);
-        int allowCap =
-                retrieverAllowBank
-                        ? capInsertableForRetrieverAllowLimit(
-                                level, destDuct, destFace, destBe, t, want, prior)
-                        : capInsertableForFilterAllowLimit(
-                                level, destDuct, destFace, destBe, t, want, prior);
-        if (allowCap <= 0) {
-            return 0;
-        }
         if (DuctInsertProbeCache.isRejected(level, destDuct, destFace, template)) {
             return 0;
         }
@@ -4429,36 +4487,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             DuctInsertProbeCache.recordReject(level, destDuct, destFace, template);
             return 0;
         }
-        if (allowCap == 1) {
-            DuctInsertProbeCache.cacheAccept(level, destDuct, destFace, template, true);
-            return 1;
-        }
-        int physicalCap = DuctCapHelper.maxInsertableOnHandler(destHandler, t, allowCap);
-        if (physicalCap <= 0) {
+        int schedulable =
+                maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+                        level, destDuct, destFace, destBe, t, want, prior, retrieverAllowBank);
+        if (schedulable <= 0) {
             recordDestInsertRejected(level, destDuct, destFace, template);
             return 0;
         }
         DuctInsertProbeCache.cacheAccept(level, destDuct, destFace, template, true);
-        return Math.max(0, Math.min(want, Math.min(allowCap, physicalCap)));
-    }
-
-    private static boolean isOutboundShipmentBlockedUnsatisfiable(OutboundShipment s) {
-        if (s.stack.isEmpty() || s.transitPhase != TransitPhase.FORWARD) {
-            return false;
-        }
-        return s.travelTicks == 0 && s.deliveryDeferSpent > 0;
+        return schedulable;
     }
 
     private int distinctUnsatisfiableBlockedKinds() {
         List<ItemStack> kinds = new ArrayList<>();
-        for (OutboundShipment s : outboundShipments) {
-            if (!isOutboundShipmentBlockedUnsatisfiable(s)) {
-                continue;
-            }
-            if (!containsItemKind(kinds, s.stack)) {
-                kinds.add(s.stack);
-            }
-        }
         for (Direction dir : Direction.values()) {
             DuctFaceLanes lanes = getFaceLanes(dir);
             accumulateDistinctStallKinds(kinds, lanes.stalledBuffer);
@@ -6535,6 +6576,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (itemId != null) {
                 item.putString("VizId", itemId.toString());
             }
+            item.putLong("InId", s.incomingReservationId);
             item.putByte("Ph", (byte) TransitPhase.FORWARD.ordinal());
             item.putInt("Tot", s.totalTravelTicks);
             item.putInt("Tr", s.travelTicks);
