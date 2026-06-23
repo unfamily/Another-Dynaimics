@@ -81,6 +81,17 @@ public final class DuctTransitDebugLog {
         }
     }
 
+    public static void extractionGatedByUnsatisfiableTasks(ServerLevel level, BlockPos ductPos, int blockedKinds) {
+        if (!Config.DUCT_TRANSIT_DEBUG.get()) {
+            return;
+        }
+        long t = level.getGameTime();
+        if ((t + ductPos.asLong()) % 100L != 0L) {
+            return;
+        }
+        LOG.info("[DUCT-TRN] extraction gated blockedKinds={} duct={}", blockedKinds, ductPos);
+    }
+
     public static void itemDeliveryDefer(ServerLevel level, OutboundShipment s, DeliveryFailDetail detail) {
         if (!Config.DUCT_TRANSIT_DEBUG.get()) {
             return;

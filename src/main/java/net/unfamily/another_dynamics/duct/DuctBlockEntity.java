@@ -90,7 +90,12 @@ import org.jetbrains.annotations.Nullable;
  * {@link DuctFaceLanes#saveCopierSettings} (see {@link net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot}).
  */
 public final class DuctBlockEntity extends AbstractDuctBlockEntity {
-    private static final int MAX_BLOCKED_ITEM_KINDS = 5;
+    /**
+     * Stop new storage pulls when this many distinct unsatisfiable task kinds are pending (delivery-defer + stall
+     * buffers). Aligns with {@link net.unfamily.another_dynamics.duct.logistics.DuctOverflowBuffer} and per-face stall
+     * slot count; does not limit healthy in-transit diversity.
+     */
+    private static final int MAX_UNSATISFIABLE_BLOCKED_KINDS = 5;
     /** Cancel in-transit items stuck longer than expected travel (unblocks scheduling). */
     private static final long STALE_OUTBOUND_EXTRA_TICKS = 400L;
     private static final int FACE_COUNT = 6;
@@ -1379,25 +1384,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         long elapsed = level.getGameTime() - s.journeyStartGameTime;
         long budget = Math.max(STALE_OUTBOUND_EXTRA_TICKS, (long) s.totalTravelTicks * 4L + 200L);
         return elapsed > budget;
-    }
-
-    /** Drops the oldest pending shipment when the distinct-kind cap blocks new pulls. */
-    private void evictOldestOutboundIfKindCapFull(ServerLevel level) {
-        if (distinctPendingOutboundKinds() < MAX_BLOCKED_ITEM_KINDS || outboundShipments.isEmpty()) {
-            return;
-        }
-        int oldestIdx = 0;
-        long oldestStart = Long.MAX_VALUE;
-        for (int i = 0; i < outboundShipments.size(); i++) {
-            OutboundShipment o = outboundShipments.get(i);
-            if (o.journeyStartGameTime < oldestStart) {
-                oldestStart = o.journeyStartGameTime;
-                oldestIdx = i;
-            }
-        }
-        OutboundShipment victim = outboundShipments.remove(oldestIdx);
-        cancelOutboundShipment(level, victim, null, DuctTransitDebugLog.CancelReason.KIND_CAP_EVICTION);
-        pushTransitSnapshotToClients(level);
     }
 
     private void tickOutboundShipments(ServerLevel level) {
@@ -3592,11 +3578,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void tickExtractionPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction face, DuctFaceNode node) {
-        if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
-            evictOldestOutboundIfKindCapFull(level);
-            if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
-                return;
-            }
+        int blockedKinds = distinctUnsatisfiableBlockedKinds();
+        if (blockedKinds >= MAX_UNSATISFIABLE_BLOCKED_KINDS) {
+            DuctTransitDebugLog.extractionGatedByUnsatisfiableTasks(level, worldPosition, blockedKinds);
+            return;
         }
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
@@ -3803,11 +3788,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void tickRetrieverPullForFace(ServerLevel level, DuctItemTransportSpec spec, Direction retrieverFace, DuctFaceNode node) {
-        if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
-            evictOldestOutboundIfKindCapFull(level);
-            if (distinctPendingOutboundKinds() >= MAX_BLOCKED_ITEM_KINDS) {
-                return;
-            }
+        int blockedKinds = distinctUnsatisfiableBlockedKinds();
+        if (blockedKinds >= MAX_UNSATISFIABLE_BLOCKED_KINDS) {
+            DuctTransitDebugLog.extractionGatedByUnsatisfiableTasks(level, worldPosition, blockedKinds);
+            return;
         }
         if (overflowBuffer.isSchedulingUnavailableForNewPulls()) {
             return;
@@ -4458,17 +4442,41 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return Math.max(0, Math.min(want, Math.min(allowCap, physicalCap)));
     }
 
-    private int distinctPendingOutboundKinds() {
+    private static boolean isOutboundShipmentBlockedUnsatisfiable(OutboundShipment s) {
+        if (s.stack.isEmpty() || s.transitPhase != TransitPhase.FORWARD) {
+            return false;
+        }
+        return s.travelTicks == 0 && s.deliveryDeferSpent > 0;
+    }
+
+    private int distinctUnsatisfiableBlockedKinds() {
         List<ItemStack> kinds = new ArrayList<>();
         for (OutboundShipment s : outboundShipments) {
-            if (s.stack.isEmpty()) {
+            if (!isOutboundShipmentBlockedUnsatisfiable(s)) {
                 continue;
             }
             if (!containsItemKind(kinds, s.stack)) {
                 kinds.add(s.stack);
             }
         }
+        for (Direction dir : Direction.values()) {
+            DuctFaceLanes lanes = getFaceLanes(dir);
+            accumulateDistinctStallKinds(kinds, lanes.stalledBuffer);
+            accumulateDistinctStallKinds(kinds, lanes.inboundStallBuffer);
+        }
         return kinds.size();
+    }
+
+    private static void accumulateDistinctStallKinds(List<ItemStack> kinds, net.neoforged.neoforge.items.ItemStackHandler handler) {
+        for (int i = 0; i < handler.getSlots(); i++) {
+            ItemStack st = handler.getStackInSlot(i);
+            if (st.isEmpty()) {
+                continue;
+            }
+            if (!containsItemKind(kinds, st)) {
+                kinds.add(st);
+            }
+        }
     }
 
     private static boolean containsItemKind(List<ItemStack> kinds, ItemStack probe) {
