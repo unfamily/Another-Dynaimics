@@ -10,6 +10,8 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue DUCT_ROUTING_DEBUG;
     public static final ModConfigSpec.BooleanValue DUCT_CACHE_DEBUG;
 
+    public static final ModConfigSpec.BooleanValue DUCT_GLOBAL_STALL_DRAIN_GUARD;
+
     static {
         BUILDER.comment("Developer diagnostics").push("dev");
         FILTER_SYNC_DEBUG =
@@ -32,6 +34,15 @@ public final class Config {
                                 "Duct network cache invalidation tracing (log tag [DUCT-CCH]). "
                                         + "Logs topology invalidates with abbreviated caller.")
                         .define("003_ductCacheDebug", false);
+        BUILDER.pop();
+
+        BUILDER.comment("Duct logistics tuning").push("logistics");
+        DUCT_GLOBAL_STALL_DRAIN_GUARD =
+                BUILDER.comment(
+                                "Whole-duct safety-net throttle for the item stall drain scan. When true, a duct whose "
+                                        + "stall drain makes no progress is skipped entirely for a few ticks (lighter on "
+                                        + "TPS). Set false to keep only the finer per-face throttle.")
+                        .define("100_ductGlobalStallDrainGuard", true);
         BUILDER.pop();
     }
 

@@ -247,12 +247,13 @@ public final class DuctFaceNode {
         ticksUntilAction = 0;
     }
 
-    /** Whether extract batch should track the GUI setting cap when modules raise it. */
+    /**
+     * Whether extract batch should track the GUI setting cap when modules raise it. Driven solely by the explicit
+     * flag (set by the GUI "M" button); a value the player set below the cap must never be auto-raised. Legacy saves
+     * without the flag are migrated once in {@link #loadExtractBatchPinnedFromTag}.
+     */
     public boolean isExtractBatchPinnedToCap() {
-        if (extractBatchPinnedToMax) {
-            return true;
-        }
-        return lastExtractBatchSettingCapApplied > 0 && extractBatch >= lastExtractBatchSettingCapApplied;
+        return extractBatchPinnedToMax;
     }
 
     private void loadExtractBatchPinnedFromTag(CompoundTag tag) {

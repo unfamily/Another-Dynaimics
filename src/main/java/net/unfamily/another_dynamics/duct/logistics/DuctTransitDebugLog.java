@@ -105,14 +105,23 @@ public final class DuctTransitDebugLog {
         LOG.info("[DUCT-TRN] extraction gated overflowLines={} duct={}", overflowLines, ductPos);
     }
 
+    /** Min ticks between {@link #stallDrainFailed} lines for the same duct face (dedupe burst within a tick). */
+    private static final long STALL_DRAIN_FAILED_LOG_INTERVAL = 40L;
+
+    private static final java.util.concurrent.ConcurrentHashMap<Long, Long> STALL_DRAIN_FAILED_LAST_LOG =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public static void stallDrainFailed(ServerLevel level, BlockPos ductPos, Direction face, String reason) {
         if (!Config.DUCT_TRANSIT_DEBUG.get()) {
             return;
         }
         long t = level.getGameTime();
-        if ((t + ductPos.asLong()) % 40L != 0L) {
+        long key = ductPos.asLong() * 6L + face.ordinal();
+        Long last = STALL_DRAIN_FAILED_LAST_LOG.get(key);
+        if (last != null && t - last < STALL_DRAIN_FAILED_LOG_INTERVAL) {
             return;
         }
+        STALL_DRAIN_FAILED_LAST_LOG.put(key, t);
         LOG.info("[DUCT-TRN] stall drain failed duct={} face={} reason={}", ductPos, face, reason);
     }
 

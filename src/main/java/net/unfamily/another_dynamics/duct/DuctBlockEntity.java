@@ -30,6 +30,7 @@ import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
+import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.logistics.DuctActionScheduling;
 import net.unfamily.another_dynamics.duct.logistics.DuctCapHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctHandlerSlotSemantics;
@@ -107,9 +108,20 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     /** ~5s at 20 TPS for shift+click empty-hand stall media destroy confirmation. */
     private static final long STALL_MEDIA_CLEAR_ARM_TICKS = 100L;
     private static final int STALL_DRAIN_MAX_SENDS_PER_FACE_PER_TICK = 8;
-    /** Per-face throttle after successful outbound stall network drain (inbound drain has no cooldown). */
+    /** Per-face throttle after an outbound stall network drain scan (success or no-progress). */
     private final int[] itemStallDrainFaceCooldown = new int[FACE_COUNT];
     private final int[] nonItemStallDrainFaceCooldown = new int[FACE_COUNT];
+    /**
+     * Whole-duct throttle (safety net, 0747db4 style): when {@code > 0} the entire item stall drain scan is skipped
+     * for the tick. Gated by {@link Config#DUCT_GLOBAL_STALL_DRAIN_GUARD}.
+     */
+    private int itemStallDrainGlobalCooldown;
+    /**
+     * Set by {@link #maxSchedulableTowardFace} on the {@code forStallResend} zero path: true when capacity exists
+     * physically but is fully reserved by in-flight shipments (transient), false on genuine cap/allow/handler
+     * saturation. Read by {@link #commitStallResendFromSlot} to avoid logging/latching a real reject.
+     */
+    private boolean lastStallResendPendingCovered;
 
     /**
      * After chunk load, {@link Level#getBlockState} can see an {@link AbstractDuctBlock} before the
@@ -282,18 +294,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (take > 0) {
             return false;
         }
-        IItemHandler handler = DuctCapHelper.getHandlerOnFace(level, destDuct, destFace);
-        if (handler != null && DuctItemInsertProbe.canAcceptOne(handler, chunk)) {
-            int physicalCap = DuctItemInsertProbe.estimateMaxInsertable(handler, chunk, chunk.getCount());
-            int pendingSame = 0;
-            for (ItemStack p : incomingPendingExcludingSelf(level, s)) {
-                if (ItemStack.isSameItemSameComponents(p, chunk)) {
-                    pendingSame += p.getCount();
-                }
-            }
-            if (physicalCap > pendingSame) {
-                return true;
-            }
+        // take now reflects the real handler capacity (in-flight pending is no longer subtracted at delivery):
+        // 0 means the destination genuinely has no room (full or allow-limit reached). Retry only while the
+        // destination block entity is still loading; otherwise stall the real remainder for a later re-send.
+        if (DuctCapHelper.getHandlerOnFace(level, destDuct, destFace) == null
+                && ductBlockPresentButBlockEntityPending(level, destDuct)) {
+            return true;
         }
         finishItemDeliveryStallRemainder(
                 level, s, it, s.stack.copy(), DuctTransitDebugLog.DeliveryFailDetail.INSERT_CAP_ZERO);
@@ -1225,6 +1231,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         tickGasTransitShipments(serverLevel);
         tickOverflowBufferDrain(serverLevel);
         tickMigratedBacklogFlush(serverLevel);
+        if (itemStallDrainGlobalCooldown > 0) {
+            itemStallDrainGlobalCooldown--;
+        }
         for (int i = 0; i < FACE_COUNT; i++) {
             if (itemStallDrainFaceCooldown[i] > 0) {
                 itemStallDrainFaceCooldown[i]--;
@@ -1282,11 +1291,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private void drainFaceStallsToSource(ServerLevel level) {
         boolean changed = false;
         int storageMask = getStorageMask();
+        // Whole-duct safety net (0747db4 style), config-gated: skip the expensive outbound stall scan while cooling
+        // down. Inbound drain to adjacent inventories stays active (it is cheap and local).
+        boolean globalGuard = Config.DUCT_GLOBAL_STALL_DRAIN_GUARD.get();
+        boolean outboundScanAllowed = !globalGuard || itemStallDrainGlobalCooldown <= 0;
         boolean stallKindGated = distinctUnsatisfiableBlockedKinds() >= MAX_UNSATISFIABLE_BLOCKED_KINDS;
         int maxSendsPerFace =
                 stallKindGated
                         ? STALL_DRAIN_MAX_SENDS_PER_FACE_PER_TICK * 2
                         : STALL_DRAIN_MAX_SENDS_PER_FACE_PER_TICK;
+        boolean anyScanned = false;
+        boolean anyProgress = false;
         for (Direction face : Direction.values()) {
             int ord = face.ordinal();
             if ((storageMask & (1 << ord)) == 0) {
@@ -1299,12 +1314,17 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (tryDrainInboundItemStallToAdjacent(level, face, lanes)) {
                 changed = true;
             }
+            if (!outboundScanAllowed) {
+                continue;
+            }
             if (!DuctCapHelper.outboundStallHasContent(lanes)) {
                 continue;
             }
-            if (itemStallDrainFaceCooldown[ord] > 0 && !stallKindGated) {
+            // Per-face throttle applies on every scan (success or no-progress) to avoid per-tick re-scanning.
+            if (itemStallDrainFaceCooldown[ord] > 0) {
                 continue;
             }
+            anyScanned = true;
             int sends = 0;
             while (sends < maxSendsPerFace
                     && DuctCapHelper.outboundStallHasContent(lanes)) {
@@ -1314,9 +1334,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 sends++;
                 changed = true;
             }
+            itemStallDrainFaceCooldown[ord] = ITEM_STALL_DRAIN_SCAN_INTERVAL;
             if (sends > 0) {
-                itemStallDrainFaceCooldown[ord] = ITEM_STALL_DRAIN_SCAN_INTERVAL;
+                anyProgress = true;
             }
+        }
+        // If every scanned face made no progress this pass, cool the whole duct down (safety net).
+        if (globalGuard && anyScanned && !anyProgress) {
+            itemStallDrainGlobalCooldown = ITEM_STALL_DRAIN_SCAN_INTERVAL;
         }
         if (changed) {
             syncStallVisualIfNeeded();
@@ -3221,10 +3246,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             ItemStack chunk = s.stack.copy();
             chunk.setCount(take);
             if (!s.legacyOmniFaces) {
-                List<ItemStack> priorR = incomingPendingExcludingSelf(level, s);
+                // Item is physically here: use the real handler capacity (no in-flight pending subtraction).
+                // Pending reservations only guard scheduling overcommit, not the actual insert of an arrived stack.
                 int maxIns =
                         maxInsertableAfterPendingOnFaceRespectingAllowLimit(
-                                level, s.destDuct, s.destFace, destBe, chunk, chunk.getCount(), priorR, false);
+                                level, s.destDuct, s.destFace, destBe, chunk, chunk.getCount(), List.of(), false);
                 take = Math.min(take, maxIns);
                 if (handleDeliveryInsertCapZero(level, s, it, s.destDuct, s.destFace, chunk, take)) {
                     return true;
@@ -3300,7 +3326,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         : DuctCapHelper.countExtractableMatchingOnFace(
                                 level, s.refundDuct, s.sourceFace, s.stack, planned);
         int insLimit = Math.min(planned, Math.min(capExt, moduleCap));
-        List<ItemStack> prior = incomingPendingExcludingSelf(level, s);
+        // Delivery time: the shipment is being finalized here and competes for the real handler capacity.
+        // Do not subtract in-flight pending siblings (they partial-insert/stall on their own arrival).
+        List<ItemStack> prior = List.of();
         int capIn =
                 s.legacyOmniFaces
                         ? DuctCapHelper.maxInsertableAfterPending(
@@ -3421,10 +3449,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             ItemStack chunk = s.stack.copy();
             chunk.setCount(take);
             if (!s.legacyOmniFaces) {
-                List<ItemStack> priorR = incomingPendingExcludingSelf(level, s);
+                // Item is physically here: use the real handler capacity (no in-flight pending subtraction).
                 int maxIns =
                         maxInsertableAfterPendingOnFaceRespectingAllowLimit(
-                                level, worldPosition, s.destFace, this, chunk, chunk.getCount(), priorR, false);
+                                level, worldPosition, s.destFace, this, chunk, chunk.getCount(), List.of(), false);
                 take = Math.min(take, maxIns);
                 if (handleDeliveryInsertCapZero(level, s, it, worldPosition, s.destFace, chunk, take)) {
                     return true;
@@ -3484,7 +3512,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         : DuctCapHelper.countExtractableMatchingOnFace(
                                 level, s.refundDuct, s.sourceFace, s.stack, planned);
         int insLimit = Math.min(planned, Math.min(capExt, moduleCap));
-        List<ItemStack> prior = incomingPendingExcludingSelf(level, s);
+        // Delivery time: compete for real handler capacity, no in-flight pending subtraction.
+        List<ItemStack> prior = List.of();
         int capIn =
                 s.legacyOmniFaces
                         ? DuctCapHelper.maxInsertableAfterPending(
@@ -3754,6 +3783,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int highestPendingFullPriority = Integer.MIN_VALUE;
 
         int lastSuccessfulCandIdx = 0;
+        // Round-robin: index of the first candidate that is genuinely full (no in-flight reservations holding it).
+        // If no candidate gets served this tick, rotate the cursor past it so the duct does not hammer a full
+        // destination every tick and other destinations get a turn.
+        int firstGenuinelyFullCandIdx = -1;
         for (int candIdx = 0; candIdx < candidates.size() && candIdx < EXTRACTION_ROUTE_RETRY_CAP; candIdx++) {
             DuctTargetSelector.ExtractionCandidate cand = candidates.get(candIdx);
 
@@ -3850,9 +3883,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             planned.setCount(plannedCount);
             int destCap = maxSchedulableTowardFace(level, dest, destBe, destFace, planned, plannedCount);
             if (destCap <= 0) {
-                if (!DuctIncomingIndex.snapshot(level, dest, destFace).isEmpty()
-                        && cand.priority() > highestPendingFullPriority) {
-                    highestPendingFullPriority = cand.priority();
+                if (!DuctIncomingIndex.snapshot(level, dest, destFace).isEmpty()) {
+                    if (cand.priority() > highestPendingFullPriority) {
+                        highestPendingFullPriority = cand.priority();
+                    }
+                } else if (roundRobinRouting && firstGenuinelyFullCandIdx < 0) {
+                    firstGenuinelyFullCandIdx = candIdx;
                 }
                 continue;
             }
@@ -3890,6 +3926,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 node.roundRobinCursor = rrFrozen + lastSuccessfulCandIdx + 1;
             }
             return;
+        }
+        // No shipment scheduled this tick: rotate past a genuinely-full destination so round-robin keeps moving.
+        if (roundRobinRouting && firstGenuinelyFullCandIdx >= 0) {
+            node.roundRobinCursor = rrFrozen + firstGenuinelyFullCandIdx + 1;
         }
     }
 
@@ -4324,8 +4364,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int destCap =
                 maxSchedulableTowardFaceRoutingForStall(level, dest, destBe, destFace, st, plannedCount);
         if (destCap <= 0) {
+            if (lastStallResendPendingCovered) {
+                // Capacity exists but is fully reserved by in-flight shipments: the stalled copy waits quietly.
+                // Not a failure, not a real reject — per-face cooldown (see drainFaceStallsToSource) backs us off.
+                return false;
+            }
             DuctTransitDebugLog.stallDrainFailed(level, worldPosition, face, "destCapZero");
-            DuctInsertProbeCache.invalidateFace(dest, destFace);
             return false;
         }
         DuctDirectionalEndpoint destCounterparty =
@@ -4542,10 +4586,20 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (!forStallResend) {
                 // Normal scheduling: record reject to avoid re-probing a truly-full destination.
                 recordDestInsertRejected(level, destDuct, destFace, template);
+                return 0;
             }
-            // forStallResend: handler passed canAcceptOne but in-flight pending fills cap — transient, don't latch reject.
+            // Stall resend: distinguish "covered by in-flight pending" (transient, do not latch reject)
+            // from genuine cap/allow saturation (latch a short reject so scans back off for REJECT_TTL_TICKS).
+            int withoutPending =
+                    maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+                            level, destDuct, destFace, destBe, t, want, List.of(), retrieverAllowBank);
+            lastStallResendPendingCovered = withoutPending > 0;
+            if (!lastStallResendPendingCovered) {
+                recordDestInsertRejected(level, destDuct, destFace, template);
+            }
             return 0;
         }
+        lastStallResendPendingCovered = false;
         DuctInsertProbeCache.cacheAccept(level, destDuct, destFace, template, true);
         return schedulable;
     }
@@ -6142,13 +6196,6 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         node.insertionPriority = insertionPriority;
         node.extractBatch = Math.max(0, extractBatch);
         node.eligibilityMode = DuctFaceNode.EligibilityMode.fromOrdinal(eligibilityModeOrdinal);
-        if (kind == DuctTransportKind.FLUID) {
-            clampFluidExtractAmount(node, accessFace);
-        } else if (kind == DuctTransportKind.GAS) {
-            clampGasExtractAmount(node, accessFace);
-        } else {
-            clampExtractAmount(node, accessFace);
-        }
         int cap =
                 switch (kind) {
                     case FLUID -> computeFluidExtractBatchSettingCap(accessFace);
@@ -6156,7 +6203,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case ENERGY, HEAT -> 0;
                     case ITEM -> computeExtractBatchSettingCap(accessFace);
                 };
+        // Explicit user set: pin to cap only when the player chose the cap itself, BEFORE the clamp below.
+        // This prevents a stale pin flag from re-raising a value the player intentionally lowered.
         node.extractBatchPinnedToMax = cap > 0 && node.extractBatch >= cap;
+        if (kind == DuctTransportKind.FLUID) {
+            clampFluidExtractAmount(node, accessFace);
+        } else if (kind == DuctTransportKind.GAS) {
+            clampGasExtractAmount(node, accessFace);
+        } else {
+            clampExtractAmount(node, accessFace);
+        }
         setChanged();
         invalidateRoutingEndpointCache();
         refreshMenuData(accessFace);
