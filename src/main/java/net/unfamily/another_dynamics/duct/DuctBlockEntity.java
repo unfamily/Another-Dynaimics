@@ -1293,6 +1293,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             DuctFaceLanes lanes = getFaceLanes(face);
+            if (!DuctRedstoneLogic.isFaceTransportActive(level, worldPosition, lanes.redstoneMode)) {
+                continue;
+            }
             if (tryDrainInboundItemStallToAdjacent(level, face, lanes)) {
                 changed = true;
             }
@@ -1330,6 +1333,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (mode != NodeMode.RETRIEVING
                 && mode != NodeMode.FILTERING_INSERTION
                 && mode != NodeMode.NONE) {
+            return false;
+        }
+        if (!DuctRedstoneLogic.isFaceTransportActive(level, worldPosition, lanes.redstoneMode)) {
             return false;
         }
         if (!DuctCapHelper.inboundStallHasContent(lanes)) {
@@ -2838,23 +2844,41 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     /**
+     * Whether a live storage node voxel is present on this face.
+     * Ignores redstone / transport state — use this for player interaction and stall overlay, not transport logic.
+     */
+    public boolean faceShowsStorageNode(Direction face) {
+        int bit = 1 << face.ordinal();
+        return (getVisualStorageMask() & bit) != 0
+                && (getUserDisconnectedFaceMask() & bit) == 0;
+    }
+
+    /**
      * Whether {@code node_buffer.png} should render on this face (item / fluid / gas stalled shipments only).
      * Energy and heat use instant transfer and internal buffers — no stall overlay on the node model.
+     *
+     * <p>Item stall is shown only when the duct-wide unsatisfiable task count reaches the cap
+     * ({@link #MAX_UNSATISFIABLE_BLOCKED_KINDS}), aligning the visual with the logistics gate.
+     * Fluid and gas stall shows on any buffered content (no kind-cap concept for those).
+     * The guard uses {@link #faceShowsStorageNode} so the overlay remains visible even when
+     * redstone disables transport on this face.</p>
      */
     public boolean faceHasVisibleStall(Direction face) {
-        if (!faceShowsActiveStorageNode(face)) {
+        if (!faceShowsStorageNode(face)) {
             return false;
         }
         DuctFaceLanes lanes = getFaceLanes(face);
-        if (isTransportKindEnabled(face, DuctTransportKind.ITEM)) {
-            for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
-                if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
-                    return true;
+        if (isTransportKindEnabled(face, DuctTransportKind.ITEM) || lanes.stalledBuffer.getSlots() > 0) {
+            if (distinctUnsatisfiableBlockedKinds() >= MAX_UNSATISFIABLE_BLOCKED_KINDS) {
+                for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+                    if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
+                        return true;
+                    }
                 }
-            }
-            for (int i = 0; i < lanes.inboundStallBuffer.getSlots(); i++) {
-                if (!lanes.inboundStallBuffer.getStackInSlot(i).isEmpty()) {
-                    return true;
+                for (int i = 0; i < lanes.inboundStallBuffer.getSlots(); i++) {
+                    if (!lanes.inboundStallBuffer.getStackInSlot(i).isEmpty()) {
+                        return true;
+                    }
                 }
             }
         }
@@ -4301,6 +4325,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 maxSchedulableTowardFaceRoutingForStall(level, dest, destBe, destFace, st, plannedCount);
         if (destCap <= 0) {
             DuctTransitDebugLog.stallDrainFailed(level, worldPosition, face, "destCapZero");
+            DuctInsertProbeCache.invalidateFace(dest, destFace);
             return false;
         }
         DuctDirectionalEndpoint destCounterparty =
@@ -4514,7 +4539,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 maxInsertableAfterPendingOnFaceRespectingAllowLimit(
                         level, destDuct, destFace, destBe, t, want, prior, retrieverAllowBank);
         if (schedulable <= 0) {
-            recordDestInsertRejected(level, destDuct, destFace, template);
+            if (!forStallResend) {
+                // Normal scheduling: record reject to avoid re-probing a truly-full destination.
+                recordDestInsertRejected(level, destDuct, destFace, template);
+            }
+            // forStallResend: handler passed canAcceptOne but in-flight pending fills cap — transient, don't latch reject.
             return 0;
         }
         DuctInsertProbeCache.cacheAccept(level, destDuct, destFace, template, true);
@@ -6814,12 +6843,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return mask;
     }
 
-    /** Client: apply server StallMask only on faces that still show an active storage node. */
+    /** Client: apply server StallMask only on faces that still show a storage node (ignores redstone). */
     private int filterStallMaskForActiveFaces(int serverStallMask) {
         int mask = 0;
         for (Direction d : Direction.values()) {
             int bit = 1 << d.ordinal();
-            if ((serverStallMask & bit) != 0 && faceShowsActiveStorageNode(d)) {
+            if ((serverStallMask & bit) != 0 && faceShowsStorageNode(d)) {
                 mask |= bit;
             }
         }

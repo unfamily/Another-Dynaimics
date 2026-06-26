@@ -118,7 +118,7 @@ public class DuctBlock extends AbstractDuctBlock {
 
     /** Whether the player may open the node GUI / shift-clear stall on this face. */
     private static boolean canInteractWithActiveStorageNode(DuctBlockEntity duct, Direction face) {
-        return duct.faceShowsActiveStorageNode(face);
+        return duct.faceShowsStorageNode(face);
     }
 
     /**
