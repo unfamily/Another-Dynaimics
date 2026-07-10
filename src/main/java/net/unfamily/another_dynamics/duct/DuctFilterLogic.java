@@ -5,7 +5,7 @@ import java.util.List;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -94,7 +94,7 @@ public final class DuctFilterLogic {
         }
         HolderLookup.Provider reg = level.registryAccess();
         Item item = stack.getItem();
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(item);
         String itemIdStr = itemId.toString();
         String itemModId = itemId.getNamespace();
 
@@ -191,7 +191,7 @@ public final class DuctFilterLogic {
         }
         HolderLookup.Provider reg = level.registryAccess();
         Item item = stack.getItem();
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(item);
         String itemIdStr = itemId.toString();
         String itemModId = itemId.getNamespace();
         List<String> allow = node.bankAllowFilters(bank);
@@ -217,7 +217,7 @@ public final class DuctFilterLogic {
         }
         HolderLookup.Provider reg = level.registryAccess();
         Item item = stack.getItem();
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(item);
         String itemIdStr = itemId.toString();
         String itemModId = itemId.getNamespace();
         return DuctFilterUnitLogic.denyBlocksAllowUnit(
@@ -264,7 +264,7 @@ public final class DuctFilterLogic {
             String trimmed,
             ItemStack stack,
             Item item,
-            ResourceLocation itemId,
+            Identifier itemId,
             String itemIdStr,
             String itemModId,
             HolderLookup.Provider registries,
@@ -284,7 +284,7 @@ public final class DuctFilterLogic {
             @Nullable DuctDirectionalEndpoint counterparty,
             ItemStack stack,
             Item item,
-            ResourceLocation itemId,
+            Identifier itemId,
             String itemIdStr,
             String itemModId,
             HolderLookup.Provider registries) {

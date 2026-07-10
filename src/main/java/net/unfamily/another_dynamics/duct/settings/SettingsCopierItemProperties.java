@@ -2,7 +2,7 @@ package net.unfamily.another_dynamics.duct.settings;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
@@ -14,11 +14,11 @@ import net.unfamily.another_dynamics.registry.ModDataComponents;
  */
 public final class SettingsCopierItemProperties {
     /** 1 = {@link SettingsCopierStoreKind#FILTER} (see {@link ModDataComponents#SETTINGS_COPIER_FILTER}). */
-    public static final ResourceLocation COPIER_FILTER =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "copier_filter");
+    public static final Identifier COPIER_FILTER =
+            Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "copier_filter");
     /** 1 = snapshot present in {@link ModDataComponents#DUCT_FACE_SETTINGS}. */
-    public static final ResourceLocation COPIER_FILLED =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "copier_filled");
+    public static final Identifier COPIER_FILLED =
+            Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "copier_filled");
 
     private SettingsCopierItemProperties() {}
 

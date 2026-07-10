@@ -7,7 +7,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportChannel;
 
@@ -25,13 +25,13 @@ final class ExternalUpgradeStackComponents {
         if (!(encoded instanceof CompoundTag root)) {
             return null;
         }
-        if (!root.contains("components", Tag.TAG_COMPOUND)) {
+        if (!root.contains("components")) {
             return null;
         }
-        CompoundTag components = root.getCompound("components");
+        CompoundTag components = root.getCompoundOrEmpty("components");
         String key = ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE + ":" + channel.componentSuffix();
-        if (components.contains(key, Tag.TAG_COMPOUND)) {
-            return components.getCompound(key);
+        if (components.contains(key)) {
+            return components.getCompoundOrEmpty(key);
         }
         return null;
     }
@@ -46,7 +46,7 @@ final class ExternalUpgradeStackComponents {
     }
 
     static boolean isUpgradeItem(ItemStack stack) {
-        ResourceLocation id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem());
+        Identifier id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem());
         return id != null
                 && ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE.equals(id.getNamespace())
                 && id.getPath().endsWith("_upgrade");

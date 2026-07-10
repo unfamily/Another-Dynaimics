@@ -6,13 +6,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 /**
  * Datapack duct declaration. {@link #defaultTexture} is read from {@code rendering.default_texture} and is the
  * authoritative block texture for composite duct rendering until multi-layer rules exist.
  *
- * <p>Optional {@link #compositeModelDefault} / {@link #compositeModelLine} are {@link ResourceLocation}s of block
+ * <p>Optional {@link #compositeModelDefault} / {@link #compositeModelLine} are {@link Identifier}s of block
  * models under {@code assets/&lt;ns&gt;/models/...} (same convention as {@code namespace:block/path}). Piece names
  * must match the engine ({@code center}, {@code con_*}, {@code node_*}, and a {@code center} element in the line
  * model).</p>
@@ -30,7 +30,7 @@ import net.minecraft.resources.ResourceLocation;
  * {@link DuctFaceLanes#saveCopierSettings} for enabled kinds only.</p>
  */
 public record DuctDefinition(
-        ResourceLocation dataId,
+        Identifier dataId,
         String logicalId,
         Optional<String> translationKey,
         List<String> transportKinds,
@@ -39,9 +39,9 @@ public record DuctDefinition(
         Optional<DuctGasTransportSpec> gasTransport,
         Optional<DuctEnergyTransportSpec> energyTransport,
         Optional<DuctHeatTransportSpec> heatTransport,
-        ResourceLocation defaultTexture,
-        Optional<ResourceLocation> compositeModelDefault,
-        Optional<ResourceLocation> compositeModelLine,
+        Identifier defaultTexture,
+        Optional<Identifier> compositeModelDefault,
+        Optional<Identifier> compositeModelLine,
         boolean putInCreativeMenu,
         Optional<String> sound,
         boolean restrictionsConnectWithCompatible,

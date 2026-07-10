@@ -1,10 +1,11 @@
 package net.unfamily.another_dynamics.client.gui;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import java.util.function.IntConsumer;
@@ -58,14 +59,14 @@ public final class ChannelLetterButton extends AbstractWidget {
         value = value <= MIN ? MAX : value - 1;
     }
 
-    @Override
-    protected boolean isValidClickButton(int button) {
+    private boolean isValidClickButton(int button) {
         return button == 0 || button == 1;
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (active && visible && isValidClickButton(button) && clicked(mouseX, mouseY)) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        int button = event.button();
+        if (active && visible && isValidClickButton(button) && isMouseOver(event.x(), event.y())) {
             playDownSound(Minecraft.getInstance().getSoundManager());
             if (Screen.hasShiftDown()) {
                 value = MIN;
@@ -88,7 +89,7 @@ public final class ChannelLetterButton extends AbstractWidget {
     }
 
     @Override
-    protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    protected void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (hubPlaceholder) {
             int bg = LetterPalette.backgroundArgb(0);
             graphics.fill(getX() + 1, getY() + 1, getX() + width - 1, getY() + height - 1, bg);
@@ -111,7 +112,7 @@ public final class ChannelLetterButton extends AbstractWidget {
         String label = String.valueOf((char) ('A' + value - 1));
         int textColor = LetterPalette.textArgb(value);
         int lw = Minecraft.getInstance().font.width(label);
-        graphics.drawString(
+        graphics.text(
                 Minecraft.getInstance().font,
                 label,
                 getX() + (width - lw) / 2,

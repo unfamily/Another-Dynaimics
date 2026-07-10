@@ -12,7 +12,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -25,7 +25,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
-import net.neoforged.neoforge.client.model.data.ModelData;
+import net.neoforged.neoforge.model.data.ModelData;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
@@ -826,11 +826,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public boolean isNetworkOpaqueRendering() {
-        return level != null && level.isClientSide ? clientNetworkOpaque : networkOpaqueRendering;
+        return level != null && level.isClientSide() ? clientNetworkOpaque : networkOpaqueRendering;
     }
 
     public void setNetworkOpaqueRendering(boolean opaque) {
-        if (level == null || level.isClientSide) {
+        if (level == null || level.isClientSide()) {
             return;
         }
         if (networkOpaqueRendering == opaque) {
@@ -4993,7 +4993,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
      * {@code player.containerMenu} is assigned).
      */
     private boolean shouldRefreshMenuDataForFace(Direction face) {
-        if (level == null || level.isClientSide) {
+        if (level == null || level.isClientSide()) {
             return false;
         }
         boolean anyMenuOnThisDuct = false;
@@ -5409,7 +5409,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             List<Boolean> allowRemoteAnyFaceIn,
             List<Boolean> denyRemoteAnyFaceIn,
             boolean denyOverridesAllow) {
-        if (level == null || level.isClientSide) {
+        if (level == null || level.isClientSide()) {
             return;
         }
         if (laneKind == DuctTransportKind.ENERGY || laneKind == DuctTransportKind.HEAT) {
@@ -5689,7 +5689,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     public void toggleListLogicFromClient(
             ServerPlayer player, Direction face, DuctTransportKind laneKind, DuctFaceNode.FilterBank bank) {
-        if (level == null || level.isClientSide) {
+        if (level == null || level.isClientSide()) {
             return;
         }
         DuctFaceLanes faceLanes = getFaceLanes(face);
@@ -5717,7 +5717,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     public void setSelfFeedFromClient(ServerPlayer player, Direction face, boolean enabled) {
-        if (level == null || level.isClientSide) {
+        if (level == null || level.isClientSide()) {
             return;
         }
         NodeMode shared = getFaceLanes(face).nodeMode;
@@ -5743,7 +5743,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public static final int MENU_BUTTON_TRANSPORT_TOGGLE_BASE = 50;
 
     public boolean handleMenuButtonClick(Player player, int buttonId, Direction accessFace) {
-        if (level == null || level.isClientSide) {
+        if (level == null || level.isClientSide()) {
             return false;
         }
         if (buttonId >= MENU_BUTTON_TRANSPORT_KIND_BASE
@@ -6186,7 +6186,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int insertionPriority,
             int extractBatch,
             int eligibilityModeOrdinal) {
-        if (level == null || level.isClientSide) {
+        if (level == null || level.isClientSide()) {
             return;
         }
         DuctTransportKind[] vals = DuctTransportKind.values();
@@ -6697,7 +6697,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             oneForWire.save(registries, st);
             CompoundTag item = new CompoundTag();
             item.put("Stack", st);
-            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(s.stack.getItem());
+            Identifier itemId = BuiltInRegistries.ITEM.getKey(s.stack.getItem());
             if (itemId == null) {
                 itemId = BuiltInRegistries.ITEM.getResourceKey(s.stack.getItem())
                         .map(ResourceKey::location)
@@ -6799,7 +6799,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (tag.contains("PipeMask", Tag.TAG_BYTE) && tag.contains("StorageMask", Tag.TAG_BYTE)) {
             setConnectionMasksForLoad(tag.getByte("PipeMask") & 0xFF, tag.getByte("StorageMask") & 0xFF);
             requestModelDataUpdate();
-            if (level != null && level.isClientSide) {
+            if (level != null && level.isClientSide()) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             }
         }
@@ -6820,7 +6820,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (previousPacked != nextPacked) {
             // Force chunk re-bake client-side only when icon pack changes.
             requestModelDataUpdate();
-            if (level != null && level.isClientSide) {
+            if (level != null && level.isClientSide()) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             }
         }
@@ -6829,7 +6829,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         clientStallMask = nextStallMask;
         if (prevStallMask != nextStallMask) {
             requestModelDataUpdate();
-            if (level != null && level.isClientSide) {
+            if (level != null && level.isClientSide()) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             }
         }
@@ -6837,11 +6837,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         clientNetworkOpaque = tag.getBoolean("NetworkOpaque");
         if (prevNetworkOpaque != clientNetworkOpaque) {
             requestModelDataUpdate();
-            if (level != null && level.isClientSide) {
+            if (level != null && level.isClientSide()) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             }
         }
-        if (level != null && level.isClientSide) {
+        if (level != null && level.isClientSide()) {
             // ItemStack components need the live client world registry; packet Provider often yields empty parse.
             DuctTransitClientState.onDuctUpdateTag(
                     worldPosition, tag, level.registryAccess(), level.getGameTime());
@@ -6867,7 +6867,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     @Override
     public ModelData getModelData() {
         int packed;
-        if (level != null && level.isClientSide) {
+        if (level != null && level.isClientSide()) {
             packed = clientPackedNodeIcons;
         } else {
             packed = computePackedNodeIcons();

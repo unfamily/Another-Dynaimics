@@ -1,45 +1,55 @@
 package net.unfamily.another_dynamics.registry;
 
+import java.util.function.UnaryOperator;
+
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredRegister;
-import net.neoforged.fml.ModList;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlock;
 import net.unfamily.another_dynamics.duct.FluidDuctBlock;
 import net.unfamily.another_dynamics.duct.GasDuctBlock;
 import net.unfamily.another_dynamics.duct.HybridItemFluidDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
+/**
+ * Block registrations use {@link DeferredRegister.Blocks#registerBlock} so {@link BlockBehaviour.Properties}
+ * receive {@link BlockBehaviour.Properties#setId} before constructors run (required on Minecraft 26+).
+ */
 public final class ModBlocks {
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(AnotherDynamicsMod.MOD_ID);
-    private static final boolean MEKANISM_LOADED = ModList.get().isLoaded("mekanism");
 
-    private static BlockBehaviour.Properties ductProperties() {
-        return BlockBehaviour.Properties.of()
-                .mapColor(MapColor.COLOR_LIGHT_GRAY)
-                .strength(0.05f, 1.2f)
-                .sound(SoundType.COPPER)
-                .noOcclusion();
-    }
+    /**
+     * Gas duct depends on Mekanism chemical transport, which is not available for the 26.1.2 baseline
+     * ({@link MekanismChemicalCompat#GAS_SUPPORT_ENABLED} == false). The block stays out of the registry until it ships.
+     */
+    private static final boolean GAS_SUPPORT = MekanismChemicalCompat.isGasSupportEnabled();
 
-    public static final DeferredBlock<Block> DUCT = BLOCKS.register("duct", () -> new DuctBlock(ductProperties()));
+    private static final UnaryOperator<BlockBehaviour.Properties> DUCT_PROPERTIES = p -> p
+            .mapColor(MapColor.COLOR_LIGHT_GRAY)
+            .strength(0.05f, 1.2f)
+            .sound(SoundType.COPPER)
+            .noOcclusion();
+
+    public static final DeferredBlock<Block> DUCT =
+            BLOCKS.registerBlock("duct", DuctBlock::new, DUCT_PROPERTIES);
 
     public static final DeferredBlock<Block> PROJECT_DUCT =
-            BLOCKS.register("project_duct", () -> new ProjectDuctBlock(ductProperties()));
+            BLOCKS.registerBlock("project_duct", ProjectDuctBlock::new, DUCT_PROPERTIES);
 
     public static final DeferredBlock<Block> FLUID_DUCT =
-            BLOCKS.register("fluid_duct", () -> new FluidDuctBlock(ductProperties()));
+            BLOCKS.registerBlock("fluid_duct", FluidDuctBlock::new, DUCT_PROPERTIES);
 
     public static final DeferredBlock<Block> ITEM_FLUID_DUCT =
-            BLOCKS.register("item_fluid_duct", () -> new HybridItemFluidDuctBlock(ductProperties()));
+            BLOCKS.registerBlock("item_fluid_duct", HybridItemFluidDuctBlock::new, DUCT_PROPERTIES);
 
-    /** Only registered when Mekanism is present. */
+    /** Only registered when Mekanism gas support is enabled (disabled on the 26.1.2 baseline). */
     public static final DeferredBlock<Block> GAS_DUCT =
-            MEKANISM_LOADED ? BLOCKS.register("gas_duct", () -> new GasDuctBlock(ductProperties())) : null;
+            GAS_SUPPORT ? BLOCKS.registerBlock("gas_duct", GasDuctBlock::new, DUCT_PROPERTIES) : null;
 
     public static boolean isDuctBlock(Block block) {
         if (block == DUCT.get() || block == FLUID_DUCT.get() || block == ITEM_FLUID_DUCT.get()) {

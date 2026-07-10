@@ -7,7 +7,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 
@@ -37,7 +37,7 @@ public record DuctFilterUpdatePayload(
         implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<DuctFilterUpdatePayload> TYPE =
             new CustomPacketPayload.Type<>(
-                    ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_filter_update"));
+                    Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_filter_update"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, DuctFilterUpdatePayload> STREAM_CODEC =
             StreamCodec.of(

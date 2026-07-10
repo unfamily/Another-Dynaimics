@@ -107,8 +107,8 @@ public final class DuctFilterRemoteNodeLogic {
     public static void readIgnoreChannelInto(
             CompoundTag tag, String key, List<Boolean> out, int expectedSize) {
         out.clear();
-        if (tag.contains(key, Tag.TAG_BYTE_ARRAY)) {
-            for (byte b : tag.getByteArray(key)) {
+        if (tag.contains(key)) {
+            for (byte b : tag.getByteArray(key).orElse(new byte[0])) {
                 out.add(b != 0);
             }
         }
@@ -223,10 +223,10 @@ public final class DuctFilterRemoteNodeLogic {
     public static void readRemoteNodeListInto(
             CompoundTag tag, String key, List<DuctDirectionalEndpoint> out, int expectedSize) {
         out.clear();
-        if (tag.contains(key, Tag.TAG_LIST)) {
-            ListTag list = tag.getList(key, Tag.TAG_COMPOUND);
+        if (tag.contains(key)) {
+            ListTag list = tag.getListOrEmpty(key);
             for (int i = 0; i < list.size(); i++) {
-                out.add(DuctDirectionalEndpoint.fromTag(list.getCompound(i)));
+                out.add(DuctDirectionalEndpoint.fromTag(list.getCompoundOrEmpty(i)));
             }
         }
         syncToLineSize(out, expectedSize);

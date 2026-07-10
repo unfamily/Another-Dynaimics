@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Renderable;
@@ -27,7 +27,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
@@ -276,43 +276,43 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         BUFFER_LIMITS,
     }
 
-    private static final ResourceLocation TEXTURE =
-        ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier TEXTURE =
+        Identifier.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/background/node.png"
         );
-    private static final ResourceLocation VALID_KEYS_TEXTURE =
-        ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier VALID_KEYS_TEXTURE =
+        Identifier.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/background/valid_keys.png"
         );
-    private static final ResourceLocation REDSTONE_GUI =
-        ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier REDSTONE_GUI =
+        Identifier.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/redstone_gui.png"
         );
-    private static final ResourceLocation SINGLE_SLOT =
-        ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier SINGLE_SLOT =
+        Identifier.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/single_slot.png"
         );
-    private static final ResourceLocation SINGLE_SLOT_REMOTE_NODE =
-        ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier SINGLE_SLOT_REMOTE_NODE =
+        Identifier.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/single_slot_remote_node.png"
         );
-    private static final ResourceLocation MODULE_SLOT =
-        ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier MODULE_SLOT =
+        Identifier.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/single_slot_module.png"
         );
-    private static final ResourceLocation ENTRY_ROW_TEXTURE =
-        ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier ENTRY_ROW_TEXTURE =
+        Identifier.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/entry_duct.png"
         );
-    private static final ResourceLocation SCROLLBAR_TEXTURE =
-        ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier SCROLLBAR_TEXTURE =
+        Identifier.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/scrollbar.png"
         );
@@ -2897,7 +2897,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         return Mth.clamp((int) ((stored * 100L) / cap), 0, 100);
     }
 
-    private void renderEnergyBufferColumnLabels(GuiGraphics graphics) {
+    private void renderEnergyBufferColumnLabels(GuiGraphicsExtractor graphics) {
         int editW = AMOUNT_EDIT_W;
         int storedIn = Math.max(0, menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_INPUT_STORED));
         int capIn = Math.max(0, menu.getSyncData().get(DuctMenuSync.ENERGY_BUF_INPUT_CAP));
@@ -2939,7 +2939,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void drawCenteredEnergyBufferLabel(
-            GuiGraphics graphics,
+            GuiGraphicsExtractor graphics,
             Component text,
             int editGuiLeft,
             int editW,
@@ -2951,7 +2951,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void drawCenteredEnergyBufferLabel(
-            GuiGraphics graphics, Component text, int editGuiLeft, int editW, int guiY) {
+            GuiGraphicsExtractor graphics, Component text, int editGuiLeft, int editW, int guiY) {
         drawCenteredEnergyBufferLabel(graphics, text, editGuiLeft, editW, guiY, 0x404040);
     }
 
@@ -3609,7 +3609,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void renderAdvancedRemoteNodeBlock(
-            GuiGraphics graphics, int mouseX, int mouseY) {
+            GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         if (!showsAdvancedRemoteNodeBlock()) {
             return;
         }
@@ -3681,7 +3681,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void renderRemoteNodeCoordAxisLabels(
-            GuiGraphics graphics, AdvancedRemoteNodeRowLayout row) {
+            GuiGraphicsExtractor graphics, AdvancedRemoteNodeRowLayout row) {
         String labelX =
                 Component.translatable("gui.another_dynamics.duct_node.remote_node.coords.axis.x")
                         .getString();
@@ -4522,7 +4522,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         return "gui.another_dynamics.duct_node.allow_cap.field.keep";
     }
 
-    private void renderEditModeSlot(GuiGraphics guiGraphics) {
+    private void renderEditModeSlot(GuiGraphicsExtractor guiGraphics) {
         int slotSize = 18;
         int slotX = editModeSlotX();
         int slotY = editModeSlotY();
@@ -4758,7 +4758,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (stack.isEmpty()) {
             return variants;
         }
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(
             stack.getItem()
         );
         if (itemId == null) {
@@ -4776,7 +4776,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     .orElse(false)
             )
             .map(TagKey::location)
-            .map(ResourceLocation::toString)
+            .map(Identifier::toString)
             .sorted()
             .toList();
         for (String tagId : itemTags) {
@@ -4823,7 +4823,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (fluid == Fluids.EMPTY) {
             return variants;
         }
-        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluid);
+        Identifier fluidId = BuiltInRegistries.FLUID.getKey(fluid);
         if (fluidId == null) {
             return variants;
         }
@@ -4838,7 +4838,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     .orElse(false)
             )
             .map(TagKey::location)
-            .map(ResourceLocation::toString)
+            .map(Identifier::toString)
             .sorted()
             .toList();
         for (String tagId : fluidTags) {
@@ -4892,7 +4892,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         variants.add("-" + idStr);
         try {
-            ResourceLocation id = ResourceLocation.parse(idStr);
+            Identifier id = Identifier.parse(idStr);
             variants.add("@" + id.getNamespace());
         } catch (Exception ignored) {}
         if (MekanismChemicalCompat.isRadioactive(chemicalStack)) {
@@ -4914,7 +4914,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (filter.startsWith("-")) {
             String idFilter = filter.substring(1);
             try {
-                ResourceLocation id = ResourceLocation.parse(idFilter);
+                Identifier id = Identifier.parse(idFilter);
                 Item item = BuiltInRegistries.ITEM.get(id);
                 return new ItemStack(item);
             } catch (Exception e) {
@@ -4954,7 +4954,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return new ItemStack(Items.ENCHANTED_BOOK);
         }
         try {
-            ResourceLocation id = ResourceLocation.parse(filter);
+            Identifier id = Identifier.parse(filter);
             return new ItemStack(BuiltInRegistries.ITEM.get(id));
         } catch (Exception e) {
             return ItemStack.EMPTY;
@@ -4980,7 +4980,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return firstFluidInMod(f.substring(1));
         }
         try {
-            ResourceLocation id = ResourceLocation.parse(f);
+            Identifier id = Identifier.parse(f);
             Fluid fluid = BuiltInRegistries.FLUID.get(id);
             if (fluid == null || fluid == Fluids.EMPTY) {
                 return FluidStack.EMPTY;
@@ -4993,7 +4993,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private static FluidStack fluidStackFromId(String idStr) {
         try {
-            ResourceLocation id = ResourceLocation.parse(idStr);
+            Identifier id = Identifier.parse(idStr);
             Fluid fluid = BuiltInRegistries.FLUID.get(id);
             if (fluid == null || fluid == Fluids.EMPTY) {
                 return FluidStack.EMPTY;
@@ -5006,7 +5006,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private static FluidStack firstFluidInFluidTag(String tagId) {
         try {
-            ResourceLocation loc = ResourceLocation.parse(tagId);
+            Identifier loc = Identifier.parse(tagId);
             TagKey<Fluid> tagKey = TagKey.create(Registries.FLUID, loc);
             return BuiltInRegistries.FLUID.getTag(tagKey)
                 .flatMap(t -> t.stream().findFirst())
@@ -5019,7 +5019,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private static FluidStack firstFluidInMod(String modId) {
         for (Fluid fluid : BuiltInRegistries.FLUID) {
-            ResourceLocation id = BuiltInRegistries.FLUID.getKey(fluid);
+            Identifier id = BuiltInRegistries.FLUID.getKey(fluid);
             if (
                 id != null &&
                 id.getNamespace().startsWith(modId) &&
@@ -5075,7 +5075,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         );
     }
 
-    private void renderFilterRowSlotIcon(GuiGraphics graphics, String filter, int slotX, int slotY) {
+    private void renderFilterRowSlotIcon(GuiGraphicsExtractor graphics, String filter, int slotX, int slotY) {
         if (filter == null || filter.isBlank() || minecraft == null || minecraft.level == null) {
             return;
         }
@@ -5129,7 +5129,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private static ItemStack getItemForTag(String tagId) {
         try {
-            ResourceLocation loc = ResourceLocation.parse(tagId);
+            Identifier loc = Identifier.parse(tagId);
             TagKey<Item> itemTag = ItemTags.create(loc);
             var contents = BuiltInRegistries.ITEM.getTag(itemTag);
             if (contents.isPresent()) {
@@ -5149,7 +5149,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private static ItemStack getItemForMod(String modId) {
         List<Item> modItems = new ArrayList<>();
         for (Item item : BuiltInRegistries.ITEM) {
-            ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+            Identifier id = BuiltInRegistries.ITEM.getKey(item);
             if (id != null && id.getNamespace().startsWith(modId)) {
                 modItems.add(item);
             }
@@ -6544,7 +6544,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
      */
     @Override
     public void renderBackground(
-        GuiGraphics guiGraphics,
+        GuiGraphicsExtractor guiGraphics,
         int mouseX,
         int mouseY,
         float partialTick
@@ -6613,7 +6613,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     @Override
     protected void renderBg(
-        @NotNull GuiGraphics graphics,
+        @NotNull GuiGraphicsExtractor graphics,
         float partialTick,
         int mouseX,
         int mouseY
@@ -6669,7 +6669,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void renderFilterPanel(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY
     ) {
@@ -6816,7 +6816,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     /** Redraw copy column above filter panels; frame then item (frame must not cover the icon). */
-    private void renderCopySettingsSlotOnTop(GuiGraphics graphics) {
+    private void renderCopySettingsSlotOnTop(GuiGraphicsExtractor graphics) {
         if (subView == SubView.HOW_TO_USE || !showsSettingsCopierColumn()) {
             return;
         }
@@ -6844,7 +6844,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
     }
 
-    private void blitMachineSlotBackgrounds(GuiGraphics graphics) {
+    private void blitMachineSlotBackgrounds(GuiGraphicsExtractor graphics) {
         int sw = 18;
         int sh = 18;
         for (int i = 0; i < menu.moduleSlotCount(); i++) {
@@ -6883,7 +6883,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     @Override
     protected void renderSlotHighlight(
-        @NotNull GuiGraphics guiGraphics,
+        @NotNull GuiGraphicsExtractor guiGraphics,
         @NotNull Slot slot,
         int mouseX,
         int mouseY,
@@ -6903,7 +6903,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     @Override
     protected void renderSlot(
-        @NotNull GuiGraphics graphics,
+        @NotNull GuiGraphicsExtractor graphics,
         @NotNull Slot slot
     ) {
         if (subView == SubView.HOW_TO_USE) {
@@ -6959,7 +6959,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
     }
 
-    private void renderTransientFeedback(GuiGraphics graphics) {
+    private void renderTransientFeedback(GuiGraphicsExtractor graphics) {
         if (transientFeedback == null) {
             return;
         }
@@ -7504,7 +7504,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void renderHelpLineWithExample(
-        GuiGraphics guiGraphics,
+        GuiGraphicsExtractor guiGraphics,
         String beforeKey,
         String exampleKey,
         String afterKey,
@@ -7579,7 +7579,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
      * on the first row, up to {@value #MACRO_HELP_NEXT_LINE_EXAMPLES} on further rows (fluid/gas: four examples → 2+2).
      */
     private int renderHelpLineWithChainedExamples(
-        GuiGraphics guiGraphics,
+        GuiGraphicsExtractor guiGraphics,
         String beforeKey,
         String middleKey,
         String afterKey,
@@ -7698,7 +7698,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void renderExampleTooltip(
-        GuiGraphics guiGraphics,
+        GuiGraphicsExtractor guiGraphics,
         int mouseX,
         int mouseY
     ) {
@@ -7735,7 +7735,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     @Override
     protected void renderLabels(
-        @NotNull GuiGraphics graphics,
+        @NotNull GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY
     ) {
@@ -8055,7 +8055,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     @Override
     public void render(
-        @NotNull GuiGraphics graphics,
+        @NotNull GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         float partialTick

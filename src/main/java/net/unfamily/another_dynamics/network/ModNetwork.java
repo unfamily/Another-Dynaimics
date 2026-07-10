@@ -7,7 +7,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -43,7 +43,7 @@ import java.util.List;
 
 public final class ModNetwork {
     public static final CustomPacketPayload.Type<DuctFieldPayload> DUCT_FIELD =
-            new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_field"));
+            new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_field"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, DuctFieldPayload> DUCT_FIELD_STREAM = StreamCodec.composite(
             BlockPos.STREAM_CODEC,

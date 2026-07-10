@@ -5,18 +5,18 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 public final class ModuleDefinitionRegistry {
-    private static Map<ResourceLocation, ModuleDefinition> all = Map.of();
+    private static Map<Identifier, ModuleDefinition> all = Map.of();
 
     private ModuleDefinitionRegistry() {}
 
-    public static void replaceAll(Map<ResourceLocation, ModuleDefinition> next) {
+    public static void replaceAll(Map<Identifier, ModuleDefinition> next) {
         all = Map.copyOf(next);
     }
 
-    public static Optional<ModuleDefinition> get(ResourceLocation id) {
+    public static Optional<ModuleDefinition> get(Identifier id) {
         return Optional.ofNullable(all.get(id));
     }
 

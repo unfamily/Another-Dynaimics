@@ -5,7 +5,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -29,8 +29,19 @@ public final class MekanismChemicalCompat {
 
     public static final String MODID = "mekanism";
 
+    /**
+     * Master switch for Mekanism gas/chemical support. {@code false} on the NeoForge 26.x baseline until Mekanism
+     * ships for this loader. All reflection code below stays intact; only the entry gate ({@link #isLoaded()}) is
+     * short-circuited so the duct network never tries to touch Mekanism when it is unavailable.
+     */
+    public static final boolean GAS_SUPPORT_ENABLED = false;
+
+    public static boolean isGasSupportEnabled() {
+        return GAS_SUPPORT_ENABLED;
+    }
+
     public static boolean isLoaded() {
-        return ModList.get().isLoaded(MODID);
+        return GAS_SUPPORT_ENABLED && ModList.get().isLoaded(MODID);
     }
 
     @Nullable
@@ -496,8 +507,8 @@ public final class MekanismChemicalCompat {
         try {
             Class<?> api = Class.forName("mekanism.api.MekanismAPI");
             Object reg = api.getField("CHEMICAL_REGISTRY").get(null);
-            ResourceLocation rl = ResourceLocation.parse(idStr);
-            Object holderOpt = reg.getClass().getMethod("getHolder", ResourceLocation.class).invoke(reg, rl);
+            Identifier rl = Identifier.parse(idStr);
+            Object holderOpt = reg.getClass().getMethod("getHolder", Identifier.class).invoke(reg, rl);
             if (!(holderOpt instanceof Optional<?> ho) || ho.isEmpty()) {
                 return empty;
             }
@@ -518,7 +529,7 @@ public final class MekanismChemicalCompat {
         try {
             Class<?> api = Class.forName("mekanism.api.MekanismAPI");
             ResourceKey<?> regName = (ResourceKey<?>) api.getField("CHEMICAL_REGISTRY_NAME").get(null);
-            ResourceLocation loc = ResourceLocation.parse(tagId);
+            Identifier loc = Identifier.parse(tagId);
             // Registry key is reflect-loaded; raw ResourceKey avoids generic capture mismatch on TagKey.create.
             @SuppressWarnings({"unchecked", "rawtypes"})
             TagKey<?> tagKey = TagKey.create((ResourceKey) regName, loc);
@@ -561,8 +572,8 @@ public final class MekanismChemicalCompat {
                                 .filter(
                                         rk -> {
                                             try {
-                                                ResourceLocation loc =
-                                                        (ResourceLocation) rk.getClass().getMethod("location").invoke(rk);
+                                                Identifier loc =
+                                                        (Identifier) rk.getClass().getMethod("location").invoke(rk);
                                                 return loc != null && loc.getNamespace().startsWith(modIdPrefix);
                                             } catch (Throwable e) {
                                                 return false;
@@ -620,7 +631,7 @@ public final class MekanismChemicalCompat {
             try {
                 Class<?> api = Class.forName("mekanism.api.MekanismAPI");
                 ResourceKey<?> regName = (ResourceKey<?>) api.getField("CHEMICAL_REGISTRY_NAME").get(null);
-                ResourceLocation rl = ResourceLocation.parse(idStr);
+                Identifier rl = Identifier.parse(idStr);
                 @SuppressWarnings({"unchecked", "rawtypes"})
                 ResourceKey<?> chemKey = ResourceKey.create((ResourceKey) regName, rl);
                 Object registry =

@@ -1,11 +1,11 @@
 package net.unfamily.another_dynamics.duct;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 /**
  * Canonical logical ids stored in {@code another_dynamics:duct_logical_id}.
  *
- * <p>These are full {@link ResourceLocation} strings (namespace:path) as provided in datapack JSON {@code id}.</p>
+ * <p>These are full {@link Identifier} strings (namespace:path) as provided in datapack JSON {@code id}.</p>
  */
 public final class DuctIds {
     /** Primary duct type id from datapack, used as default on the item/block entity. */
@@ -18,7 +18,7 @@ public final class DuctIds {
             return DEFAULT_LOGICAL_ID;
         }
         // Validates/normalizes casing to the canonical string form.
-        ResourceLocation rl = ResourceLocation.parse(rawId.trim());
+        Identifier rl = Identifier.parse(rawId.trim());
         return rl.toString();
     }
 
@@ -27,7 +27,7 @@ public final class DuctIds {
      * {@code custom:universal_duct} → {@code custom.universal_duct.node}.
      */
     public static String nodeScreenTranslationKey(String logicalId) {
-        ResourceLocation rl = ResourceLocation.parse(normalize(logicalId));
+        Identifier rl = Identifier.parse(normalize(logicalId));
         return rl.getNamespace() + "." + rl.getPath().replace('/', '.') + ".node";
     }
 }

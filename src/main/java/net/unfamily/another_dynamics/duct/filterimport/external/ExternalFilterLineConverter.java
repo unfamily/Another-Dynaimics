@@ -8,7 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportPreview;
 
@@ -30,8 +30,8 @@ public final class ExternalFilterLineConverter {
         boolean whitelist = isWhitelist(channelData);
         int mainChannel = 1;
         int invertedChannel = 1;
-        if (channelData.contains("Filters", Tag.TAG_LIST)) {
-            ListTag filters = channelData.getList("Filters", Tag.TAG_COMPOUND);
+        if (channelData.contains("Filters")) {
+            ListTag filters = channelData.getListOrEmpty("Filters");
             for (int i = 0; i < filters.size(); i++) {
                 if (filters.get(i) instanceof CompoundTag entry) {
                     List<String> lines = linesForFilter(entry);
@@ -39,10 +39,10 @@ public final class ExternalFilterLineConverter {
                         continue;
                     }
                     DuctDirectionalEndpoint remote =
-                            entry.contains("Destination", Tag.TAG_COMPOUND)
-                                    ? DuctDirectionalEndpoint.fromTag(entry.getCompound("Destination"))
+                            entry.contains("Destination")
+                                    ? DuctDirectionalEndpoint.fromTag(entry.getCompoundOrEmpty("Destination"))
                                     : null;
-                    boolean invert = entry.getBoolean("Invert");
+                    boolean invert = entry.getBooleanOr("Invert", false);
                     if (invert) {
                         for (String line : lines) {
                             inverted.add(line);
@@ -76,11 +76,11 @@ public final class ExternalFilterLineConverter {
     }
 
     private static boolean isWhitelist(CompoundTag channelData) {
-        if (channelData.contains("filter_mode", Tag.TAG_BYTE)) {
-            return channelData.getByte("filter_mode") == 0;
+        if (channelData.contains("filter_mode")) {
+            return channelData.getByteOr("filter_mode", (byte) 0) == 0;
         }
-        if (channelData.contains("filter_mode", Tag.TAG_INT)) {
-            return channelData.getInt("filter_mode") == 0;
+        if (channelData.contains("filter_mode")) {
+            return channelData.getIntOr("filter_mode", 0) == 0;
         }
         return true;
     }
@@ -92,8 +92,8 @@ public final class ExternalFilterLineConverter {
             return out;
         }
         out.add(idLine);
-        CompoundTag metadata = entry.contains("Metadata", Tag.TAG_COMPOUND)
-                ? entry.getCompound("Metadata")
+        CompoundTag metadata = entry.contains("Metadata")
+                ? entry.getCompoundOrEmpty("Metadata")
                 : null;
         if (metadata != null && !metadata.isEmpty()) {
             String nbtSub = metadata.toString();
@@ -106,15 +106,15 @@ public final class ExternalFilterLineConverter {
 
     @Nullable
     private static String tagLine(CompoundTag entry) {
-        if (!entry.contains("Tag", Tag.TAG_COMPOUND)) {
+        if (!entry.contains("Tag")) {
             return null;
         }
-        CompoundTag tag = entry.getCompound("Tag");
-        String path = tag.contains("tag", Tag.TAG_STRING) ? tag.getString("tag") : "";
+        CompoundTag tag = entry.getCompoundOrEmpty("Tag");
+        String path = tag.contains("tag") ? tag.getStringOr("tag", "") : "";
         if (path.isEmpty()) {
             return null;
         }
-        String type = tag.contains("type", Tag.TAG_STRING) ? tag.getString("type") : "SINGLE";
+        String type = tag.contains("type") ? tag.getStringOr("type", "") : "SINGLE";
         return formatDuctFilterLine(path, type);
     }
 
@@ -136,7 +136,7 @@ public final class ExternalFilterLineConverter {
                 || path.startsWith("-")) {
             return path;
         }
-        ResourceLocation.tryParse(path);
+        Identifier.tryParse(path);
         return "-" + path;
     }
 }

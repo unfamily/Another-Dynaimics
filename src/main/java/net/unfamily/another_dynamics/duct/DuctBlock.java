@@ -9,7 +9,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -207,10 +206,10 @@ public class DuctBlock extends AbstractDuctBlock {
     }
 
     /**
-     * Shift+click paste from a Settings Copier. {@link ItemInteractionResult#PASS_TO_DEFAULT_BLOCK_INTERACTION}
+     * Shift+click paste from a Settings Copier. {@link InteractionResult#PASS_TO_DEFAULT_BLOCK_INTERACTION}
      * when the copier is empty or no storage/settings face was targeted.
      */
-    public static ItemInteractionResult attemptSettingsCopierPaste(
+    public static InteractionResult attemptSettingsCopierPaste(
             Level level,
             BlockPos pos,
             Player player,
@@ -218,36 +217,36 @@ public class DuctBlock extends AbstractDuctBlock {
             BlockHitResult hit) {
         BlockEntity entity = level.getBlockEntity(pos);
         if (!(entity instanceof DuctBlockEntity duct)) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            return InteractionResult.TRY_WITH_EMPTY_HAND;
         }
         Optional<ItemStack> copierOpt = DuctFaceSettingsSnapshot.findCopierWithData(player, usedStack);
         if (copierOpt.isEmpty()) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            return InteractionResult.TRY_WITH_EMPTY_HAND;
         }
         Optional<Direction> nodeFace = settingsFaceFromHitForCopier(pos, hit, duct);
         if (nodeFace.isEmpty()) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            return InteractionResult.TRY_WITH_EMPTY_HAND;
         }
         if (level.isClientSide()) {
-            return ItemInteractionResult.SUCCESS;
+            return InteractionResult.SUCCESS;
         }
         if (level instanceof ServerLevel sl) {
             ItemStack copier = copierOpt.get();
             if (DuctFaceSettingsSnapshot.getStoreKind(copier) != SettingsCopierStoreKind.ALL) {
                 SettingsCopierFeedback.notifyPasteFailed(player);
-                return ItemInteractionResult.CONSUME;
+                return InteractionResult.CONSUME;
             }
             var data = DuctFaceSettingsSnapshot.readFromCopier(copier);
             if (data.isPresent()
                     && DuctFaceSettingsSnapshot.apply(
                             duct, nodeFace.get(), data.get(), sl.registryAccess(), player)) {
                 SettingsCopierFeedback.notifyPasted(player);
-                return ItemInteractionResult.CONSUME;
+                return InteractionResult.CONSUME;
             }
             SettingsCopierFeedback.notifyPasteFailed(player);
-            return ItemInteractionResult.CONSUME;
+            return InteractionResult.CONSUME;
         }
-        return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        return InteractionResult.TRY_WITH_EMPTY_HAND;
     }
 
     @Override
@@ -280,11 +279,11 @@ public class DuctBlock extends AbstractDuctBlock {
             }
             return InteractionResult.CONSUME;
         }
-        return InteractionResult.sidedSuccess(level.isClientSide());
+        return InteractionResult.SUCCESS;
     }
 
     @Override
-    protected ItemInteractionResult useItemOn(
+    protected InteractionResult useItemOn(
             ItemStack stack,
             BlockState state,
             Level level,
@@ -302,12 +301,12 @@ public class DuctBlock extends AbstractDuctBlock {
                 duct.refreshFromWorld();
             }
             if (player.isShiftKeyDown() && stack.getItem() instanceof SettingsCopierItem) {
-                ItemInteractionResult copierResult =
+                InteractionResult copierResult =
                         attemptSettingsCopierPaste(level, pos, player, stack, hitResult);
-                if (copierResult != ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
+                if (copierResult != InteractionResult.TRY_WITH_EMPTY_HAND) {
                     return copierResult;
                 }
-                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                return InteractionResult.TRY_WITH_EMPTY_HAND;
             }
             InteractionResult moduleEquip =
                     attemptShiftModuleEquip(
@@ -319,10 +318,10 @@ public class DuctBlock extends AbstractDuctBlock {
                             hitResult.getDirection(),
                             hitResult.getLocation());
             if (moduleEquip == InteractionResult.CONSUME) {
-                return ItemInteractionResult.CONSUME;
+                return InteractionResult.CONSUME;
             }
             if (moduleEquip == InteractionResult.SUCCESS) {
-                return ItemInteractionResult.sidedSuccess(level.isClientSide());
+                return InteractionResult.SUCCESS;
             }
             Optional<Direction> nodeFace = resolveNodeFaceForModuleEquip(pos, hitResult, duct);
             if (player.isShiftKeyDown()
@@ -330,12 +329,12 @@ public class DuctBlock extends AbstractDuctBlock {
                     && canInteractWithActiveStorageNode(duct, nodeFace.get())
                     && duct.hasAnyStallOnFace(nodeFace.get())) {
                 if (level.isClientSide()) {
-                    return ItemInteractionResult.SUCCESS;
+                    return InteractionResult.SUCCESS;
                 }
                 if (level instanceof ServerLevel sl) {
                     return duct.tryShiftClearStalledOnFace(sl, nodeFace.get(), player)
-                            ? ItemInteractionResult.CONSUME
-                            : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                            ? InteractionResult.CONSUME
+                            : InteractionResult.TRY_WITH_EMPTY_HAND;
                 }
             }
             if (DuctWrenchTags.isWrench(stack)) {
@@ -344,10 +343,10 @@ public class DuctBlock extends AbstractDuctBlock {
                                 duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
                 if (wFace.isPresent()) {
                     if (level.isClientSide()) {
-                        return ItemInteractionResult.SUCCESS;
+                        return InteractionResult.SUCCESS;
                     }
                     duct.applyWrenchDisconnect(level, wFace.get());
-                    return ItemInteractionResult.CONSUME;
+                    return InteractionResult.CONSUME;
                 }
                 if (!player.isShiftKeyDown()
                         && DuctShapes.canReconnectFromCoreHit(
@@ -359,55 +358,55 @@ public class DuctBlock extends AbstractDuctBlock {
                                 lz,
                                 hitResult.getDirection())) {
                     if (level.isClientSide()) {
-                        return ItemInteractionResult.SUCCESS;
+                        return InteractionResult.SUCCESS;
                     }
                     duct.tryReconnectFace(level, hitResult.getDirection());
-                    return ItemInteractionResult.CONSUME;
+                    return InteractionResult.CONSUME;
                 }
             }
             if (player.isShiftKeyDown()) {
                 if (!DuctReplaceHelper.isDuctReplacementCandidate(stack)) {
-                    return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                    return InteractionResult.TRY_WITH_EMPTY_HAND;
                 }
                 if (DuctReplaceHelper.isSameDuctType(duct, stack)) {
-                    return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                    return InteractionResult.TRY_WITH_EMPTY_HAND;
                 }
                 if (level.isClientSide()) {
-                    return ItemInteractionResult.SUCCESS;
+                    return InteractionResult.SUCCESS;
                 }
                 String newLogicalId = DuctReplaceHelper.logicalIdFromReplacementItem(stack);
                 if (newLogicalId == null) {
-                    return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                    return InteractionResult.TRY_WITH_EMPTY_HAND;
                 }
                 return DuctReplaceHelper.tryReplace(player, level, pos, duct, newLogicalId, hand);
             }
             Optional<Direction> face = nodeFaceFromHitLocation(pos, hitResult, duct);
             if (face.isEmpty() || !canInteractWithActiveStorageNode(duct, face.get())) {
-                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                return InteractionResult.TRY_WITH_EMPTY_HAND;
             }
             if (!player.isShiftKeyDown()
                     && duct.faceHasStalledFluidOrGas(face.get())
                     && duct.heldItemCanExtractStalledMedia(stack)) {
                 if (level.isClientSide()) {
-                    return ItemInteractionResult.SUCCESS;
+                    return InteractionResult.SUCCESS;
                 }
                 if (level instanceof ServerLevel sl
                         && duct.tryExtractStalledMediaToHand(sl, face.get(), player, hand)) {
-                    return ItemInteractionResult.CONSUME;
+                    return InteractionResult.CONSUME;
                 }
             }
             if (player.isShiftKeyDown()) {
-                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+                return InteractionResult.TRY_WITH_EMPTY_HAND;
             }
             if (level.isClientSide()) {
-                return ItemInteractionResult.SUCCESS;
+                return InteractionResult.SUCCESS;
             }
             if (player instanceof ServerPlayer serverPlayer) {
                 openDuctMenu(serverPlayer, duct, face.get());
             }
-            return ItemInteractionResult.CONSUME;
+            return InteractionResult.CONSUME;
         }
-        return ItemInteractionResult.sidedSuccess(level.isClientSide());
+        return InteractionResult.SUCCESS;
     }
 
     private static void openDuctMenu(ServerPlayer player, DuctBlockEntity duct, Direction clickedFace) {

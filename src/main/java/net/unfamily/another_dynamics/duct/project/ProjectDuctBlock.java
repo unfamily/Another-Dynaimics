@@ -3,7 +3,7 @@ package net.unfamily.another_dynamics.duct.project;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -107,7 +107,7 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
     }
 
     @Override
-    protected ItemInteractionResult useItemOn(
+    protected InteractionResult useItemOn(
             ItemStack stack,
             BlockState state,
             Level level,
@@ -126,10 +126,10 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
                     DuctShapes.resolveWrenchDisconnectFace(pipeMask, nodeMask, loc[0], loc[1], loc[2]);
             if (wrenchFace.isPresent()) {
                 if (level.isClientSide()) {
-                    return ItemInteractionResult.SUCCESS;
+                    return InteractionResult.SUCCESS;
                 }
                 applyWrenchDisconnect(level, pos, wrenchFace.get());
-                return ItemInteractionResult.CONSUME;
+                return InteractionResult.CONSUME;
             }
             if (!player.isShiftKeyDown()
                     && DuctShapes.canReconnectFromCoreHit(
@@ -141,13 +141,13 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
                             loc[2],
                             hitResult.getDirection())) {
                 if (level.isClientSide()) {
-                    return ItemInteractionResult.SUCCESS;
+                    return InteractionResult.SUCCESS;
                 }
                 tryReconnectFace(level, pos, hitResult.getDirection());
-                return ItemInteractionResult.CONSUME;
+                return InteractionResult.CONSUME;
             }
         }
-        return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        return InteractionResult.TRY_WITH_EMPTY_HAND;
     }
 
     private static double[] localHit(BlockPos pos, BlockHitResult hit) {

@@ -3,30 +3,35 @@ package net.unfamily.another_dynamics.client;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.math.Transformation;
 
-import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.minecraft.client.renderer.block.model.BlockElement;
-import net.minecraft.client.renderer.block.model.BlockModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.renderer.block.dispatch.ModelState;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.client.resources.model.Material;
+import net.minecraft.client.resources.model.ModelBaker;
+import net.minecraft.client.resources.model.ResolvedModel;
+import net.minecraft.client.resources.model.cuboid.CuboidFace;
+import net.minecraft.client.resources.model.cuboid.CuboidModelElement;
+import net.minecraft.client.resources.model.cuboid.FaceBakery;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.client.resources.model.sprite.Material;
+import net.minecraft.client.resources.model.sprite.MaterialBaker;
+import net.minecraft.client.resources.model.sprite.SpriteId;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
-import net.neoforged.neoforge.client.model.ExtendedBlockModelDeserializer;
-import net.neoforged.neoforge.client.model.IQuadTransformer;
-import net.neoforged.neoforge.client.model.QuadTransformers;
-import net.neoforged.neoforge.client.model.SimpleModelState;
-import net.neoforged.neoforge.client.model.geometry.UnbakedGeometryHelper;
+import net.minecraft.resources.Identifier;
+import net.neoforged.neoforge.client.model.quad.MutableQuad;
+import net.neoforged.neoforge.client.model.quad.QuadTransforms;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctConnectionShape;
 import net.unfamily.another_dynamics.registry.ModBlocks;
@@ -38,149 +43,150 @@ import org.joml.Quaternionf;
 /**
  * Immutable baked quads for one composite duct template pair ({@code model_default} + {@code model_line}).
  * Element names must match the engine ({@code center}, {@code con_*}, {@code node_*}, line {@code center}).
+ *
+ * <p>26.x rewrite: geometry is baked into the new {@link BakedQuad} record ({@code Vector3fc} positions,
+ * packed-long UVs) via {@link FaceBakery}; UV/vertex manipulation uses {@link MutableQuad}.
  */
 public final class DuctCompositeGeometry {
     private static final boolean DEBUG_FORCE_NODE_ICON0 = false;
-    public static final ResourceLocation DEFAULT_MODEL_DEFAULT =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_default");
-    public static final ResourceLocation DEFAULT_MODEL_LINE =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_line");
+
+    public static final Identifier DEFAULT_MODEL_DEFAULT =
+            Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_default");
+    public static final Identifier DEFAULT_MODEL_LINE =
+            Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_line");
+
+    private static final Gson GSON = new GsonBuilder()
+            .registerTypeAdapter(CuboidModelElement.class, new CuboidModelElement.Deserializer())
+            .registerTypeAdapter(CuboidFace.class, new CuboidFace.Deserializer())
+            .create();
+
+    /** Identity {@link ModelState} for baking (no rotation/translation). */
+    private static final ModelState IDENTITY_STATE = new ModelState() {};
 
     private final Map<String, List<BakedQuad>> defaultByName;
     private final List<BakedQuad> lineCenterQuadsIdentity;
-    /** All quads from the line model combined (center + end caps), for item display. */
     private final List<BakedQuad> lineAllQuadsIdentity;
-    /** Non-center end-cap quads from the line model (e.g. node_N, node_S). Never V-shifted. */
     private final List<BakedQuad> lineNodeCapsQuadsIdentity;
+    private final @Nullable TextureAtlasSprite mainSprite;
     private final boolean built;
 
-    private DuctCompositeGeometry(Map<String, List<BakedQuad>> defaultByName, List<BakedQuad> lineCenterQuads, List<BakedQuad> lineAllQuads, List<BakedQuad> lineNodeCapsQuads, boolean built) {
+    private DuctCompositeGeometry(
+            Map<String, List<BakedQuad>> defaultByName,
+            List<BakedQuad> lineCenterQuads,
+            List<BakedQuad> lineAllQuads,
+            List<BakedQuad> lineNodeCapsQuads,
+            @Nullable TextureAtlasSprite mainSprite,
+            boolean built) {
         this.defaultByName = defaultByName;
         this.lineCenterQuadsIdentity = lineCenterQuads;
         this.lineAllQuadsIdentity = lineAllQuads;
         this.lineNodeCapsQuadsIdentity = lineNodeCapsQuads;
+        this.mainSprite = mainSprite;
         this.built = built;
     }
 
     public static DuctCompositeGeometry bake(
-            ResourceLocation modelDefaultId,
-            ResourceLocation modelLineId,
-            String textureRlString,
-            Function<Material, TextureAtlasSprite> spriteGetter) {
-        Map<String, List<BakedQuad>> byName = new HashMap<>();
-        List<BakedQuad> lineCenter = List.of();
+            Identifier modelDefaultId, Identifier modelLineId, Identifier textureId, Function<SpriteId, TextureAtlasSprite> spriteGetter) {
+        TextureAtlasSprite ductSprite = spriteGetter.apply(DuctRenderingSupport.blockSprite(textureId));
+        return bake(modelDefaultId, modelLineId, ductSprite);
+    }
+
+    public static DuctCompositeGeometry bake(
+            Identifier modelDefaultId, Identifier modelLineId, TextureAtlasSprite ductSprite) {
+        if (ductSprite == null) {
+            return empty();
+        }
+        Material.Baked material = new Material.Baked(ductSprite, false);
         try {
-            ParsedModel defParsed = readModel(modelDefaultId, textureRlString);
-            ParsedModel lineParsed = readModel(modelLineId, textureRlString);
-            var identity = new SimpleModelState(Transformation.identity());
-            List<BlockElement> defElements = defParsed.model().getElements();
-            List<String> defNames = defParsed.elementNames();
-            for (int i = 0; i < defElements.size(); i++) {
-                String name = i < defNames.size() ? defNames.get(i) : null;
+            Map<String, List<BakedQuad>> byName = new HashMap<>();
+            ParsedModel defParsed = readModel(modelDefaultId);
+            for (int i = 0; i < defParsed.elements().size(); i++) {
+                String name = i < defParsed.names().size() ? defParsed.names().get(i) : null;
                 if (name == null) {
                     continue;
                 }
-                BlockElement el = defElements.get(i);
-                List<BakedQuad> quads = UnbakedGeometryHelper.bakeElements(List.of(el), spriteGetter, identity);
-                byName.put(name, quads);
+                byName.put(name, bakeElement(defParsed.elements().get(i), material));
             }
-            List<BlockElement> lineEls = lineParsed.model().getElements();
-            List<String> lineNames = lineParsed.elementNames();
-            List<BlockElement> lineCenterElements = new ArrayList<>();
-            for (int i = 0; i < lineEls.size(); i++) {
-                if (i < lineNames.size() && "center".equals(lineNames.get(i))) {
-                    lineCenterElements.add(lineEls.get(i));
+
+            ParsedModel lineParsed = readModel(modelLineId);
+            List<BakedQuad> lineCenter = new ArrayList<>();
+            List<BakedQuad> lineAll = new ArrayList<>();
+            List<BakedQuad> lineNodeCaps = new ArrayList<>();
+            for (int i = 0; i < lineParsed.elements().size(); i++) {
+                String name = i < lineParsed.names().size() ? lineParsed.names().get(i) : null;
+                List<BakedQuad> quads = bakeElement(lineParsed.elements().get(i), material);
+                lineAll.addAll(quads);
+                if ("center".equals(name)) {
+                    lineCenter.addAll(quads);
+                } else {
+                    lineNodeCaps.addAll(quads);
                 }
             }
-            lineCenter = UnbakedGeometryHelper.bakeElements(lineCenterElements, spriteGetter, identity);
-            // Bake ALL line model elements for item display (center + end caps like node_N, node_S).
-            List<BakedQuad> lineAll = UnbakedGeometryHelper.bakeElements(lineEls, spriteGetter, identity);
-            // Bake only the non-center (end-cap / node) elements of the line model separately,
-            // so callers can skip the V-shift on them when applying the opaque offset.
-            List<BlockElement> lineNonCenterElements = new ArrayList<>();
-            for (int i = 0; i < lineEls.size(); i++) {
-                if (i >= lineNames.size() || !"center".equals(lineNames.get(i))) {
-                    lineNonCenterElements.add(lineEls.get(i));
-                }
-            }
-            List<BakedQuad> lineNodeCaps = lineNonCenterElements.isEmpty()
-                    ? List.of()
-                    : UnbakedGeometryHelper.bakeElements(lineNonCenterElements, spriteGetter, identity);
-            return new DuctCompositeGeometry(Map.copyOf(byName), lineCenter, List.copyOf(lineAll), List.copyOf(lineNodeCaps), true);
+            return new DuctCompositeGeometry(
+                    Map.copyOf(byName),
+                    List.copyOf(lineCenter),
+                    List.copyOf(lineAll),
+                    List.copyOf(lineNodeCaps),
+                    ductSprite,
+                    true);
         } catch (Exception ex) {
             AnotherDynamicsMod.LOGGER.error(
                     "Failed to bake duct composite geometry (default={}, line={})",
                     modelDefaultId,
                     modelLineId,
                     ex);
-            return new DuctCompositeGeometry(Map.of(), List.of(), List.of(), List.of(), false);
+            return empty();
         }
     }
 
-    private static String classpathModelPath(ResourceLocation modelId) {
-        return "/assets/" + modelId.getNamespace() + "/models/" + modelId.getPath() + ".json";
+    private static DuctCompositeGeometry empty() {
+        return new DuctCompositeGeometry(Map.of(), List.of(), List.of(), List.of(), null, false);
     }
 
-    private static void resolveFaceTextures(JsonObject root, String textureRlString) {
-        if (!root.has("elements")) {
-            return;
-        }
-        JsonArray elements = root.getAsJsonArray("elements");
-        for (JsonElement el : elements) {
-            if (!el.isJsonObject() || !el.getAsJsonObject().has("faces")) {
-                continue;
-            }
-            JsonObject faces = el.getAsJsonObject().getAsJsonObject("faces");
-            for (Map.Entry<String, JsonElement> face : faces.entrySet()) {
-                if (!face.getValue().isJsonObject()) {
-                    continue;
-                }
-                JsonObject fo = face.getValue().getAsJsonObject();
-                if (fo.has("texture") && fo.get("texture").getAsString().startsWith("#")) {
-                    fo.addProperty("texture", textureRlString);
-                }
-            }
-        }
+    // -------- baking primitives --------
+
+    private static List<BakedQuad> bakeElement(CuboidModelElement element, Material.Baked material) {
+        List<BakedQuad> out = new ArrayList<>();
+        element.faces().forEach((side, face) -> out.add(
+                FaceBakery.bakeQuad(
+                        DuctModelBaker.INSTANCE,
+                        element.from(),
+                        element.to(),
+                        face,
+                        material,
+                        side,
+                        IDENTITY_STATE,
+                        element.rotation(),
+                        element.shade(),
+                        element.lightEmission())));
+        return out;
     }
 
-    private record ParsedModel(BlockModel model, List<String> elementNames) {}
+    private record ParsedModel(List<CuboidModelElement> elements, List<String> names) {}
 
-    private static List<String> extractElementNames(JsonObject root) {
-        if (!root.has("elements")) {
-            return List.of();
-        }
-        JsonArray elements = root.getAsJsonArray("elements");
-        List<String> names = new ArrayList<>(elements.size());
-        for (JsonElement el : elements) {
-            if (el.isJsonObject() && el.getAsJsonObject().has("name")) {
-                names.add(el.getAsJsonObject().get("name").getAsString());
-            } else {
-                names.add(null);
-            }
-        }
-        return names;
-    }
-
-    private static ParsedModel readModel(ResourceLocation modelId, String textureRlString) throws Exception {
-        String cp = classpathModelPath(modelId);
+    private static ParsedModel readModel(Identifier modelId) throws Exception {
+        String cp = "/assets/" + modelId.getNamespace() + "/models/" + modelId.getPath() + ".json";
         var stream = ModBlocks.class.getResourceAsStream(cp);
         if (stream == null) {
             throw new IllegalStateException("Missing model resource: " + modelId + " (" + cp + ")");
         }
         try (var reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
-            JsonObject obj = JsonParser.parseReader(reader).getAsJsonObject();
-            if (obj.has("textures")) {
-                JsonObject tex = obj.getAsJsonObject("textures");
-                tex.remove("render_type");
-                tex.addProperty("0", textureRlString);
-                tex.addProperty("particle", textureRlString);
+            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+            List<CuboidModelElement> elements = new ArrayList<>();
+            List<String> names = new ArrayList<>();
+            if (root.has("elements")) {
+                JsonArray arr = root.getAsJsonArray("elements");
+                for (JsonElement el : arr) {
+                    JsonObject obj = el.getAsJsonObject();
+                    names.add(obj.has("name") ? obj.get("name").getAsString() : null);
+                    elements.add(GSON.fromJson(obj, CuboidModelElement.class));
+                }
             }
-            resolveFaceTextures(obj, textureRlString);
-            List<String> elementNames = extractElementNames(obj);
-            BlockModel model = ExtendedBlockModelDeserializer.INSTANCE.fromJson(obj, BlockModel.class);
-            return new ParsedModel(model, Collections.unmodifiableList(elementNames));
+            return new ParsedModel(elements, names);
         }
     }
+
+    // -------- accessors --------
 
     public boolean isBuilt() {
         return built;
@@ -194,48 +200,27 @@ public final class DuctCompositeGeometry {
         return lineCenterQuadsIdentity;
     }
 
-    /** All quads from the line model (center + end caps). Used for item display. */
     public List<BakedQuad> lineAllQuads() {
         return lineAllQuadsIdentity;
     }
 
-    /**
-     * Non-center end-cap quads from the line model (e.g. {@code node_N}, {@code node_S}).
-     * These share the same texture as the default duct (not the opaque variant) and must
-     * never receive a V-shift when {@code always_opaque} is enabled.
-     */
     public List<BakedQuad> lineNodeCapsQuads() {
         return lineNodeCapsQuadsIdentity;
     }
 
-    /**
-     * Returns the main texture sprite for this geometry (from the center element),
-     * used for block-breaking particles and other single-sprite contexts.
-     */
     public @Nullable TextureAtlasSprite mainSprite() {
-        List<BakedQuad> center = quadsNamed("center");
-        if (!center.isEmpty() && center.get(0).getSprite() != null) {
-            return center.get(0).getSprite();
-        }
-        for (List<BakedQuad> quads : defaultByName.values()) {
-            if (!quads.isEmpty() && quads.get(0).getSprite() != null) {
-                return quads.get(0).getSprite();
-            }
-        }
-        if (!lineCenterQuadsIdentity.isEmpty() && lineCenterQuadsIdentity.get(0).getSprite() != null) {
-            return lineCenterQuadsIdentity.get(0).getSprite();
-        }
-        return null;
+        return mainSprite;
     }
+
+    // -------- transforms / naming --------
 
     public List<BakedQuad> transformQuads(List<BakedQuad> source, Transformation transform) {
         if (transform == null || transform.isIdentity()) {
             return List.copyOf(source);
         }
-        IQuadTransformer transformer = QuadTransformers.applying(transform);
         List<BakedQuad> out = new ArrayList<>(source.size());
         for (BakedQuad q : source) {
-            out.add(transformer.process(q));
+            out.add(QuadTransforms.applyTransformation(q, transform));
         }
         return out;
     }
@@ -273,6 +258,8 @@ public final class DuctCompositeGeometry {
             case WEST -> "node_W";
         };
     }
+
+    // -------- world composition --------
 
     public void appendForWorld(List<BakedQuad> out, int pipeMask, int storageMask) {
         if (!built) {
@@ -322,10 +309,6 @@ public final class DuctCompositeGeometry {
         }
     }
 
-    /**
-     * @param opaqueDuctTextureVShift atlas V delta for opaque skin on {@code center}, {@code con_*}, and line center;
-     *        {@code 0} skips. {@code node_*} quads are added separately in {@link #appendNodeIcon} without this shift.
-     */
     public void appendForWorldWithNodeIcons(
             List<BakedQuad> out,
             int pipeMask,
@@ -351,16 +334,12 @@ public final class DuctCompositeGeometry {
                 }
                 for (Direction d : Direction.values()) {
                     int bit = 1 << d.ordinal();
-                    if ((pipeMask & bit) != 0) {
-                        if (includeBase) {
-                            addPipeQuadsWithOptionalVShift(
-                                    out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
-                        }
+                    if ((pipeMask & bit) != 0 && includeBase) {
+                        addPipeQuadsWithOptionalVShift(out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
                     }
                     if ((storageMask & bit) != 0) {
                         if (includeBase) {
-                            addPipeQuadsWithOptionalVShift(
-                                    out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
+                            addPipeQuadsWithOptionalVShift(out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
                         }
                         appendNodeIcon(out, d, packedNodeIcons, nodesSprite, includeBase, includeOverlays);
                     }
@@ -369,8 +348,7 @@ public final class DuctCompositeGeometry {
             case LINE_X, LINE_Y, LINE_Z -> {
                 Transformation tr = rotationForLineAxis(shape.lineAxis());
                 if (includeBase) {
-                    addPipeQuadsWithOptionalVShift(
-                            out, transformQuads(lineCenterQuads(), tr), opaqueDuctTextureVShift);
+                    addPipeQuadsWithOptionalVShift(out, transformQuads(lineCenterQuads(), tr), opaqueDuctTextureVShift);
                 }
                 Direction na = shape.lineEndNegative();
                 Direction pb = shape.lineEndPositive();
@@ -387,17 +365,11 @@ public final class DuctCompositeGeometry {
                 }
                 for (Direction d : Direction.values()) {
                     int bit = 1 << d.ordinal();
-                    if ((pipeMask & bit) != 0) {
-                        if (includeBase) {
-                            addPipeQuadsWithOptionalVShift(
-                                    out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
-                        }
+                    if ((pipeMask & bit) != 0 && includeBase) {
+                        addPipeQuadsWithOptionalVShift(out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
                     }
-                    if ((storageMask & bit) != 0) {
-                        if (includeBase) {
-                            addPipeQuadsWithOptionalVShift(
-                                    out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
-                        }
+                    if ((storageMask & bit) != 0 && includeBase) {
+                        addPipeQuadsWithOptionalVShift(out, quadsNamed(connectionPiece(d)), opaqueDuctTextureVShift);
                     }
                 }
                 for (Direction d : Direction.values()) {
@@ -420,22 +392,6 @@ public final class DuctCompositeGeometry {
         for (BakedQuad q : src) {
             out.add(shiftQuadV(q, dv));
         }
-    }
-
-    static BakedQuad shiftQuadV(BakedQuad q, float deltaV) {
-        int stride = IQuadTransformer.STRIDE;
-        int uv0 = IQuadTransformer.UV0;
-        int[] v = q.getVertices();
-        if (v == null || v.length < stride * 4) {
-            return q;
-        }
-        int[] nv = v.clone();
-        for (int k = 0; k < 4; k++) {
-            int base = k * stride;
-            float vv = Float.intBitsToFloat(nv[base + uv0 + 1]);
-            nv[base + uv0 + 1] = Float.floatToRawIntBits(vv + deltaV);
-        }
-        return new BakedQuad(nv, q.getTintIndex(), q.getDirection(), q.getSprite(), q.isShade());
     }
 
     private void appendStorageNodesOnly(List<BakedQuad> out, int storageMask) {
@@ -462,9 +418,7 @@ public final class DuctCompositeGeometry {
             if (includeBase) {
                 out.add(q);
             }
-            Direction qDir = q.getDirection();
-            // The icon should be visible on the 4 lateral sides of the node piece, not on the face pointing to storage.
-            // For a node pointing to `face`, the lateral sides are the 4 directions perpendicular to `face`.
+            Direction qDir = q.direction();
             if (qDir == face || qDir == face.getOpposite()) {
                 continue;
             }
@@ -478,38 +432,33 @@ public final class DuctCompositeGeometry {
         }
     }
 
+    // -------- quad UV/vertex manipulation (new BakedQuad via MutableQuad) --------
+
+    static BakedQuad shiftQuadV(BakedQuad q, float deltaV) {
+        MutableQuad m = new MutableQuad().setFrom(q);
+        for (int i = 0; i < 4; i++) {
+            m.setUv(i, m.u(i), m.v(i) + deltaV);
+        }
+        return m.toBakedQuad();
+    }
+
     /**
      * Builds an overlay quad (same geometry) with UVs mapped onto nodes.png (64x32, 4x4 cells, each 16x8).
-     *
-     * NeoForge note: do not assume vertex layout indices; use {@link IQuadTransformer} offsets/stride.
      */
     static @Nullable BakedQuad buildNodeIconOverlay(BakedQuad q, int iconIdx, TextureAtlasSprite nodesSprite) {
-        if (nodesSprite == null) {
+        if (nodesSprite == null || iconIdx < 0 || iconIdx > 15) {
             return null;
         }
-        if (iconIdx < 0 || iconIdx > 15) {
-            return null;
-        }
-        int[] v = q.getVertices();
-        if (v == null || v.length < IQuadTransformer.STRIDE * 4) {
-            return null;
-        }
-        int stride = IQuadTransformer.STRIDE;
-        int pos = IQuadTransformer.POSITION;
-        int color = IQuadTransformer.COLOR;
-        int uv0 = IQuadTransformer.UV0;
+        MutableQuad m = new MutableQuad().setFrom(q);
         float uMin = Float.POSITIVE_INFINITY;
         float uMax = Float.NEGATIVE_INFINITY;
         float vMin = Float.POSITIVE_INFINITY;
         float vMax = Float.NEGATIVE_INFINITY;
         for (int i = 0; i < 4; i++) {
-            int base = i * stride;
-            float u = Float.intBitsToFloat(v[base + uv0]);
-            float vv = Float.intBitsToFloat(v[base + uv0 + 1]);
-            uMin = Math.min(uMin, u);
-            uMax = Math.max(uMax, u);
-            vMin = Math.min(vMin, vv);
-            vMax = Math.max(vMax, vv);
+            uMin = Math.min(uMin, m.u(i));
+            uMax = Math.max(uMax, m.u(i));
+            vMin = Math.min(vMin, m.v(i));
+            vMax = Math.max(vMax, m.v(i));
         }
         float w = uMax - uMin;
         float h = vMax - vMin;
@@ -526,68 +475,46 @@ public final class DuctCompositeGeometry {
         float dv = vv1 - vv0;
         float cellX = col * 16.0f;
         float cellY = row * 8.0f;
-        int[] out = v.clone();
+        Direction dir = q.direction();
+        float eps = 0.0005f;
+        m.setSprite(new Material.Baked(nodesSprite, true));
         for (int i = 0; i < 4; i++) {
-            int base = i * stride;
-            // Push the overlay slightly outward to avoid Z-fighting with the original node face.
-            float ox = Float.intBitsToFloat(out[base + pos]);
-            float oy = Float.intBitsToFloat(out[base + pos + 1]);
-            float oz = Float.intBitsToFloat(out[base + pos + 2]);
-            float eps = 0.0005f;
-            ox += q.getDirection().getStepX() * eps;
-            oy += q.getDirection().getStepY() * eps;
-            oz += q.getDirection().getStepZ() * eps;
-            out[base + pos] = Float.floatToRawIntBits(ox);
-            out[base + pos + 1] = Float.floatToRawIntBits(oy);
-            out[base + pos + 2] = Float.floatToRawIntBits(oz);
+            float ox = m.x(i) + dir.getStepX() * eps;
+            float oy = m.y(i) + dir.getStepY() * eps;
+            float oz = m.z(i) + dir.getStepZ() * eps;
+            m.setPosition(i, ox, oy, oz);
 
-            float ou = Float.intBitsToFloat(out[base + uv0]);
-            float ov = Float.intBitsToFloat(out[base + uv0 + 1]);
-            float tu = (ou - uMin) / w;
-            float tv = (ov - vMin) / h;
+            float tu = (m.u(i) - uMin) / w;
+            float tv = (m.v(i) - vMin) / h;
             float nu = u0 + du * ((cellX + tu * 16.0f) / 64.0f);
             float nv = vv0 + dv * ((cellY + tv * 8.0f) / 32.0f);
-            out[base + uv0] = Float.floatToRawIntBits(nu);
-            out[base + uv0 + 1] = Float.floatToRawIntBits(nv);
-
+            m.setUv(i, nu, nv);
             // 75% alpha to keep the node texture readable beneath.
-            if (out.length > base + color) {
-                int c = out[base + color];
-                out[base + color] = (c & 0x00FFFFFF) | (0xBF << 24);
-            }
+            m.setColor(i, 0xBFFFFFFF);
         }
-        BakedQuad overlay = new BakedQuad(out, -1, q.getDirection(), nodesSprite, false);
-        // Make the icon readable even in darkness.
-        overlay = QuadTransformers.settingMaxEmissivity().process(overlay);
-        return overlay;
+        m.setTintIndex(-1);
+        m.setShade(false);
+        m.setLightEmission(15);
+        return m.toBakedQuad();
     }
 
     /**
-     * Builds an overlay quad using the full UV range of {@code sprite}, preserving the original quad's
-     * UV orientation (min/max) as a normalized mapping.
+     * Builds an overlay quad using the full UV range of {@code sprite}, preserving the original quad's UV orientation.
      */
     static @Nullable BakedQuad buildFullSpriteOverlay(BakedQuad q, TextureAtlasSprite sprite) {
         if (sprite == null) {
             return null;
         }
-        int[] v = q.getVertices();
-        if (v == null || v.length < IQuadTransformer.STRIDE * 4) {
-            return null;
-        }
-        int stride = IQuadTransformer.STRIDE;
-        int uv0 = IQuadTransformer.UV0;
+        MutableQuad m = new MutableQuad().setFrom(q);
         float uMin = Float.POSITIVE_INFINITY;
         float uMax = Float.NEGATIVE_INFINITY;
         float vMin = Float.POSITIVE_INFINITY;
         float vMax = Float.NEGATIVE_INFINITY;
         for (int i = 0; i < 4; i++) {
-            int base = i * stride;
-            float u = Float.intBitsToFloat(v[base + uv0]);
-            float vv = Float.intBitsToFloat(v[base + uv0 + 1]);
-            uMin = Math.min(uMin, u);
-            uMax = Math.max(uMax, u);
-            vMin = Math.min(vMin, vv);
-            vMax = Math.max(vMax, vv);
+            uMin = Math.min(uMin, m.u(i));
+            uMax = Math.max(uMax, m.u(i));
+            vMin = Math.min(vMin, m.v(i));
+            vMax = Math.max(vMax, m.v(i));
         }
         float w = uMax - uMin;
         float h = vMax - vMin;
@@ -598,20 +525,59 @@ public final class DuctCompositeGeometry {
         float su1 = sprite.getU1();
         float sv0 = sprite.getV0();
         float sv1 = sprite.getV1();
-
-        int[] nv = v.clone();
+        m.setSprite(new Material.Baked(sprite, true));
         for (int i = 0; i < 4; i++) {
-            int base = i * stride;
-            float ou = Float.intBitsToFloat(v[base + uv0]);
-            float ov = Float.intBitsToFloat(v[base + uv0 + 1]);
-            float nu = (ou - uMin) / w;
-            float nv01 = (ov - vMin) / h;
-            float mu = su0 + (su1 - su0) * nu;
-            float mv = sv0 + (sv1 - sv0) * nv01;
-            nv[base + uv0] = Float.floatToRawIntBits(mu);
-            nv[base + uv0 + 1] = Float.floatToRawIntBits(mv);
+            float nu = (m.u(i) - uMin) / w;
+            float nv01 = (m.v(i) - vMin) / h;
+            m.setUv(i, su0 + (su1 - su0) * nu, sv0 + (sv1 - sv0) * nv01);
         }
-        // Match node icon overlays: no tint, no shading, so the sprite renders consistently.
-        return new BakedQuad(nv, -1, q.getDirection(), sprite, false);
+        m.setTintIndex(-1);
+        m.setShade(false);
+        return m.toBakedQuad();
+    }
+
+    /**
+     * Minimal {@link ModelBaker} exposing only a pass-through {@link ModelBaker.Interner}, used by
+     * {@link FaceBakery#bakeQuad} to build quads outside the normal baking pipeline.
+     */
+    private static final class DuctModelBaker implements ModelBaker {
+        static final DuctModelBaker INSTANCE = new DuctModelBaker();
+
+        private static final Interner INTERNER = new Interner() {
+            @Override
+            public org.joml.Vector3fc vector(org.joml.Vector3fc vector) {
+                return vector;
+            }
+
+            @Override
+            public BakedQuad.MaterialInfo materialInfo(BakedQuad.MaterialInfo material) {
+                return material;
+            }
+        };
+
+        @Override
+        public ResolvedModel getModel(Identifier location) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public BlockStateModelPart missingBlockModelPart() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public MaterialBaker materials() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Interner interner() {
+            return INTERNER;
+        }
+
+        @Override
+        public <T> T compute(SharedOperationKey<T> key) {
+            return key.compute(this);
+        }
     }
 }

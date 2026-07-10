@@ -1,7 +1,7 @@
 package net.unfamily.another_dynamics.duct;
 
 import net.minecraft.core.HolderLookup;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
 import java.util.List;
@@ -52,7 +52,7 @@ public final class DuctGasFilterMatcher {
 
         if (filter.startsWith("@")) {
             try {
-                ResourceLocation id = ResourceLocation.parse(idStr);
+                Identifier id = Identifier.parse(idStr);
                 String want = filter.substring(1);
                 return id.getNamespace().startsWith(want);
             } catch (Exception e) {

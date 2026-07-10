@@ -1,6 +1,6 @@
 package net.unfamily.another_dynamics.client.gui;
 
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Renderable;
@@ -8,7 +8,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
@@ -29,12 +29,12 @@ import net.neoforged.fml.ModList;
  * Settings copier: hub and virtual universal duct editor in one screen (root layer sync, no nested openMenu).
  */
 public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<SettingsCopierMenu> {
-    private static final ResourceLocation HUB_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier HUB_TEXTURE =
+            Identifier.fromNamespaceAndPath(
                     AnotherDynamicsMod.MOD_ID, "textures/gui/background/settings_copier.png");
     /** Same panel as virtual universal duct editor ({@link AbstractUniversalDuctScreen}). */
-    private static final ResourceLocation VIRTUAL_NODE_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier VIRTUAL_NODE_TEXTURE =
+            Identifier.fromNamespaceAndPath(
                     AnotherDynamicsMod.MOD_ID, "textures/gui/background/node.png");
 
     private static final int CLOSE_BUTTON_SIZE = 12;
@@ -195,7 +195,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     }
 
     @Override
-    protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
+    protected void renderBg(GuiGraphicsExtractor graphics, float partialTick, int mouseX, int mouseY) {
         if (menu.isHubLayer()) {
             graphics.blit(
                     HUB_TEXTURE,
@@ -226,7 +226,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         super.renderBg(graphics, partialTick, mouseX, mouseY);
     }
 
-    private void blitImportSlotFrames(GuiGraphics graphics) {
+    private void blitImportSlotFrames(GuiGraphicsExtractor graphics) {
         Slot source = menu.getSlot(SettingsCopierMenu.IMPORT_SOURCE_SLOT);
         if (source.isActive()) {
             int fx = this.leftPos + source.x;
@@ -246,7 +246,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    public void render(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (menu.isHubLayer()) {
             renderBackground(graphics, mouseX, mouseY, partialTick);
             renderBg(graphics, partialTick, mouseX, mouseY);
@@ -273,7 +273,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     }
 
     @Override
-    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
+    protected void renderLabels(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         if (menu.isImportLayer()) {
             Component importTitle =
                     Component.translatable("gui.another_dynamics.settings_copier.importing");
@@ -318,7 +318,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     }
 
     @Override
-    protected void renderSlot(GuiGraphics graphics, Slot slot) {
+    protected void renderSlot(GuiGraphicsExtractor graphics, Slot slot) {
         if (menu.isHubLayer()
                 && slot.index < SettingsCopierMenu.PLAYER_SLOT_START + SettingsCopierMenu.PLAYER_SLOT_COUNT) {
             return;
@@ -353,7 +353,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
 
     @Override
     protected void renderSlotHighlight(
-            GuiGraphics guiGraphics, Slot slot, int mouseX, int mouseY, float partialTick) {
+            GuiGraphicsExtractor guiGraphics, Slot slot, int mouseX, int mouseY, float partialTick) {
         if (menu.isHubLayer() && slot.index < SettingsCopierMenu.PLAYER_SLOT_START + SettingsCopierMenu.PLAYER_SLOT_COUNT) {
             return;
         }

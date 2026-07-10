@@ -28,15 +28,15 @@ sourceSets.main.resources {
 
 repositories {
     maven {
+        name = 'CurseMaven'
+        url = 'https://www.cursemaven.com'
+    }
+    maven {
         name = 'Jared Maven (JEI)'
         url = 'https://maven.blamejared.com'
         content {
             includeGroup('mezz.jei')
         }
-    }
-    maven {
-        name = 'CurseMaven'
-        url = 'https://cursemaven.com'
     }
 }
 
@@ -44,8 +44,13 @@ base {
     archivesName = mod_id
 }
 
-// Mojang ships Java 21 to end users in 1.21, so mods should target Java 21.
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+// Optional integrations whose compile-time API is not available on the 26.1.2 baseline.
+// The source is kept intact and only excluded from compilation; it is loaded via reflection
+// at runtime and guarded by ModList.isLoaded(...), so it stays dormant until the dependency ships.
+sourceSets.main.java.exclude('net/unfamily/another_dynamics/integration/ftbultimine/FTBUltimineCompat.java')
+
+// Mojang ships Java 25 to end users in 26.1.2, so mods should target Java 25.
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 
 sourceSets {
     test {
@@ -58,10 +63,7 @@ neoForge {
     // Specify the version of NeoForge to use.
     version = project.neo_version
 
-    parchment {
-        mappingsVersion = project.parchment_mappings_version
-        minecraftVersion = project.parchment_minecraft_version
-    }
+    // Parchment mappings are optional; disabled for 26.x baseline.
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -90,8 +92,9 @@ neoForge {
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
-        data {
-            data()
+        // Data generation run (26.x: use clientData/serverData)
+        clientData {
+            clientData()
 
             // example of overriding the workingDirectory set in configureEach above, uncomment if you want to use it
             // gameDirectory = project.file('run-data')
@@ -136,23 +139,28 @@ configurations {
 
 dependencies {
     // JEI: subtype registration so all logical ducts appear in the ingredient index (same item + different components).
-    compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
-    localRuntime "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
+    // 26.1.2 build (Identifier-based API) pulled via CurseMaven.
+    compileOnly "curse.maven:jei-238222:7920926"
+    localRuntime "curse.maven:jei-238222:7920926"
 
-    // Mekanism (optional): required for gas duct transport. Keep core only unless additional modules become necessary.
-    compileOnly "curse.maven:mekanism-268560:7621971"
-    localRuntime "curse.maven:mekanism-268560:7621971"
-
+    // Optional integrations disabled for the 26.1.2 baseline until they ship for this loader.
+    // Their reflection/soft-dependency code stays intact; re-enable here when 26.x artifacts exist.
+    //
+    // Mekanism (optional): required for gas duct transport.
+    // compileOnly "curse.maven:mekanism-268560:<26.x-fileId>"
+    // localRuntime "curse.maven:mekanism-268560:<26.x-fileId>"
+    //
     // Pipez (optional): filter import from upgrade data components; no compile-time API usage.
-    localRuntime "curse.maven:pipez-443900:5609056"
-
+    // localRuntime "curse.maven:pipez-443900:<26.x-fileId>"
+    //
     // FTB Ultimine (optional): logical duct id selection grouping.
-    compileOnly "curse.maven:architectury-api-419699:5786327"
-    compileOnly "curse.maven:ftb-ultimine-forge-386134:8078515"
-    localRuntime "curse.maven:architectury-api-419699:5786327"
-    localRuntime "curse.maven:ftb-ultimine-forge-386134:8078515"
-
-    localRuntime "curse.maven:construction-sticks-1156098:7687867"
+    // compileOnly "curse.maven:architectury-api-419699:<26.x-fileId>"
+    // compileOnly "curse.maven:ftb-ultimine-forge-386134:<26.x-fileId>"
+    // localRuntime "curse.maven:architectury-api-419699:<26.x-fileId>"
+    // localRuntime "curse.maven:ftb-ultimine-forge-386134:<26.x-fileId>"
+    //
+    // Construction Sticks (optional).
+    // localRuntime "curse.maven:construction-sticks-1156098:<26.x-fileId>"
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -182,11 +190,13 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             minecraft_version      : minecraft_version,
             minecraft_version_range: minecraft_version_range,
             neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
             loader_version_range   : loader_version_range,
             mod_id                 : mod_id,
             mod_name               : mod_name,
             mod_license            : mod_license,
             mod_version            : mod_version,
+            mod_authors            : mod_authors,
     ]
     inputs.properties replaceProperties
     expand replaceProperties
@@ -215,6 +225,7 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+    options.compilerArgs << '-Xmaxerrs' << '4000' << '-Xmaxwarns' << '1'
 }
 
 tasks.withType(Test).configureEach {

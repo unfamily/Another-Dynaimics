@@ -20,7 +20,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -58,7 +58,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
         return CompletableFuture.supplyAsync(
                         () -> {
                             prepareProfiler.push(getName());
-                            Map<ResourceLocation, JsonElement> prepared = collectLoadJson(resourceManager);
+                            Map<Identifier, JsonElement> prepared = collectLoadJson(resourceManager);
                             prepareProfiler.pop();
                             return prepared;
                         },
@@ -81,12 +81,12 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
         tryApplyPrepared(collectLoadJson(resourceManager));
     }
 
-    static Map<ResourceLocation, JsonElement> collectLoadJson(ResourceManager resourceManager) {
-        Map<ResourceLocation, JsonElement> prepared = new HashMap<>();
-        Map<ResourceLocation, List<Resource>> stacks =
+    static Map<Identifier, JsonElement> collectLoadJson(ResourceManager resourceManager) {
+        Map<Identifier, JsonElement> prepared = new HashMap<>();
+        Map<Identifier, List<Resource>> stacks =
                 resourceManager.listResourceStacks(LOAD_FOLDER, rl -> rl.getPath().endsWith(".json"));
-        for (Map.Entry<ResourceLocation, List<Resource>> entry : stacks.entrySet()) {
-            ResourceLocation fileRl = entry.getKey();
+        for (Map.Entry<Identifier, List<Resource>> entry : stacks.entrySet()) {
+            Identifier fileRl = entry.getKey();
             List<Resource> stack = entry.getValue();
             if (stack.isEmpty()) {
                 continue;
@@ -109,17 +109,17 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
     }
 
     /** Path {@code <ns>:load/foo.json} → definition map key {@code <ns>:foo} (matches legacy SimpleJson listener). */
-    static ResourceLocation stripLoadJsonKey(ResourceLocation fileRl) {
+    static Identifier stripLoadJsonKey(Identifier fileRl) {
         String path = fileRl.getPath();
         String prefix = LOAD_FOLDER + "/";
         String body = path.startsWith(prefix) ? path.substring(prefix.length()) : path;
         String withoutJson = body.endsWith(".json") ? body.substring(0, body.length() - ".json".length()) : body;
-        return ResourceLocation.fromNamespaceAndPath(fileRl.getNamespace(), withoutJson);
+        return Identifier.fromNamespaceAndPath(fileRl.getNamespace(), withoutJson);
     }
 
-    private static void tryApplyPrepared(Map<ResourceLocation, JsonElement> prepared) {
-        Map<ResourceLocation, DuctDefinition> out = new HashMap<>();
-        for (Map.Entry<ResourceLocation, JsonElement> e : prepared.entrySet()) {
+    private static void tryApplyPrepared(Map<Identifier, JsonElement> prepared) {
+        Map<Identifier, DuctDefinition> out = new HashMap<>();
+        for (Map.Entry<Identifier, JsonElement> e : prepared.entrySet()) {
             if (!e.getValue().isJsonObject()) {
                 continue;
             }
@@ -178,7 +178,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                     }
                 }
             }
-            ResourceLocation defaultTexture = ResourceLocation.fromNamespaceAndPath(
+            Identifier defaultTexture = Identifier.fromNamespaceAndPath(
                     AnotherDynamicsMod.MOD_ID,
                     "block/duct/item/item_duct_0_light");
             boolean putInCreativeMenu = o.has("put_in_creative_menu") && o.get("put_in_creative_menu").getAsBoolean();
@@ -189,19 +189,19 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                     sound = Optional.of(s.trim());
                 }
             }
-            Optional<ResourceLocation> modelDefault = Optional.empty();
-            Optional<ResourceLocation> modelLine = Optional.empty();
+            Optional<Identifier> modelDefault = Optional.empty();
+            Optional<Identifier> modelLine = Optional.empty();
             boolean alwaysOpaqueRendering = false;
             if (o.has("rendering") && o.get("rendering").isJsonObject()) {
                 JsonObject r = o.getAsJsonObject("rendering");
                 if (r.has("default_texture")) {
-                    defaultTexture = ResourceLocation.parse(r.get("default_texture").getAsString());
+                    defaultTexture = Identifier.parse(r.get("default_texture").getAsString());
                 }
                 if (r.has("model_default")) {
-                    modelDefault = Optional.of(ResourceLocation.parse(r.get("model_default").getAsString()));
+                    modelDefault = Optional.of(Identifier.parse(r.get("model_default").getAsString()));
                 }
                 if (r.has("model_line")) {
-                    modelLine = Optional.of(ResourceLocation.parse(r.get("model_line").getAsString()));
+                    modelLine = Optional.of(Identifier.parse(r.get("model_line").getAsString()));
                 }
                 if (r.has("always_opaque") && r.get("always_opaque").isJsonPrimitive()) {
                     alwaysOpaqueRendering = r.get("always_opaque").getAsBoolean();

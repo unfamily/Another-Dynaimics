@@ -2,12 +2,14 @@ package net.unfamily.another_dynamics.duct;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.context.UseOnContext;
 import net.unfamily.another_dynamics.client.gui.ModuleUpgradeTooltip;
 import net.unfamily.another_dynamics.duct.module.DuctModuleHelper;
@@ -41,15 +43,16 @@ public final class DuctModuleItem extends Item {
     public void appendHoverText(
             ItemStack stack,
             Item.TooltipContext context,
-            List<Component> tooltipComponents,
+            TooltipDisplay display,
+            Consumer<Component> tooltipComponents,
             TooltipFlag tooltipFlag) {
-        super.appendHoverText(stack, context, tooltipComponents, tooltipFlag);
+        super.appendHoverText(stack, context, display, tooltipComponents, tooltipFlag);
         DuctModuleHelper.resolvedDeclarationId(stack)
                 .flatMap(ModuleDefinitionRegistry::get)
                 .ifPresent(def -> {
                     List<Component> lines = new ArrayList<>();
                     ModuleUpgradeTooltip.appendStatLines(def, lines);
-                    tooltipComponents.addAll(lines);
+                    lines.forEach(tooltipComponents);
                 });
     }
 }

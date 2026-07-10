@@ -10,7 +10,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.world.inventory.InventoryMenu;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
 import net.neoforged.neoforge.fluids.FluidStack;
 
@@ -32,7 +32,7 @@ public final class FluidTransitCuboidRenderer {
         }
         var fluidType = fluid.getFluid().getFluidType();
         IClientFluidTypeExtensions ext = IClientFluidTypeExtensions.of(fluidType);
-        ResourceLocation still = ext.getStillTexture(fluid);
+        Identifier still = ext.getStillTexture(fluid);
         TextureAtlasSprite sprite =
                 Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(still);
         int tint = ext.getTintColor(fluid);

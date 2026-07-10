@@ -10,7 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 
 /**
@@ -306,7 +306,7 @@ public final class DuctFilterLineReorder {
         if (t.startsWith("@")) {
             return 200;
         }
-        ResourceLocation id = ResourceLocation.tryParse(t);
+        Identifier id = Identifier.tryParse(t);
         if (id != null && BuiltInRegistries.ITEM.containsKey(id)) {
             return 0;
         }

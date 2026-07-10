@@ -50,10 +50,10 @@ public final class DuctFaceSettingsSnapshot {
             return false;
         }
         CompoundTag tag = stack.get(ModDataComponents.DUCT_FACE_SETTINGS.get());
-        if (tag == null || tag.isEmpty() || !tag.contains(KEY_FMT, Tag.TAG_INT)) {
+        if (tag == null || tag.isEmpty() || !tag.contains(KEY_FMT)) {
             return false;
         }
-        return acceptsSnapshotFormat(tag.getInt(KEY_FMT));
+        return acceptsSnapshotFormat(tag.getIntOr(KEY_FMT, 0));
     }
 
     public static SettingsCopierStoreKind getStoreKind(ItemStack stack) {
@@ -61,10 +61,10 @@ public final class DuctFaceSettingsSnapshot {
     }
 
     public static boolean isAllPayload(CompoundTag tag) {
-        if (tag == null || !tag.contains(KEY_FMT, Tag.TAG_INT)) {
+        if (tag == null || !tag.contains(KEY_FMT)) {
             return false;
         }
-        if (!acceptsSnapshotFormat(tag.getInt(KEY_FMT))) {
+        if (!acceptsSnapshotFormat(tag.getIntOr(KEY_FMT, 0))) {
             return false;
         }
         return SettingsCopierStoreKind.fromCompound(tag) == SettingsCopierStoreKind.ALL;
@@ -121,7 +121,7 @@ public final class DuctFaceSettingsSnapshot {
                 be.ductDefinition().map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
         DuctFaceLanes lanes = be.getFaceLanes(face);
 
-        int fmt = data.getInt(KEY_FMT);
+        int fmt = data.getIntOr(KEY_FMT, 0);
         if (fmt == FORMAT_VERSION) {
             lanes.loadCopierSettings(registries, data, kinds);
         } else {
@@ -156,18 +156,18 @@ public final class DuctFaceSettingsSnapshot {
             CompoundTag data,
             HolderLookup.Provider registries,
             EnumSet<DuctTransportKind> kinds) {
-        if (data.contains(KEY_SHARED, Tag.TAG_COMPOUND)) {
-            lanes.loadSharedSettings(data.getCompound(KEY_SHARED));
+        if (data.contains(KEY_SHARED)) {
+            lanes.loadSharedSettings(data.getCompoundOrEmpty(KEY_SHARED));
             lanes.ensureTransportEnabledMask(kinds);
         }
-        if (data.contains(KEY_ITEM, Tag.TAG_COMPOUND) && kinds.contains(DuctTransportKind.ITEM)) {
-            lanes.item.loadSettings(registries, data.getCompound(KEY_ITEM));
+        if (data.contains(KEY_ITEM) && kinds.contains(DuctTransportKind.ITEM)) {
+            lanes.item.loadSettings(registries, data.getCompoundOrEmpty(KEY_ITEM));
         }
-        if (data.contains(KEY_FLUID, Tag.TAG_COMPOUND) && kinds.contains(DuctTransportKind.FLUID)) {
-            lanes.fluid.loadSettings(registries, data.getCompound(KEY_FLUID));
+        if (data.contains(KEY_FLUID) && kinds.contains(DuctTransportKind.FLUID)) {
+            lanes.fluid.loadSettings(registries, data.getCompoundOrEmpty(KEY_FLUID));
         }
-        if (data.contains(KEY_GAS, Tag.TAG_COMPOUND) && kinds.contains(DuctTransportKind.GAS)) {
-            lanes.gas.loadSettings(registries, data.getCompound(KEY_GAS));
+        if (data.contains(KEY_GAS) && kinds.contains(DuctTransportKind.GAS)) {
+            lanes.gas.loadSettings(registries, data.getCompoundOrEmpty(KEY_GAS));
         }
     }
 

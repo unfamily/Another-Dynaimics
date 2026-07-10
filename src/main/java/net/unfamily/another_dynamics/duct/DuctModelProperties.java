@@ -1,6 +1,6 @@
 package net.unfamily.another_dynamics.duct;
 
-import net.neoforged.neoforge.client.model.data.ModelProperty;
+import net.neoforged.neoforge.model.data.ModelProperty;
 
 public final class DuctModelProperties {
     public static final ModelProperty<Integer> PIPE_MASK = new ModelProperty<>();
@@ -13,7 +13,7 @@ public final class DuctModelProperties {
     public static final ModelProperty<Integer> STALL_MASK = new ModelProperty<>();
     /**
      * Per-block {@link net.unfamily.another_dynamics.duct.DuctDefinition#logicalId()} from {@link DuctBlockEntity};
-     * drives opaque skin and (when geometry matches) definition lookups in {@link net.unfamily.another_dynamics.client.DuctBakedModel}.
+     * drives opaque skin and (when geometry matches) definition lookups in {@link net.unfamily.another_dynamics.client.DuctBlockStateModel}.
      */
     public static final ModelProperty<String> DUCT_LOGICAL_ID = new ModelProperty<>();
     /** Server-synced network opaque skin (all players). */

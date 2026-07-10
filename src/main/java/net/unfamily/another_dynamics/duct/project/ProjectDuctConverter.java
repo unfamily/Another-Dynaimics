@@ -10,7 +10,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -36,16 +36,16 @@ import java.util.EnumSet;
 public final class ProjectDuctConverter {
     private ProjectDuctConverter() {}
 
-    public static ItemInteractionResult tryConvertNetwork(
+    public static InteractionResult tryConvertNetwork(
             Player player, Level level, BlockPos anchor, ItemStack heldStack, InteractionHand hand) {
         if (level.isClientSide()) {
-            return ItemInteractionResult.SUCCESS;
+            return InteractionResult.SUCCESS;
         }
         if (!(level instanceof ServerLevel serverLevel)) {
-            return ItemInteractionResult.FAIL;
+            return InteractionResult.FAIL;
         }
         if (!ProjectDuctNetwork.isProjectDuct(level.getBlockState(anchor).getBlock())) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            return InteractionResult.TRY_WITH_EMPTY_HAND;
         }
         String logicalId = DuctReplaceHelper.logicalIdFromReplacementItem(heldStack);
         if (logicalId == null || logicalId.isEmpty()) {
@@ -54,7 +54,7 @@ public final class ProjectDuctConverter {
         logicalId = DuctIds.normalize(logicalId);
         if (DuctDefinitionRegistry.getByLogicalId(logicalId).isEmpty()) {
             player.displayClientMessage(Component.translatable("another_dynamics.project_duct.convert.unknown_type"), true);
-            return ItemInteractionResult.FAIL;
+            return InteractionResult.FAIL;
         }
 
         ItemStack template = ModItems.createDuctStack(logicalId);
@@ -80,7 +80,7 @@ public final class ProjectDuctConverter {
         }
 
         if (converted == 0) {
-            return ItemInteractionResult.FAIL;
+            return InteractionResult.FAIL;
         }
 
         DuctNetworkCache.invalidate(serverLevel);
@@ -100,7 +100,7 @@ public final class ProjectDuctConverter {
             }
         }
         serverLevel.playSound(null, anchor, SoundEvents.COPPER_PLACE, SoundSource.BLOCKS, 0.8f, 1.0f);
-        return ItemInteractionResult.CONSUME;
+        return InteractionResult.CONSUME;
     }
 
     private static boolean convertOne(ServerLevel level, BlockPos pos, String logicalId) {

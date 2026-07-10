@@ -6,7 +6,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -14,6 +13,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
@@ -28,6 +28,7 @@ import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Copies duct face <em>configuration</em> via GUI Copy; right-click (air or block) opens the configurator;
@@ -41,18 +42,17 @@ public class SettingsCopierItem extends Item {
     }
 
     @Override
-    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
-        ItemStack stack = player.getItemInHand(hand);
+    public InteractionResult use(Level level, Player player, InteractionHand hand) {
         if (player.isShiftKeyDown()) {
-            return InteractionResultHolder.pass(stack);
+            return InteractionResult.PASS;
         }
         if (level.isClientSide()) {
-            return InteractionResultHolder.success(stack);
+            return InteractionResult.SUCCESS;
         }
         if (player instanceof ServerPlayer sp) {
             openHubMenu(sp, hand);
         }
-        return InteractionResultHolder.consume(stack);
+        return InteractionResult.CONSUME;
     }
 
     public static Component grayTooltipLine(String translationKey) {
@@ -75,7 +75,7 @@ public class SettingsCopierItem extends Item {
             ItemStack stack = context.getItemInHand();
             BlockHitResult hit =
                     new BlockHitResult(context.getClickLocation(), context.getClickedFace(), pos, false);
-            return DuctBlock.attemptSettingsCopierPaste(level, pos, player, stack, hit).result();
+            return DuctBlock.attemptSettingsCopierPaste(level, pos, player, stack, hit);
         }
         if (level.isClientSide()) {
             return InteractionResult.SUCCESS;
@@ -108,7 +108,8 @@ public class SettingsCopierItem extends Item {
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
+    public void appendHoverText(
+            ItemStack stack, TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag flag) {
         SettingsCopierStoreKind mode = SettingsCopierStoreKind.getMode(stack);
         boolean hasData = DuctFaceSettingsSnapshot.hasStoredSettings(stack);
         if (!hasData) {
@@ -123,16 +124,16 @@ public class SettingsCopierItem extends Item {
         } else {
             addTooltipLines(tooltip, TOOLTIP_ROOT + "all.", 4);
         }
-        tooltip.add(grayTooltipLine(TOOLTIP_ROOT + "use_gui"));
+        tooltip.accept(grayTooltipLine(TOOLTIP_ROOT + "use_gui"));
     }
 
-    private static void addTooltipLines(List<Component> tooltip, String keyPrefix, int lineCount) {
+    private static void addTooltipLines(Consumer<Component> tooltip, String keyPrefix, int lineCount) {
         for (int i = 0; i < lineCount; i++) {
-            tooltip.add(grayTooltipLine(keyPrefix + i));
+            tooltip.accept(grayTooltipLine(keyPrefix + i));
         }
     }
 
-    private static void appendFilterKindTooltip(ItemStack stack, List<Component> tooltip) {
+    private static void appendFilterKindTooltip(ItemStack stack, Consumer<Component> tooltip) {
         DuctFaceSettingsSnapshot.readFromCopier(stack)
                 .map(DuctFilterListSnapshot::getMaterialKind)
                 .ifPresent(
@@ -145,7 +146,7 @@ public class SettingsCopierItem extends Item {
                                     kind == FilterListMaterialKind.NONE
                                             ? ChatFormatting.GRAY
                                             : ChatFormatting.AQUA;
-                            tooltip.add(
+                            tooltip.accept(
                                     Component.translatable(
                                                     "item.another_dynamics.settings_copier.filter_kind.stored",
                                                     kind.displayName())

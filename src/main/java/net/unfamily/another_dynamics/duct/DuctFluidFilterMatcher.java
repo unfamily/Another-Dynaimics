@@ -5,7 +5,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -29,7 +29,7 @@ public final class DuctFluidFilterMatcher {
     public static boolean matchesFilterEntry(
             FluidStack stack,
             Fluid fluid,
-            ResourceLocation fluidId,
+            Identifier fluidId,
             String fluidIdStr,
             String fluidModId,
             String filter,
@@ -55,7 +55,7 @@ public final class DuctFluidFilterMatcher {
         if (filter.startsWith("#")) {
             String tagFilter = filter.substring(1);
             try {
-                ResourceLocation tagId = ResourceLocation.parse(tagFilter);
+                Identifier tagId = Identifier.parse(tagFilter);
                 TagKey<Fluid> fluidTag = TagKey.create(Registries.FLUID, tagId);
                 return BuiltInRegistries.FLUID.wrapAsHolder(fluid).is(fluidTag);
             } catch (Exception e) {
@@ -169,7 +169,7 @@ public final class DuctFluidFilterMatcher {
             return false;
         }
         Fluid fluid = stack.getFluid();
-        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluid);
+        Identifier fluidId = BuiltInRegistries.FLUID.getKey(fluid);
         String fluidIdStr = fluidId.toString();
         String fluidModId = fluidId.getNamespace();
         return matchesFilterEntry(stack, fluid, fluidId, fluidIdStr, fluidModId, filterLine.trim(), registries);

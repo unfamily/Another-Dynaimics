@@ -6,7 +6,7 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.IItemHandler;
@@ -94,7 +94,7 @@ public final class DuctAllowLimitLogic {
             return -1;
         }
         Item item = template.getItem();
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(item);
         String itemIdStr = itemId.toString();
         String itemModId = itemId.getNamespace();
         return DuctFilterConcatEvaluator.firstMatchingLineIndex(

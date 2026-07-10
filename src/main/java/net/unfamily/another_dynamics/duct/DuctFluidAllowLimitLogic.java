@@ -6,7 +6,7 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
@@ -50,7 +50,7 @@ public final class DuctFluidAllowLimitLogic {
             return -1;
         }
         Fluid fluid = template.getFluid();
-        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluid);
+        Identifier fluidId = BuiltInRegistries.FLUID.getKey(fluid);
         String fluidIdStr = fluidId.toString();
         String fluidModId = fluidId.getNamespace();
         return DuctFilterConcatEvaluator.firstMatchingLineIndex(

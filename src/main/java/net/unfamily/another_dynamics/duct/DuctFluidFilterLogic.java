@@ -4,7 +4,7 @@ import java.util.List;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -145,7 +145,7 @@ public final class DuctFluidFilterLogic {
         }
         HolderLookup.Provider reg = level.registryAccess();
         Fluid fluid = stack.getFluid();
-        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluid);
+        Identifier fluidId = BuiltInRegistries.FLUID.getKey(fluid);
         String fluidIdStr = fluidId.toString();
         String fluidModId = fluidId.getNamespace();
 
@@ -236,7 +236,7 @@ public final class DuctFluidFilterLogic {
         }
         HolderLookup.Provider reg = level.registryAccess();
         Fluid fluid = stack.getFluid();
-        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluid);
+        Identifier fluidId = BuiltInRegistries.FLUID.getKey(fluid);
         String fluidIdStr = fluidId.toString();
         String fluidModId = fluidId.getNamespace();
         List<String> allow = node.bankAllowFilters(bank);
@@ -262,7 +262,7 @@ public final class DuctFluidFilterLogic {
         }
         HolderLookup.Provider reg = level.registryAccess();
         Fluid fluid = stack.getFluid();
-        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(fluid);
+        Identifier fluidId = BuiltInRegistries.FLUID.getKey(fluid);
         String fluidIdStr = fluidId.toString();
         String fluidModId = fluidId.getNamespace();
         return DuctFilterUnitLogic.denyBlocksAllowUnit(
@@ -284,7 +284,7 @@ public final class DuctFluidFilterLogic {
             @Nullable DuctDirectionalEndpoint counterparty,
             FluidStack stack,
             Fluid fluid,
-            ResourceLocation fluidId,
+            Identifier fluidId,
             String fluidIdStr,
             String fluidModId,
             HolderLookup.Provider registries) {

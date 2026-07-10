@@ -11,7 +11,7 @@ import net.unfamily.another_dynamics.registry.ModAttachments;
 /**
  * Duct quads depend on per-player opaque mode but chunk meshes cache baked geometry; refresh when the attachment flips.
  */
-@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
+@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, value = Dist.CLIENT)
 public final class DuctOpaqueRenderRefresh {
     private static boolean lastOpaque = false;
 

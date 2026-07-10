@@ -676,7 +676,7 @@ public final class DuctGasServerTick {
             }
             case RANDOM -> {
                 for (int i2 = tier.size() - 1; i2 > 0; i2--) {
-                    int j = level.random.nextInt(i2 + 1);
+                    int j = level.getRandom().nextInt(i2 + 1);
                     DuctTargetSelector.DonorCandidate a = tier.get(i2);
                     tier.set(i2, tier.get(j));
                     tier.set(j, a);
@@ -984,7 +984,7 @@ public final class DuctGasServerTick {
                 yield tier.get(i);
             }
             case RANDOM -> {
-                int i = level.random.nextInt(tier.size());
+                int i = level.getRandom().nextInt(tier.size());
                 yield tier.get(i);
             }
         };

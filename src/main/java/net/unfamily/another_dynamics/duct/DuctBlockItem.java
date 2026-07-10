@@ -1,26 +1,21 @@
 package net.unfamily.another_dynamics.duct;
 
-import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
-import net.unfamily.another_dynamics.client.DuctItemRenderer;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctConverter;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
-
-import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Single physical item representing multiple logical duct types (via {@link ModDataComponents#DUCT_LOGICAL_ID}).
@@ -43,25 +38,9 @@ public final class DuctBlockItem extends BlockItem {
     }
 
     /**
-     * Routes item rendering through {@link DuctItemRenderer} (a custom
-     * {@link BlockEntityWithoutLevelRenderer}) so that the texture is driven by
-     * {@link ModDataComponents#DUCT_LOGICAL_ID} rather than a static baked model.
-     * This is the same mechanism used by GeckoLib's {@code GeoItemRenderer}.
+     * Item rendering uses {@link net.unfamily.another_dynamics.client.DuctItemSpecialRenderer}
+     * via {@code assets/another_dynamics/items/*.json} special model definitions.
      */
-    @Override
-    public void initializeClient(Consumer<IClientItemExtensions> consumer) {
-        consumer.accept(new IClientItemExtensions() {
-            private DuctItemRenderer renderer;
-
-            @Override
-            public BlockEntityWithoutLevelRenderer getCustomRenderer() {
-                if (this.renderer == null) {
-                    this.renderer = new DuctItemRenderer();
-                }
-                return this.renderer;
-            }
-        });
-    }
 
     public String getDefaultLogicalId() {
         return defaultLogicalId;
@@ -89,16 +68,14 @@ public final class DuctBlockItem extends BlockItem {
                     }
                     ductBE.refreshFromWorld();
                     return DuctReplaceHelper.tryReplace(
-                                    context.getPlayer(), level, pos, ductBE, newLogicalId, context.getHand())
-                            .result();
+                            context.getPlayer(), level, pos, ductBE, newLogicalId, context.getHand());
                 }
             } else if (state.getBlock() instanceof ProjectDuctBlock) {
                 if (level.isClientSide()) {
                     return InteractionResult.SUCCESS;
                 }
                 return ProjectDuctConverter.tryConvertNetwork(
-                                context.getPlayer(), level, pos, context.getItemInHand(), context.getHand())
-                        .result();
+                        context.getPlayer(), level, pos, context.getItemInHand(), context.getHand());
             }
         }
         return super.useOn(context);
@@ -113,10 +90,10 @@ public final class DuctBlockItem extends BlockItem {
 
     @Override
     public void appendHoverText(
-            ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-        super.appendHoverText(stack, context, tooltip, flag);
+            ItemStack stack, TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag flag) {
+        super.appendHoverText(stack, context, display, tooltip, flag);
         for (int i = 0; i < 3; i++) {
-            tooltip.add(SettingsCopierItem.grayTooltipLine(OPAQUE_TOOLTIP_ROOT + i));
+            tooltip.accept(SettingsCopierItem.grayTooltipLine(OPAQUE_TOOLTIP_ROOT + i));
         }
     }
 

@@ -2,7 +2,7 @@ package net.unfamily.another_dynamics.registry;
 
 import java.util.Optional;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -103,7 +103,7 @@ public final class ModItems {
                                 new Item.Properties()
                                         .component(
                                                 ModDataComponents.DUCT_MODULE_DECLARATION.get(),
-                                                ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, id))));
+                                                Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, id))));
     }
 
     /** Creative / recipe-friendly stack: block item matches enabled transport kinds; logical id in component. */

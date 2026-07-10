@@ -5,7 +5,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 
 /** Client -> server: flip deny/allow precedence for one filter bank. */
@@ -13,7 +13,7 @@ public record DuctListLogicPayload(BlockPos pos, int faceOrdinal, int transportK
         implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<DuctListLogicPayload> TYPE =
             new CustomPacketPayload.Type<>(
-                    ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_list_logic"));
+                    Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_list_logic"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, DuctListLogicPayload> STREAM_CODEC =
             StreamCodec.composite(

@@ -6,7 +6,7 @@ import net.minecraft.core.component.DataComponentType;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
@@ -28,13 +28,13 @@ public final class ModDataComponents {
                                     .build());
 
     /** Datapack module declaration id ({@code another_dynamics:load/module/...}). */
-    public static final DeferredHolder<DataComponentType<?>, DataComponentType<ResourceLocation>> DUCT_MODULE_DECLARATION =
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Identifier>> DUCT_MODULE_DECLARATION =
             TYPES.register(
                     "duct_module_declaration",
                     () ->
-                            DataComponentType.<ResourceLocation>builder()
-                                    .persistent(ResourceLocation.CODEC)
-                                    .networkSynchronized(ResourceLocation.STREAM_CODEC)
+                            DataComponentType.<Identifier>builder()
+                                    .persistent(Identifier.CODEC)
+                                    .networkSynchronized(Identifier.STREAM_CODEC)
                                     .build());
 
     /** Serialized snapshot payload on {@link net.unfamily.another_dynamics.item.SettingsCopierItem}. */

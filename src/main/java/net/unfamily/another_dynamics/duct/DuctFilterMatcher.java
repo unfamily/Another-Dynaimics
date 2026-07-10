@@ -4,7 +4,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
@@ -32,7 +32,7 @@ public final class DuctFilterMatcher {
     public static boolean matchesFilterEntry(
             ItemStack stack,
             Item item,
-            ResourceLocation itemId,
+            Identifier itemId,
             String itemIdStr,
             String itemModId,
             String filter,
@@ -58,7 +58,7 @@ public final class DuctFilterMatcher {
         if (filter.startsWith("#")) {
             String tagFilter = filter.substring(1);
             try {
-                ResourceLocation tagId = ResourceLocation.parse(tagFilter);
+                Identifier tagId = Identifier.parse(tagFilter);
                 TagKey<Item> itemTag = ItemTags.create(tagId);
                 return item.builtInRegistryHolder().is(itemTag);
             } catch (Exception e) {
@@ -165,7 +165,7 @@ public final class DuctFilterMatcher {
             return false;
         }
         Item item = stack.getItem();
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(item);
         String itemIdStr = itemId.toString();
         String itemModId = itemId.getNamespace();
         return matchesFilterEntry(stack, item, itemId, itemIdStr, itemModId, filterLine.trim(), registries);

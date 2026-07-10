@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import net.minecraft.core.HolderLookup;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
@@ -17,8 +17,8 @@ public final class ExternalUpgradeFilterImportSource implements FilterImportSour
     /** Companion mod namespace checked at runtime when present in the pack. */
     public static final String COMPANION_NAMESPACE = "pipez";
 
-    public static final ResourceLocation ID =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "external_upgrade");
+    public static final Identifier ID =
+            Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "external_upgrade");
     public static final ExternalUpgradeFilterImportSource INSTANCE = new ExternalUpgradeFilterImportSource();
 
     private ExternalUpgradeFilterImportSource() {}
@@ -28,7 +28,7 @@ public final class ExternalUpgradeFilterImportSource implements FilterImportSour
     }
 
     @Override
-    public ResourceLocation id() {
+    public Identifier id() {
         return ID;
     }
 

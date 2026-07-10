@@ -1,6 +1,7 @@
 package net.unfamily.another_dynamics.item;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
@@ -12,6 +13,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
@@ -47,7 +49,7 @@ public class RemoteNodeSelectorItem extends Item {
         if (endpoint == null) {
             return InteractionResult.PASS;
         }
-        if (level.isClientSide) {
+        if (level.isClientSide()) {
             return InteractionResult.SUCCESS;
         }
         bindEndpoint(stack, endpoint, player);
@@ -56,16 +58,16 @@ public class RemoteNodeSelectorItem extends Item {
 
     @Override
     public void appendHoverText(
-            ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
+            ItemStack stack, TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag flag) {
         DuctDirectionalEndpoint endpoint = getEndpoint(stack);
         if (endpoint == null) {
-            tooltip.add(
+            tooltip.accept(
                     Component.translatable("item.another_dynamics.remote_node_selector.tooltip.unbound")
                             .withStyle(ChatFormatting.GRAY));
             return;
         }
         BlockPos p = endpoint.pos();
-        tooltip.add(
+        tooltip.accept(
                 Component.translatable(
                                 "item.another_dynamics.remote_node_selector.tooltip.bound",
                                 p.getX(),

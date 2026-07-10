@@ -45,7 +45,7 @@ public final class EnergyRayClient {
         float b = (argb & 0xFF) / 255.0F;
         float scale = 0.5F;
         var dust = new DustParticleOptions(new Vector3f(r, g, b), scale);
-        var rand = level.random;
+        var rand = level.getRandom();
 
         DuctTransitPathGeometry.OrthogonalTransitPath ortho =
                 DuctTransitPathGeometry.buildOrthogonalTransitPath(

@@ -5,17 +5,17 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 
 public final class DuctDefinitionRegistry {
-    private static Map<ResourceLocation, DuctDefinition> definitions = Map.of();
+    private static Map<Identifier, DuctDefinition> definitions = Map.of();
     private static Map<String, DuctDefinition> definitionsByLogicalId = Map.of();
     private static volatile int version = 0;
 
     private DuctDefinitionRegistry() {}
 
-    public static void replaceAll(Map<ResourceLocation, DuctDefinition> next) {
+    public static void replaceAll(Map<Identifier, DuctDefinition> next) {
         definitions = Collections.unmodifiableMap(new HashMap<>(next));
         Map<String, DuctDefinition> logical = new HashMap<>();
         for (DuctDefinition def : definitions.values()) {
@@ -37,12 +37,12 @@ public final class DuctDefinitionRegistry {
         return version;
     }
 
-    public static Map<ResourceLocation, DuctDefinition> all() {
+    public static Map<Identifier, DuctDefinition> all() {
         return definitions;
     }
 
     /** Key is the resource path under {@code load/}, e.g. {@code another_dynamics:load/duct}. */
-    public static Optional<DuctDefinition> get(ResourceLocation dataId) {
+    public static Optional<DuctDefinition> get(Identifier dataId) {
         return Optional.ofNullable(definitions.get(dataId));
     }
 

@@ -5,7 +5,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 
 /** Client -> server: save or load settings copier data from the duct node GUI. */
@@ -28,7 +28,7 @@ public record SettingsCopierActionPayload(
     public static final int LIST_DENY = 1;
 
     public static final Type<SettingsCopierActionPayload> TYPE =
-            new Type<>(ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "settings_copier_action"));
+            new Type<>(Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "settings_copier_action"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, SettingsCopierActionPayload> STREAM_CODEC =
             StreamCodec.of(

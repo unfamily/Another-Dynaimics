@@ -5,7 +5,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 
 /**
@@ -17,7 +17,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 public record DuctMenuButtonPayload(BlockPos pos, int faceOrdinal, int buttonId) implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<DuctMenuButtonPayload> TYPE =
             new CustomPacketPayload.Type<>(
-                    ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_menu_button"));
+                    Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_menu_button"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, DuctMenuButtonPayload> STREAM_CODEC =
             StreamCodec.composite(

@@ -1,6 +1,9 @@
 {
   "model": {
-    "type": "minecraft:model",
-    "model": "another_dynamics:item/project_duct"
+    "type": "minecraft:special",
+    "base": "another_dynamics:item/project_duct",
+    "model": {
+      "type": "another_dynamics:duct_item"
+    }
   }
 }

@@ -1,5 +1,5 @@
 {
-  "parent": "builtin/entity",
+  "parent": "another_dynamics:block/simple_duct_line",
   "display": {
     "thirdperson_righthand": {
       "rotation": [-75, 0, 0],

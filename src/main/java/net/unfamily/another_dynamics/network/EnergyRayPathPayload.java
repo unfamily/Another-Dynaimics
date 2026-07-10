@@ -9,7 +9,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 
 /**
@@ -20,7 +20,7 @@ public record EnergyRayPathPayload(
         List<BlockPos> ductPath, int argb, @org.jetbrains.annotations.Nullable Direction sourceAttachFace, @org.jetbrains.annotations.Nullable Direction destAttachFace)
         implements CustomPacketPayload {
     public static final Type<EnergyRayPathPayload> TYPE =
-            new Type<>(ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "energy_ray_path"));
+            new Type<>(Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "energy_ray_path"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, EnergyRayPathPayload> STREAM_CODEC =
             StreamCodec.of(

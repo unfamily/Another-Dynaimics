@@ -7,7 +7,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -80,7 +80,7 @@ public final class DuctReplaceHelper {
      * @param hand       the hand holding the replacement item
      * @return the interaction result to return to the engine
      */
-    public static ItemInteractionResult tryReplace(
+    public static InteractionResult tryReplace(
             Player player,
             Level level,
             BlockPos pos,
@@ -98,14 +98,14 @@ public final class DuctReplaceHelper {
 
         // Same duct type: let vanilla place against this block (shift-click placement).
         if (currentLogicalId.equals(newLogicalId)) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            return InteractionResult.TRY_WITH_EMPTY_HAND;
         }
 
         Optional<DuctDefinition> newDefOpt = DuctDefinitionRegistry.getByLogicalId(newLogicalId);
         if (newDefOpt.isEmpty()) {
             player.displayClientMessage(
                     Component.translatable("another_dynamics.duct_replace.unknown_type"), true);
-            return ItemInteractionResult.FAIL;
+            return InteractionResult.FAIL;
         }
         DuctDefinition newDef = newDefOpt.get();
 
@@ -120,7 +120,7 @@ public final class DuctReplaceHelper {
         if (!newKinds.containsAll(currentKinds)) {
             player.displayClientMessage(
                     Component.translatable("another_dynamics.duct_replace.incompatible_types"), true);
-            return ItemInteractionResult.FAIL;
+            return InteractionResult.FAIL;
         }
 
         // --- Compatibility check 2 & 3: per-face module slots and filter banks ---
@@ -133,7 +133,7 @@ public final class DuctReplaceHelper {
             if (usedModuleSlots > newModuleSlotCount) {
                 player.displayClientMessage(
                         Component.translatable("another_dynamics.duct_replace.module_slots_lost"), true);
-                return ItemInteractionResult.FAIL;
+                return InteractionResult.FAIL;
             }
 
             // Module bonuses stay identical since the installed modules don't change.
@@ -146,7 +146,7 @@ public final class DuctReplaceHelper {
                 if (!itemFiltersCompatible(lanes.item, newItemSpec, nodeMode, bonuses)) {
                     player.displayClientMessage(
                             Component.translatable("another_dynamics.duct_replace.filter_slots_lost"), true);
-                    return ItemInteractionResult.FAIL;
+                    return InteractionResult.FAIL;
                 }
             }
 
@@ -156,7 +156,7 @@ public final class DuctReplaceHelper {
                 if (!fluidFiltersCompatible(lanes.fluid, newFluidSpec, nodeMode, bonuses)) {
                     player.displayClientMessage(
                             Component.translatable("another_dynamics.duct_replace.filter_slots_lost"), true);
-                    return ItemInteractionResult.FAIL;
+                    return InteractionResult.FAIL;
                 }
             }
 
@@ -166,7 +166,7 @@ public final class DuctReplaceHelper {
                 if (!gasFiltersCompatible(lanes.gas, newGasSpec, nodeMode, bonuses)) {
                     player.displayClientMessage(
                             Component.translatable("another_dynamics.duct_replace.filter_slots_lost"), true);
-                    return ItemInteractionResult.FAIL;
+                    return InteractionResult.FAIL;
                 }
             }
         }
@@ -215,7 +215,7 @@ public final class DuctReplaceHelper {
                     Component.translatable("another_dynamics.duct_replace.success"), true);
         }
 
-        return ItemInteractionResult.CONSUME;
+        return InteractionResult.CONSUME;
     }
 
     // --- Helpers ---

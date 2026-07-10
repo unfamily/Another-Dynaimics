@@ -1,6 +1,6 @@
 package net.unfamily.another_dynamics.duct;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 
 /**
@@ -8,8 +8,8 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
  * {@code rendering.default_texture}). Single entry point for rendering code; add multi-texture rules here later.
  */
 public final class DuctTextures {
-    private static final ResourceLocation FALLBACK_ITEM_DUCT_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/duct/item/item_duct_0_light");
+    private static final Identifier FALLBACK_ITEM_DUCT_TEXTURE =
+            Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/duct/item/item_duct_0_light");
 
     private DuctTextures() {}
 
@@ -17,7 +17,7 @@ public final class DuctTextures {
      * Block texture for composite duct models (center, arms, nodes, line). Comes from the declaration JSON
      * {@code rendering.default_texture} for the given logical duct id.
      */
-    public static ResourceLocation compositeBlockTexture(String logicalDuctId) {
+    public static Identifier compositeBlockTexture(String logicalDuctId) {
         return DuctDefinitionRegistry.getByLogicalId(logicalDuctId)
                 .map(DuctDefinition::defaultTexture)
                 .orElseGet(() -> {

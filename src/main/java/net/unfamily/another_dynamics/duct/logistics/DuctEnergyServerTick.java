@@ -596,7 +596,7 @@ public final class DuctEnergyServerTick {
             rayColor = "#e30b28";
         }
         if (rayColor.equalsIgnoreCase("random")) {
-            int rgb = level.random.nextInt(0x1000000);
+            int rgb = level.getRandom().nextInt(0x1000000);
             int argb = (alphaByte << 24) | (rgb & 0xFFFFFF);
             ModNetwork.sendEnergyRayPath(level, path, argb, midOf(path), sourceAttachFace, destAttachFace);
             return true;
@@ -656,7 +656,7 @@ public final class DuctEnergyServerTick {
                 int i = Math.floorMod(roundRobinState[0]++, ordered.size());
                 yield ordered.get(i);
             }
-            case RANDOM -> tier.get(level.random.nextInt(tier.size()));
+            case RANDOM -> tier.get(level.getRandom().nextInt(tier.size()));
         };
     }
 
@@ -689,7 +689,7 @@ public final class DuctEnergyServerTick {
                 int i = Math.floorMod(roundRobinState[0]++, ordered.size());
                 yield ordered.get(i);
             }
-            case RANDOM -> tier.get(level.random.nextInt(tier.size()));
+            case RANDOM -> tier.get(level.getRandom().nextInt(tier.size()));
         };
     }
 

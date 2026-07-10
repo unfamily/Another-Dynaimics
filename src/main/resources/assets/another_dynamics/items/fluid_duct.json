@@ -1,0 +1,9 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "another_dynamics:item/duct",
+    "model": {
+      "type": "another_dynamics:duct_item"
+    }
+  }
+}

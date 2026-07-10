@@ -6,7 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.inventory.InventoryMenu;
 
 /**
@@ -18,7 +18,7 @@ public final class GasTransitCuboidRenderer {
     /** Half-extent tuned to match in-duct item ghost scale (~{@link DuctTransitBlockEntityRenderer} GHOST_SCALE on items). */
     private static final float HALF_EXTENT = 0.145f;
 
-    private static final ResourceLocation FALLBACK_SPRITE = ResourceLocation.parse("minecraft:block/white_concrete");
+    private static final Identifier FALLBACK_SPRITE = Identifier.parse("minecraft:block/white_concrete");
 
     private GasTransitCuboidRenderer() {}
 

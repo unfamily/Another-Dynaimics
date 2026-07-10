@@ -249,22 +249,22 @@ public final class DuctFaceLanes {
 
     /** Restores {@link #saveCopierSettings}; only lanes present in {@code ductKinds} on the target duct are applied. */
     public void loadCopierSettings(HolderLookup.Provider registries, CompoundTag tag, EnumSet<DuctTransportKind> ductKinds) {
-        if (tag.contains("Shared", Tag.TAG_COMPOUND)) {
-            loadShared(tag.getCompound("Shared"));
+        if (tag.contains("Shared")) {
+            loadShared(tag.getCompoundOrEmpty("Shared"));
         }
         ensureTransportEnabledMask(ductKinds);
 
-        if (tag.contains("Item", Tag.TAG_COMPOUND) && ductKinds.contains(DuctTransportKind.ITEM)) {
-            item.loadSettings(registries, tag.getCompound("Item"));
+        if (tag.contains("Item") && ductKinds.contains(DuctTransportKind.ITEM)) {
+            item.loadSettings(registries, tag.getCompoundOrEmpty("Item"));
         }
-        if (tag.contains("Fluid", Tag.TAG_COMPOUND) && ductKinds.contains(DuctTransportKind.FLUID)) {
-            fluid.loadSettings(registries, tag.getCompound("Fluid"));
+        if (tag.contains("Fluid") && ductKinds.contains(DuctTransportKind.FLUID)) {
+            fluid.loadSettings(registries, tag.getCompoundOrEmpty("Fluid"));
         }
-        if (tag.contains("Gas", Tag.TAG_COMPOUND) && ductKinds.contains(DuctTransportKind.GAS)) {
-            gas.loadSettings(registries, tag.getCompound("Gas"));
+        if (tag.contains("Gas") && ductKinds.contains(DuctTransportKind.GAS)) {
+            gas.loadSettings(registries, tag.getCompoundOrEmpty("Gas"));
         }
-        if (tag.contains(NBT_ENERGY_HEAT, Tag.TAG_COMPOUND)) {
-            loadCopierEnergyHeat(tag.getCompound(NBT_ENERGY_HEAT), ductKinds);
+        if (tag.contains(NBT_ENERGY_HEAT)) {
+            loadCopierEnergyHeat(tag.getCompoundOrEmpty(NBT_ENERGY_HEAT), ductKinds);
         }
     }
 
@@ -289,27 +289,27 @@ public final class DuctFaceLanes {
 
     private void loadCopierEnergyHeat(CompoundTag eh, EnumSet<DuctTransportKind> ductKinds) {
         if (ductKinds.contains(DuctTransportKind.ENERGY)) {
-            if (eh.contains("EnergyInBuf", Tag.TAG_INT)) {
-                energyInputBufferFe = eh.getInt("EnergyInBuf");
-                energyOutputBufferFe = eh.getInt("EnergyOutBuf");
-                energyExtractBufferLimitFe = eh.getInt("EnergyLimEx");
-                energyInsertBufferLimitFe = eh.getInt("EnergyLimIn");
-            } else if (eh.contains("EnergyBuf", Tag.TAG_INT)) {
-                energyInputBufferFe = eh.getInt("EnergyBuf");
+            if (eh.contains("EnergyInBuf")) {
+                energyInputBufferFe = eh.getIntOr("EnergyInBuf", 0);
+                energyOutputBufferFe = eh.getIntOr("EnergyOutBuf", 0);
+                energyExtractBufferLimitFe = eh.getIntOr("EnergyLimEx", 0);
+                energyInsertBufferLimitFe = eh.getIntOr("EnergyLimIn", 0);
+            } else if (eh.contains("EnergyBuf")) {
+                energyInputBufferFe = eh.getIntOr("EnergyBuf", 0);
                 energyOutputBufferFe = 0;
                 energyExtractBufferLimitFe = 0;
                 energyInsertBufferLimitFe = 0;
             }
-            if (eh.contains("EnergyRt", Tag.TAG_BYTE)) {
-                energyRoutingMode = RoutingMode.fromOrdinal(eh.getByte("EnergyRt"));
-                energyRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("EnergyRtEx"));
-                energyRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("EnergyRtRe"));
+            if (eh.contains("EnergyRt")) {
+                energyRoutingMode = RoutingMode.fromOrdinal(eh.getByteOr("EnergyRt", (byte) 0));
+                energyRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByteOr("EnergyRtEx", (byte) 0));
+                energyRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByteOr("EnergyRtRe", (byte) 0));
             }
         }
-        if (ductKinds.contains(DuctTransportKind.HEAT) && eh.contains("HeatRt", Tag.TAG_BYTE)) {
-            heatRoutingMode = RoutingMode.fromOrdinal(eh.getByte("HeatRt"));
-            heatRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("HeatRtEx"));
-            heatRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("HeatRtRe"));
+        if (ductKinds.contains(DuctTransportKind.HEAT) && eh.contains("HeatRt")) {
+            heatRoutingMode = RoutingMode.fromOrdinal(eh.getByteOr("HeatRt", (byte) 0));
+            heatRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByteOr("HeatRtEx", (byte) 0));
+            heatRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByteOr("HeatRtRe", (byte) 0));
         }
     }
 
@@ -364,34 +364,34 @@ public final class DuctFaceLanes {
     }
 
     public void load(HolderLookup.Provider registries, CompoundTag tag) {
-        if (tag.contains("Shared", Tag.TAG_COMPOUND)) {
-            loadShared(tag.getCompound("Shared"));
+        if (tag.contains("Shared")) {
+            loadShared(tag.getCompoundOrEmpty("Shared"));
         } else {
-            CompoundTag itemLike = tag.contains("Item", Tag.TAG_COMPOUND) ? tag.getCompound("Item") : tag;
+            CompoundTag itemLike = tag.contains("Item") ? tag.getCompoundOrEmpty("Item") : tag;
             loadSharedFromLegacyNodeTag(itemLike);
         }
 
         // Module column size must match {@link DuctBlockEntity#ensureFaceLaneModuleSlotCapacitiesMatchDefinition()}
         // before load (logical duct id). Do not resize to GUI max here or reload shrinks stacks to the wrong cap.
-        if (tag.contains(NBT_MODULES, Tag.TAG_COMPOUND)) {
-            moduleSlots.deserializeNBT(registries, tag.getCompound(NBT_MODULES));
-        } else if (tag.contains(NBT_MODULES_LEGACY, Tag.TAG_COMPOUND)) {
-            moduleSlots.deserializeNBT(registries, tag.getCompound(NBT_MODULES_LEGACY));
+        if (tag.contains(NBT_MODULES)) {
+            moduleSlots.deserializeNBT(registries, tag.getCompoundOrEmpty(NBT_MODULES));
+        } else if (tag.contains(NBT_MODULES_LEGACY)) {
+            moduleSlots.deserializeNBT(registries, tag.getCompoundOrEmpty(NBT_MODULES_LEGACY));
         } else {
             migrateLegacyModulesFromItemNodeGui(registries, tag);
         }
 
-        if (tag.contains("StallBufOut", Tag.TAG_COMPOUND)) {
-            stalledBuffer.deserializeNBT(registries, tag.getCompound("StallBufOut"));
-        } else if (tag.contains("StallBuf", Tag.TAG_COMPOUND)) {
-            stalledBuffer.deserializeNBT(registries, tag.getCompound("StallBuf"));
+        if (tag.contains("StallBufOut")) {
+            stalledBuffer.deserializeNBT(registries, tag.getCompoundOrEmpty("StallBufOut"));
+        } else if (tag.contains("StallBuf")) {
+            stalledBuffer.deserializeNBT(registries, tag.getCompoundOrEmpty("StallBuf"));
         } else {
             for (int i = 0; i < stalledBuffer.getSlots(); i++) {
                 stalledBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
             }
         }
-        if (tag.contains("StallBufIn", Tag.TAG_COMPOUND)) {
-            inboundStallBuffer.deserializeNBT(registries, tag.getCompound("StallBufIn"));
+        if (tag.contains("StallBufIn")) {
+            inboundStallBuffer.deserializeNBT(registries, tag.getCompoundOrEmpty("StallBufIn"));
         } else {
             for (int i = 0; i < inboundStallBuffer.getSlots(); i++) {
                 inboundStallBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
@@ -399,10 +399,10 @@ public final class DuctFaceLanes {
         }
         loadStalledFluids(registries, tag);
         loadStalledGas(tag);
-        if (tag.contains("StallMeta", Tag.TAG_COMPOUND)) {
-            CompoundTag meta = tag.getCompound("StallMeta");
-            stalledEnergyCount = meta.getInt("Energy");
-            stalledHeatCount = meta.getInt("Heat");
+        if (tag.contains("StallMeta")) {
+            CompoundTag meta = tag.getCompoundOrEmpty("StallMeta");
+            stalledEnergyCount = meta.getIntOr("Energy", 0);
+            stalledHeatCount = meta.getIntOr("Heat", 0);
             armedClearMediaArmedAtGameTime = 0L;
         } else {
             stalledEnergyCount = 0;
@@ -410,50 +410,50 @@ public final class DuctFaceLanes {
             armedClearMediaArmedAtGameTime = 0L;
         }
 
-        CompoundTag rawItem = tag.contains("Item", Tag.TAG_COMPOUND) ? tag.getCompound("Item") : tag;
+        CompoundTag rawItem = tag.contains("Item") ? tag.getCompoundOrEmpty("Item") : tag;
         item.load(registries, stripSharedKeys(rawItem));
         applyLegacyAmountField(item, rawItem, nodeMode);
-        if (tag.contains("Fluid", Tag.TAG_COMPOUND)) {
-            CompoundTag rawFluid = tag.getCompound("Fluid");
+        if (tag.contains("Fluid")) {
+            CompoundTag rawFluid = tag.getCompoundOrEmpty("Fluid");
             fluid.load(registries, stripSharedKeys(rawFluid));
             applyLegacyAmountField(fluid, rawFluid, nodeMode);
         }
-        if (tag.contains("Gas", Tag.TAG_COMPOUND)) {
-            CompoundTag rawGas = tag.getCompound("Gas");
+        if (tag.contains("Gas")) {
+            CompoundTag rawGas = tag.getCompoundOrEmpty("Gas");
             gas.load(registries, stripSharedKeys(rawGas));
             applyLegacyAmountField(gas, rawGas, nodeMode);
         }
 
-        if (tag.contains(NBT_ENERGY_HEAT, Tag.TAG_COMPOUND)) {
-            CompoundTag eh = tag.getCompound(NBT_ENERGY_HEAT);
-            energyTicksUntilAction = eh.getInt("EnergyTicks");
-            energyRoundRobinCursor = eh.getInt("EnergyRr");
-            if (eh.contains("EnergyInBuf", Tag.TAG_INT)) {
-                energyInputBufferFe = eh.getInt("EnergyInBuf");
-                energyOutputBufferFe = eh.getInt("EnergyOutBuf");
-                energyExtractBufferLimitFe = eh.getInt("EnergyLimEx");
-                energyInsertBufferLimitFe = eh.getInt("EnergyLimIn");
+        if (tag.contains(NBT_ENERGY_HEAT)) {
+            CompoundTag eh = tag.getCompoundOrEmpty(NBT_ENERGY_HEAT);
+            energyTicksUntilAction = eh.getIntOr("EnergyTicks", 0);
+            energyRoundRobinCursor = eh.getIntOr("EnergyRr", 0);
+            if (eh.contains("EnergyInBuf")) {
+                energyInputBufferFe = eh.getIntOr("EnergyInBuf", 0);
+                energyOutputBufferFe = eh.getIntOr("EnergyOutBuf", 0);
+                energyExtractBufferLimitFe = eh.getIntOr("EnergyLimEx", 0);
+                energyInsertBufferLimitFe = eh.getIntOr("EnergyLimIn", 0);
             } else {
-                energyInputBufferFe = eh.getInt("EnergyBuf");
+                energyInputBufferFe = eh.getIntOr("EnergyBuf", 0);
                 energyOutputBufferFe = 0;
                 energyExtractBufferLimitFe = 0;
                 energyInsertBufferLimitFe = 0;
             }
-            if (eh.contains("EnergyRt", Tag.TAG_BYTE)) {
-                energyRoutingMode = RoutingMode.fromOrdinal(eh.getByte("EnergyRt"));
-                energyRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("EnergyRtEx"));
-                energyRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("EnergyRtRe"));
+            if (eh.contains("EnergyRt")) {
+                energyRoutingMode = RoutingMode.fromOrdinal(eh.getByteOr("EnergyRt", (byte) 0));
+                energyRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByteOr("EnergyRtEx", (byte) 0));
+                energyRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByteOr("EnergyRtRe", (byte) 0));
             } else {
                 energyRoutingMode = item.routingMode;
                 energyRoutingModeExtractor = item.routingModeExtractor;
                 energyRoutingModeRetriever = item.routingModeRetriever;
             }
-            heatTicksUntilAction = eh.getInt("HeatTicks");
-            heatRoundRobinCursor = eh.getInt("HeatRr");
-            if (eh.contains("HeatRt", Tag.TAG_BYTE)) {
-                heatRoutingMode = RoutingMode.fromOrdinal(eh.getByte("HeatRt"));
-                heatRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("HeatRtEx"));
-                heatRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("HeatRtRe"));
+            heatTicksUntilAction = eh.getIntOr("HeatTicks", 0);
+            heatRoundRobinCursor = eh.getIntOr("HeatRr", 0);
+            if (eh.contains("HeatRt")) {
+                heatRoutingMode = RoutingMode.fromOrdinal(eh.getByteOr("HeatRt", (byte) 0));
+                heatRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByteOr("HeatRtEx", (byte) 0));
+                heatRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByteOr("HeatRtRe", (byte) 0));
             } else {
                 heatRoutingMode = item.routingMode;
                 heatRoutingModeExtractor = item.routingModeExtractor;
@@ -479,20 +479,20 @@ public final class DuctFaceLanes {
 
     private void migrateLegacyModulesFromItemNodeGui(HolderLookup.Provider registries, CompoundTag faceTag) {
         CompoundTag nodeGuiHost = null;
-        if (faceTag.contains("Item", Tag.TAG_COMPOUND)) {
-            CompoundTag itemTag = faceTag.getCompound("Item");
-            if (itemTag.contains("NodeGui", Tag.TAG_COMPOUND)) {
+        if (faceTag.contains("Item")) {
+            CompoundTag itemTag = faceTag.getCompoundOrEmpty("Item");
+            if (itemTag.contains("NodeGui")) {
                 nodeGuiHost = itemTag;
             }
         }
-        if (nodeGuiHost == null && faceTag.contains("NodeGui", Tag.TAG_COMPOUND)) {
+        if (nodeGuiHost == null && faceTag.contains("NodeGui")) {
             nodeGuiHost = faceTag;
         }
         if (nodeGuiHost == null) {
             return;
         }
         net.neoforged.neoforge.items.ItemStackHandler legacy = new net.neoforged.neoforge.items.ItemStackHandler(6);
-        legacy.deserializeNBT(registries, nodeGuiHost.getCompound("NodeGui"));
+        legacy.deserializeNBT(registries, nodeGuiHost.getCompoundOrEmpty("NodeGui"));
         int limit = Math.min(5, moduleSlots.getSlots());
         for (int i = 0; i < limit; i++) {
             moduleSlots.setStackInSlot(i, legacy.getStackInSlot(i).copy());
@@ -501,10 +501,10 @@ public final class DuctFaceLanes {
 
     public void loadFromLegacyRootTag(HolderLookup.Provider registries, CompoundTag root) {
         loadSharedFromLegacyNodeTag(root);
-        if (root.contains(NBT_MODULES, Tag.TAG_COMPOUND)) {
-            moduleSlots.deserializeNBT(registries, root.getCompound(NBT_MODULES));
-        } else if (root.contains(NBT_MODULES_LEGACY, Tag.TAG_COMPOUND)) {
-            moduleSlots.deserializeNBT(registries, root.getCompound(NBT_MODULES_LEGACY));
+        if (root.contains(NBT_MODULES)) {
+            moduleSlots.deserializeNBT(registries, root.getCompoundOrEmpty(NBT_MODULES));
+        } else if (root.contains(NBT_MODULES_LEGACY)) {
+            moduleSlots.deserializeNBT(registries, root.getCompoundOrEmpty(NBT_MODULES_LEGACY));
         } else {
             migrateLegacyModulesFromItemNodeGui(registries, root);
         }
@@ -557,10 +557,10 @@ public final class DuctFaceLanes {
     }
 
     private void loadShared(CompoundTag tag) {
-        nodeMode = NodeMode.fromOrdinal(tag.getByte("NodeMode"));
-        redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
-        transportEnabledMask = tag.contains("TransportMask", Tag.TAG_INT) ? tag.getInt("TransportMask") : -1;
-        int rsFmt = tag.contains("RsFmt") ? tag.getByte("RsFmt") & 0xFF : 0;
+        nodeMode = NodeMode.fromOrdinal(tag.getByteOr("NodeMode", (byte) 0));
+        redstoneMode = tag.getByteOr("RedstoneMode", (byte) 0) & 0xFF;
+        transportEnabledMask = tag.contains("TransportMask") ? tag.getIntOr("TransportMask", 0) : -1;
+        int rsFmt = tag.contains("RsFmt") ? tag.getByteOr("RsFmt", (byte) 0) & 0xFF : 0;
         if (rsFmt < REDSTONE_FMT_V1) {
             // Legacy saves without RsFmt: only clamp invalid ordinals. Do not map 3 -> 0 (that turned "disabled" into
             // "ignored" in UI and broke parity with new defaults).
@@ -573,9 +573,9 @@ public final class DuctFaceLanes {
     }
 
     private void loadSharedFromLegacyNodeTag(CompoundTag tag) {
-        nodeMode = NodeMode.fromOrdinal(tag.getByte("NodeMode"));
-        redstoneMode = tag.getByte("RedstoneMode") & 0xFF;
-        int rsFmt = tag.contains("RsFmt") ? tag.getByte("RsFmt") & 0xFF : 0;
+        nodeMode = NodeMode.fromOrdinal(tag.getByteOr("NodeMode", (byte) 0));
+        redstoneMode = tag.getByteOr("RedstoneMode", (byte) 0) & 0xFF;
+        int rsFmt = tag.contains("RsFmt") ? tag.getByteOr("RsFmt", (byte) 0) & 0xFF : 0;
         if (rsFmt < REDSTONE_FMT_V1) {
             if (redstoneMode >= 4) {
                 redstoneMode = 3;
@@ -600,7 +600,7 @@ public final class DuctFaceLanes {
                 || !raw.contains("AmountField")) {
             return;
         }
-        int legacy = raw.getInt("AmountField");
+        int legacy = raw.getIntOr("AmountField", 0);
         if (mode.usesInsertionPriorityField()) {
             lane.insertionPriority = legacy;
         } else if (mode.usesExtractBatchField()) {
@@ -629,18 +629,18 @@ public final class DuctFaceLanes {
         for (int i = 0; i < stalledFluids.length; i++) {
             stalledFluids[i] = FluidStack.EMPTY;
         }
-        if (!tag.contains("StallFluids", Tag.TAG_LIST)) {
+        if (!tag.contains("StallFluids")) {
             return;
         }
-        ListTag list = tag.getList("StallFluids", Tag.TAG_COMPOUND);
+        ListTag list = tag.getListOrEmpty("StallFluids");
         for (int i = 0; i < list.size(); i++) {
-            CompoundTag e = list.getCompound(i);
-            int slot = e.getByte("Slot") & 0xFF;
+            CompoundTag e = list.getCompoundOrEmpty(i);
+            int slot = e.getByteOr("Slot", (byte) 0) & 0xFF;
             if (slot < 0 || slot >= stalledFluids.length) {
                 continue;
             }
-            if (e.contains("Fluid", Tag.TAG_COMPOUND)) {
-                stalledFluids[slot] = FluidStack.parse(registries, e.getCompound("Fluid")).orElse(FluidStack.EMPTY);
+            if (e.contains("Fluid")) {
+                stalledFluids[slot] = FluidStack.parse(registries, e.getCompoundOrEmpty("Fluid")).orElse(FluidStack.EMPTY);
             }
         }
     }
@@ -664,18 +664,18 @@ public final class DuctFaceLanes {
         for (int i = 0; i < stalledGas.length; i++) {
             stalledGas[i] = null;
         }
-        if (!tag.contains("StallGas", Tag.TAG_LIST)) {
+        if (!tag.contains("StallGas")) {
             return;
         }
-        ListTag list = tag.getList("StallGas", Tag.TAG_COMPOUND);
+        ListTag list = tag.getListOrEmpty("StallGas");
         for (int i = 0; i < list.size(); i++) {
-            CompoundTag e = list.getCompound(i);
-            int slot = e.getByte("Slot") & 0xFF;
+            CompoundTag e = list.getCompoundOrEmpty(i);
+            int slot = e.getByteOr("Slot", (byte) 0) & 0xFF;
             if (slot < 0 || slot >= stalledGas.length) {
                 continue;
             }
-            if (e.contains("Gas", Tag.TAG_COMPOUND)) {
-                CompoundTag g = e.getCompound("Gas");
+            if (e.contains("Gas")) {
+                CompoundTag g = e.getCompoundOrEmpty("Gas");
                 // Sanitize: only keep if it has some payload fields.
                 if (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount")) {
                     stalledGas[slot] = g.copy();

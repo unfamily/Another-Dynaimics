@@ -208,10 +208,10 @@ public final class DuctFaceNode {
         // New NBT has Size 1 and the copy stack in slot 0. Old migration used "any of 0–4 non-empty" as module signal;
         // that is true for the new layout whenever copy is non-empty, then slot 5 was read → empty → copy wiped.
         int declaredSize = LEGACY_GUI_SLOT_COUNT;
-        if (nodeGuiTag.contains("Size", Tag.TAG_INT)) {
-            declaredSize = nodeGuiTag.getInt("Size");
-        } else if (nodeGuiTag.contains("Size", Tag.TAG_BYTE)) {
-            declaredSize = nodeGuiTag.getByte("Size") & 0xFF;
+        if (nodeGuiTag.contains("Size")) {
+            declaredSize = nodeGuiTag.getIntOr("Size", 0);
+        } else if (nodeGuiTag.contains("Size")) {
+            declaredSize = nodeGuiTag.getByteOr("Size", (byte) 0) & 0xFF;
         }
         if (declaredSize <= 1) {
             ItemStackHandler compact = new ItemStackHandler(1);
@@ -258,7 +258,7 @@ public final class DuctFaceNode {
 
     private void loadExtractBatchPinnedFromTag(CompoundTag tag) {
         if (tag.contains("ExtractBatchPinned")) {
-            extractBatchPinnedToMax = tag.getBoolean("ExtractBatchPinned");
+            extractBatchPinnedToMax = tag.getBooleanOr("ExtractBatchPinned", false);
         } else {
             extractBatchPinnedToMax =
                     lastExtractBatchSettingCapApplied > 0
@@ -283,32 +283,32 @@ public final class DuctFaceNode {
 
     /** Restores {@link #saveSettings} data; resets routing cursors and does not touch {@link #guiSlots}. */
     public void loadSettings(HolderLookup.Provider registries, CompoundTag tag) {
-        routingMode = RoutingMode.fromOrdinal(tag.getByte("RoutingMode"));
+        routingMode = RoutingMode.fromOrdinal(tag.getByteOr("RoutingMode", (byte) 0));
         routingModeExtractor =
                 tag.contains("RoutingModeEx")
-                        ? RoutingMode.fromOrdinal(tag.getByte("RoutingModeEx"))
+                        ? RoutingMode.fromOrdinal(tag.getByteOr("RoutingModeEx", (byte) 0))
                         : routingMode;
         routingModeRetriever =
                 tag.contains("RoutingModeRe")
-                        ? RoutingMode.fromOrdinal(tag.getByte("RoutingModeRe"))
+                        ? RoutingMode.fromOrdinal(tag.getByteOr("RoutingModeRe", (byte) 0))
                         : routingMode;
         insertionPriority = 0;
         extractBatch = 0;
         if (tag.contains("InsertionPriority")) {
-            insertionPriority = tag.getInt("InsertionPriority");
+            insertionPriority = tag.getIntOr("InsertionPriority", 0);
         } else if (tag.contains("InsPriority")) {
-            insertionPriority = tag.getInt("InsPriority");
+            insertionPriority = tag.getIntOr("InsPriority", 0);
         }
         if (tag.contains("ExtractBatch")) {
-            extractBatch = tag.getInt("ExtractBatch");
+            extractBatch = tag.getIntOr("ExtractBatch", 0);
         }
         lastExtractBatchSettingCapApplied =
-                tag.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? tag.getInt("ExtractBatchCapMemo") : 0;
+                tag.contains("ExtractBatchCapMemo") ? tag.getIntOr("ExtractBatchCapMemo", 0) : 0;
         loadExtractBatchPinnedFromTag(tag);
-        channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
-        selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
+        channelLetter = tag.contains("Channel") ? tag.getByteOr("Channel", (byte) 0) & 0xFF : 1;
+        selfFeed = tag.contains("SelfFeed") && tag.getBooleanOr("SelfFeed", false);
         eligibilityMode =
-                tag.contains("EligMode") ? EligibilityMode.fromOrdinal(tag.getByte("EligMode")) : EligibilityMode.BOTH;
+                tag.contains("EligMode") ? EligibilityMode.fromOrdinal(tag.getByteOr("EligMode", (byte) 0)) : EligibilityMode.BOTH;
         roundRobinCursor = 0;
         retrieverPullSlotCursor = 0;
         ticksUntilAction = 0;
@@ -334,37 +334,37 @@ public final class DuctFaceNode {
     }
 
     public void load(HolderLookup.Provider registries, CompoundTag tag) {
-        routingMode = RoutingMode.fromOrdinal(tag.getByte("RoutingMode"));
+        routingMode = RoutingMode.fromOrdinal(tag.getByteOr("RoutingMode", (byte) 0));
         routingModeExtractor =
                 tag.contains("RoutingModeEx")
-                        ? RoutingMode.fromOrdinal(tag.getByte("RoutingModeEx"))
+                        ? RoutingMode.fromOrdinal(tag.getByteOr("RoutingModeEx", (byte) 0))
                         : routingMode;
         routingModeRetriever =
                 tag.contains("RoutingModeRe")
-                        ? RoutingMode.fromOrdinal(tag.getByte("RoutingModeRe"))
+                        ? RoutingMode.fromOrdinal(tag.getByteOr("RoutingModeRe", (byte) 0))
                         : routingMode;
         insertionPriority = 0;
         extractBatch = 0;
         if (tag.contains("InsertionPriority")) {
-            insertionPriority = tag.getInt("InsertionPriority");
+            insertionPriority = tag.getIntOr("InsertionPriority", 0);
         } else if (tag.contains("InsPriority")) {
-            insertionPriority = tag.getInt("InsPriority");
+            insertionPriority = tag.getIntOr("InsPriority", 0);
         }
         if (tag.contains("ExtractBatch")) {
-            extractBatch = tag.getInt("ExtractBatch");
+            extractBatch = tag.getIntOr("ExtractBatch", 0);
         }
         lastExtractBatchSettingCapApplied =
-                tag.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? tag.getInt("ExtractBatchCapMemo") : 0;
+                tag.contains("ExtractBatchCapMemo") ? tag.getIntOr("ExtractBatchCapMemo", 0) : 0;
         loadExtractBatchPinnedFromTag(tag);
-        channelLetter = tag.contains("Channel") ? tag.getByte("Channel") & 0xFF : 1;
-        roundRobinCursor = tag.getInt("RrCursor");
-        retrieverPullSlotCursor = tag.contains("RtrPullSlot", Tag.TAG_INT) ? tag.getInt("RtrPullSlot") : 0;
-        ticksUntilAction = tag.contains("TicksAct") ? tag.getInt("TicksAct") : 0;
-        selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
+        channelLetter = tag.contains("Channel") ? tag.getByteOr("Channel", (byte) 0) & 0xFF : 1;
+        roundRobinCursor = tag.getIntOr("RrCursor", 0);
+        retrieverPullSlotCursor = tag.contains("RtrPullSlot") ? tag.getIntOr("RtrPullSlot", 0) : 0;
+        ticksUntilAction = tag.contains("TicksAct") ? tag.getIntOr("TicksAct", 0) : 0;
+        selfFeed = tag.contains("SelfFeed") && tag.getBooleanOr("SelfFeed", false);
         eligibilityMode =
-                tag.contains("EligMode") ? EligibilityMode.fromOrdinal(tag.getByte("EligMode")) : EligibilityMode.BOTH;
-        if (tag.contains("NodeGui", Tag.TAG_COMPOUND)) {
-            loadGuiSlotsFromNbt(registries, tag.getCompound("NodeGui"));
+                tag.contains("EligMode") ? EligibilityMode.fromOrdinal(tag.getByteOr("EligMode", (byte) 0)) : EligibilityMode.BOTH;
+        if (tag.contains("NodeGui")) {
+            loadGuiSlotsFromNbt(registries, tag.getCompoundOrEmpty("NodeGui"));
         }
         loadFilters(tag);
     }
@@ -374,28 +374,28 @@ public final class DuctFaceNode {
      * from the same root).
      */
     public void loadFromLegacyRootTag(HolderLookup.Provider registries, CompoundTag root, NodeMode sharedNodeMode) {
-        if (root.contains("NodeGui", Tag.TAG_COMPOUND)) {
-            loadGuiSlotsFromNbt(registries, root.getCompound("NodeGui"));
+        if (root.contains("NodeGui")) {
+            loadGuiSlotsFromNbt(registries, root.getCompoundOrEmpty("NodeGui"));
         }
-        routingMode = RoutingMode.fromOrdinal(root.getByte("RoutingMode"));
+        routingMode = RoutingMode.fromOrdinal(root.getByteOr("RoutingMode", (byte) 0));
         insertionPriority = 0;
         extractBatch = 0;
         if (root.contains("InsertionPriority")) {
-            insertionPriority = root.getInt("InsertionPriority");
+            insertionPriority = root.getIntOr("InsertionPriority", 0);
         } else if (root.contains("InsPriority")) {
-            insertionPriority = root.getInt("InsPriority");
+            insertionPriority = root.getIntOr("InsPriority", 0);
         }
         if (root.contains("ExtractBatch")) {
-            extractBatch = root.getInt("ExtractBatch");
+            extractBatch = root.getIntOr("ExtractBatch", 0);
         }
         lastExtractBatchSettingCapApplied =
-                root.contains("ExtractBatchCapMemo", Tag.TAG_INT) ? root.getInt("ExtractBatchCapMemo") : 0;
+                root.contains("ExtractBatchCapMemo") ? root.getIntOr("ExtractBatchCapMemo", 0) : 0;
         loadExtractBatchPinnedFromTag(root);
         if (!root.contains("InsertionPriority")
                 && !root.contains("InsPriority")
                 && !root.contains("ExtractBatch")
                 && root.contains("AmountField")) {
-            int legacy = root.getInt("AmountField");
+            int legacy = root.getIntOr("AmountField", 0);
             if (sharedNodeMode.usesInsertionPriorityField()) {
                 insertionPriority = legacy;
             } else if (sharedNodeMode.usesExtractBatchField()) {
@@ -404,12 +404,12 @@ public final class DuctFaceNode {
                 insertionPriority = legacy;
             }
         }
-        channelLetter = root.contains("Channel") ? root.getByte("Channel") & 0xFF : 1;
-        roundRobinCursor = root.getInt("RrCursor");
-        ticksUntilAction = root.contains("TicksAct") ? root.getInt("TicksAct") : 0;
+        channelLetter = root.contains("Channel") ? root.getByteOr("Channel", (byte) 0) & 0xFF : 1;
+        roundRobinCursor = root.getIntOr("RrCursor", 0);
+        ticksUntilAction = root.contains("TicksAct") ? root.getIntOr("TicksAct", 0) : 0;
         loadFilters(root);
         eligibilityMode =
-                root.contains("EligMode") ? EligibilityMode.fromOrdinal(root.getByte("EligMode")) : EligibilityMode.BOTH;
+                root.contains("EligMode") ? EligibilityMode.fromOrdinal(root.getByteOr("EligMode", (byte) 0)) : EligibilityMode.BOTH;
     }
 
     public void clampFilterSizes(
@@ -720,11 +720,11 @@ public final class DuctFaceNode {
         denyRemoteIgnoreChannelFilter.clear();
         denyRemoteAnyFaceFilter.clear();
         denyOverridesAllowFilter = true;
-        if (!tag.contains("FaceFilters", Tag.TAG_COMPOUND)) {
+        if (!tag.contains("FaceFilters")) {
             return;
         }
-        CompoundTag f = tag.getCompound("FaceFilters");
-        denyOverridesAllow = !f.contains("DenyOver") || f.getBoolean("DenyOver");
+        CompoundTag f = tag.getCompoundOrEmpty("FaceFilters");
+        denyOverridesAllow = !f.contains("DenyOver") || f.getBooleanOr("DenyOver", false);
         readStringListInto(f, "Allow", allowFilters);
         readStringListInto(f, "Deny", denyFilters);
         readAllowCapsInto(f, allowAllowCaps, allowFilters.size());
@@ -741,12 +741,12 @@ public final class DuctFaceNode {
         DuctFilterRemoteNodeLogic.readIgnoreChannelInto(
                 f, "DenyRemoteAnyFace", denyRemoteAnyFace, denyFilters.size());
 
-        boolean hasExtractor = f.contains("Extractor", Tag.TAG_COMPOUND);
-        boolean hasRetriever = f.contains("Retriever", Tag.TAG_COMPOUND);
-        boolean hasFilter = f.contains("Filter", Tag.TAG_COMPOUND);
+        boolean hasExtractor = f.contains("Extractor");
+        boolean hasRetriever = f.contains("Retriever");
+        boolean hasFilter = f.contains("Filter");
         if (hasExtractor) {
-            CompoundTag ex = f.getCompound("Extractor");
-            denyOverridesAllowExtractor = !ex.contains("DenyOver") || ex.getBoolean("DenyOver");
+            CompoundTag ex = f.getCompoundOrEmpty("Extractor");
+            denyOverridesAllowExtractor = !ex.contains("DenyOver") || ex.getBooleanOr("DenyOver", false);
             readStringListInto(ex, "Allow", allowFiltersExtractor);
             readStringListInto(ex, "Deny", denyFiltersExtractor);
             readAllowCapsInto(ex, allowAllowCapsExtractor, allowFiltersExtractor.size());
@@ -766,8 +766,8 @@ public final class DuctFaceNode {
                     ex, "DenyRemoteAnyFace", denyRemoteAnyFaceExtractor, denyFiltersExtractor.size());
         }
         if (hasRetriever) {
-            CompoundTag re = f.getCompound("Retriever");
-            denyOverridesAllowRetriever = !re.contains("DenyOver") || re.getBoolean("DenyOver");
+            CompoundTag re = f.getCompoundOrEmpty("Retriever");
+            denyOverridesAllowRetriever = !re.contains("DenyOver") || re.getBooleanOr("DenyOver", false);
             readStringListInto(re, "Allow", allowFiltersRetriever);
             readStringListInto(re, "Deny", denyFiltersRetriever);
             readAllowCapsInto(re, allowAllowCapsRetriever, allowFiltersRetriever.size());
@@ -787,13 +787,13 @@ public final class DuctFaceNode {
                     re, "DenyRemoteAnyFace", denyRemoteAnyFaceRetriever, denyFiltersRetriever.size());
         }
         if (hasFilter) {
-            CompoundTag fi = f.getCompound("Filter");
-            denyOverridesAllowFilter = !fi.contains("DenyOver") || fi.getBoolean("DenyOver");
+            CompoundTag fi = f.getCompoundOrEmpty("Filter");
+            denyOverridesAllowFilter = !fi.contains("DenyOver") || fi.getBooleanOr("DenyOver", false);
             readStringListInto(fi, "Allow", allowFiltersFilter);
             readStringListInto(fi, "Deny", denyFiltersFilter);
             // Migration: old single AllowCap is treated as Limit; Keep defaults to 0.
             readAllowCapsInto(fi, "AllowCapLim", allowAllowCapsFilterLimit, allowFiltersFilter.size());
-            if (allowAllowCapsFilterLimit.stream().allMatch(v -> v == 0) && fi.contains("AllowCap", Tag.TAG_INT_ARRAY)) {
+            if (allowAllowCapsFilterLimit.stream().allMatch(v -> v == 0) && fi.contains("AllowCap")) {
                 allowAllowCapsFilterLimit.clear();
                 readAllowCapsInto(fi, allowAllowCapsFilterLimit, allowFiltersFilter.size());
             }
@@ -968,8 +968,8 @@ public final class DuctFaceNode {
     private static void readConcatChannelsInto(
             CompoundTag tag, String key, List<Integer> target, int lineCount) {
         target.clear();
-        if (tag.contains(key, Tag.TAG_BYTE_ARRAY)) {
-            for (byte b : tag.getByteArray(key)) {
+        if (tag.contains(key)) {
+            for (byte b : tag.getByteArray(key).orElse(new byte[0])) {
                 target.add((int) b & 0xFF);
             }
         }
@@ -1003,12 +1003,12 @@ public final class DuctFaceNode {
     }
 
     private static void readStringListInto(CompoundTag tag, String key, List<String> out) {
-        if (!tag.contains(key, Tag.TAG_LIST)) {
+        if (!tag.contains(key)) {
             return;
         }
-        ListTag list = tag.getList(key, Tag.TAG_STRING);
+        ListTag list = tag.getListOrEmpty(key);
         for (int i = 0; i < list.size(); i++) {
-            out.add(list.getString(i));
+            out.add(list.getStringOr(i, ""));
         }
     }
 
@@ -1031,8 +1031,8 @@ public final class DuctFaceNode {
 
     private static void readAllowCapsInto(CompoundTag tag, String key, List<Integer> out, int allowSize) {
         out.clear();
-        if (tag.contains(key, Tag.TAG_INT_ARRAY)) {
-            int[] arr = tag.getIntArray(key);
+        if (tag.contains(key)) {
+            int[] arr = tag.getIntArray(key).orElse(new int[0]);
             for (int v : arr) {
                 out.add(Math.max(0, v));
             }

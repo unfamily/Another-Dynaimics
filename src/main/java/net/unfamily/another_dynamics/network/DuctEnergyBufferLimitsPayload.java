@@ -5,7 +5,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 
 /** Client -> server: apply per-face energy buffer size limits (0 = AUTO). */
@@ -14,7 +14,7 @@ public record DuctEnergyBufferLimitsPayload(
         implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<DuctEnergyBufferLimitsPayload> TYPE =
             new CustomPacketPayload.Type<>(
-                    ResourceLocation.fromNamespaceAndPath(
+                    Identifier.fromNamespaceAndPath(
                             AnotherDynamicsMod.MOD_ID, "duct_energy_buffer_limits"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, DuctEnergyBufferLimitsPayload> STREAM_CODEC =

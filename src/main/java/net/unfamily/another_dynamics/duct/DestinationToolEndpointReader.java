@@ -8,7 +8,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.filterimport.external.ExternalUpgradeFilterImportSource;
 import net.unfamily.another_dynamics.item.RemoteNodeSelectorItem;
@@ -16,8 +16,8 @@ import net.unfamily.another_dynamics.registry.ModItems;
 
 /** Reads a bound duct endpoint from held destination tools (runtime-only optional mod integration). */
 public final class DestinationToolEndpointReader {
-    private static final ResourceLocation EXTERNAL_FILTER_REMOTE_NODE_TOOL =
-            ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier EXTERNAL_FILTER_REMOTE_NODE_TOOL =
+            Identifier.fromNamespaceAndPath(
                     ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE, "filter_destination_tool");
     private static final String EXTERNAL_DIRECTIONAL_COMPONENT =
             ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE + ":directional_position";
@@ -40,7 +40,7 @@ public final class DestinationToolEndpointReader {
         if (!ExternalUpgradeFilterImportSource.isCompanionModLoaded()) {
             return null;
         }
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
         if (!EXTERNAL_FILTER_REMOTE_NODE_TOOL.equals(id)) {
             return null;
         }

@@ -8,7 +8,7 @@ import java.util.Optional;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -22,7 +22,7 @@ public final class DuctModuleHelper {
     }
 
     /** Only the {@code duct_module_declaration} component, if set. */
-    public static Optional<ResourceLocation> declarationId(ItemStack stack) {
+    public static Optional<Identifier> declarationId(ItemStack stack) {
         if (!hasDeclaration(stack)) {
             return Optional.empty();
         }
@@ -33,15 +33,15 @@ public final class DuctModuleHelper {
      * Effective module definition id: explicit declaration component, else first match among
      * {@link ModuleDefinition#matchingItemTags()} (if several definitions match, the smallest id lexicographically wins).
      */
-    public static Optional<ResourceLocation> resolvedDeclarationId(ItemStack stack) {
-        Optional<ResourceLocation> explicit = declarationId(stack);
+    public static Optional<Identifier> resolvedDeclarationId(ItemStack stack) {
+        Optional<Identifier> explicit = declarationId(stack);
         if (explicit.isPresent()) {
             return explicit;
         }
         if (stack == null || stack.isEmpty()) {
             return Optional.empty();
         }
-        List<ResourceLocation> matches = new ArrayList<>();
+        List<Identifier> matches = new ArrayList<>();
         for (ModuleDefinition def : ModuleDefinitionRegistry.all()) {
             boolean hit = false;
             for (TagKey<Item> tag : def.matchingItemTags()) {
@@ -89,8 +89,8 @@ public final class DuctModuleHelper {
         if (candidate.isEmpty() || occupant.isEmpty()) {
             return false;
         }
-        Optional<ResourceLocation> ca = resolvedDeclarationId(candidate);
-        Optional<ResourceLocation> ob = resolvedDeclarationId(occupant);
+        Optional<Identifier> ca = resolvedDeclarationId(candidate);
+        Optional<Identifier> ob = resolvedDeclarationId(occupant);
         if (ca.isEmpty() && ob.isEmpty()) {
             return false;
         }
@@ -123,8 +123,8 @@ public final class DuctModuleHelper {
         if (a.isEmpty() || b.isEmpty()) {
             return false;
         }
-        Optional<ResourceLocation> ia = resolvedDeclarationId(a);
-        Optional<ResourceLocation> ib = resolvedDeclarationId(b);
+        Optional<Identifier> ia = resolvedDeclarationId(a);
+        Optional<Identifier> ib = resolvedDeclarationId(b);
         if (ia.isEmpty() || ib.isEmpty()) {
             return false;
         }

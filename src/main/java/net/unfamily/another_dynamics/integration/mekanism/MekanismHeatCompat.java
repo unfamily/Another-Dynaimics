@@ -16,6 +16,12 @@ import org.jetbrains.annotations.Nullable;
 public final class MekanismHeatCompat {
     public static final String MODID = "mekanism";
 
+    /**
+     * Master switch for Mekanism heat support. {@code false} on the NeoForge 26.x baseline until Mekanism ships
+     * for this loader; keeps all reflection code intact while preventing any Mekanism access at runtime.
+     */
+    public static final boolean HEAT_SUPPORT_ENABLED = false;
+
     private static boolean resolved;
     private static Object heatBlockCapability;
     private static Method getTotalTemperature;
@@ -25,7 +31,7 @@ public final class MekanismHeatCompat {
     private MekanismHeatCompat() {}
 
     public static boolean isLoaded() {
-        return ModList.get().isLoaded(MODID);
+        return HEAT_SUPPORT_ENABLED && ModList.get().isLoaded(MODID);
     }
 
     private static void resolve() {

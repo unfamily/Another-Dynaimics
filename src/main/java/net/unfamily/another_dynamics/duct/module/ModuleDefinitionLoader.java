@@ -10,7 +10,7 @@ import com.google.gson.JsonObject;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -25,10 +25,10 @@ public final class ModuleDefinitionLoader {
 
     private ModuleDefinitionLoader() {}
 
-    public static void tryApplyPrepared(Map<ResourceLocation, JsonElement> prepared) {
+    public static void tryApplyPrepared(Map<Identifier, JsonElement> prepared) {
         AnotherDynamicsMod.LOGGER.info("tryApplyPrepared called with {} entries", prepared.size());
-        Map<ResourceLocation, ModuleDefinition> out = new HashMap<>();
-        for (Map.Entry<ResourceLocation, JsonElement> e : prepared.entrySet()) {
+        Map<Identifier, ModuleDefinition> out = new HashMap<>();
+        for (Map.Entry<Identifier, JsonElement> e : prepared.entrySet()) {
             if (e.getKey().toString().contains("inc_module")) {
                 AnotherDynamicsMod.LOGGER.info("Found increment module entry: {}", e.getKey());
             }
@@ -47,7 +47,7 @@ public final class ModuleDefinitionLoader {
                 AnotherDynamicsMod.LOGGER.warn("Skipping module load entry {}: missing id", e.getKey());
                 continue;
             }
-            ResourceLocation id = ResourceLocation.parse(o.get("id").getAsString());
+            Identifier id = Identifier.parse(o.get("id").getAsString());
             int stack = readPositiveInt(o, "stack", 64);
             int maxSlots = readPositiveInt(o, "max_slots", 1);
             List<ModuleIncompatibility> incompat = readIncompatibleList(o);
@@ -153,10 +153,10 @@ public final class ModuleDefinitionLoader {
                 continue;
             }
             if (s.startsWith("#")) {
-                ResourceLocation tagId = ResourceLocation.parse(s.substring(1));
+                Identifier tagId = Identifier.parse(s.substring(1));
                 list.add(new ModuleIncompatibility.TagRef(TagKey.create(Registries.ITEM, tagId)));
             } else {
-                ResourceLocation itemId = ResourceLocation.parse(s);
+                Identifier itemId = Identifier.parse(s);
                 Item item = BuiltInRegistries.ITEM.get(itemId);
                 if (item != null && item != Items.AIR) {
                     list.add(new ModuleIncompatibility.ItemRef(item));
@@ -183,17 +183,17 @@ public final class ModuleDefinitionLoader {
             if (s.isEmpty() || !s.startsWith("#")) {
                 continue;
             }
-            ResourceLocation tagId = ResourceLocation.parse(s.substring(1));
+            Identifier tagId = Identifier.parse(s.substring(1));
             list.add(TagKey.create(Registries.ITEM, tagId));
         }
         return List.copyOf(list);
     }
 
-    private static void warnDuplicateMatchingTags(Map<ResourceLocation, ModuleDefinition> out) {
-        Map<TagKey<Item>, ResourceLocation> owner = new HashMap<>();
+    private static void warnDuplicateMatchingTags(Map<Identifier, ModuleDefinition> out) {
+        Map<TagKey<Item>, Identifier> owner = new HashMap<>();
         for (ModuleDefinition def : out.values()) {
             for (TagKey<Item> tag : def.matchingItemTags()) {
-                ResourceLocation prev = owner.put(tag, def.id());
+                Identifier prev = owner.put(tag, def.id());
                 if (prev != null && !prev.equals(def.id())) {
                     AnotherDynamicsMod.LOGGER.warn(
                             "matching_item_tags: item tag {} is used by both {} and {} (first wins at runtime)",

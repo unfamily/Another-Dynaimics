@@ -521,7 +521,7 @@ public final class DuctTargetSelector {
             case RANDOM -> {
                 // Shuffle within tier to preserve priority-grouping.
                 for (int i = tier.size() - 1; i > 0; i--) {
-                    int j = level.random.nextInt(i + 1);
+                    int j = level.getRandom().nextInt(i + 1);
                     ExtractionCandidate a = tier.get(i);
                     tier.set(i, tier.get(j));
                     tier.set(j, a);
@@ -567,7 +567,7 @@ public final class DuctTargetSelector {
             }
             case RANDOM -> {
                 for (int i = tier.size() - 1; i > 0; i--) {
-                    int j = level.random.nextInt(i + 1);
+                    int j = level.getRandom().nextInt(i + 1);
                     DonorCandidate a = tier.get(i);
                     tier.set(i, tier.get(j));
                     tier.set(j, a);
@@ -608,7 +608,7 @@ public final class DuctTargetSelector {
                 yield tier.get(i);
             }
             case RANDOM -> {
-                int i = level.random.nextInt(tier.size());
+                int i = level.getRandom().nextInt(tier.size());
                 yield tier.get(i);
             }
         };
@@ -646,7 +646,7 @@ public final class DuctTargetSelector {
                 yield tier.get(i);
             }
             case RANDOM -> {
-                int i = level.random.nextInt(tier.size());
+                int i = level.getRandom().nextInt(tier.size());
                 yield tier.get(i);
             }
         };

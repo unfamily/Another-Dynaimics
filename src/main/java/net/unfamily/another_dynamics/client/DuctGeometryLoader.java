@@ -6,21 +6,25 @@ import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 
-import net.minecraft.resources.ResourceLocation;
-import net.neoforged.neoforge.client.model.geometry.IGeometryLoader;
+import net.minecraft.resources.Identifier;
+import net.neoforged.neoforge.client.model.StandardModelParameters;
+import net.neoforged.neoforge.client.model.UnbakedModelLoader;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctIds;
 
-public final class DuctGeometryLoader implements IGeometryLoader<DuctUnbakedGeometry> {
-    public static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct");
+public final class DuctGeometryLoader implements UnbakedModelLoader<DuctUnbakedModel> {
+    public static final Identifier ID = Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct");
 
     @Override
-    public DuctUnbakedGeometry read(JsonObject jsonObject, JsonDeserializationContext deserializationContext) throws JsonParseException {
+    public DuctUnbakedModel read(JsonObject jsonObject, JsonDeserializationContext deserializationContext)
+            throws JsonParseException {
         String ductId = jsonObject.has("duct_id") ? jsonObject.get("duct_id").getAsString() : DuctIds.DEFAULT_LOGICAL_ID;
-        return new DuctUnbakedGeometry(ductId, optionalModelId(jsonObject, "model_default"), optionalModelId(jsonObject, "model_line"));
+        StandardModelParameters parameters = StandardModelParameters.parse(jsonObject, deserializationContext);
+        return new DuctUnbakedModel(
+                parameters, ductId, optionalModelId(jsonObject, "model_default"), optionalModelId(jsonObject, "model_line"));
     }
 
-    private static Optional<ResourceLocation> optionalModelId(JsonObject o, String key) {
+    private static Optional<Identifier> optionalModelId(JsonObject o, String key) {
         if (!o.has(key)) {
             return Optional.empty();
         }
@@ -28,6 +32,6 @@ public final class DuctGeometryLoader implements IGeometryLoader<DuctUnbakedGeom
         if (s.isBlank()) {
             return Optional.empty();
         }
-        return Optional.of(ResourceLocation.parse(s));
+        return Optional.of(Identifier.parse(s));
     }
 }

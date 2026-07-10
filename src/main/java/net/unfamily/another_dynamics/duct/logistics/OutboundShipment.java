@@ -14,7 +14,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
@@ -135,7 +135,7 @@ public final class OutboundShipment {
         t.put("DuctPath", plist);
         t.putBoolean("SrcXfr", sourceExtractCommitted);
         t.putLong("InId", incomingReservationId);
-        ResourceLocation itemKey = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        Identifier itemKey = BuiltInRegistries.ITEM.getKey(stack.getItem());
         if (itemKey != null) {
             t.putString("FbItem", itemKey.toString());
             t.putInt("FbCnt", stack.getCount());
@@ -145,38 +145,38 @@ public final class OutboundShipment {
 
     public static OutboundShipment load(HolderLookup.Provider registries, CompoundTag t) {
         ItemStack s = parsePlannedStack(registries, t);
-        BlockPos dest = new BlockPos(t.getInt("DestX"), t.getInt("DestY"), t.getInt("DestZ"));
-        int travel = t.getInt("Travel");
+        BlockPos dest = new BlockPos(t.getIntOr("DestX", 0), t.getIntOr("DestY", 0), t.getIntOr("DestZ", 0));
+        int travel = t.getIntOr("Travel", 0);
         BlockPos refund =
                 t.contains("RefundX")
-                        ? new BlockPos(t.getInt("RefundX"), t.getInt("RefundY"), t.getInt("RefundZ"))
+                        ? new BlockPos(t.getIntOr("RefundX", 0), t.getIntOr("RefundY", 0), t.getIntOr("RefundZ", 0))
                         : dest;
-        Direction destFace = t.contains("DstF") ? dirFromSaveByte(t.getByte("DstF")) : Direction.DOWN;
-        Direction srcFace = t.contains("SrcF") ? dirFromSaveByte(t.getByte("SrcF")) : Direction.DOWN;
-        int tc = t.contains("TC") ? t.getInt("TC") : DuctChannelPolicy.LEGACY_WILDCARD;
+        Direction destFace = t.contains("DstF") ? dirFromSaveByte(t.getByteOr("DstF", (byte) 0)) : Direction.DOWN;
+        Direction srcFace = t.contains("SrcF") ? dirFromSaveByte(t.getByteOr("SrcF", (byte) 0)) : Direction.DOWN;
+        int tc = t.contains("TC") ? t.getIntOr("TC", 0) : DuctChannelPolicy.LEGACY_WILDCARD;
         OutboundShipment sh = new OutboundShipment(s, dest, destFace, travel, refund, srcFace, tc);
-        sh.legacyPhysicalBuffer = !t.contains("PlannedOnly") || !t.getBoolean("PlannedOnly");
-        sh.legacyOmniFaces = !t.contains("DstF") || t.getBoolean("OmniLegacy");
-        if (t.contains("Phase", Tag.TAG_BYTE)) {
-            sh.transitPhase = TransitPhase.fromOrdinal(t.getByte("Phase"));
+        sh.legacyPhysicalBuffer = !t.contains("PlannedOnly") || !t.getBooleanOr("PlannedOnly", false);
+        sh.legacyOmniFaces = !t.contains("DstF") || t.getBooleanOr("OmniLegacy", false);
+        if (t.contains("Phase")) {
+            sh.transitPhase = TransitPhase.fromOrdinal(t.getByteOr("Phase", (byte) 0));
         }
-        if (t.contains("TotTr", Tag.TAG_INT)) {
-            sh.totalTravelTicks = t.getInt("TotTr");
+        if (t.contains("TotTr")) {
+            sh.totalTravelTicks = t.getIntOr("TotTr", 0);
         } else {
             sh.totalTravelTicks = travel;
         }
-        if (t.contains("EdgeW", Tag.TAG_INT)) {
-            sh.edgeTicks = Math.max(0, t.getInt("EdgeW"));
+        if (t.contains("EdgeW")) {
+            sh.edgeTicks = Math.max(0, t.getIntOr("EdgeW", 0));
         }
-        if (t.contains("JStart", Tag.TAG_LONG)) {
-            sh.journeyStartGameTime = t.getLong("JStart");
+        if (t.contains("JStart")) {
+            sh.journeyStartGameTime = t.getLongOr("JStart", 0L);
         }
-        if (t.contains("DuctPath", Tag.TAG_LIST)) {
-            ListTag list = t.getList("DuctPath", Tag.TAG_COMPOUND);
+        if (t.contains("DuctPath")) {
+            ListTag list = t.getListOrEmpty("DuctPath");
             ArrayList<BlockPos> path = new ArrayList<>(list.size());
             for (int i = 0; i < list.size(); i++) {
-                CompoundTag pt = list.getCompound(i);
-                path.add(new BlockPos(pt.getInt("X"), pt.getInt("Y"), pt.getInt("Z")).immutable());
+                CompoundTag pt = list.getCompoundOrEmpty(i);
+                path.add(new BlockPos(pt.getIntOr("X", 0), pt.getIntOr("Y", 0), pt.getIntOr("Z", 0)).immutable());
             }
             sh.ductPath = Collections.unmodifiableList(path);
         } else if (!refund.equals(dest)) {
@@ -186,8 +186,8 @@ public final class OutboundShipment {
             sh.ductPath = List.of(refund.immutable());
         }
         sh.registeredIncoming = sh.stack.copy();
-        sh.sourceExtractCommitted = t.getBoolean("SrcXfr");
-        sh.incomingReservationId = t.contains("InId", Tag.TAG_LONG) ? t.getLong("InId") : DuctIncomingIndex.newReservationId();
+        sh.sourceExtractCommitted = t.getBooleanOr("SrcXfr", false);
+        sh.incomingReservationId = t.contains("InId") ? t.getLongOr("InId", 0L) : DuctIncomingIndex.newReservationId();
         return sh;
     }
 
@@ -196,7 +196,7 @@ public final class OutboundShipment {
      * in-flight tasks are not dropped on world reload when the codec path returns empty (provider/registry edge cases).
      */
     private static ItemStack parsePlannedStack(HolderLookup.Provider registries, CompoundTag root) {
-        CompoundTag stackTag = root.getCompound("Stack");
+        CompoundTag stackTag = root.getCompoundOrEmpty("Stack");
         if (!stackTag.isEmpty()) {
             Optional<ItemStack> primary = ItemStack.parse(registries, stackTag);
             if (primary.isPresent() && !primary.get().isEmpty()) {
@@ -207,23 +207,23 @@ public final class OutboundShipment {
                 return legacy;
             }
         }
-        if (root.contains("FbItem", Tag.TAG_STRING)) {
-            return fromRegistryItemId(registries, root.getString("FbItem"), root.getInt("FbCnt"));
+        if (root.contains("FbItem")) {
+            return fromRegistryItemId(registries, root.getStringOr("FbItem", ""), root.getIntOr("FbCnt", 0));
         }
         return ItemStack.EMPTY;
     }
 
     /** Handles compact {@code id} + {@code count}/{@code Count} compounds (older or alternate serialization). */
     private static ItemStack tryLegacyIdCountStack(HolderLookup.Provider registries, CompoundTag stackTag) {
-        if (!stackTag.contains("id", Tag.TAG_STRING)) {
+        if (!stackTag.contains("id")) {
             return ItemStack.EMPTY;
         }
-        String id = stackTag.getString("id");
+        String id = stackTag.getStringOr("id", "");
         int c = 1;
-        if (stackTag.contains("count", Tag.TAG_INT)) {
-            c = stackTag.getInt("count");
-        } else if (stackTag.contains("Count", Tag.TAG_INT)) {
-            c = stackTag.getInt("Count");
+        if (stackTag.contains("count")) {
+            c = stackTag.getIntOr("count", 0);
+        } else if (stackTag.contains("Count")) {
+            c = stackTag.getIntOr("Count", 0);
         }
         return fromRegistryItemId(registries, id, c);
     }
@@ -232,7 +232,7 @@ public final class OutboundShipment {
         if (idStr == null || idStr.isEmpty() || count <= 0 || registries == null) {
             return ItemStack.EMPTY;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(idStr);
+        Identifier rl = Identifier.tryParse(idStr);
         if (rl == null) {
             return ItemStack.EMPTY;
         }

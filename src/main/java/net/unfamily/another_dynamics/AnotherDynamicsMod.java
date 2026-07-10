@@ -8,9 +8,17 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
-import net.neoforged.neoforge.event.AddReloadListenerEvent;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.ModelEvent;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RegisterSpecialModelRendererEvent;
+import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
+import net.unfamily.another_dynamics.client.DuctClientSetup;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.unfamily.another_dynamics.duct.DuctDefinitionLoader;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
@@ -54,6 +62,17 @@ public final class AnotherDynamicsMod {
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
         NeoForge.EVENT_BUS.register(RemoteNodeSelectorEvents.class);
 
+        if (FMLEnvironment.getDist() == Dist.CLIENT) {
+            modEventBus.addListener(FMLClientSetupEvent.class, DuctClientSetup::onClientSetup);
+            modEventBus.addListener(AddClientReloadListenersEvent.class, DuctClientSetup::onAddClientReloadListeners);
+            modEventBus.addListener(RegisterMenuScreensEvent.class, DuctClientSetup::onRegisterMenuScreens);
+            modEventBus.addListener(ModelEvent.RegisterLoaders.class, DuctClientSetup::onRegisterModelLoaders);
+            modEventBus.addListener(RegisterSpecialModelRendererEvent.class, DuctClientSetup::onRegisterSpecialModelRenderers);
+            modEventBus.addListener(ModelEvent.ModifyBakingResult.class, DuctClientSetup::onModifyBakingResult);
+            modEventBus.addListener(ModelEvent.BakingCompleted.class, DuctClientSetup::onBakingCompleted);
+            // Transit BER still on 1.21.1 API; register after migrating DuctTransitBlockEntityRenderer to submit().
+        }
+
         initOptionalIntegrations();
     }
 
@@ -70,7 +89,7 @@ public final class AnotherDynamicsMod {
         }
     }
 
-    private static void onAddReloadListeners(AddReloadListenerEvent event) {
+    private static void onAddReloadListeners(AddServerReloadListenersEvent event) {
         event.addListener(DUCT_LOADER);
     }
 

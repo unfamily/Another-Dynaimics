@@ -7,7 +7,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
@@ -36,7 +36,7 @@ public final class DuctFilterLineProbesRepresentative {
         if (line.startsWith("@")) {
             String mod = line.substring(1);
             for (Item item : BuiltInRegistries.ITEM) {
-                ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+                Identifier id = BuiltInRegistries.ITEM.getKey(item);
                 if (id != null && id.getNamespace().startsWith(mod)) {
                     return new ItemStack(item);
                 }
@@ -46,7 +46,7 @@ public final class DuctFilterLineProbesRepresentative {
         if (line.startsWith("#")) {
             String tagFilter = line.substring(1);
             try {
-                ResourceLocation tagId = ResourceLocation.parse(tagFilter);
+                Identifier tagId = Identifier.parse(tagFilter);
                 TagKey<Item> itemTag = ItemTags.create(tagId);
                 var opt = BuiltInRegistries.ITEM.getTag(itemTag);
                 if (opt.isPresent()) {
@@ -56,7 +56,7 @@ public final class DuctFilterLineProbesRepresentative {
             }
             return ItemStack.EMPTY;
         }
-        ResourceLocation id = ResourceLocation.tryParse(line);
+        Identifier id = Identifier.tryParse(line);
         if (id == null) {
             return ItemStack.EMPTY;
         }
@@ -86,7 +86,7 @@ public final class DuctFilterLineProbesRepresentative {
         if (line.startsWith("@")) {
             String mod = line.substring(1);
             for (Fluid fluid : BuiltInRegistries.FLUID) {
-                ResourceLocation id = BuiltInRegistries.FLUID.getKey(fluid);
+                Identifier id = BuiltInRegistries.FLUID.getKey(fluid);
                 if (id != null && id.getNamespace().startsWith(mod)) {
                     return new FluidStack(fluid, 1);
                 }
@@ -96,7 +96,7 @@ public final class DuctFilterLineProbesRepresentative {
         if (line.startsWith("#")) {
             String tagFilter = line.substring(1);
             try {
-                ResourceLocation tagId = ResourceLocation.parse(tagFilter);
+                Identifier tagId = Identifier.parse(tagFilter);
                 TagKey<Fluid> fluidTag = TagKey.create(Registries.FLUID, tagId);
                 var opt = BuiltInRegistries.FLUID.getTag(fluidTag);
                 if (opt.isPresent()) {
@@ -110,7 +110,7 @@ public final class DuctFilterLineProbesRepresentative {
             }
             return FluidStack.EMPTY;
         }
-        ResourceLocation id = ResourceLocation.tryParse(line);
+        Identifier id = Identifier.tryParse(line);
         if (id == null) {
             return FluidStack.EMPTY;
         }

@@ -435,7 +435,7 @@ public final class DuctHeatServerTick {
                 int i = Math.floorMod(roundRobinState[0]++, ordered.size());
                 yield ordered.get(i);
             }
-            case RANDOM -> tier.get(level.random.nextInt(tier.size()));
+            case RANDOM -> tier.get(level.getRandom().nextInt(tier.size()));
         };
     }
 
@@ -478,7 +478,7 @@ public final class DuctHeatServerTick {
             }
             case RANDOM -> {
                 for (int i2 = tier.size() - 1; i2 > 0; i2--) {
-                    int j = level.random.nextInt(i2 + 1);
+                    int j = level.getRandom().nextInt(i2 + 1);
                     HeatDestCandidate a = tier.get(i2);
                     tier.set(i2, tier.get(j));
                     tier.set(j, a);
@@ -516,7 +516,7 @@ public final class DuctHeatServerTick {
                 int i = Math.floorMod(roundRobinState[0]++, ordered.size());
                 yield ordered.get(i);
             }
-            case RANDOM -> tier.get(level.random.nextInt(tier.size()));
+            case RANDOM -> tier.get(level.getRandom().nextInt(tier.size()));
         };
     }
 
@@ -559,7 +559,7 @@ public final class DuctHeatServerTick {
             }
             case RANDOM -> {
                 for (int i2 = tier.size() - 1; i2 > 0; i2--) {
-                    int j = level.random.nextInt(i2 + 1);
+                    int j = level.getRandom().nextInt(i2 + 1);
                     HeatDonorCandidate a = tier.get(i2);
                     tier.set(i2, tier.get(j));
                     tier.set(j, a);

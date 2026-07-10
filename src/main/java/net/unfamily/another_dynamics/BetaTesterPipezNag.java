@@ -4,7 +4,7 @@ import java.util.Set;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -36,12 +36,12 @@ public final class BetaTesterPipezNag {
 
     private static final TextColor NAG_TEXT_COLOR = TextColor.fromRgb(0x8B0000);
 
-    private static final Set<ResourceLocation> NAG_PIPE_ITEMS = Set.of(
-            ResourceLocation.fromNamespaceAndPath("pipez", "item_pipe"),
-            ResourceLocation.fromNamespaceAndPath("pipez", "fluid_pipe"),
-            ResourceLocation.fromNamespaceAndPath("pipez", "energy_pipe"),
-            ResourceLocation.fromNamespaceAndPath("pipez", "universal_pipe"),
-            ResourceLocation.fromNamespaceAndPath("pipez", "gas_pipe"));
+    private static final Set<Identifier> NAG_PIPE_ITEMS = Set.of(
+            Identifier.fromNamespaceAndPath("pipez", "item_pipe"),
+            Identifier.fromNamespaceAndPath("pipez", "fluid_pipe"),
+            Identifier.fromNamespaceAndPath("pipez", "energy_pipe"),
+            Identifier.fromNamespaceAndPath("pipez", "universal_pipe"),
+            Identifier.fromNamespaceAndPath("pipez", "gas_pipe"));
 
     private BetaTesterPipezNag() {}
 

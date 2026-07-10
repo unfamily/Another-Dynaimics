@@ -87,12 +87,12 @@ public final class DuctOverflowBuffer {
 
     public void load(HolderLookup.Provider registries, CompoundTag tag) {
         stacks.clear();
-        if (!tag.contains("OverflowBuf", Tag.TAG_LIST)) {
+        if (!tag.contains("OverflowBuf")) {
             return;
         }
-        ListTag list = tag.getList("OverflowBuf", Tag.TAG_COMPOUND);
+        ListTag list = tag.getListOrEmpty("OverflowBuf");
         for (int i = 0; i < list.size(); i++) {
-            ItemStack.parse(registries, list.getCompound(i))
+            ItemStack.parse(registries, list.getCompoundOrEmpty(i))
                     .ifPresent(s -> {
                         if (!s.isEmpty()) {
                             stacks.add(s);

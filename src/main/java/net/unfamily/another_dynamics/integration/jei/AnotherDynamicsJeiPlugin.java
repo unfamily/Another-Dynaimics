@@ -7,7 +7,7 @@ import mezz.jei.api.ingredients.subtypes.UidContext;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
 import mezz.jei.api.registration.ISubtypeRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
@@ -26,14 +26,14 @@ import net.unfamily.another_dynamics.registry.ModItems;
 @JeiPlugin
 public final class AnotherDynamicsJeiPlugin implements IModPlugin {
 
-    private static final ResourceLocation PLUGIN_ID =
-        ResourceLocation.fromNamespaceAndPath(
+    private static final Identifier PLUGIN_ID =
+        Identifier.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
             "jei_plugin"
         );
 
     @Override
-    public ResourceLocation getPluginUid() {
+    public Identifier getPluginUid() {
         return PLUGIN_ID;
     }
 

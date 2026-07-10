@@ -2,7 +2,7 @@ package net.unfamily.another_dynamics.duct.module;
 
 import java.util.List;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 
@@ -14,7 +14,7 @@ import net.minecraft.world.item.Item;
  * {@link #id} (explicit component on the stack still wins).
  */
 public record ModuleDefinition(
-        ResourceLocation id,
+        Identifier id,
         int stackSize,
         int maxSlots,
         List<ModuleIncompatibility> incompatibleWith,
@@ -49,7 +49,7 @@ public record ModuleDefinition(
         FilterSlotModifiers filterSlotsGas,
         List<TagKey<Item>> matchingItemTags) {
 
-    public static ModuleDefinition missing(ResourceLocation id) {
+    public static ModuleDefinition missing(Identifier id) {
         return new ModuleDefinition(
                 id,
                 64,

@@ -1,6 +1,6 @@
 package net.unfamily.another_dynamics.duct.project;
 
-import net.neoforged.neoforge.client.model.data.ModelProperty;
+import net.neoforged.neoforge.model.data.ModelProperty;
 
 /**
  * Client model data for project ducts (node preview is not stored in block state to keep the state table small).

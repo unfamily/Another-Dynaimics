@@ -30,8 +30,8 @@ public final class DuctFilterListSnapshot {
 
     public static boolean isFilterPayload(CompoundTag tag) {
         return tag != null
-                && tag.contains(DuctFaceSettingsSnapshot.KEY_FMT, Tag.TAG_INT)
-                && DuctFaceSettingsSnapshot.acceptsSnapshotFormat(tag.getInt(DuctFaceSettingsSnapshot.KEY_FMT))
+                && tag.contains(DuctFaceSettingsSnapshot.KEY_FMT)
+                && DuctFaceSettingsSnapshot.acceptsSnapshotFormat(tag.getIntOr(DuctFaceSettingsSnapshot.KEY_FMT, 0))
                 && SettingsCopierStoreKind.fromCompound(tag) == SettingsCopierStoreKind.FILTER;
     }
 
@@ -39,8 +39,8 @@ public final class DuctFilterListSnapshot {
         if (!isFilterPayload(data)) {
             return FilterListMaterialKind.NONE;
         }
-        if (data.contains(KEY_MATERIAL_KIND, Tag.TAG_BYTE)) {
-            return FilterListMaterialKind.fromOrdinal(data.getByte(KEY_MATERIAL_KIND));
+        if (data.contains(KEY_MATERIAL_KIND)) {
+            return FilterListMaterialKind.fromOrdinal(data.getByteOr(KEY_MATERIAL_KIND, (byte) 0));
         }
         return FilterListMaterialKind.NONE;
     }
@@ -83,7 +83,7 @@ public final class DuctFilterListSnapshot {
             CompoundTag holder = new CompoundTag();
             DuctFilterRemoteNodeLogic.putRemoteNodeList(holder, KEY_REMOTE_NODES, destinations);
             if (holder.contains(KEY_REMOTE_NODES)) {
-                root.put(KEY_REMOTE_NODES, holder.getList(KEY_REMOTE_NODES, Tag.TAG_COMPOUND));
+                root.put(KEY_REMOTE_NODES, holder.getListOrEmpty(KEY_REMOTE_NODES));
             }
         }
         return root;
@@ -129,7 +129,7 @@ public final class DuctFilterListSnapshot {
             CompoundTag holder = new CompoundTag();
             DuctFilterRemoteNodeLogic.putRemoteNodeList(holder, KEY_REMOTE_NODES, remote);
             if (holder.contains(KEY_REMOTE_NODES)) {
-                root.put(KEY_REMOTE_NODES, holder.getList(KEY_REMOTE_NODES, Tag.TAG_COMPOUND));
+                root.put(KEY_REMOTE_NODES, holder.getListOrEmpty(KEY_REMOTE_NODES));
             }
         }
         return root;
@@ -148,8 +148,8 @@ public final class DuctFilterListSnapshot {
                 allowList ? node.bankAllowConcatChannels(bank) : node.bankDenyConcatChannels(bank);
         concatTarget.clear();
         String concatKey = allowList ? KEY_ALLOW_CONCAT : KEY_DENY_CONCAT;
-        if (data.contains(concatKey, Tag.TAG_BYTE_ARRAY)) {
-            readConcatInto(concatTarget, data.getByteArray(concatKey), lines.size());
+        if (data.contains(concatKey)) {
+            readConcatInto(concatTarget, data.getByteArray(concatKey).orElse(new byte[0]), lines.size());
         } else {
             FilterConcatChannel.syncToLineSize(concatTarget, lines.size());
         }
@@ -161,7 +161,7 @@ public final class DuctFilterListSnapshot {
                 targetCaps.add(Math.max(0, c));
             }
             syncAllowCapsSize(targetCaps, lines.size());
-            if (bank == DuctFaceNode.FilterBank.FILTER && data.getBoolean(KEY_HAS_KEEP)) {
+            if (bank == DuctFaceNode.FilterBank.FILTER && data.getBooleanOr(KEY_HAS_KEEP, false)) {
                 List<Integer> keep = readIntList(data, KEY_CAPS_KEEP, lines.size());
                 List<Integer> targetKeep = node.filterBankKeepCaps();
                 targetKeep.clear();
@@ -174,7 +174,7 @@ public final class DuctFilterListSnapshot {
         List<DuctDirectionalEndpoint> remoteTarget =
                 allowList ? node.bankAllowRemoteNodes(bank) : node.bankDenyRemoteNodes(bank);
         remoteTarget.clear();
-        if (data.contains(KEY_REMOTE_NODES, Tag.TAG_LIST)) {
+        if (data.contains(KEY_REMOTE_NODES)) {
             DuctFilterRemoteNodeLogic.readRemoteNodeListInto(
                     data, KEY_REMOTE_NODES, remoteTarget, lines.size());
         } else {
@@ -185,7 +185,7 @@ public final class DuctFilterListSnapshot {
 
     /** Drops trailing blank lines so portable FILTER copier NBT stays compact. */
     public static void trimTrailingEmptyLines(CompoundTag data) {
-        if (!isFilterPayload(data) || !data.contains(KEY_LINES, Tag.TAG_LIST)) {
+        if (!isFilterPayload(data) || !data.contains(KEY_LINES)) {
             return;
         }
         List<String> lines = readStringList(data, KEY_LINES);
@@ -202,30 +202,30 @@ public final class DuctFilterListSnapshot {
         }
         lines = new ArrayList<>(lines.subList(0, end));
         data.put(KEY_LINES, toStringListTag(lines));
-        if (data.contains(KEY_CAPS, Tag.TAG_INT_ARRAY)) {
+        if (data.contains(KEY_CAPS)) {
             List<Integer> caps = readIntList(data, KEY_CAPS, lines.size());
             data.putIntArray(KEY_CAPS, caps.stream().mapToInt(i -> Math.max(0, i)).toArray());
         }
-        if (data.contains(KEY_ALLOW_CONCAT, Tag.TAG_BYTE_ARRAY)) {
+        if (data.contains(KEY_ALLOW_CONCAT)) {
             List<Integer> concat = new ArrayList<>();
-            readConcatInto(concat, data.getByteArray(KEY_ALLOW_CONCAT), lines.size());
+            readConcatInto(concat, data.getByteArray(KEY_ALLOW_CONCAT).orElse(new byte[0]), lines.size());
             if (concat.stream().anyMatch(v -> v != null && v > 0)) {
                 data.putByteArray(KEY_ALLOW_CONCAT, toConcatByteArray(concat));
             } else {
                 data.remove(KEY_ALLOW_CONCAT);
             }
         }
-        if (data.contains(KEY_DENY_CONCAT, Tag.TAG_BYTE_ARRAY)) {
+        if (data.contains(KEY_DENY_CONCAT)) {
             data.remove(KEY_DENY_CONCAT);
         }
-        if (data.contains(KEY_REMOTE_NODES, Tag.TAG_LIST)) {
+        if (data.contains(KEY_REMOTE_NODES)) {
             List<DuctDirectionalEndpoint> remote = new ArrayList<>();
             DuctFilterRemoteNodeLogic.readRemoteNodeListInto(
                     data, KEY_REMOTE_NODES, remote, lines.size());
             CompoundTag holder = new CompoundTag();
             DuctFilterRemoteNodeLogic.putRemoteNodeList(holder, KEY_REMOTE_NODES, remote);
             if (holder.contains(KEY_REMOTE_NODES)) {
-                data.put(KEY_REMOTE_NODES, holder.getList(KEY_REMOTE_NODES, Tag.TAG_COMPOUND));
+                data.put(KEY_REMOTE_NODES, holder.getListOrEmpty(KEY_REMOTE_NODES));
             } else {
                 data.remove(KEY_REMOTE_NODES);
             }
@@ -270,20 +270,20 @@ public final class DuctFilterListSnapshot {
 
     private static List<String> readStringList(CompoundTag tag, String key) {
         List<String> out = new ArrayList<>();
-        if (!tag.contains(key, Tag.TAG_LIST)) {
+        if (!tag.contains(key)) {
             return out;
         }
-        ListTag list = tag.getList(key, Tag.TAG_STRING);
+        ListTag list = tag.getListOrEmpty(key);
         for (int i = 0; i < list.size(); i++) {
-            out.add(list.getString(i));
+            out.add(list.getStringOr(i, ""));
         }
         return out;
     }
 
     private static List<Integer> readIntList(CompoundTag tag, String key, int sizeHint) {
         List<Integer> out = new ArrayList<>();
-        if (tag.contains(key, Tag.TAG_INT_ARRAY)) {
-            for (int v : tag.getIntArray(key)) {
+        if (tag.contains(key)) {
+            for (int v : tag.getIntArray(key).orElse(new int[0])) {
                 out.add(Math.max(0, v));
             }
         }

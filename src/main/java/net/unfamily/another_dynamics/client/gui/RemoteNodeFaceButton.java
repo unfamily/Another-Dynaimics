@@ -1,10 +1,11 @@
 package net.unfamily.another_dynamics.client.gui;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 
@@ -99,8 +100,9 @@ public final class RemoteNodeFaceButton extends Button {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (active && visible && (button == 0 || button == 1) && clicked(mouseX, mouseY) && remoteNodeBound) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        int button = event.button();
+        if (active && visible && (button == 0 || button == 1) && isMouseOver(event.x(), event.y()) && remoteNodeBound) {
             playDownSound(Minecraft.getInstance().getSoundManager());
             int total = ANY_ORDINAL + 1;
             int idx = selectionOrdinal();
@@ -118,8 +120,8 @@ public final class RemoteNodeFaceButton extends Button {
     }
 
     @Override
-    protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        super.renderWidget(graphics, mouseX, mouseY, partialTick);
+    protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        super.extractContents(graphics, mouseX, mouseY, partialTick);
     }
 
     @Override
