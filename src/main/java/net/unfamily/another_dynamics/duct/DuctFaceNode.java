@@ -215,13 +215,13 @@ public final class DuctFaceNode {
         }
         if (declaredSize <= 1) {
             ItemStackHandler compact = new ItemStackHandler(1);
-            compact.deserializeNBT(registries, nodeGuiTag);
+            DuctNbtCodecs.deserializeHandler(compact, registries, nodeGuiTag);
             guiSlots.setStackInSlot(0, compact.getStackInSlot(0).copy());
             return;
         }
 
         ItemStackHandler probe = new ItemStackHandler(LEGACY_GUI_SLOT_COUNT);
-        probe.deserializeNBT(registries, nodeGuiTag);
+        DuctNbtCodecs.deserializeHandler(probe, registries, nodeGuiTag);
         boolean moduleColumnUsed = false;
         for (int i = 0; i < 5; i++) {
             if (!probe.getStackInSlot(i).isEmpty()) {
@@ -329,7 +329,7 @@ public final class DuctFaceNode {
         tag.putInt("TicksAct", ticksUntilAction);
         tag.putBoolean("SelfFeed", selfFeed);
         tag.putByte("EligMode", (byte) eligibilityMode.ordinal());
-        tag.put("NodeGui", guiSlots.serializeNBT(registries));
+        tag.put("NodeGui", DuctNbtCodecs.serializeHandler(guiSlots, registries));
         saveFilters(tag);
     }
 

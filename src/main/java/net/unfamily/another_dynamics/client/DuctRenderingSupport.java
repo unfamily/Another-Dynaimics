@@ -23,6 +23,7 @@ import net.unfamily.another_dynamics.duct.DuctTextures;
  */
 public final class DuctRenderingSupport {
     private static volatile Map<String, DuctCompositeGeometry> GLOBAL_GEOMETRY_CACHE = Map.of();
+    private static volatile DuctCompositeGeometry PROJECT_GEOMETRY = DuctCompositeGeometry.emptyGeometry();
     private static volatile TextureAtlasSprite NODES_SPRITE;
     private static volatile TextureAtlasSprite NODE_BUFFER_SPRITE;
 
@@ -30,6 +31,14 @@ public final class DuctRenderingSupport {
 
     public static void updateGlobalGeometryCache(Map<String, DuctCompositeGeometry> cache) {
         GLOBAL_GEOMETRY_CACHE = cache;
+    }
+
+    public static void updateProjectGeometry(DuctCompositeGeometry geometry) {
+        PROJECT_GEOMETRY = geometry != null ? geometry : DuctCompositeGeometry.emptyGeometry();
+    }
+
+    public static DuctCompositeGeometry getProjectGeometry() {
+        return PROJECT_GEOMETRY;
     }
 
     public static void updateOverlaySprites(TextureAtlasSprite nodesSprite, TextureAtlasSprite nodeBufferSprite) {
@@ -47,21 +56,11 @@ public final class DuctRenderingSupport {
 
     public static void invalidateGlobalGeometryCacheForReload() {
         GLOBAL_GEOMETRY_CACHE = Map.of();
+        PROJECT_GEOMETRY = DuctCompositeGeometry.emptyGeometry();
     }
 
     public static Map<String, DuctCompositeGeometry> getGlobalGeometryCache() {
-        Map<String, DuctCompositeGeometry> cache = GLOBAL_GEOMETRY_CACHE;
-        if (!cache.isEmpty()) {
-            return cache;
-        }
-        Function<SpriteId, TextureAtlasSprite> spriteGetter = id ->
-                Minecraft.getInstance().getAtlasManager().get(id);
-        Map<String, DuctCompositeGeometry> built = bakeAllGeometries(spriteGetter, null);
-        if (!built.isEmpty()) {
-            GLOBAL_GEOMETRY_CACHE = built;
-            return built;
-        }
-        return cache;
+        return GLOBAL_GEOMETRY_CACHE;
     }
 
     public static Map<String, DuctCompositeGeometry> bakeAllGeometries(

@@ -163,7 +163,7 @@ public final class SettingsCopierVirtualSession {
         if (storeKind == SettingsCopierStoreKind.ALL) {
             DuctFaceSettingsSnapshot.readFromCopier(copier).ifPresent(tag -> {
                 if (DuctFaceSettingsSnapshot.isAllPayload(tag)) {
-                    int fmt = tag.getInt(DuctFaceSettingsSnapshot.KEY_FMT);
+                    int fmt = tag.getIntOr(DuctFaceSettingsSnapshot.KEY_FMT, 0);
                     if (fmt == DuctFaceSettingsSnapshot.FORMAT_VERSION) {
                         lanes.loadCopierSettings(registries, tag, enabledKinds);
                     } else {

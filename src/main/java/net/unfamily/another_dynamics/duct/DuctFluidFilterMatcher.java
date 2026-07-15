@@ -4,7 +4,6 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.material.Fluid;
@@ -66,14 +65,11 @@ public final class DuctFluidFilterMatcher {
         if (filter.startsWith("?")) {
             String nbtFilter = filter.substring(1);
             try {
-                Tag tag = stack.save(registries);
-                if (tag instanceof CompoundTag compoundTag) {
-                    return compoundTag.toString().contains(nbtFilter);
-                }
+                CompoundTag tag = DuctNbtCodecs.saveFluidStack(registries, stack);
+                return tag.toString().contains(nbtFilter);
             } catch (Exception e) {
                 return false;
             }
-            return false;
         }
 
         return fluidIdStr.equals(filter);

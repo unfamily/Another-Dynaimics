@@ -11,7 +11,6 @@ import net.minecraft.world.phys.Vec3;
 import net.unfamily.another_dynamics.client.transit.DuctTransitPathGeometry;
 import net.unfamily.another_dynamics.network.EnergyRayPathPayload;
 import net.unfamily.another_dynamics.registry.ModAttachments;
-import org.joml.Vector3f;
 /**
  * Client handler for energy/heat path packets: tinted dust along the duct polyline, with endpoints pulled into
  * source/destination node faces (same geometry as item/fluid transit).
@@ -40,11 +39,9 @@ public final class EnergyRayClient {
             return;
         }
         int argb = payload.argb();
-        float r = ((argb >> 16) & 0xFF) / 255.0F;
-        float g = ((argb >> 8) & 0xFF) / 255.0F;
-        float b = (argb & 0xFF) / 255.0F;
+        int rgb = argb & 0xFFFFFF;
         float scale = 0.5F;
-        var dust = new DustParticleOptions(new Vector3f(r, g, b), scale);
+        var dust = new DustParticleOptions(rgb, scale);
         var rand = level.getRandom();
 
         DuctTransitPathGeometry.OrthogonalTransitPath ortho =

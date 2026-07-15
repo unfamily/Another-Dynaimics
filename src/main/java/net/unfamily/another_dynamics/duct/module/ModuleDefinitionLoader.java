@@ -157,7 +157,7 @@ public final class ModuleDefinitionLoader {
                 list.add(new ModuleIncompatibility.TagRef(TagKey.create(Registries.ITEM, tagId)));
             } else {
                 Identifier itemId = Identifier.parse(s);
-                Item item = BuiltInRegistries.ITEM.get(itemId);
+                Item item = BuiltInRegistries.ITEM.get(itemId).map(h -> h.value()).orElse(Items.AIR);
                 if (item != null && item != Items.AIR) {
                     list.add(new ModuleIncompatibility.ItemRef(item));
                 }

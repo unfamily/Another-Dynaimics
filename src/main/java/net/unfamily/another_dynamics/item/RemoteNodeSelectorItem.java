@@ -31,8 +31,12 @@ public class RemoteNodeSelectorItem extends Item {
 
     public static void bindEndpoint(ItemStack stack, DuctDirectionalEndpoint endpoint, Player player) {
         stack.set(ModDataComponents.REMOTE_NODE_ENDPOINT.get(), endpoint);
-        player.displayClientMessage(
-                Component.translatable("item.another_dynamics.remote_node_selector.message.set"), true);
+        if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+            serverPlayer.sendSystemMessage(
+                    Component.translatable("item.another_dynamics.remote_node_selector.message.set"), true);
+        } else {
+            player.sendSystemMessage(Component.translatable("item.another_dynamics.remote_node_selector.message.set"));
+        }
     }
 
     @Override

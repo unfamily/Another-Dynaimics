@@ -53,14 +53,12 @@ public class DuctBlock extends AbstractDuctBlock {
     }
 
     @Override
-    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
-        if (!level.isClientSide() && !state.is(newState.getBlock())) {
-            if (level instanceof ServerLevel sl && level.getBlockEntity(pos) instanceof DuctBlockEntity be) {
-                DuctBlockEntity.onItemDuctRemoved(sl, pos);
-                be.dropAllStalledItems(sl);
-            }
+    protected void affectNeighborsAfterRemoval(BlockState state, ServerLevel level, BlockPos pos, boolean movedByPiston) {
+        if (level.getBlockEntity(pos) instanceof DuctBlockEntity ductBe) {
+            DuctBlockEntity.onItemDuctRemoved(level, pos);
+            ductBe.dropAllStalledItems(level);
         }
-        super.onRemove(state, level, pos, newState, movedByPiston);
+        super.affectNeighborsAfterRemoval(state, level, pos, movedByPiston);
     }
 
     @Override
@@ -99,8 +97,8 @@ public class DuctBlock extends AbstractDuctBlock {
     }
 
     @Override
-    public ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state) {
-        ItemStack stack = super.getCloneItemStack(level, pos, state);
+    protected ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state, boolean includeData) {
+        ItemStack stack = super.getCloneItemStack(level, pos, state, includeData);
         if (level.getBlockEntity(pos) instanceof DuctBlockEntity be) {
             stack.set(ModDataComponents.DUCT_LOGICAL_ID.get(), be.getLogicalDuctId());
         }

@@ -8,6 +8,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.context.UseOnContext;
+import java.util.function.Consumer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -98,16 +99,16 @@ public final class DuctBlockItem extends BlockItem {
     }
 
     @Override
-    public String getDescriptionId(ItemStack stack) {
+    public Component getName(ItemStack stack) {
         String logicalId = stack.get(ModDataComponents.DUCT_LOGICAL_ID.get());
         if (logicalId == null || logicalId.isEmpty()) {
             logicalId = DuctIds.DEFAULT_LOGICAL_ID;
         }
         var def = DuctDefinitionRegistry.getByLogicalId(logicalId).orElse(null);
         if (def != null && def.translationKey().isPresent()) {
-            return def.translationKey().get();
+            return Component.translatable(def.translationKey().get());
         }
-        return super.getDescriptionId(stack);
+        return super.getName(stack);
     }
 }
 

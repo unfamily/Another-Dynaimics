@@ -4,7 +4,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
@@ -68,7 +67,7 @@ public final class ChannelLetterButton extends AbstractWidget {
         int button = event.button();
         if (active && visible && isValidClickButton(button) && isMouseOver(event.x(), event.y())) {
             playDownSound(Minecraft.getInstance().getSoundManager());
-            if (Screen.hasShiftDown()) {
+            if (event.hasShiftDown()) {
                 value = MIN;
                 if (onClickNotifyServer != null) {
                     onClickNotifyServer.accept(0);

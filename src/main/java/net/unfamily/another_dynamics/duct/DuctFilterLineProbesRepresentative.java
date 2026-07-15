@@ -48,9 +48,8 @@ public final class DuctFilterLineProbesRepresentative {
             try {
                 Identifier tagId = Identifier.parse(tagFilter);
                 TagKey<Item> itemTag = ItemTags.create(tagId);
-                var opt = BuiltInRegistries.ITEM.getTag(itemTag);
-                if (opt.isPresent()) {
-                    return opt.get().stream().findFirst().map(h -> new ItemStack(h.value())).orElse(ItemStack.EMPTY);
+                for (var holder : BuiltInRegistries.ITEM.getTagOrEmpty(itemTag)) {
+                    return new ItemStack(holder.value());
                 }
             } catch (Exception ignored) {
             }
@@ -98,13 +97,8 @@ public final class DuctFilterLineProbesRepresentative {
             try {
                 Identifier tagId = Identifier.parse(tagFilter);
                 TagKey<Fluid> fluidTag = TagKey.create(Registries.FLUID, tagId);
-                var opt = BuiltInRegistries.FLUID.getTag(fluidTag);
-                if (opt.isPresent()) {
-                    return opt.get()
-                            .stream()
-                            .findFirst()
-                            .map(h -> new FluidStack(h.value(), 1))
-                            .orElse(FluidStack.EMPTY);
+                for (var holder : BuiltInRegistries.FLUID.getTagOrEmpty(fluidTag)) {
+                    return new FluidStack(holder.value(), 1);
                 }
             } catch (Exception ignored) {
             }

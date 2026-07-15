@@ -8,11 +8,15 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "group": "another_dynamics:duct",
-  "pattern": [" B ", "ACA", " B "],
+  "pattern": [
+    " B ",
+    "ACA",
+    " B "
+  ],
   "key": {
-    "A": { "tag": "c:ingots/bronze" },
-    "B": { "tag": "c:gems/lapis" },
-    "C": { "tag": "c:glass_blocks" }
+    "A": "#c:ingots/bronze",
+    "B": "#c:gems/lapis",
+    "C": "#c:glass_blocks"
   },
   "result": {
     "id": "another_dynamics:duct",

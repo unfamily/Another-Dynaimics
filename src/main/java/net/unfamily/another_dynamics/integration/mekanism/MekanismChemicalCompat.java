@@ -617,8 +617,8 @@ public final class MekanismChemicalCompat {
         if (!isLoaded() || tag == null || !tag.contains("ChemId")) {
             return emptyStack();
         }
-        String id = tag.getString("ChemId");
-        long amt = tag.contains("Amt") ? tag.getLong("Amt") : tag.getLong("Amount");
+        String id = tag.getStringOr("ChemId", "");
+        long amt = tag.contains("Amt") ? tag.getLongOr("Amt", 0L) : tag.getLongOr("Amount", 0L);
         return chemicalStackFromIdForDisplay(id, amt, registries);
     }
 

@@ -7,20 +7,12 @@
     "ABA"
   ],
   "key": {
-    "A": {
-      "item": "minecraft:cobblestone"
-    },
+    "A": "minecraft:cobblestone",
     "B": [
-      {
-        "tag": "c:ingots/iron"
-      },
-      {
-        "tag": "c:gems/quartz"
-      }
+      "#c:ingots/iron",
+      "#c:gems/quartz"
     ],
-    "C": {
-      "tag": "c:ingots/copper"
-    }
+    "C": "#c:ingots/copper"
   },
   "result": {
     "id": "another_dynamics:inc_module_0",

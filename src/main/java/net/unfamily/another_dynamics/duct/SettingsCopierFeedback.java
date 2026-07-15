@@ -25,19 +25,19 @@ public final class SettingsCopierFeedback {
     }
 
     public static void notifyPasteKindNotSet(Player player) {
-        player.displayClientMessage(
+        sendActionBar(
+                player,
                 Component.translatable("message.another_dynamics.settings_copier.paste_kind_not_set")
-                        .withStyle(ChatFormatting.RED),
-                true);
+                        .withStyle(ChatFormatting.RED));
     }
 
     public static void notifyPasteKindMismatch(Player player, FilterListMaterialKind kind) {
-        player.displayClientMessage(
+        sendActionBar(
+                player,
                 Component.translatable(
                                 "message.another_dynamics.settings_copier.paste_kind_mismatch",
                                 kind.displayName())
-                        .withStyle(ChatFormatting.RED),
-                true);
+                        .withStyle(ChatFormatting.RED));
     }
 
     public static void notifyWrongMode(ServerPlayer player) {
@@ -45,12 +45,20 @@ public final class SettingsCopierFeedback {
     }
 
     private static void notifyPasteActionBar(Player player, boolean success) {
-        player.displayClientMessage(
+        sendActionBar(
+                player,
                 Component.translatable(
                                 success
                                         ? "message.another_dynamics.settings_copier.pasted"
                                         : "message.another_dynamics.settings_copier.paste_failed")
-                        .withStyle(success ? ChatFormatting.GREEN : ChatFormatting.RED),
-                true);
+                        .withStyle(success ? ChatFormatting.GREEN : ChatFormatting.RED));
+    }
+
+    private static void sendActionBar(Player player, Component message) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            serverPlayer.sendSystemMessage(message, true);
+        } else {
+            player.sendSystemMessage(message);
+        }
     }
 }

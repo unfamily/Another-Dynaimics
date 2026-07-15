@@ -50,12 +50,9 @@ public final class DuctUnbakedModel extends AbstractUnbakedModel {
     @Override
     public void resolveDependencies(Resolver resolver) {
         resolver.markDependency(DuctModelGeometry.SIMPLE_DUCT_LINE);
-        resolver.markDependency(DuctModelGeometry.CENTER_ONLY);
     }
 
     static final class DuctModelGeometry implements ExtendedUnbakedGeometry {
-        static final Identifier CENTER_ONLY =
-                Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_center_only");
         static final Identifier SIMPLE_DUCT_LINE =
                 Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/simple_duct_line");
 

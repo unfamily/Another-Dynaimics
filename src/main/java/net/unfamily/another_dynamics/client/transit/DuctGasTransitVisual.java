@@ -8,7 +8,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
@@ -62,28 +61,28 @@ public final class DuctGasTransitVisual {
      */
     @Nullable
     public static List<DuctGasTransitVisual> listFromUpdateTag(BlockPos ownerDuct, CompoundTag root, long clientWorldGameTime) {
-        if (!root.contains("GasTransitV1", Tag.TAG_LIST)) {
+        if (!root.contains("GasTransitV1")) {
             return null;
         }
-        ListTag list = root.getList("GasTransitV1", Tag.TAG_COMPOUND);
+        ListTag list = root.getListOrEmpty("GasTransitV1");
         ArrayList<DuctGasTransitVisual> out = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
-            CompoundTag t = list.getCompound(i);
-            int tint = t.contains("Tint", Tag.TAG_INT) ? t.getInt("Tint") : 0;
-            long amt = t.contains("Amt", Tag.TAG_LONG) ? t.getLong("Amt") : 0L;
+            CompoundTag t = list.getCompoundOrEmpty(i);
+            int tint = t.getIntOr("Tint", 0);
+            long amt = t.getLongOr("Amt", 0L);
             if (amt <= 0) {
                 continue;
             }
-            ListTag plist = t.getList("Path", Tag.TAG_COMPOUND);
+            ListTag plist = t.getListOrEmpty("Path");
             ArrayList<BlockPos> path = new ArrayList<>(plist.size());
             for (int j = 0; j < plist.size(); j++) {
-                CompoundTag pt = plist.getCompound(j);
-                path.add(new BlockPos(pt.getInt("X"), pt.getInt("Y"), pt.getInt("Z")));
+                CompoundTag pt = plist.getCompoundOrEmpty(j);
+                path.add(new BlockPos(pt.getIntOr("X", 0), pt.getIntOr("Y", 0), pt.getIntOr("Z", 0)));
             }
             Direction srcFace = readOptionalFace(t, "SrcF");
             Direction dstFace = readOptionalFace(t, "DstF");
-            int tot = t.getInt("Tot");
-            int tr = t.getInt("Tr");
+            int tot = t.getIntOr("Tot", 0);
+            int tr = t.getIntOr("Tr", 0);
             int elapsed = Math.max(0, tot - tr);
             long anchor = clientWorldGameTime - elapsed;
             out.add(
@@ -94,8 +93,8 @@ public final class DuctGasTransitVisual {
                             Collections.unmodifiableList(path),
                             tot,
                             tr,
-                            t.getInt("Ed"),
-                            t.getLong("J0"),
+                            t.getIntOr("Ed", 0),
+                            t.getLongOr("J0", 0L),
                             anchor,
                             srcFace,
                             dstFace));
@@ -105,10 +104,10 @@ public final class DuctGasTransitVisual {
 
     @Nullable
     private static Direction readOptionalFace(CompoundTag t, String key) {
-        if (!t.contains(key, Tag.TAG_BYTE)) {
+        if (!t.contains(key)) {
             return null;
         }
-        int o = t.getByte(key) & 0xFF;
+        int o = t.getByteOr(key, (byte) 0) & 0xFF;
         return o < 6 ? Direction.values()[o] : null;
     }
 

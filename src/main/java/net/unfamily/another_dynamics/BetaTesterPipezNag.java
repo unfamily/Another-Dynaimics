@@ -27,7 +27,7 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
  * REMOVE COMPLETY BEFORE RELEASE
  * REMOVE COMPLETY BEFORE RELEASE
  */
-@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.GAME)
+@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID)
 public final class BetaTesterPipezNag {
     /** Set to {@code false} or delete this class for the final release build. */
     private static final boolean ENABLED = false;
@@ -57,7 +57,7 @@ public final class BetaTesterPipezNag {
         if (player.tickCount % INTERVAL_TICKS != 0 || !holdingNagPipeItem(player)) {
             return;
         }
-        serverPlayer.displayClientMessage(nagMessage(), true);
+        serverPlayer.sendSystemMessage(nagMessage(), true);
     }
 
     private static Component nagMessage() {
@@ -80,7 +80,6 @@ public final class BetaTesterPipezNag {
         if (stack.isEmpty()) {
             return false;
         }
-        return NAG_PIPE_ITEMS.contains(
-                stack.getItem().builtInRegistryHolder().key().location());
+        return NAG_PIPE_ITEMS.contains(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()));
     }
 }

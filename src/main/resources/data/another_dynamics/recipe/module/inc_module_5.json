@@ -7,19 +7,12 @@
     "ABA"
   ],
   "key": {
-    "A": {
-      "tag": "c:netherracks"
-    },
-    "B": {
-      "tag": "c:nuggets/netherite"
-    },
-    "C": {
-      "item": "another_dynamics:inc_module_4"
-    }
+    "A": "#c:netherracks",
+    "B": "#c:nuggets/netherite",
+    "C": "another_dynamics:inc_module_4"
   },
   "result": {
     "id": "another_dynamics:inc_module_5",
     "count": 1
   }
 }
-

@@ -1,15 +1,12 @@
 package net.unfamily.another_dynamics.client.project;
 
 import java.util.List;
-import java.util.Map;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.resources.model.SimpleModelWrapper;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
-import net.minecraft.client.resources.model.geometry.QuadCollection;
 import net.minecraft.client.resources.model.sprite.Material;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
@@ -20,7 +17,6 @@ import net.neoforged.neoforge.common.extensions.IBlockGetterExtension;
 import net.neoforged.neoforge.model.data.ModelData;
 import net.unfamily.another_dynamics.client.DuctCompositeGeometry;
 import net.unfamily.another_dynamics.client.DuctRenderingSupport;
-import net.unfamily.another_dynamics.client.project.ProjectDuctTextures;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctModelProperties;
 
@@ -33,11 +29,13 @@ public final class ProjectDuctBlockStateModel implements DynamicBlockStateModel 
             (1 << net.minecraft.core.Direction.NORTH.ordinal()) | (1 << net.minecraft.core.Direction.SOUTH.ordinal());
 
     private final Material.Baked particleMaterial;
-    private final DuctCompositeGeometry geometry;
 
-    public ProjectDuctBlockStateModel(BlockStateModel delegate, DuctCompositeGeometry geometry) {
+    public ProjectDuctBlockStateModel(BlockStateModel delegate) {
         this.particleMaterial = delegate.particleMaterial();
-        this.geometry = geometry;
+    }
+
+    private DuctCompositeGeometry geometry() {
+        return DuctRenderingSupport.getProjectGeometry();
     }
 
     @Override
@@ -47,6 +45,7 @@ public final class ProjectDuctBlockStateModel implements DynamicBlockStateModel 
             BlockState state,
             RandomSource random,
             List<BlockStateModelPart> parts) {
+        DuctCompositeGeometry geometry = geometry();
         if (!geometry.isBuilt()) {
             return;
         }
@@ -70,6 +69,7 @@ public final class ProjectDuctBlockStateModel implements DynamicBlockStateModel 
     @Override
     @BakedQuad.MaterialFlags
     public int materialFlags() {
+        DuctCompositeGeometry geometry = geometry();
         return geometry.isBuilt()
                 ? DuctRenderingSupport.quadsFromList(geometry.lineCenterQuads()).materialFlags()
                 : 0;
@@ -95,6 +95,10 @@ public final class ProjectDuctBlockStateModel implements DynamicBlockStateModel 
     }
 
     public List<BakedQuad> itemPreviewQuads() {
+        DuctCompositeGeometry geometry = geometry();
+        if (!geometry.isBuilt()) {
+            return List.of();
+        }
         java.util.ArrayList<BakedQuad> out = new java.util.ArrayList<>();
         geometry.appendForWorld(out, ITEM_PIPE_MASK, 0);
         return out;
@@ -108,15 +112,18 @@ public final class ProjectDuctBlockStateModel implements DynamicBlockStateModel 
         return mask != null ? mask : 0;
     }
 
-    public static DuctCompositeGeometry bakeGeometry() {
-        var getter = DuctRenderingSupport.blockAtlasSpriteGetter();
+    public static DuctCompositeGeometry bakeGeometry(
+            java.util.function.Function<
+                            net.minecraft.client.resources.model.sprite.SpriteId,
+                            net.minecraft.client.renderer.texture.TextureAtlasSprite>
+                    spriteGetter) {
         return DuctCompositeGeometry.bake(
                 Identifier.fromNamespaceAndPath(
                         net.unfamily.another_dynamics.AnotherDynamicsMod.MOD_ID, "block/project_duct_default"),
                 Identifier.fromNamespaceAndPath(
                         net.unfamily.another_dynamics.AnotherDynamicsMod.MOD_ID, "block/project_duct_line"),
                 ProjectDuctTextures.BLOCK_TEXTURE,
-                getter);
+                spriteGetter);
     }
 
     private record ProjectKey(int pipeMask, int nodeMask) {}

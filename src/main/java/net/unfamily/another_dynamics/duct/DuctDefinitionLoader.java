@@ -24,6 +24,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
@@ -49,28 +50,29 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
 
     @Override
     public CompletableFuture<Void> reload(
-            PreparableReloadListener.PreparationBarrier stage,
-            ResourceManager resourceManager,
-            ProfilerFiller prepareProfiler,
-            ProfilerFiller applyProfiler,
-            Executor prepareExecutor,
-            Executor applyExecutor) {
+            PreparableReloadListener.SharedState currentReload,
+            Executor taskExecutor,
+            PreparableReloadListener.PreparationBarrier preparationBarrier,
+            Executor reloadExecutor) {
+        ResourceManager resourceManager = currentReload.resourceManager();
         return CompletableFuture.supplyAsync(
                         () -> {
-                            prepareProfiler.push(getName());
+                            ProfilerFiller profiler = Profiler.get();
+                            profiler.push(getName());
                             Map<Identifier, JsonElement> prepared = collectLoadJson(resourceManager);
-                            prepareProfiler.pop();
+                            profiler.pop();
                             return prepared;
                         },
-                        prepareExecutor)
-                .thenCompose(stage::wait)
+                        taskExecutor)
+                .thenCompose(preparationBarrier::wait)
                 .thenAcceptAsync(
                         prepared -> {
-                            applyProfiler.push(getName());
+                            ProfilerFiller profiler = Profiler.get();
+                            profiler.push(getName());
                             tryApplyPrepared(prepared);
-                            applyProfiler.pop();
+                            profiler.pop();
                         },
-                        applyExecutor);
+                        reloadExecutor);
     }
 
     /**

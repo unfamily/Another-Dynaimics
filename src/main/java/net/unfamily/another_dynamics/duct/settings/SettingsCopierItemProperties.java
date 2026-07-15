@@ -43,8 +43,9 @@ public final class SettingsCopierItemProperties {
         }
         CompoundTag tag = stack.get(ModDataComponents.DUCT_FACE_SETTINGS.get());
         return tag != null
-                && tag.contains(SettingsCopierStoreKind.TAG, Tag.TAG_BYTE)
-                && SettingsCopierStoreKind.fromTag(tag.getByte(SettingsCopierStoreKind.TAG))
+                && tag.contains(SettingsCopierStoreKind.TAG)
+                && SettingsCopierStoreKind.fromTag(
+                                tag.getByteOr(SettingsCopierStoreKind.TAG, (byte) 0))
                         == SettingsCopierStoreKind.FILTER;
     }
 }

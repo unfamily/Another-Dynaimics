@@ -8,9 +8,13 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "group": "another_dynamics:duct",
-  "pattern": ["BBB", "BAB", "BBB"],
+  "pattern": [
+    "BBB",
+    "BAB",
+    "BBB"
+  ],
   "key": {
-    "A": { "tag": "c:alloys/advanced" },
+    "A": "#c:alloys/advanced",
     "B": {
       "type": "neoforge:components",
       "items": "another_dynamics:duct",

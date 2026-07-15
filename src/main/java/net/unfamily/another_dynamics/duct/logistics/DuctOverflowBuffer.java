@@ -6,10 +6,10 @@ import java.util.List;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.level.ServerLevel;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.duct.DuctNbtCodecs;
 import org.jetbrains.annotations.Nullable;
 /**
  * Per-duct internal overflow: adaptive list of stacks (hidden; not a GUI inventory).
@@ -78,9 +78,7 @@ public final class DuctOverflowBuffer {
             if (s.isEmpty()) {
                 continue;
             }
-            CompoundTag st = new CompoundTag();
-            s.save(registries, st);
-            list.add(st);
+            list.add(DuctNbtCodecs.saveItemStack(registries, s));
         }
         tag.put("OverflowBuf", list);
     }
@@ -92,7 +90,7 @@ public final class DuctOverflowBuffer {
         }
         ListTag list = tag.getListOrEmpty("OverflowBuf");
         for (int i = 0; i < list.size(); i++) {
-            ItemStack.parse(registries, list.getCompoundOrEmpty(i))
+            DuctNbtCodecs.parseItemStack(registries, list.getCompoundOrEmpty(i))
                     .ifPresent(s -> {
                         if (!s.isEmpty()) {
                             stacks.add(s);

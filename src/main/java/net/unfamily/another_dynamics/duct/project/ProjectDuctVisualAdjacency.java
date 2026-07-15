@@ -102,18 +102,18 @@ public final class ProjectDuctVisualAdjacency {
     }
 
     private static boolean hasSupportedCapabilityOnLevel(Level level, BlockPos neighborPos, Direction attachSide) {
-        var item = level.getCapability(Capabilities.ItemHandler.BLOCK, neighborPos, attachSide);
-        if (item != null && item.getSlots() > 0) {
+        var item = level.getCapability(Capabilities.Item.BLOCK, neighborPos, attachSide);
+        if (item != null && item.size() > 0) {
             return true;
         }
-        if (level.getCapability(Capabilities.FluidHandler.BLOCK, neighborPos, attachSide) != null) {
+        if (level.getCapability(Capabilities.Fluid.BLOCK, neighborPos, attachSide) != null) {
             return true;
         }
         if (MekanismChemicalCompat.isLoaded()
                 && MekanismChemicalCompat.getChemicalHandlerAt(level, neighborPos, attachSide) != null) {
             return true;
         }
-        if (level.getCapability(Capabilities.EnergyStorage.BLOCK, neighborPos, attachSide) != null) {
+        if (level.getCapability(Capabilities.Energy.BLOCK, neighborPos, attachSide) != null) {
             return true;
         }
         return MekanismHeatCompat.isHeatCapabilityAvailable()

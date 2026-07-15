@@ -1,6 +1,7 @@
 package net.unfamily.another_dynamics.duct;
 
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -26,6 +27,16 @@ public record DuctPlayerOpaqueState(boolean allOpaqueActive, boolean absoluteOpa
                                             .apply(inst, DuctPlayerOpaqueState::new)),
                     Codec.BOOL,
                     legacy -> new DuctPlayerOpaqueState(legacy, legacy));
+
+    public static final MapCodec<DuctPlayerOpaqueState> MAP_CODEC =
+            RecordCodecBuilder.mapCodec(
+                    inst ->
+                            inst.group(
+                                            Codec.BOOL.fieldOf("all").forGetter(DuctPlayerOpaqueState::allOpaqueActive),
+                                            Codec.BOOL
+                                                    .fieldOf("preferred")
+                                                    .forGetter(DuctPlayerOpaqueState::absoluteOpaquePreferred))
+                                    .apply(inst, DuctPlayerOpaqueState::new));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, DuctPlayerOpaqueState> STREAM_CODEC =
             StreamCodec.composite(

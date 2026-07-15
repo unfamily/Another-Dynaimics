@@ -17,7 +17,7 @@ public final class ModAttachments {
             TYPES.register(
                     "duct_transit_opaque",
                     () -> AttachmentType.builder(() -> DuctPlayerOpaqueState.DEFAULT)
-                            .serialize(DuctPlayerOpaqueState.CODEC)
+                            .serialize(DuctPlayerOpaqueState.MAP_CODEC)
                             .sync(DuctPlayerOpaqueState.STREAM_CODEC)
                             .copyOnDeath()
                             .build());

@@ -1,13 +1,28 @@
 package net.unfamily.another_dynamics.duct.logistics;
 
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.Level;
+import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
+import net.neoforged.neoforge.transfer.fluid.FluidResource;
+import net.neoforged.neoforge.transfer.ResourceHandler;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Fluid handler operations that respect {@link DuctTankSlotSemantics} per internal tank index.
  */
 public final class DuctFluidCapHelper {
     private DuctFluidCapHelper() {}
+
+    public static @Nullable IFluidHandler blockHandler(Level level, BlockPos pos, Direction side) {
+        return wrap(level.getCapability(Capabilities.Fluid.BLOCK, pos, side));
+    }
+
+    static @Nullable IFluidHandler wrap(@Nullable ResourceHandler<FluidResource> handler) {
+        return handler == null ? null : IFluidHandler.of(handler);
+    }
 
     /** Simulate fill (mB) into input/both tanks only. */
     public static int simulateFill(IFluidHandler handler, FluidStack stack) {

@@ -2,11 +2,11 @@
   "type": "minecraft:crafting_shapeless",
   "category": "misc",
   "ingredients": [
-    { "item": "minecraft:amethyst_block" },
-    { "tag": "c:dusts/redstone" },
-    { "tag": "c:dusts/redstone" },
-    { "tag": "c:dusts/redstone" },
-    { "tag": "c:dusts/redstone" }
+    "minecraft:amethyst_block",
+    "#c:dusts/redstone",
+    "#c:dusts/redstone",
+    "#c:dusts/redstone",
+    "#c:dusts/redstone"
   ],
   "result": {
     "id": "another_dynamics:resonanting_conductor",

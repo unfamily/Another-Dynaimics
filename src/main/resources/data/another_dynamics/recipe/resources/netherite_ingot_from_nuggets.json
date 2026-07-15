@@ -2,9 +2,13 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "group": "another_dynamics:netherite_nugget",
-  "pattern": ["AAA", "AAA", "AAA"],
+  "pattern": [
+    "AAA",
+    "AAA",
+    "AAA"
+  ],
   "key": {
-    "A": { "tag": "c:nuggets/netherite" }
+    "A": "#c:nuggets/netherite"
   },
   "result": {
     "id": "minecraft:netherite_ingot",

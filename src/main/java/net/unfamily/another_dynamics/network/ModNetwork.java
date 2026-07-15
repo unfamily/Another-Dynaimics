@@ -103,7 +103,7 @@ public final class ModNetwork {
                 FilterSyncDebugLog.serverPacket(
                         "FILTER_UPDATE_RX",
                         "player="
-                                + player.getGameProfile().getName()
+                                + player.getGameProfile().name()
                                 + " pos="
                                 + payload.pos()
                                 + " face="
@@ -206,7 +206,7 @@ public final class ModNetwork {
                             FilterSyncDebugLog.serverPacket(
                                     "FILTER_SYNC_REQUEST",
                                     "virtual player="
-                                            + player.getGameProfile().getName()
+                                            + player.getGameProfile().name()
                                             + " "
                                             + FilterSyncDebugLog.posFace(payload.pos(), face));
                             sendFilterSyncForVirtualNow(player, session);
@@ -231,7 +231,7 @@ public final class ModNetwork {
                         FilterSyncDebugLog.serverPacket(
                                 "FILTER_SYNC_REQUEST",
                                 "duct player="
-                                        + player.getGameProfile().getName()
+                                        + player.getGameProfile().name()
                                         + " "
                                         + FilterSyncDebugLog.posFace(payload.pos(), face));
                         sendFilterSyncToPlayerNow(player, duct, face);
@@ -612,11 +612,11 @@ public final class ModNetwork {
     }
 
     /**
-     * Matches vanilla container {@code stillValid} reach check ({@code canInteractWithBlock(pos, 4.0)}), so duct GUI
+     * Matches vanilla container {@code stillValid} reach check ({@code isWithinBlockInteractionRange(pos, 4.0)}), so duct GUI
      * packets are accepted whenever vanilla would allow opening/using the block menu.
      */
     private static boolean validateDuctGuiInteraction(ServerPlayer player, BlockPos pos) {
-        return player.canInteractWithBlock(pos, 4.0);
+        return player.isWithinBlockInteractionRange(pos, 4.0);
     }
 
     public static void sendFieldUpdate(
@@ -626,7 +626,7 @@ public final class ModNetwork {
             int insertionPriority,
             int extractBatch,
             int eligibilityModeOrdinal) {
-        PacketDistributor.sendToServer(
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(
                 new DuctFieldPayload(
                         pos, face.ordinal(), transportKindOrdinal, insertionPriority, extractBatch, eligibilityModeOrdinal));
     }
@@ -649,7 +649,7 @@ public final class ModNetwork {
             java.util.List<Boolean> allowRemoteAnyFace,
             java.util.List<Boolean> denyRemoteAnyFace,
             boolean denyOverridesAllow) {
-        PacketDistributor.sendToServer(
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(
                 new DuctFilterUpdatePayload(
                         pos,
                         face.ordinal(),
@@ -672,32 +672,32 @@ public final class ModNetwork {
 
     /** Client duct GUI is open; server sends filter snapshots for the active transport kind. */
     public static void sendFilterSyncRequest(BlockPos pos, Direction face) {
-        PacketDistributor.sendToServer(new DuctFilterSyncRequestPayload(pos, face.ordinal()));
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(new DuctFilterSyncRequestPayload(pos, face.ordinal()));
     }
 
     public static void sendListLogicToggle(BlockPos pos, Direction face, int transportKindOrdinal, int filterBankOrdinal) {
-        PacketDistributor.sendToServer(
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(
                 new DuctListLogicPayload(pos, face.ordinal(), transportKindOrdinal, filterBankOrdinal));
     }
 
     public static void sendSelfFeedSet(BlockPos pos, Direction face, boolean enabled) {
-        PacketDistributor.sendToServer(new DuctSelfFeedPayload(pos, face.ordinal(), enabled));
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(new DuctSelfFeedPayload(pos, face.ordinal(), enabled));
     }
 
     public static void sendEnergyBufferLimits(
             BlockPos pos, Direction face, int extractLimitFe, int insertLimitFe) {
-        PacketDistributor.sendToServer(
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(
                 new DuctEnergyBufferLimitsPayload(pos, face.ordinal(), extractLimitFe, insertLimitFe));
     }
 
     /** Advances opaque cycle for duct at {@code anchor} (server authoritative). */
     public static void sendDuctOpaqueToggle(BlockPos anchor) {
-        PacketDistributor.sendToServer(new DuctOpaqueTogglePayload(anchor, false));
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(new DuctOpaqueTogglePayload(anchor, false));
     }
 
     /** Retreats opaque cycle for duct at {@code anchor} (server authoritative). */
     public static void sendDuctOpaqueToggleBackwards(BlockPos anchor) {
-        PacketDistributor.sendToServer(new DuctOpaqueTogglePayload(anchor, true));
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(new DuctOpaqueTogglePayload(anchor, true));
     }
 
     /**
@@ -705,7 +705,7 @@ public final class ModNetwork {
      * vanilla {@code ServerboundContainerButtonClickPacket} which is dropped when {@code stillValid} is false.
      */
     public static void sendDuctMenuButton(UniversalDuctMenu menu, int buttonId) {
-        PacketDistributor.sendToServer(
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(
                 new DuctMenuButtonPayload(menu.getDuctBlockPos(), menu.getAccessFace().ordinal(), buttonId));
     }
 
@@ -716,7 +716,7 @@ public final class ModNetwork {
             int transportKindOrdinal,
             int filterBankOrdinal,
             int allowDeny) {
-        PacketDistributor.sendToServer(
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(
                 new SettingsCopierActionPayload(
                         menu.getDuctBlockPos(),
                         menu.getAccessFace().ordinal(),
@@ -736,29 +736,29 @@ public final class ModNetwork {
     }
 
     public static void sendSettingsCopierHubAction(int action) {
-        PacketDistributor.sendToServer(new SettingsCopierHubActionPayload(action));
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(new SettingsCopierHubActionPayload(action));
     }
 
     public static void sendSettingsCopierHubAction(int action, String renameText) {
-        PacketDistributor.sendToServer(new SettingsCopierHubActionPayload(action, renameText));
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(new SettingsCopierHubActionPayload(action, renameText));
     }
 
     public static void sendSettingsCopierReturnToHub() {
-        PacketDistributor.sendToServer(new SettingsCopierReturnToHubPayload());
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(new SettingsCopierReturnToHubPayload());
     }
 
     public static void sendSettingsCopierFilterMaterialKind(int materialKindOrdinal) {
-        PacketDistributor.sendToServer(
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(
                 new SettingsCopierFilterMaterialKindPayload(materialKindOrdinal));
     }
 
     public static void sendFilterImportChannel(int channelOrdinal) {
-        PacketDistributor.sendToServer(new FilterImportChannelPayload(channelOrdinal));
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(new FilterImportChannelPayload(channelOrdinal));
     }
 
     public static void sendFilterImportExecute(
             int channelOrdinal, String primaryName, String secondaryName) {
-        PacketDistributor.sendToServer(
+        net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(
                 new FilterImportExecutePayload(channelOrdinal, primaryName, secondaryName));
     }
 
@@ -768,7 +768,7 @@ public final class ModNetwork {
 
     public static void sendFilterSyncForVirtual(
             ServerPlayer player, SettingsCopierVirtualSession session, DuctTransportKind lane) {
-        var server = player.getServer();
+        var server = ((ServerLevel) player.level()).getServer();
         if (server == null) {
             sendFilterSyncForVirtualNow(player, session, lane);
             return;
@@ -855,7 +855,7 @@ public final class ModNetwork {
 
     public static void sendFilterSyncToPlayer(
             ServerPlayer player, DuctBlockEntity duct, Direction face, DuctTransportKind lane) {
-        var server = player.getServer();
+        var server = ((ServerLevel) player.level()).getServer();
         if (server == null) {
             sendFilterSyncToPlayerNow(player, duct, face, lane);
             return;

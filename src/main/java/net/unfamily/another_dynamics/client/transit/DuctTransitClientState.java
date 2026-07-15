@@ -26,7 +26,7 @@ public final class DuctTransitClientState {
 
     public static void onDuctUpdateTag(
             BlockPos ductPos, CompoundTag tag, HolderLookup.Provider registries, long clientWorldGameTime) {
-        if (!tag.contains("TransitV1", Tag.TAG_LIST)) {
+        if (!tag.contains("TransitV1")) {
             return;
         }
         List<DuctTransitVisual> incoming =

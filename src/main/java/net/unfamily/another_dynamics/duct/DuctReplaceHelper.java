@@ -103,8 +103,7 @@ public final class DuctReplaceHelper {
 
         Optional<DuctDefinition> newDefOpt = DuctDefinitionRegistry.getByLogicalId(newLogicalId);
         if (newDefOpt.isEmpty()) {
-            player.displayClientMessage(
-                    Component.translatable("another_dynamics.duct_replace.unknown_type"), true);
+            actionBar(player, Component.translatable("another_dynamics.duct_replace.unknown_type"));
             return InteractionResult.FAIL;
         }
         DuctDefinition newDef = newDefOpt.get();
@@ -118,8 +117,7 @@ public final class DuctReplaceHelper {
                 .orElse(EnumSet.of(DuctTransportKind.ITEM));
 
         if (!newKinds.containsAll(currentKinds)) {
-            player.displayClientMessage(
-                    Component.translatable("another_dynamics.duct_replace.incompatible_types"), true);
+            actionBar(player, Component.translatable("another_dynamics.duct_replace.incompatible_types"));
             return InteractionResult.FAIL;
         }
 
@@ -131,8 +129,7 @@ public final class DuctReplaceHelper {
             // Check module slots
             int usedModuleSlots = countUsedModuleSlots(lanes);
             if (usedModuleSlots > newModuleSlotCount) {
-                player.displayClientMessage(
-                        Component.translatable("another_dynamics.duct_replace.module_slots_lost"), true);
+                actionBar(player, Component.translatable("another_dynamics.duct_replace.module_slots_lost"));
                 return InteractionResult.FAIL;
             }
 
@@ -144,8 +141,7 @@ public final class DuctReplaceHelper {
             if (newKinds.contains(DuctTransportKind.ITEM)) {
                 DuctItemTransportSpec newItemSpec = newDef.itemTransportOrFallback();
                 if (!itemFiltersCompatible(lanes.item, newItemSpec, nodeMode, bonuses)) {
-                    player.displayClientMessage(
-                            Component.translatable("another_dynamics.duct_replace.filter_slots_lost"), true);
+                    actionBar(player, Component.translatable("another_dynamics.duct_replace.filter_slots_lost"));
                     return InteractionResult.FAIL;
                 }
             }
@@ -154,8 +150,7 @@ public final class DuctReplaceHelper {
             if (newKinds.contains(DuctTransportKind.FLUID)) {
                 DuctFluidTransportSpec newFluidSpec = newDef.fluidTransportOrFallback();
                 if (!fluidFiltersCompatible(lanes.fluid, newFluidSpec, nodeMode, bonuses)) {
-                    player.displayClientMessage(
-                            Component.translatable("another_dynamics.duct_replace.filter_slots_lost"), true);
+                    actionBar(player, Component.translatable("another_dynamics.duct_replace.filter_slots_lost"));
                     return InteractionResult.FAIL;
                 }
             }
@@ -164,8 +159,7 @@ public final class DuctReplaceHelper {
             if (newKinds.contains(DuctTransportKind.GAS)) {
                 DuctGasTransportSpec newGasSpec = newDef.gasTransportOrFallback();
                 if (!gasFiltersCompatible(lanes.gas, newGasSpec, nodeMode, bonuses)) {
-                    player.displayClientMessage(
-                            Component.translatable("another_dynamics.duct_replace.filter_slots_lost"), true);
+                    actionBar(player, Component.translatable("another_dynamics.duct_replace.filter_slots_lost"));
                     return InteractionResult.FAIL;
                 }
             }
@@ -211,7 +205,7 @@ public final class DuctReplaceHelper {
                 1.2f);
 
         if (player instanceof ServerPlayer sp) {
-            sp.displayClientMessage(
+            sp.sendSystemMessage(
                     Component.translatable("another_dynamics.duct_replace.success"), true);
         }
 
@@ -295,5 +289,13 @@ public final class DuctReplaceHelper {
     private static boolean fitsIn(List<String> list, int capacity) {
         long nonEmpty = list.stream().filter(s -> s != null && !s.isBlank()).count();
         return nonEmpty <= capacity;
+    }
+
+    private static void actionBar(Player player, Component message) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            serverPlayer.sendSystemMessage(message, true);
+        } else {
+            player.sendSystemMessage(message);
+        }
     }
 }

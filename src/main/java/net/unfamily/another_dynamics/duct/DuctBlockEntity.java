@@ -845,7 +845,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     @Override
-    protected void applyImplicitComponents(BlockEntity.DataComponentInput input) {
+    protected void applyImplicitComponents(net.minecraft.core.component.DataComponentGetter input) {
         super.applyImplicitComponents(input);
         String id = input.get(ModDataComponents.DUCT_LOGICAL_ID.get());
         if (id != null && !id.isEmpty()) {
@@ -1121,12 +1121,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return 0;
         }
         if (net == DuctNetworkType.ITEM) {
-            IItemHandler cap = level.getCapability(Capabilities.ItemHandler.BLOCK, neighborPos, dir.getOpposite());
-            if (cap != null && cap.getSlots() > 0) {
+            var cap = level.getCapability(Capabilities.Item.BLOCK, neighborPos, dir.getOpposite());
+            if (cap != null && cap.size() > 0) {
                 return 1 << dir.ordinal();
             }
         } else if (net == DuctNetworkType.FLUID) {
-            var fh = level.getCapability(Capabilities.FluidHandler.BLOCK, neighborPos, dir.getOpposite());
+            var fh = level.getCapability(Capabilities.Fluid.BLOCK, neighborPos, dir.getOpposite());
             if (fh != null) {
                 return 1 << dir.ordinal();
             }
@@ -1139,7 +1139,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 return 1 << dir.ordinal();
             }
         } else if (net == DuctNetworkType.ENERGY) {
-            var eh = level.getCapability(Capabilities.EnergyStorage.BLOCK, neighborPos, dir.getOpposite());
+            var eh = level.getCapability(Capabilities.Energy.BLOCK, neighborPos, dir.getOpposite());
             if (eh != null) {
                 return 1 << dir.ordinal();
             }
@@ -2724,7 +2724,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 lanes.stalledFluids[i] = left.copy();
                 return FluidStack.EMPTY;
             }
-            if (cur.isFluidEqual(left) && cur.getAmount() < Integer.MAX_VALUE) {
+            if (FluidStack.isSameFluidSameComponents(cur, left) && cur.getAmount() < Integer.MAX_VALUE) {
                 int canAdd = Integer.MAX_VALUE - cur.getAmount();
                 int add = Math.min(canAdd, left.getAmount());
                 if (add > 0) {
@@ -3088,11 +3088,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
         if (!playerHandsEmpty(player)) {
             if (playerHasCompatibleMediaContainer(player)) {
-                player.displayClientMessage(
-                        Component.translatable("another_dynamics.stall_clear.container_full_or_mismatch"), true);
+                sendActionBarMessage(
+                        player, Component.translatable("another_dynamics.stall_clear.container_full_or_mismatch"));
             } else {
-                player.displayClientMessage(
-                        Component.translatable("another_dynamics.stall_clear.incompatible_container"), true);
+                sendActionBarMessage(
+                        player, Component.translatable("another_dynamics.stall_clear.incompatible_container"));
             }
             return true;
         }
@@ -3112,8 +3112,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
 
         lanes.armedClearMediaArmedAtGameTime = now;
-        player.displayClientMessage(Component.translatable("another_dynamics.stall_clear.arm_warning"), true);
+        sendActionBarMessage(player, Component.translatable("another_dynamics.stall_clear.arm_warning"));
         return true;
+    }
+
+    /** {@code Player#displayClientMessage} was removed in 26.x; only {@link ServerPlayer} can be notified. */
+    private static void sendActionBarMessage(Player player, Component message) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            serverPlayer.sendSystemMessage(message, true);
+        }
     }
 
     /**
@@ -3626,10 +3633,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             BlockPos adj = worldPosition.relative(dir);
-            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
-            if (h == null) {
+            var cap = level.getCapability(Capabilities.Item.BLOCK, adj, dir.getOpposite());
+            if (cap == null) {
                 continue;
             }
+            IItemHandler h = IItemHandler.of(cap);
             remaining = ItemHandlerHelper.insertItemStacked(h, remaining, false);
             if (remaining.isEmpty()) {
                 return ItemStack.EMPTY;
@@ -3675,10 +3683,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             BlockPos adj = worldPosition.relative(dir);
-            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
-            if (h == null) {
+            var cap = level.getCapability(Capabilities.Item.BLOCK, adj, dir.getOpposite());
+            if (cap == null) {
                 continue;
             }
+            IItemHandler h = IItemHandler.of(cap);
             remaining = ItemHandlerHelper.insertItemStacked(h, remaining, false);
             if (remaining.isEmpty()) {
                 return ItemStack.EMPTY;
@@ -6426,8 +6435,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.saveAdditional(tag, registries);
+    protected void saveAdditional(net.minecraft.world.level.storage.ValueOutput output) {
+        super.saveAdditional(output);
+        HolderLookup.Provider registries =
+                level != null ? level.registryAccess() : net.minecraft.core.RegistryAccess.EMPTY;
+        CompoundTag tag = new CompoundTag();
         tag.putByte("PipeMask", (byte) getPipeMask());
         tag.putByte("StorageMask", (byte) getStorageMask());
         tag.putByte("UserDisc", (byte) getUserDisconnectedFaceMask());
@@ -6451,7 +6463,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             CompoundTag ft = new CompoundTag();
-            ft.put("Fluid", (CompoundTag) s.fluid.save(registries));
+            ft.put("Fluid", DuctNbtCodecs.saveFluidStack(registries, s.fluid));
             ft.putInt("Tot", s.totalTravelTicks);
             ft.putInt("Tr", s.travelTicks);
             ft.putInt("Ed", s.edgeTicks);
@@ -6506,9 +6518,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         tag.put("DuctGasTransit", gOut);
         ListTag bl = new ListTag();
         for (ItemStack b : migratedStorageBacklog) {
-            CompoundTag bt = new CompoundTag();
-            b.save(registries, bt);
-            bl.add(bt);
+            bl.add(DuctNbtCodecs.saveItemStack(registries, b));
         }
         tag.put("DuctBacklog", bl);
         CompoundTag ov = new CompoundTag();
@@ -6517,11 +6527,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (networkOpaqueRendering) {
             tag.putBoolean("NetworkOpaque", true);
         }
+        output.store("Data", CompoundTag.CODEC, tag);
     }
 
     @Override
-    public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.loadAdditional(tag, registries);
+    public void loadAdditional(net.minecraft.world.level.storage.ValueInput input) {
+        super.loadAdditional(input);
+        HolderLookup.Provider registries = input.lookup();
+        CompoundTag tag = input.read("Data", CompoundTag.CODEC).orElseGet(CompoundTag::new);
 
         // Placement from dropped item: BlockEntityTag carries only DuctConfig (no PipeMask).
         // Never use this fast path when world-persisted logistics / buffers exist, or if PipeMask exists under any
@@ -6533,22 +6546,22 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         || tag.contains("DuctGasTransit")
                         || tag.contains("DuctBacklog")
                         || tag.contains("DuctOverflow");
-        if (tag.contains("DuctConfig", Tag.TAG_COMPOUND) && !tagHasPipeMask && !hasPersistedRuntime) {
-            CompoundTag cfg = tag.getCompound("DuctConfig");
+        if (tag.contains("DuctConfig") && !tagHasPipeMask && !hasPersistedRuntime) {
+            CompoundTag cfg = tag.getCompoundOrEmpty("DuctConfig");
             if (cfg.contains("DuctLogicalId")) {
-                logicalDuctId = DuctIds.normalize(cfg.getString("DuctLogicalId"));
+                logicalDuctId = DuctIds.normalize(cfg.getStringOr("DuctLogicalId", DuctIds.DEFAULT_LOGICAL_ID));
             }
             ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
-            if (cfg.contains("UserDisc", Tag.TAG_BYTE)) {
-                setUserDisconnectedFaceMaskForLoad(cfg.getByte("UserDisc") & 0xFF);
+            if (cfg.contains("UserDisc")) {
+                setUserDisconnectedFaceMaskForLoad(cfg.getByteOr("UserDisc", (byte) 0) & 0xFF);
             }
-            if (cfg.contains("LatchedFaces", Tag.TAG_BYTE)) {
-                latchedStorageFaceMask = cfg.getByte("LatchedFaces") & 0xFF;
+            if (cfg.contains("LatchedFaces")) {
+                latchedStorageFaceMask = cfg.getByteOr("LatchedFaces", (byte) 0) & 0xFF;
             }
-            if (cfg.contains("FaceNodes", Tag.TAG_LIST)) {
-                ListTag list = cfg.getList("FaceNodes", Tag.TAG_COMPOUND);
+            if (cfg.contains("FaceNodes")) {
+                ListTag list = cfg.getListOrEmpty("FaceNodes");
                 for (int i = 0; i < FACE_COUNT && i < list.size(); i++) {
-                    getFaceLanes(Direction.values()[i]).load(registries, list.getCompound(i));
+                    getFaceLanes(Direction.values()[i]).load(registries, list.getCompoundOrEmpty(i));
                 }
             }
             clampFaceFiltersToSpec();
@@ -6558,87 +6571,90 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
 
-        if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
-            logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
+        if (tag.contains("DuctLogicalId")) {
+            logicalDuctId = DuctIds.normalize(tag.getStringOr("DuctLogicalId", DuctIds.DEFAULT_LOGICAL_ID));
         }
-        networkOpaqueRendering = tag.getBoolean("NetworkOpaque");
+        networkOpaqueRendering = tag.getBooleanOr("NetworkOpaque", false);
         ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
 
-        setConnectionMasksForLoad(tag.getByte("PipeMask") & 0xFF, tag.getByte("StorageMask") & 0xFF);
-        if (tag.contains("FaceNodes", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("FaceNodes", Tag.TAG_COMPOUND);
+        setConnectionMasksForLoad(tag.getByteOr("PipeMask", (byte) 0) & 0xFF, tag.getByteOr("StorageMask", (byte) 0) & 0xFF);
+        if (tag.contains("FaceNodes")) {
+            ListTag list = tag.getListOrEmpty("FaceNodes");
             for (int i = 0; i < FACE_COUNT && i < list.size(); i++) {
-                getFaceLanes(Direction.values()[i]).load(registries, list.getCompound(i));
+                getFaceLanes(Direction.values()[i]).load(registries, list.getCompoundOrEmpty(i));
             }
         } else {
             for (Direction d : Direction.values()) {
                 getFaceLanes(d).loadFromLegacyRootTag(registries, tag);
             }
         }
-        if (tag.contains("LatchedFaces", Tag.TAG_BYTE)) {
-            latchedStorageFaceMask = tag.getByte("LatchedFaces") & 0xFF;
+        if (tag.contains("LatchedFaces")) {
+            latchedStorageFaceMask = tag.getByteOr("LatchedFaces", (byte) 0) & 0xFF;
         } else {
-            latchedStorageFaceMask = (tag.getByte("StorageMask") & 0xFF) | inferLatchBitsFromLoadedFaceNodes();
+            latchedStorageFaceMask =
+                    (tag.getByteOr("StorageMask", (byte) 0) & 0xFF) | inferLatchBitsFromLoadedFaceNodes();
         }
         outboundShipments.clear();
-        if (tag.contains("DuctOutbound", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("DuctOutbound", Tag.TAG_COMPOUND);
+        if (tag.contains("DuctOutbound")) {
+            ListTag list = tag.getListOrEmpty("DuctOutbound");
             for (int i = 0; i < list.size(); i++) {
-                outboundShipments.add(OutboundShipment.load(registries, list.getCompound(i)));
+                outboundShipments.add(OutboundShipment.load(registries, list.getCompoundOrEmpty(i)));
             }
         }
         fluidTransitShipments.clear();
-        if (tag.contains("DuctFluidTransit", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("DuctFluidTransit", Tag.TAG_COMPOUND);
+        if (tag.contains("DuctFluidTransit")) {
+            ListTag list = tag.getListOrEmpty("DuctFluidTransit");
             for (int i = 0; i < list.size(); i++) {
-                CompoundTag ft = list.getCompound(i);
+                CompoundTag ft = list.getCompoundOrEmpty(i);
                 FluidStack fs = FluidStack.EMPTY;
-                if (ft.contains("Fluid", Tag.TAG_COMPOUND)) {
-                    fs = FluidStack.parse(registries, ft.getCompound("Fluid")).orElse(FluidStack.EMPTY);
+                if (ft.contains("Fluid")) {
+                    fs = DuctNbtCodecs.parseFluidStack(registries, ft.getCompoundOrEmpty("Fluid")).orElse(FluidStack.EMPTY);
                 }
                 if (fs.isEmpty()) {
                     continue;
                 }
-                ListTag plist = ft.getList("Path", Tag.TAG_COMPOUND);
+                ListTag plist = ft.getListOrEmpty("Path");
                 ArrayList<BlockPos> path = new ArrayList<>(plist.size());
                 for (int j = 0; j < plist.size(); j++) {
-                    CompoundTag pt = plist.getCompound(j);
-                    path.add(new BlockPos(pt.getInt("X"), pt.getInt("Y"), pt.getInt("Z")));
+                    CompoundTag pt = plist.getCompoundOrEmpty(j);
+                    path.add(new BlockPos(pt.getIntOr("X", 0), pt.getIntOr("Y", 0), pt.getIntOr("Z", 0)));
                 }
-                Direction srcFace = Direction.values()[ft.getByte("SrcF") & 0xFF];
-                Direction dstFace = Direction.values()[ft.getByte("DstF") & 0xFF];
-                BlockPos destDuct = new BlockPos(ft.getInt("DestX"), ft.getInt("DestY"), ft.getInt("DestZ"));
-                int tot = ft.getInt("Tot");
-                int tr = ft.getInt("Tr");
-                int ed = ft.getInt("Ed");
-                long j0 = ft.getLong("J0");
+                Direction srcFace = Direction.values()[ft.getByteOr("SrcF", (byte) 0) & 0xFF];
+                Direction dstFace = Direction.values()[ft.getByteOr("DstF", (byte) 0) & 0xFF];
+                BlockPos destDuct =
+                        new BlockPos(ft.getIntOr("DestX", 0), ft.getIntOr("DestY", 0), ft.getIntOr("DestZ", 0));
+                int tot = ft.getIntOr("Tot", 0);
+                int tr = ft.getIntOr("Tr", 0);
+                int ed = ft.getIntOr("Ed", 0);
+                long j0 = ft.getLongOr("J0", 0L);
                 FluidTransitShipment fsh =
                         new FluidTransitShipment(fs, List.copyOf(path), tot, tr, ed, j0, srcFace, dstFace, destDuct);
                 fluidTransitShipments.add(fsh);
             }
         }
         gasTransitShipments.clear();
-        if (tag.contains("DuctGasTransit", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("DuctGasTransit", Tag.TAG_COMPOUND);
+        if (tag.contains("DuctGasTransit")) {
+            ListTag list = tag.getListOrEmpty("DuctGasTransit");
             for (int i = 0; i < list.size(); i++) {
-                CompoundTag gt = list.getCompound(i);
+                CompoundTag gt = list.getCompoundOrEmpty(i);
                 Object gStack = MekanismChemicalCompat.loadGasStackFromTag(gt, registries);
                 if (gStack == null || MekanismChemicalCompat.isEmptyStack(gStack)) {
                     continue;
                 }
-                ListTag plist = gt.getList("Path", Tag.TAG_COMPOUND);
+                ListTag plist = gt.getListOrEmpty("Path");
                 ArrayList<BlockPos> path = new ArrayList<>(plist.size());
                 for (int j = 0; j < plist.size(); j++) {
-                    CompoundTag pt = plist.getCompound(j);
-                    path.add(new BlockPos(pt.getInt("X"), pt.getInt("Y"), pt.getInt("Z")));
+                    CompoundTag pt = plist.getCompoundOrEmpty(j);
+                    path.add(new BlockPos(pt.getIntOr("X", 0), pt.getIntOr("Y", 0), pt.getIntOr("Z", 0)));
                 }
-                Direction srcFace = Direction.values()[gt.getByte("SrcF") & 0xFF];
-                Direction dstFace = Direction.values()[gt.getByte("DstF") & 0xFF];
-                BlockPos destDuct = new BlockPos(gt.getInt("DestX"), gt.getInt("DestY"), gt.getInt("DestZ"));
-                int tot = gt.getInt("Tot");
-                int tr = gt.getInt("Tr");
-                int ed = gt.getInt("Ed");
-                long j0 = gt.getLong("J0");
+                Direction srcFace = Direction.values()[gt.getByteOr("SrcF", (byte) 0) & 0xFF];
+                Direction dstFace = Direction.values()[gt.getByteOr("DstF", (byte) 0) & 0xFF];
+                BlockPos destDuct =
+                        new BlockPos(gt.getIntOr("DestX", 0), gt.getIntOr("DestY", 0), gt.getIntOr("DestZ", 0));
+                int tot = gt.getIntOr("Tot", 0);
+                int tr = gt.getIntOr("Tr", 0);
+                int ed = gt.getIntOr("Ed", 0);
+                long j0 = gt.getLongOr("J0", 0L);
                 GasTransitShipment gsh =
                         new GasTransitShipment(
                                 gStack, List.copyOf(path), tot, tr, ed, j0, srcFace, dstFace, destDuct);
@@ -6646,16 +6662,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
         }
         migratedStorageBacklog.clear();
-        if (tag.contains("DuctBacklog", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("DuctBacklog", Tag.TAG_COMPOUND);
+        if (tag.contains("DuctBacklog")) {
+            ListTag list = tag.getListOrEmpty("DuctBacklog");
             for (int i = 0; i < list.size(); i++) {
-                ItemStack.parse(registries, list.getCompound(i)).ifPresent(migratedStorageBacklog::add);
+                DuctNbtCodecs.parseItemStack(registries, list.getCompoundOrEmpty(i)).ifPresent(migratedStorageBacklog::add);
             }
         }
-        if (tag.contains("DuctOverflow", Tag.TAG_COMPOUND)) {
-            overflowBuffer.load(registries, tag.getCompound("DuctOverflow"));
+        if (tag.contains("DuctOverflow")) {
+            overflowBuffer.load(registries, tag.getCompoundOrEmpty("DuctOverflow"));
         }
-        setUserDisconnectedFaceMaskForLoad(tag.contains("UserDisc", Tag.TAG_BYTE) ? tag.getByte("UserDisc") & 0xFF : 0);
+        setUserDisconnectedFaceMaskForLoad(tag.contains("UserDisc") ? tag.getByteOr("UserDisc", (byte) 0) & 0xFF : 0);
         requestModelDataUpdate();
         clampFaceFiltersToSpec();
         ensureAllFaceTransportMasks();
@@ -6676,7 +6692,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        CompoundTag t = super.getUpdateTag(registries);
+        CompoundTag outer = super.getUpdateTag(registries);
+        CompoundTag t = new CompoundTag();
         t.putString("DuctLogicalId", logicalDuctId);
         t.putByte("PipeMask", (byte) getPipeMask());
         t.putByte("StorageMask", (byte) getStorageMask());
@@ -6693,16 +6710,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             ItemStack oneForWire = s.stack.copy();
             oneForWire.setCount(1);
-            CompoundTag st = new CompoundTag();
-            oneForWire.save(registries, st);
+            CompoundTag st = DuctNbtCodecs.saveItemStack(registries, oneForWire);
             CompoundTag item = new CompoundTag();
             item.put("Stack", st);
             Identifier itemId = BuiltInRegistries.ITEM.getKey(s.stack.getItem());
-            if (itemId == null) {
-                itemId = BuiltInRegistries.ITEM.getResourceKey(s.stack.getItem())
-                        .map(ResourceKey::location)
-                        .orElse(null);
-            }
             if (itemId != null) {
                 item.putString("VizId", itemId.toString());
             }
@@ -6737,7 +6748,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             if (wireFluid.getAmount() > 1000) {
                 wireFluid.setAmount(1000);
             }
-            ft.put("Fluid", (CompoundTag) wireFluid.save(registries));
+            ft.put("Fluid", DuctNbtCodecs.saveFluidStack(registries, wireFluid));
             ft.putInt("Tot", s.totalTravelTicks);
             ft.putInt("Tr", s.travelTicks);
             ft.putInt("Ed", s.edgeTicks);
@@ -6790,32 +6801,33 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (networkOpaqueRendering) {
             t.putBoolean("NetworkOpaque", true);
         }
-        return t;
+        outer.put("DuctData", t);
+        return outer;
     }
 
-    @Override
-    public void handleUpdateTag(CompoundTag tag, HolderLookup.Provider registries) {
-        super.handleUpdateTag(tag, registries);
-        if (tag.contains("PipeMask", Tag.TAG_BYTE) && tag.contains("StorageMask", Tag.TAG_BYTE)) {
-            setConnectionMasksForLoad(tag.getByte("PipeMask") & 0xFF, tag.getByte("StorageMask") & 0xFF);
+    /** Applies the partial client update payload built by {@link #getUpdateTag}. Does not touch persisted disk data. */
+    private void applyDuctUpdateTag(CompoundTag tag, HolderLookup.Provider registries) {
+        if (tag.contains("PipeMask") && tag.contains("StorageMask")) {
+            setConnectionMasksForLoad(
+                    tag.getByteOr("PipeMask", (byte) 0) & 0xFF, tag.getByteOr("StorageMask", (byte) 0) & 0xFF);
             requestModelDataUpdate();
             if (level != null && level.isClientSide()) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             }
         }
-        if (tag.contains("DuctLogicalId", Tag.TAG_STRING)) {
-            logicalDuctId = DuctIds.normalize(tag.getString("DuctLogicalId"));
+        if (tag.contains("DuctLogicalId")) {
+            logicalDuctId = DuctIds.normalize(tag.getStringOr("DuctLogicalId", DuctIds.DEFAULT_LOGICAL_ID));
             requestModelDataUpdate();
         }
-        if (tag.contains("LatchedFaces", Tag.TAG_BYTE)) {
-            latchedStorageFaceMask = tag.getByte("LatchedFaces") & 0xFF;
+        if (tag.contains("LatchedFaces")) {
+            latchedStorageFaceMask = tag.getByteOr("LatchedFaces", (byte) 0) & 0xFF;
         }
-        if (tag.contains("UserDisc", Tag.TAG_BYTE)) {
-            setUserDisconnectedFaceMaskForLoad(tag.getByte("UserDisc") & 0xFF);
+        if (tag.contains("UserDisc")) {
+            setUserDisconnectedFaceMaskForLoad(tag.getByteOr("UserDisc", (byte) 0) & 0xFF);
             requestModelDataUpdate();
         }
         int previousPacked = clientPackedNodeIcons;
-        int nextPacked = tag.contains("PackedNodeIcons", Tag.TAG_INT) ? tag.getInt("PackedNodeIcons") : defaultPackedNodeIcons();
+        int nextPacked = tag.getIntOr("PackedNodeIcons", defaultPackedNodeIcons());
         clientPackedNodeIcons = nextPacked;
         if (previousPacked != nextPacked) {
             // Force chunk re-bake client-side only when icon pack changes.
@@ -6825,7 +6837,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
         }
         int prevStallMask = clientStallMask;
-        int nextStallMask = tag.contains("StallMask", Tag.TAG_INT) ? tag.getInt("StallMask") : 0;
+        int nextStallMask = tag.getIntOr("StallMask", 0);
         clientStallMask = nextStallMask;
         if (prevStallMask != nextStallMask) {
             requestModelDataUpdate();
@@ -6834,7 +6846,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
         }
         boolean prevNetworkOpaque = clientNetworkOpaque;
-        clientNetworkOpaque = tag.getBoolean("NetworkOpaque");
+        clientNetworkOpaque = tag.getBooleanOr("NetworkOpaque", false);
         if (prevNetworkOpaque != clientNetworkOpaque) {
             requestModelDataUpdate();
             if (level != null && level.isClientSide()) {
@@ -6852,6 +6864,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
+    @Override
+    public void handleUpdateTag(net.minecraft.world.level.storage.ValueInput input) {
+        HolderLookup.Provider registries = input.lookup();
+        CompoundTag tag = input.read("DuctData", CompoundTag.CODEC).orElseGet(CompoundTag::new);
+        applyDuctUpdateTag(tag, registries);
+    }
+
     @Nullable
     @Override
     public ClientboundBlockEntityDataPacket getUpdatePacket() {
@@ -6859,9 +6878,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     @Override
-    public void onDataPacket(Connection connection, ClientboundBlockEntityDataPacket packet, HolderLookup.Provider registries) {
-        super.onDataPacket(connection, packet, registries);
-        handleUpdateTag(packet.getTag(), registries);
+    public void onDataPacket(Connection connection, net.minecraft.world.level.storage.ValueInput input) {
+        handleUpdateTag(input);
     }
 
     @Override

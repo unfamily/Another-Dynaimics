@@ -4,6 +4,10 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.component.DataComponents;
@@ -79,8 +83,6 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
 
     public SettingsCopierScreen(SettingsCopierMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
-        this.imageWidth = DuctGuiLayout.NODE_TEXTURE_WIDTH;
-        this.imageHeight = DuctGuiLayout.NODE_TEXTURE_HEIGHT;
         this.titleLabelY = 10_000;
         this.inventoryLabelY = 10_000;
     }
@@ -195,7 +197,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     }
 
     @Override
-    protected void renderBg(GuiGraphicsExtractor graphics, float partialTick, int mouseX, int mouseY) {
+    public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (menu.isHubLayer()) {
             graphics.blit(
                     HUB_TEXTURE,
@@ -223,7 +225,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             blitImportSlotFrames(graphics);
             return;
         }
-        super.renderBg(graphics, partialTick, mouseX, mouseY);
+        super.extractBackground(graphics, mouseX, mouseY, partialTick);
     }
 
     private void blitImportSlotFrames(GuiGraphicsExtractor graphics) {
@@ -246,43 +248,32 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     }
 
     @Override
-    public void render(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (menu.isHubLayer()) {
-            renderBackground(graphics, mouseX, mouseY, partialTick);
-            renderBg(graphics, partialTick, mouseX, mouseY);
-            for (Slot slot : menu.slots) {
-                if (slot.isActive()) {
-                    renderSlot(graphics, slot);
-                }
-            }
+            hoveredSlot = null;
             for (Renderable renderable : renderables) {
-                renderable.render(graphics, mouseX, mouseY, partialTick);
+                renderable.extractRenderState(graphics, mouseX, mouseY, partialTick);
             }
-            graphics.pose().pushPose();
-            graphics.pose().translate(this.leftPos, this.topPos, 0.0F);
-            renderLabels(graphics, mouseX, mouseY);
-            graphics.pose().popPose();
-            renderTooltip(graphics, mouseX, mouseY);
+            graphics.pose().pushMatrix();
+            graphics.pose().translate(this.leftPos, this.topPos);
+            extractLabels(graphics, mouseX, mouseY);
+            graphics.pose().popMatrix();
             return;
         }
-        if (menu.isImportLayer()) {
-            super.render(graphics, mouseX, mouseY, partialTick);
-            return;
-        }
-        super.render(graphics, mouseX, mouseY, partialTick);
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
     @Override
-    protected void renderLabels(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+    protected void extractLabels(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         if (menu.isImportLayer()) {
             Component importTitle =
                     Component.translatable("gui.another_dynamics.settings_copier.importing");
             int titleWidth = this.font.width(importTitle);
             int titleX = (this.imageWidth - titleWidth) / 2;
-            graphics.drawString(this.font, importTitle, titleX, TITLE_Y, 0x404040, false);
+            graphics.text(this.font, importTitle, titleX, TITLE_Y, 0x404040, false);
             Component primaryCaption =
                     Component.translatable("gui.another_dynamics.settings_copier.import.name_primary");
-            graphics.drawString(
+            graphics.text(
                     this.font,
                     primaryCaption,
                     SettingsCopierMenu.IMPORT_PRIMARY_NAME_X,
@@ -292,7 +283,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             if (menu.clientImportNeedsSecondCopier()) {
                 Component secondaryCaption =
                         Component.translatable("gui.another_dynamics.settings_copier.import.name_secondary");
-                graphics.drawString(
+                graphics.text(
                         this.font,
                         secondaryCaption,
                         SettingsCopierMenu.importSecondaryNameX(this.imageWidth),
@@ -305,20 +296,20 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         if (menu.isHubLayer()) {
             int titleWidth = this.font.width(this.title);
             int titleX = (this.imageWidth - titleWidth) / 2;
-            graphics.drawString(this.font, this.title, titleX, TITLE_Y, 0x404040, false);
+            graphics.text(this.font, this.title, titleX, TITLE_Y, 0x404040, false);
             Component renameCaption =
                     Component.translatable("gui.another_dynamics.settings_copier.rename_section");
             int captionWidth = this.font.width(renameCaption);
             int captionX = (this.imageWidth - captionWidth) / 2;
             int captionY = HUB_RENAME_Y - this.font.lineHeight - RENAME_LABEL_GAP_ABOVE_BOX;
-            graphics.drawString(this.font, renameCaption, captionX, captionY, 0x404040, false);
+            graphics.text(this.font, renameCaption, captionX, captionY, 0x404040, false);
             return;
         }
-        super.renderLabels(graphics, mouseX, mouseY);
+        super.extractLabels(graphics, mouseX, mouseY);
     }
 
     @Override
-    protected void renderSlot(GuiGraphicsExtractor graphics, Slot slot) {
+    protected void extractSlot(GuiGraphicsExtractor graphics, Slot slot, int mouseX, int mouseY) {
         if (menu.isHubLayer()
                 && slot.index < SettingsCopierMenu.PLAYER_SLOT_START + SettingsCopierMenu.PLAYER_SLOT_COUNT) {
             return;
@@ -332,52 +323,30 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                 if (!stack.isEmpty()) {
                     int ix = slot.x + SettingsCopierClient.MODULE_SLOT_CONTENT_DX;
                     int iy = slot.y + SettingsCopierClient.MODULE_SLOT_CONTENT_DY;
-                    graphics.renderItem(stack, ix, iy);
-                    graphics.renderItemDecorations(this.font, stack, ix, iy);
+                    graphics.item(stack, ix, iy);
+                    graphics.itemDecorations(this.font, stack, ix, iy);
                 }
                 return;
             }
-            super.renderSlot(graphics, slot);
+            super.extractSlot(graphics, slot, mouseX, mouseY);
             return;
         }
         if (menu.isVirtualLayer() && slot.index == lockedCopierMenuSlotIndex()) {
             ItemStack stack = slot.getItem();
             if (!stack.isEmpty()) {
-                graphics.renderItem(stack, slot.x, slot.y);
-                graphics.renderItemDecorations(this.font, stack, slot.x, slot.y);
+                graphics.item(stack, slot.x, slot.y);
+                graphics.itemDecorations(this.font, stack, slot.x, slot.y);
             }
             return;
         }
-        super.renderSlot(graphics, slot);
+        super.extractSlot(graphics, slot, mouseX, mouseY);
     }
 
     @Override
-    protected void renderSlotHighlight(
-            GuiGraphicsExtractor guiGraphics, Slot slot, int mouseX, int mouseY, float partialTick) {
-        if (menu.isHubLayer() && slot.index < SettingsCopierMenu.PLAYER_SLOT_START + SettingsCopierMenu.PLAYER_SLOT_COUNT) {
-            return;
-        }
-        if (menu.isImportLayer() && !slot.isActive()) {
-            return;
-        }
-        if (menu.isImportLayer() && slot.index < SettingsCopierMenu.PLAYER_SLOT_START) {
-            guiGraphics.pose().pushPose();
-            guiGraphics.pose().translate(
-                    SettingsCopierClient.MODULE_SLOT_CONTENT_DX,
-                    SettingsCopierClient.MODULE_SLOT_CONTENT_DY,
-                    0.0F);
-            super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
-            guiGraphics.pose().popPose();
-            return;
-        }
-        if (menu.isVirtualLayer() && slot.index == lockedCopierMenuSlotIndex()) {
-            return;
-        }
-        super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
-    }
-
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         if (menu.isHubLayer()) {
             if (button == 1 && modeConfirmPending && modeButton != null && modeButton.isMouseOver(mouseX, mouseY)) {
                 cancelModeConfirm();
@@ -392,7 +361,10 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             if (renameBox != null) {
                 if (button == 0 && renameBox.isMouseOver(mouseX, mouseY)) {
                     renameBox.setFocused(true);
-                    renameBox.mouseClicked(mouseX, mouseY, button);
+                    renameBox.mouseClicked(
+                            new MouseButtonEvent(
+                                    mouseX, mouseY, new MouseButtonInfo(button, 0)),
+                            false);
                     return true;
                 }
                 if (button == 0 && !renameBox.isMouseOver(mouseX, mouseY)) {
@@ -405,14 +377,20 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             if (importPrimaryNameBox != null && importPrimaryNameBox.isMouseOver(mouseX, mouseY)) {
                 importPrimaryNameBox.setFocused(true);
                 importNamesAutoFill = false;
-                return importPrimaryNameBox.mouseClicked(mouseX, mouseY, button);
+                return importPrimaryNameBox.mouseClicked(
+                        new MouseButtonEvent(
+                                mouseX, mouseY, new MouseButtonInfo(button, 0)),
+                        false);
             }
             if (importSecondaryNameBox != null
                     && importSecondaryNameBox.visible
                     && importSecondaryNameBox.isMouseOver(mouseX, mouseY)) {
                 importSecondaryNameBox.setFocused(true);
                 importNamesAutoFill = false;
-                return importSecondaryNameBox.mouseClicked(mouseX, mouseY, button);
+                return importSecondaryNameBox.mouseClicked(
+                        new MouseButtonEvent(
+                                mouseX, mouseY, new MouseButtonInfo(button, 0)),
+                        false);
             }
             if (button == 0) {
                 if (importPrimaryNameBox != null) {
@@ -425,7 +403,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             if (deliverMouseToWidgets(mouseX, mouseY, button)) {
                 return true;
             }
-            return super.mouseClicked(mouseX, mouseY, button);
+            return super.mouseClicked(event, doubleClick);
         }
         if (menu.isVirtualLayer() && isMainChromeSubView()) {
             if (isOverCloseButton(mouseX, mouseY)) {
@@ -441,14 +419,17 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                 }
             }
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(event, doubleClick);
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+    public boolean keyPressed(KeyEvent event) {
+        int keyCode = event.key();
+        int scanCode = event.scancode();
+        int modifiers = event.modifiers();
         if (menu.isHubLayer()) {
             if (renameBox != null && renameBox.isFocused()) {
-                if (renameBox.keyPressed(keyCode, scanCode, modifiers)) {
+                if (renameBox.keyPressed(event)) {
                     return true;
                 }
             }
@@ -464,12 +445,12 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         }
         if (menu.isImportLayer()) {
             if (importPrimaryNameBox != null && importPrimaryNameBox.isFocused()) {
-                return importPrimaryNameBox.keyPressed(keyCode, scanCode, modifiers);
+                return importPrimaryNameBox.keyPressed(event);
             }
             if (importSecondaryNameBox != null
                     && importSecondaryNameBox.visible
                     && importSecondaryNameBox.isFocused()) {
-                return importSecondaryNameBox.keyPressed(keyCode, scanCode, modifiers);
+                return importSecondaryNameBox.keyPressed(event);
             }
             if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
                 playClickSound();
@@ -485,29 +466,30 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                 return true;
             }
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(event);
     }
 
     @Override
-    public boolean charTyped(char codePoint, int modifiers) {
+    public boolean charTyped(CharacterEvent event) {
+        char codePoint = (char) event.codepoint();
         if (menu.isHubLayer()) {
             if (renameBox != null && renameBox.isFocused()) {
-                return renameBox.charTyped(codePoint, modifiers);
+                return renameBox.charTyped(event);
             }
             return false;
         }
         if (menu.isImportLayer()) {
             if (importPrimaryNameBox != null && importPrimaryNameBox.isFocused()) {
-                return importPrimaryNameBox.charTyped(codePoint, modifiers);
+                return importPrimaryNameBox.charTyped(event);
             }
             if (importSecondaryNameBox != null
                     && importSecondaryNameBox.visible
                     && importSecondaryNameBox.isFocused()) {
-                return importSecondaryNameBox.charTyped(codePoint, modifiers);
+                return importSecondaryNameBox.charTyped(event);
             }
             return false;
         }
-        return super.charTyped(codePoint, modifiers);
+        return super.charTyped(event);
     }
 
     private int lockedCopierMenuSlotIndex() {

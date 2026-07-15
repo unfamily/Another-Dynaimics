@@ -14,13 +14,16 @@ import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.event.RegisterSpecialModelRendererEvent;
+import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
 import net.unfamily.another_dynamics.client.DuctClientSetup;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.unfamily.another_dynamics.duct.DuctDefinitionLoader;
+import net.unfamily.another_dynamics.duct.filterimport.FilterImportBootstrap;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModBlocks;
@@ -57,6 +60,7 @@ public final class AnotherDynamicsMod {
 
         modEventBus.addListener(ModNetwork::register);
         modEventBus.addListener(AnotherDynamicsMod::onRegisterCapabilities);
+        modEventBus.addListener(FilterImportBootstrap::onCommonSetup);
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.COMMON, Config.SPEC);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
@@ -66,11 +70,11 @@ public final class AnotherDynamicsMod {
             modEventBus.addListener(FMLClientSetupEvent.class, DuctClientSetup::onClientSetup);
             modEventBus.addListener(AddClientReloadListenersEvent.class, DuctClientSetup::onAddClientReloadListeners);
             modEventBus.addListener(RegisterMenuScreensEvent.class, DuctClientSetup::onRegisterMenuScreens);
+            modEventBus.addListener(EntityRenderersEvent.RegisterRenderers.class, DuctClientSetup::onRegisterRenderers);
             modEventBus.addListener(ModelEvent.RegisterLoaders.class, DuctClientSetup::onRegisterModelLoaders);
             modEventBus.addListener(RegisterSpecialModelRendererEvent.class, DuctClientSetup::onRegisterSpecialModelRenderers);
             modEventBus.addListener(ModelEvent.ModifyBakingResult.class, DuctClientSetup::onModifyBakingResult);
             modEventBus.addListener(ModelEvent.BakingCompleted.class, DuctClientSetup::onBakingCompleted);
-            // Transit BER still on 1.21.1 API; register after migrating DuctTransitBlockEntityRenderer to submit().
         }
 
         initOptionalIntegrations();
@@ -90,14 +94,18 @@ public final class AnotherDynamicsMod {
     }
 
     private static void onAddReloadListeners(AddServerReloadListenersEvent event) {
-        event.addListener(DUCT_LOADER);
+        event.addListener(
+                Identifier.fromNamespaceAndPath(MOD_ID, "duct_definitions"), DUCT_LOADER);
     }
 
     private static void onRegisterCapabilities(RegisterCapabilitiesEvent event) {
         event.registerBlockEntity(
-                Capabilities.EnergyStorage.BLOCK,
+                Capabilities.Energy.BLOCK,
                 ModBlockEntities.DUCT.get(),
-                (be, side) -> ((DuctBlockEntity) be).energyBufferCapability(side));
+                (be, side) -> {
+                    var storage = ((DuctBlockEntity) be).energyBufferCapability(side);
+                    return storage == null ? null : new net.unfamily.another_dynamics.duct.logistics.LegacyEnergyStorageHandler(storage);
+                });
     }
 
 }

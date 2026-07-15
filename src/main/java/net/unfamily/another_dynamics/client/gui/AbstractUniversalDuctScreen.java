@@ -6,8 +6,13 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -15,6 +20,7 @@ import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -127,7 +133,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     /** Hub layer: widgets only, no player inventory slots. */
     protected boolean deliverMouseToWidgets(double mouseX, double mouseY, int button) {
         for (net.minecraft.client.gui.components.events.GuiEventListener child : children()) {
-            if (child.isMouseOver(mouseX, mouseY) && child.mouseClicked(mouseX, mouseY, button)) {
+            if (child.isMouseOver(mouseX, mouseY)
+                    && child.mouseClicked(
+                            new MouseButtonEvent(
+                                    mouseX, mouseY, new MouseButtonInfo(button, 0)),
+                            false)) {
                 return true;
             }
         }
@@ -631,9 +641,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         Inventory playerInventory,
         Component title
     ) {
-        super(menu, playerInventory, title);
-        this.imageWidth = TEXTURE_WIDTH;
-        this.imageHeight = TEXTURE_HEIGHT;
+        super(menu, playerInventory, title, TEXTURE_WIDTH, TEXTURE_HEIGHT);
         this.inventoryLabelY = 10_000;
     }
 
@@ -2947,7 +2955,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             int color) {
         int lw = this.font.width(text);
         int x = editGuiLeft + (editW - lw) / 2;
-        graphics.drawString(this.font, text, x, guiY, color, false);
+        graphics.text(this.font, text, x, guiY, color, false);
     }
 
     private void drawCenteredEnergyBufferLabel(
@@ -3629,14 +3637,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (editModeRemoteNodeDraft != null) {
             ItemStack icon = new ItemStack(ModItems.REMOTE_NODE_SELECTOR.get());
             icon.set(ModDataComponents.REMOTE_NODE_ENDPOINT.get(), editModeRemoteNodeDraft);
-            graphics.renderItem(icon, slotX + 1, slotY + 1);
+            graphics.item(icon, slotX + 1, slotY + 1);
         }
         if (!remoteNodeCoordEditOpen) {
             if (editModeRemoteNodeDraft != null) {
                 String coordLine =
                         truncateRemoteNodeCoordText(
                                 remoteNodeCoordLabel(editModeRemoteNodeDraft).getString());
-                graphics.drawString(
+                graphics.text(
                         this.font,
                         coordLine,
                         centeredPanelTextScreenX(coordLine),
@@ -3647,7 +3655,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 String coordLine =
                         truncateRemoteNodeCoordText(
                                 remoteNodeCoordLabel(null).getString());
-                graphics.drawString(
+                graphics.text(
                         this.font,
                         coordLine,
                         centeredPanelTextScreenX(coordLine),
@@ -3676,7 +3684,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                                         "gui.another_dynamics.duct_node.remote_node.tooltip.clear_slot")
                                 .withStyle(ChatFormatting.GRAY));
             }
-            graphics.renderComponentTooltip(this.font, List.of(tip), mouseX, mouseY);
+            graphics.setTooltipForNextFrame(
+                    this.font,
+                    List.of(tip),
+                    java.util.Optional.empty(),
+                    ItemStack.EMPTY,
+                    mouseX,
+                    mouseY,
+                    null);
         }
     }
 
@@ -3698,11 +3713,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int groupW = labelW + REMOTE_NODE_AXIS_LABEL_GAP + REMOTE_NODE_COORD_EDIT_W;
         int textY = row.coordTextScreenY() + (BTN_H - this.font.lineHeight) / 2;
         int x = remoteNodeCoordAxisLabelScreenX;
-        graphics.drawString(this.font, labelX, x, textY, 0x404040, false);
+        graphics.text(this.font, labelX, x, textY, 0x404040, false);
         x += groupW + AMOUNT_INNER_GAP;
-        graphics.drawString(this.font, labelY, x, textY, 0x404040, false);
+        graphics.text(this.font, labelY, x, textY, 0x404040, false);
         x += groupW + AMOUNT_INNER_GAP;
-        graphics.drawString(this.font, labelZ, x, textY, 0x404040, false);
+        graphics.text(this.font, labelZ, x, textY, 0x404040, false);
     }
 
     private Component remoteNodeCoordLabel(@Nullable DuctDirectionalEndpoint bound) {
@@ -4555,8 +4570,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 slotY + 1
             );
         } else if (!ghostSlotItem.isEmpty()) {
-            guiGraphics.renderItem(ghostSlotItem, slotX + 1, slotY + 1);
-            guiGraphics.renderItemDecorations(
+            guiGraphics.item(ghostSlotItem, slotX + 1, slotY + 1);
+            guiGraphics.itemDecorations(
                 this.font,
                 ghostSlotItem,
                 slotX + 1,
@@ -4769,14 +4784,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         variants.add("@" + namespace);
         Item item = stack.getItem();
         var holder = BuiltInRegistries.ITEM.wrapAsHolder(item);
-        List<String> itemTags = BuiltInRegistries.ITEM.getTagNames()
-            .filter(tagKey ->
-                BuiltInRegistries.ITEM.getTag(tagKey)
-                    .map(t -> t.contains(holder))
-                    .orElse(false)
-            )
-            .map(TagKey::location)
-            .map(Identifier::toString)
+        List<String> itemTags = BuiltInRegistries.ITEM.getTags()
+            .filter(named -> named.contains(holder))
+            .map(named -> named.key().location().toString())
             .sorted()
             .toList();
         for (String tagId : itemTags) {
@@ -4798,12 +4808,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         if (minecraft != null && minecraft.level != null) {
             try {
-                Tag saved = stack.save(minecraft.level.registryAccess());
-                if (saved instanceof CompoundTag compound) {
-                    String snbt = compound.toString();
-                    if (!snbt.isEmpty()) {
-                        variants.add("?" + snbt);
-                    }
+                var ops =
+                        minecraft.level.registryAccess()
+                                .createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE);
+                net.minecraft.nbt.Tag encoded = ItemStack.CODEC.encodeStart(ops, stack).getOrThrow();
+                String snbt = encoded.toString();
+                if (!snbt.isEmpty()) {
+                    variants.add("?" + snbt);
                 }
             } catch (Exception ignored) {}
         }
@@ -4831,14 +4842,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         String namespace = fluidId.getNamespace();
         variants.add("@" + namespace);
         var holder = BuiltInRegistries.FLUID.wrapAsHolder(fluid);
-        List<String> fluidTags = BuiltInRegistries.FLUID.getTagNames()
-            .filter(tagKey ->
-                BuiltInRegistries.FLUID.getTag(tagKey)
-                    .map(t -> t.contains(holder))
-                    .orElse(false)
-            )
-            .map(TagKey::location)
-            .map(Identifier::toString)
+        List<String> fluidTags = BuiltInRegistries.FLUID.getTags()
+            .filter(named -> named.contains(holder))
+            .map(named -> named.key().location().toString())
             .sorted()
             .toList();
         for (String tagId : fluidTags) {
@@ -4861,9 +4867,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         variants.add("&density=" + density);
         variants.add("&viscosity=" + viscosity);
         try {
-            Tag saved = stack.save(registries);
-            if (saved instanceof CompoundTag compound) {
-                String snbt = compound.toString();
+            CompoundTag saved = net.unfamily.another_dynamics.duct.DuctNbtCodecs.saveFluidStack(registries, stack);
+            if (!saved.isEmpty()) {
+                String snbt = saved.toString();
                 if (!snbt.isEmpty()) {
                     variants.add("?" + snbt);
                 }
@@ -4915,7 +4921,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             String idFilter = filter.substring(1);
             try {
                 Identifier id = Identifier.parse(idFilter);
-                Item item = BuiltInRegistries.ITEM.get(id);
+                Item item = BuiltInRegistries.ITEM.get(id).map(h -> h.value()).orElse(Items.AIR);
                 return new ItemStack(item);
             } catch (Exception e) {
                 return ItemStack.EMPTY;
@@ -4955,7 +4961,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         try {
             Identifier id = Identifier.parse(filter);
-            return new ItemStack(BuiltInRegistries.ITEM.get(id));
+            return new ItemStack(BuiltInRegistries.ITEM.get(id).map(h -> h.value()).orElse(Items.AIR));
         } catch (Exception e) {
             return ItemStack.EMPTY;
         }
@@ -4981,7 +4987,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         try {
             Identifier id = Identifier.parse(f);
-            Fluid fluid = BuiltInRegistries.FLUID.get(id);
+            Fluid fluid = BuiltInRegistries.FLUID.get(id).map(h -> h.value()).orElse(Fluids.EMPTY);
             if (fluid == null || fluid == Fluids.EMPTY) {
                 return FluidStack.EMPTY;
             }
@@ -4994,7 +5000,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private static FluidStack fluidStackFromId(String idStr) {
         try {
             Identifier id = Identifier.parse(idStr);
-            Fluid fluid = BuiltInRegistries.FLUID.get(id);
+            Fluid fluid = BuiltInRegistries.FLUID.get(id).map(h -> h.value()).orElse(Fluids.EMPTY);
             if (fluid == null || fluid == Fluids.EMPTY) {
                 return FluidStack.EMPTY;
             }
@@ -5008,10 +5014,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         try {
             Identifier loc = Identifier.parse(tagId);
             TagKey<Fluid> tagKey = TagKey.create(Registries.FLUID, loc);
-            return BuiltInRegistries.FLUID.getTag(tagKey)
-                .flatMap(t -> t.stream().findFirst())
-                .map(h -> new FluidStack(h.value(), 1000))
-                .orElse(FluidStack.EMPTY);
+            for (var holder : BuiltInRegistries.FLUID.getTagOrEmpty(tagKey)) {
+                return new FluidStack(holder.value(), 1000);
+            }
+            return FluidStack.EMPTY;
         } catch (Exception e) {
             return FluidStack.EMPTY;
         }
@@ -5087,8 +5093,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
             ItemStack displayItem = getDisplayItemForFilter(filter);
             if (!displayItem.isEmpty()) {
-                graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-                graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+                graphics.item(displayItem, slotX + 1, slotY + 1);
+                graphics.itemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
             }
             return;
         }
@@ -5100,28 +5106,27 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
             ItemStack displayItem = getDisplayItemForFilter(filter);
             if (!displayItem.isEmpty()) {
-                graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-                graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+                graphics.item(displayItem, slotX + 1, slotY + 1);
+                graphics.itemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
             }
             return;
         }
         ItemStack displayItem = getDisplayItemForFilter(filter);
         if (!displayItem.isEmpty()) {
-            graphics.renderItem(displayItem, slotX + 1, slotY + 1);
-            graphics.renderItemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
+            graphics.item(displayItem, slotX + 1, slotY + 1);
+            graphics.itemDecorations(this.font, displayItem, slotX + 1, slotY + 1);
         }
     }
 
     private static ItemStack parseItemStackFromSNBT(String snbtString) {
         try {
-            CompoundTag tag = TagParser.parseTag(snbtString);
+            CompoundTag tag = TagParser.parseCompoundFully(snbtString);
             if (Minecraft.getInstance().level == null) {
                 return ItemStack.EMPTY;
             }
-            return ItemStack.parse(
-                Minecraft.getInstance().level.registryAccess(),
-                tag
-            ).orElse(ItemStack.EMPTY);
+            var registries = Minecraft.getInstance().level.registryAccess();
+            var ops = registries.createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE);
+            return ItemStack.CODEC.parse(ops, tag).result().orElse(ItemStack.EMPTY);
         } catch (CommandSyntaxException e) {
             return ItemStack.EMPTY;
         }
@@ -5131,14 +5136,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         try {
             Identifier loc = Identifier.parse(tagId);
             TagKey<Item> itemTag = ItemTags.create(loc);
-            var contents = BuiltInRegistries.ITEM.getTag(itemTag);
-            if (contents.isPresent()) {
-                var items = contents.get();
-                if (items.size() > 0) {
-                    int index = (int) ((System.currentTimeMillis() / 2000) %
-                        items.size());
-                    return new ItemStack(items.get(index).value());
-                }
+            var contents = BuiltInRegistries.ITEM.getTagOrEmpty(itemTag);
+            java.util.ArrayList<Item> items = new java.util.ArrayList<>();
+            for (var holder : contents) {
+                items.add(holder.value());
+            }
+            if (!items.isEmpty()) {
+                int index = (int) ((System.currentTimeMillis() / 2000) % items.size());
+                return new ItemStack(items.get(index));
             }
         } catch (Exception e) {
             // ignore
@@ -6393,20 +6398,20 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private int stepForPriorityAdjust() {
-        if (hasShiftDown()) {
+        if (minecraft != null && minecraft.hasShiftDown()) {
             return PRIORITY_STEP_SHIFT;
         }
-        if (hasControlDown() || hasAltDown()) {
+        if (minecraft != null && minecraft.hasControlDown() || minecraft != null && minecraft.hasAltDown()) {
             return PRIORITY_STEP_CTRL_OR_ALT;
         }
         return PRIORITY_STEP_PLAIN;
     }
 
     private int stepForBatchAdjust() {
-        if (hasShiftDown()) {
+        if (minecraft != null && minecraft.hasShiftDown()) {
             return BATCH_STEP_SHIFT;
         }
-        if (hasControlDown() || hasAltDown()) {
+        if (minecraft != null && minecraft.hasControlDown() || minecraft != null && minecraft.hasAltDown()) {
             return BATCH_STEP_CTRL_OR_ALT;
         }
         return BATCH_STEP_PLAIN;
@@ -6538,33 +6543,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
     }
 
-    /**
-     * "Valid keys" is an overlay: do not use {@link AbstractContainerScreen}'s menu background (player inventory grid under
-     * the texture). Use the same dim/blur as a normal in-world {@link net.minecraft.client.gui.screens.Screen} only.
-     */
-    @Override
-    public void renderBackground(
-        GuiGraphicsExtractor guiGraphics,
-        int mouseX,
-        int mouseY,
-        float partialTick
-    ) {
-        if (subView == SubView.HOW_TO_USE) {
-            if (minecraft != null && minecraft.level != null) {
-                renderTransparentBackground(guiGraphics);
-                renderBlurredBackground(partialTick);
-            } else {
-                super.renderBackground(
-                    guiGraphics,
-                    mouseX,
-                    mouseY,
-                    partialTick
-                );
-            }
-            return;
-        }
-        super.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-    }
 
     private boolean routeHowToUseInputToWidgetsOnly(
         HowToUseInput op,
@@ -6580,21 +6558,20 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     ) {
         for (GuiEventListener child : children()) {
             boolean handled = switch (op) {
-                case MOUSE_CLICK -> child.mouseClicked(mouseX, mouseY, button);
+                case MOUSE_CLICK -> child.mouseClicked(
+                    new MouseButtonEvent(
+                        mouseX, mouseY, new MouseButtonInfo(button, modifiers)),
+                    false);
                 case MOUSE_RELEASE -> child.mouseReleased(
-                    mouseX,
-                    mouseY,
-                    button
-                );
+                    new MouseButtonEvent(
+                        mouseX, mouseY, new MouseButtonInfo(button, modifiers)));
                 case MOUSE_DRAG -> child.mouseDragged(
-                    mouseX,
-                    mouseY,
-                    button,
+                    new MouseButtonEvent(
+                        mouseX, mouseY, new MouseButtonInfo(button, modifiers)),
                     dragX,
-                    dragY
-                );
-                case KEY -> child.keyPressed(keyCode, scanCode, modifiers);
-                case CHAR -> child.charTyped(codePoint, modifiers);
+                    dragY);
+                case KEY -> child.keyPressed(new KeyEvent(keyCode, scanCode, modifiers));
+                case CHAR -> child.charTyped(new CharacterEvent(codePoint));
             };
             if (handled) {
                 return true;
@@ -6612,12 +6589,23 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     @Override
-    protected void renderBg(
-        @NotNull GuiGraphicsExtractor graphics,
-        float partialTick,
+    public void extractBackground(
+        GuiGraphicsExtractor graphics,
         int mouseX,
-        int mouseY
+        int mouseY,
+        float partialTick
     ) {
+        if (subView == SubView.HOW_TO_USE) {
+            if (minecraft != null && minecraft.level != null) {
+                extractTransparentBackground(graphics);
+                extractBlurredBackground(graphics);
+            } else {
+                super.extractBackground(graphics, mouseX, mouseY, partialTick);
+            }
+        } else {
+            super.extractBackground(graphics, mouseX, mouseY, partialTick);
+        }
+
         if (subView == SubView.HOW_TO_USE) {
             graphics.blit(
                 VALID_KEYS_TEXTURE,
@@ -6720,17 +6708,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     filterRemoteNodeUiEnabled() ? remoteNodeAt(idx) : null;
             if (boundRemote != null) {
                 int filterTextY = entryY + 4;
-                graphics.drawString(font, displayText, textX, filterTextY, 0x404040, false);
+                graphics.text(font, displayText, textX, filterTextY, 0x404040, false);
                 String coordLine =
                         truncateRemoteNodeCoordText(
                                 remoteNodeSummaryCoordText(
                                         boundRemote, remoteIgnoreChannelAt(idx)),
                                 maxTextWidth);
                 int coordY = filterTextY + font.lineHeight + 1;
-                graphics.drawString(font, coordLine, textX, coordY, 0x707070, false);
+                graphics.text(font, coordLine, textX, coordY, 0x707070, false);
             } else {
                 int textY = entryY + (ENTRY_HEIGHT - font.lineHeight) / 2;
-                graphics.drawString(font, displayText, textX, textY, 0x404040, false);
+                graphics.text(font, displayText, textX, textY, 0x404040, false);
             }
         }
 
@@ -6830,17 +6818,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int iconY = this.topPos + DuctNodeMenu.SLOT_COPY_Y;
         ItemStack copier = menu.getSlot(copierSlot).getItem();
 
-        graphics.pose().pushPose();
-        graphics.pose().translate(0, 0, 200);
+        graphics.pose().pushMatrix();
+        graphics.nextStratum();
         SettingsCopierClient.blitSlotFrame(graphics, frameX, frameY);
-        graphics.pose().popPose();
+        graphics.pose().popMatrix();
 
         if (!copier.isEmpty()) {
-            graphics.pose().pushPose();
-            graphics.pose().translate(0, 0, 300);
-            graphics.renderItem(copier, iconX, iconY);
-            graphics.renderItemDecorations(this.font, copier, iconX, iconY);
-            graphics.pose().popPose();
+            graphics.pose().pushMatrix();
+            graphics.nextStratum();
+            graphics.item(copier, iconX, iconY);
+            graphics.itemDecorations(this.font, copier, iconX, iconY);
+            graphics.pose().popMatrix();
         }
     }
 
@@ -6881,30 +6869,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
     }
 
-    @Override
-    protected void renderSlotHighlight(
-        @NotNull GuiGraphicsExtractor guiGraphics,
-        @NotNull Slot slot,
-        int mouseX,
-        int mouseY,
-        float partialTick
-    ) {
-        if (subView == SubView.HOW_TO_USE) {
-            return;
-        }
-        super.renderSlotHighlight(
-            guiGraphics,
-            slot,
-            mouseX,
-            mouseY,
-            partialTick
-        );
-    }
 
     @Override
-    protected void renderSlot(
+    protected void extractSlot(
         @NotNull GuiGraphicsExtractor graphics,
-        @NotNull Slot slot
+        @NotNull Slot slot,
+        int mouseX,
+        int mouseY
     ) {
         if (subView == SubView.HOW_TO_USE) {
             return;
@@ -6917,12 +6888,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (copierSlot > 0 && slot.index >= 0 && slot.index < copierSlot) {
             ItemStack stack = slot.getItem();
             if (!stack.isEmpty()) {
-                graphics.renderItem(stack, slot.x, slot.y);
-                graphics.renderItemDecorations(this.font, stack, slot.x, slot.y);
+                graphics.item(stack, slot.x, slot.y);
+                graphics.itemDecorations(this.font, stack, slot.x, slot.y);
             }
             return;
         }
-        super.renderSlot(graphics, slot);
+        super.extractSlot(graphics, slot, mouseX, mouseY);
     }
 
     public static void showSettingsCopierFeedback(int messageId) {
@@ -6969,7 +6940,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         int cx = leftPos + imageWidth / 2;
         int cy = topPos + DuctNodeMenu.PLAYER_SLOTS_Y - 12;
-        graphics.drawCenteredString(this.font, transientFeedback, cx, cy, transientFeedbackColor);
+        graphics.text(this.font, transientFeedback, cx - this.font.width(transientFeedback) / 2, cy, transientFeedbackColor, false);
     }
 
     private boolean isMouseOverAnyVisibleTextField(
@@ -7048,7 +7019,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         if (
             button == 0 &&
             subView != SubView.HOW_TO_USE &&
@@ -7179,7 +7153,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(event, doubleClick);
     }
 
     @Override
@@ -7208,12 +7182,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     @Override
     public boolean mouseDragged(
-        double mouseX,
-        double mouseY,
-        int button,
+        MouseButtonEvent event,
         double dragX,
         double dragY
     ) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         if (subView == SubView.HOW_TO_USE) {
             routeHowToUseInputToWidgetsOnly(
                 HowToUseInput.MOUSE_DRAG,
@@ -7246,11 +7221,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
             return true;
         }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+        return super.mouseDragged(event, dragX, dragY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(MouseButtonEvent event) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         if (button == 0 && isDraggingHandle) {
             isDraggingHandle = false;
             return true;
@@ -7270,20 +7248,23 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             );
             return true;
         }
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(event);
     }
 
     /** {@link AbstractContainerScreen} input only (no duct widgets); for settings copier hub layer. */
-    protected boolean delegateContainerMouseClicked(double mouseX, double mouseY, int button) {
-        return super.mouseClicked(mouseX, mouseY, button);
+    protected boolean delegateContainerMouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        return super.mouseClicked(event, doubleClick);
     }
 
-    protected boolean delegateContainerKeyPressed(int keyCode, int scanCode, int modifiers) {
-        return super.keyPressed(keyCode, scanCode, modifiers);
+    protected boolean delegateContainerKeyPressed(KeyEvent event) {
+        return super.keyPressed(event);
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+    public boolean keyPressed(KeyEvent event) {
+        int keyCode = event.key();
+        int scanCode = event.scancode();
+        int modifiers = event.modifiers();
         if (
             routingPriorityBox != null &&
             routingPriorityBox.isFocused() &&
@@ -7323,7 +7304,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 (advCap2EditBox != null && advCap2EditBox.isFocused())
             )
         ) {
-            int sign = hasShiftDown() ? -1 : 1;
+            int sign = minecraft != null && minecraft.hasShiftDown() ? -1 : 1;
             int step = stackStepForCapAdjust();
             if (advCap2EditBox != null && advCap2EditBox.isFocused()) {
                 adjustAdvCap2WithStep(sign, step);
@@ -7351,13 +7332,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         boolean inv =
             minecraft != null &&
             minecraft.options.keyInventory != null &&
-            minecraft.options.keyInventory.matches(keyCode, scanCode);
+            minecraft.options.keyInventory.matches(event);
 
         boolean editFilterFocused =
             editModeTextBox != null && editModeTextBox.isFocused();
 
         if (editFilterFocused) {
-            if (editModeTextBox.keyPressed(keyCode, scanCode, modifiers)) {
+            if (editModeTextBox.keyPressed(event)) {
                 return true;
             }
             if (keyCode == InputConstants.KEY_RETURN) {
@@ -7374,18 +7355,18 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             // JEI overlays can be active while this screen is open; only treat Esc/E as our close keys when interacting
             // with our GUI (mouse over it).
             if (jeiIsHandlingKeyboard() || !isMouseInsideOurGui()) {
-                return super.keyPressed(keyCode, scanCode, modifiers);
+                return super.keyPressed(event);
             }
             if (useSettingsCopierHubNavigation()) {
                 if (subView == SubView.MAIN) {
                     if (routingPriorityBox != null && routingPriorityBox.isFocused()) {
-                        return super.keyPressed(keyCode, scanCode, modifiers);
+                        return super.keyPressed(event);
                     }
                     if (advCapEditBox != null && advCapEditBox.isFocused()) {
-                        return super.keyPressed(keyCode, scanCode, modifiers);
+                        return super.keyPressed(event);
                     }
                     if (advCap2EditBox != null && advCap2EditBox.isFocused()) {
-                        return super.keyPressed(keyCode, scanCode, modifiers);
+                        return super.keyPressed(event);
                     }
                 }
                 handleCloseOrBack();
@@ -7418,13 +7399,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 return true;
             }
             if (routingPriorityBox != null && routingPriorityBox.isFocused()) {
-                return super.keyPressed(keyCode, scanCode, modifiers);
+                return super.keyPressed(event);
             }
             if (advCapEditBox != null && advCapEditBox.isFocused()) {
-                return super.keyPressed(keyCode, scanCode, modifiers);
+                return super.keyPressed(event);
             }
             if (advCap2EditBox != null && advCap2EditBox.isFocused()) {
-                return super.keyPressed(keyCode, scanCode, modifiers);
+                return super.keyPressed(event);
             }
             NodeMode nm = NodeMode.fromOrdinal(
                 menu.getSyncData().get(DuctMenuSync.NODE_MODE)
@@ -7465,23 +7446,24 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return true;
         }
 
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(event);
     }
 
     @Override
-    public boolean charTyped(char codePoint, int modifiers) {
+    public boolean charTyped(CharacterEvent event) {
+        char codePoint = (char) event.codepoint();
         if (editModeTextBox != null && editModeTextBox.isFocused()) {
-            if (editModeTextBox.charTyped(codePoint, modifiers)) {
+            if (editModeTextBox.charTyped(event)) {
                 return true;
             }
         }
         if (advCapEditBox != null && advCapEditBox.isFocused()) {
-            if (advCapEditBox.charTyped(codePoint, modifiers)) {
+            if (advCapEditBox.charTyped(event)) {
                 return true;
             }
         }
         if (advCap2EditBox != null && advCap2EditBox.isFocused()) {
-            if (advCap2EditBox.charTyped(codePoint, modifiers)) {
+            if (advCap2EditBox.charTyped(event)) {
                 return true;
             }
         }
@@ -7495,12 +7477,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 0.0,
                 0,
                 0,
-                modifiers,
+                0,
                 codePoint
             );
             return true;
         }
-        return super.charTyped(codePoint, modifiers);
+        return super.charTyped(event);
     }
 
     private void renderHelpLineWithExample(
@@ -7522,7 +7504,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int rowX = x;
         int rowY = y;
         int beforeWidth = this.font.width(beforeText);
-        guiGraphics.drawString(
+        guiGraphics.text(
             this.font,
             beforeComponent,
             rowX,
@@ -7540,7 +7522,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             mouseY >= sy &&
             mouseY <= sy + this.font.lineHeight;
         int exampleColor = hovered ? 0x0066FF : 0x0066CC;
-        guiGraphics.drawString(
+        guiGraphics.text(
             this.font,
             exampleText,
             exampleX,
@@ -7563,7 +7545,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         );
         if (!afterText.isEmpty()) {
             int afterX = exampleX + exampleWidth;
-            guiGraphics.drawString(
+            guiGraphics.text(
                 this.font,
                 afterComponent,
                 afterX,
@@ -7618,7 +7600,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             boolean isLastRow = r == rows.size() - 1;
             int cursorX = x;
             if (isFirstRow) {
-                guiGraphics.drawString(
+                guiGraphics.text(
                     this.font,
                     beforeC,
                     cursorX,
@@ -7640,7 +7622,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     mouseY >= sy &&
                     mouseY <= sy + this.font.lineHeight;
                 int color = hovered ? 0x0066FF : 0x0066CC;
-                guiGraphics.drawString(
+                guiGraphics.text(
                     this.font,
                     exText,
                     cursorX,
@@ -7658,7 +7640,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 cursorX += exW;
                 boolean moreInThisRow = i < rowKeys.size() - 1;
                 if (moreInThisRow) {
-                    guiGraphics.drawString(
+                    guiGraphics.text(
                         this.font,
                         middleC,
                         cursorX,
@@ -7669,7 +7651,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     cursorX += this.font.width(middleText);
                 } else {
                     if (!isLastRow) {
-                        guiGraphics.drawString(
+                        guiGraphics.text(
                             this.font,
                             middleC,
                             cursorX,
@@ -7679,7 +7661,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         );
                         cursorX += this.font.width(middleText);
                     } else if (!afterText.isEmpty()) {
-                        guiGraphics.drawString(
+                        guiGraphics.text(
                             this.font,
                             afterC,
                             cursorX,
@@ -7722,19 +7704,21 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         "gui.another_dynamics.general_filter_text.paste_hint"
                     )
                 );
-                guiGraphics.renderComponentTooltip(
+                guiGraphics.setTooltipForNextFrame(
                     this.font,
                     tooltip,
+                    java.util.Optional.empty(),
+                    ItemStack.EMPTY,
                     mouseX,
-                    mouseY
-                );
+                    mouseY,
+                    null);
                 return;
             }
         }
     }
 
     @Override
-    protected void renderLabels(
+    protected void extractLabels(
         @NotNull GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY
@@ -7831,7 +7815,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int titleWidth = this.font.width(titleComponent);
         int titleX = (this.imageWidth - titleWidth) / 2;
         /* Foreground: coordinates are relative—AbstractContainerScreen applies leftPos/topPos on the pose stack. */
-        graphics.drawString(
+        graphics.text(
             this.font,
             titleComponent,
             titleX,
@@ -7884,7 +7868,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 ADVANCED_CAP_NUMERIC_ROW_GUI_Y -
                 this.font.lineHeight -
                 AMOUNT_LABEL_ABOVE_GAP;
-            graphics.drawString(
+            graphics.text(
                 this.font,
                 capLabel,
                 labelX,
@@ -7910,7 +7894,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         : AMOUNT_EDIT_W;
                 int labelX2 = advCap2EditBoxGuiLeft + (keepEditW - lw2) / 2;
                 int labelY2 = labelY;
-                graphics.drawString(
+                graphics.text(
                     this.font,
                     keepLabel,
                     labelX2,
@@ -7944,7 +7928,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     AMOUNT_ROW_Y -
                     this.font.lineHeight -
                     AMOUNT_LABEL_ABOVE_GAP;
-                graphics.drawString(
+                graphics.text(
                     this.font,
                     amountLabel,
                     labelX,
@@ -8020,7 +8004,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                       mouseY
                   );
             helpY += macroRows * helpLineStep;
-            graphics.drawString(
+            graphics.text(
                     this.font,
                     Component.translatable(p + "operators"),
                     HELP_TEXT_X,
@@ -8030,7 +8014,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             );
             helpY += helpLineStep;
             if (!isGasFilterTransport()) {
-                graphics.drawString(
+                graphics.text(
                     this.font,
                     Component.translatable(p + "nbt"),
                     HELP_TEXT_X,
@@ -8054,7 +8038,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     @Override
-    public void render(
+    public void extractRenderState(
         @NotNull GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
@@ -8064,53 +8048,55 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         lastMouseY = mouseY;
         if (subView == SubView.HOW_TO_USE) {
             hoveredSlot = null;
-            renderBackground(graphics, mouseX, mouseY, partialTick);
-            // renderBg blits at absolute (leftPos, topPos); do not pre-translate or the panel draws twice (shifted).
-            renderBg(graphics, partialTick, mouseX, mouseY);
             for (Renderable renderable : this.renderables) {
-                renderable.render(graphics, mouseX, mouseY, partialTick);
+                renderable.extractRenderState(graphics, mouseX, mouseY, partialTick);
             }
-            // renderLabels uses coordinates relative to the GUI (same as AbstractContainerScreen after translate).
-            graphics.pose().pushPose();
-            graphics.pose().translate(this.leftPos, this.topPos, 0.0F);
-            renderLabels(graphics, mouseX, mouseY);
-            graphics.pose().popPose();
-            renderTooltip(graphics, mouseX, mouseY);
+            graphics.pose().pushMatrix();
+            graphics.pose().translate(this.leftPos, this.topPos);
+            extractLabels(graphics, mouseX, mouseY);
+            graphics.pose().popMatrix();
+            renderTransientFeedback(graphics);
+            return;
+        }
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        renderCopySettingsSlotOnTop(graphics);
+        renderTransientFeedback(graphics);
+    }
+
+    @Override
+    protected void extractTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        if (subView == SubView.HOW_TO_USE) {
             ItemStack carried = this.menu.getCarried();
             if (!carried.isEmpty()) {
-                int cx = mouseX - 8;
-                int cy = mouseY - 8;
-                graphics.renderItem(carried, cx, cy);
-                graphics.renderItemDecorations(this.font, carried, cx, cy);
+                graphics.item(carried, mouseX - 8, mouseY - 8);
+                graphics.itemDecorations(this.font, carried, mouseX - 8, mouseY - 8);
             }
             renderExampleTooltip(graphics, mouseX, mouseY);
             return;
         }
-
-        super.render(graphics, mouseX, mouseY, partialTick);
-        renderCopySettingsSlotOnTop(graphics);
-        this.renderTooltip(graphics, mouseX, mouseY);
-        renderTransientFeedback(graphics);
-
+        super.extractTooltip(graphics, mouseX, mouseY);
         int copierSlotIdx = menu.copySettingsSlotIndex();
         if (hoveredSlot != null && copierSlotIdx >= 0 && hoveredSlot.index == copierSlotIdx) {
             ItemStack copier = hoveredSlot.getItem();
             if (!copier.isEmpty()) {
-                graphics.renderTooltip(this.font, copier, mouseX, mouseY);
+                graphics.setTooltipForNextFrame(this.font, copier, mouseX, mouseY);
             } else {
-                graphics.renderComponentTooltip(
+                graphics.setTooltipForNextFrame(
                         this.font,
                         List.of(
                                 Component.translatable(
                                         "gui.another_dynamics.duct_node.copy_slot.tooltip.line1"),
                                 Component.translatable(
                                         "gui.another_dynamics.duct_node.copy_slot.tooltip.line2")),
+                        java.util.Optional.empty(),
+                        ItemStack.EMPTY,
                         mouseX,
-                        mouseY);
+                        mouseY,
+                        null);
             }
         }
-
     }
+
 
     // ===== JEI Ghost Ingredient Integration (IAnDynamicsGhostTarget) =====
 

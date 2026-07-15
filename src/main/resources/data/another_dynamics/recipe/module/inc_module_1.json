@@ -7,15 +7,9 @@
     "ABA"
   ],
   "key": {
-    "A": {
-      "item": "minecraft:cobblestone"
-    },
-    "B": {
-      "item": "minecraft:lapis_lazuli"
-    },
-    "C": {
-      "item": "another_dynamics:inc_module_0"
-    }
+    "A": "minecraft:cobblestone",
+    "B": "minecraft:lapis_lazuli",
+    "C": "another_dynamics:inc_module_0"
   },
   "result": {
     "id": "another_dynamics:inc_module_1",

@@ -68,13 +68,13 @@ public final class DestinationToolEndpointReader {
         if (!(encoded instanceof CompoundTag root)) {
             return null;
         }
-        if (!root.contains("components", Tag.TAG_COMPOUND)) {
+        if (!root.contains("components")) {
             return null;
         }
-        CompoundTag components = root.getCompound("components");
-        if (!components.contains(EXTERNAL_DIRECTIONAL_COMPONENT, Tag.TAG_COMPOUND)) {
+        CompoundTag components = root.getCompoundOrEmpty("components");
+        if (!components.contains(EXTERNAL_DIRECTIONAL_COMPONENT)) {
             return null;
         }
-        return DuctDirectionalEndpoint.fromTag(components.getCompound(EXTERNAL_DIRECTIONAL_COMPONENT));
+        return DuctDirectionalEndpoint.fromTag(components.getCompoundOrEmpty(EXTERNAL_DIRECTIONAL_COMPONENT));
     }
 }

@@ -11,6 +11,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
+import net.neoforged.neoforge.transfer.ResourceHandler;
+import net.neoforged.neoforge.transfer.fluid.FluidResource;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
@@ -35,6 +37,12 @@ final class DuctFilterFluidRouting {
     private static final int ROUTE_RETRY_CAP = 32;
 
     private DuctFilterFluidRouting() {}
+
+    /** Bridges the 26.x {@link ResourceHandler} fluid capability back onto the legacy {@link IFluidHandler} API. */
+    @Nullable
+    private static IFluidHandler wrapFluidHandler(@Nullable ResourceHandler<FluidResource> handler) {
+        return handler == null ? null : IFluidHandler.of(handler);
+    }
 
     static boolean hasNonEmptyAllowLines(List<String> lines, int cap) {
         int n = Math.min(lines.size(), cap);
@@ -63,8 +71,7 @@ final class DuctFilterFluidRouting {
         }
         BlockPos srcPos = sourceBe.getBlockPos();
         IFluidHandler srcCap =
-                level.getCapability(
-                        Capabilities.FluidHandler.BLOCK, srcPos.relative(sourceFace), sourceFace.getOpposite());
+                DuctFluidCapHelper.blockHandler(level, srcPos.relative(sourceFace), sourceFace.getOpposite());
         if (srcCap == null) {
             return false;
         }
@@ -205,9 +212,7 @@ final class DuctFilterFluidRouting {
         }
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         IFluidHandler destCap =
-                level.getCapability(
-                        Capabilities.FluidHandler.BLOCK,
-                        retrieverPos.relative(retrieverFace),
+                DuctFluidCapHelper.blockHandler(level, retrieverPos.relative(retrieverFace),
                         retrieverFace.getOpposite());
         if (destCap == null) {
             return false;
@@ -360,8 +365,7 @@ final class DuctFilterFluidRouting {
         DuctFaceNode destNode = destBe.getFaceLanes(destFace).fluid;
         NodeMode dm = destBe.getFaceLanes(destFace).nodeMode;
         IFluidHandler destCap =
-                level.getCapability(
-                        Capabilities.FluidHandler.BLOCK, destPos.relative(destFace), destFace.getOpposite());
+                DuctFluidCapHelper.blockHandler(level, destPos.relative(destFace), destFace.getOpposite());
         if (destCap == null) {
             return false;
         }
@@ -444,8 +448,7 @@ final class DuctFilterFluidRouting {
             return false;
         }
         IFluidHandler srcCap =
-                level.getCapability(
-                        Capabilities.FluidHandler.BLOCK, donor.relative(donorFace), donorFace.getOpposite());
+                DuctFluidCapHelper.blockHandler(level, donor.relative(donorFace), donorFace.getOpposite());
         if (srcCap == null) {
             return false;
         }
@@ -665,9 +668,7 @@ final class DuctFilterFluidRouting {
                         continue;
                     }
                     IFluidHandler destCap =
-                            level.getCapability(
-                                    Capabilities.FluidHandler.BLOCK,
-                                    rf.ductPos().relative(rf.face()),
+                            DuctFluidCapHelper.blockHandler(level, rf.ductPos().relative(rf.face()),
                                     rf.face().getOpposite());
                     if (destCap == null) {
                         continue;

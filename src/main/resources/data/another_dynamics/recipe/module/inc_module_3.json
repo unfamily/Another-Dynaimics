@@ -7,15 +7,9 @@
     "ABA"
   ],
   "key": {
-    "A": {
-      "item": "minecraft:cobblestone"
-    },
-    "B": {
-      "tag": "c:gems/amethyst"
-    },
-    "C": {
-      "item": "another_dynamics:inc_module_2"
-    }
+    "A": "minecraft:cobblestone",
+    "B": "#c:gems/amethyst",
+    "C": "another_dynamics:inc_module_2"
   },
   "result": {
     "id": "another_dynamics:inc_module_3",

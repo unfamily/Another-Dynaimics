@@ -1,6 +1,7 @@
 package net.unfamily.another_dynamics.registry;
 
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.BlockItem;
@@ -20,34 +21,32 @@ public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(AnotherDynamicsMod.MOD_ID);
     private static final boolean MEKANISM_LOADED = ModList.get().isLoaded("mekanism");
 
-    public static final DeferredItem<Item> NETHERITE_NUGGET =
-            ITEMS.register("netherite_nugget", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> NETHERITE_NUGGET = ITEMS.registerSimpleItem("netherite_nugget");
 
-    public static final DeferredItem<Item> RESONANTING_CONDUCTOR =
-            ITEMS.register("resonanting_conductor", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> RESONANTING_CONDUCTOR = ITEMS.registerSimpleItem("resonanting_conductor");
 
-    public static final DeferredItem<Item> ENDER_ACCELERANT =
-            ITEMS.register("ender_accellerant", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> ENDER_ACCELERANT = ITEMS.registerSimpleItem("ender_accellerant");
 
     public static final DeferredItem<SettingsCopierItem> SETTINGS_COPIER =
-            ITEMS.register("settings_copier", () -> new SettingsCopierItem(new Item.Properties().stacksTo(1)));
+            ITEMS.registerItem("settings_copier", SettingsCopierItem::new, props -> props.stacksTo(1));
 
     public static final DeferredItem<Item> BULKY_WRENCH =
-            ITEMS.register("bulky_wrench", () -> new Item(new Item.Properties().stacksTo(1)));
+            ITEMS.registerItem("bulky_wrench", Item::new, props -> props.stacksTo(1));
 
     public static final DeferredItem<RemoteNodeSelectorItem> REMOTE_NODE_SELECTOR =
-            ITEMS.register("remote_node_selector", () -> new RemoteNodeSelectorItem(new Item.Properties().stacksTo(1)));
+            ITEMS.registerItem("remote_node_selector", RemoteNodeSelectorItem::new, props -> props.stacksTo(1));
 
     public static final DeferredItem<DuctBlockItem> DUCT =
-            ITEMS.register(
+            ITEMS.registerItem(
                     "duct",
-                    () ->
-                            new DuctBlockItem(
-                                    ModBlocks.DUCT.get(),
-                                    new Item.Properties()));
+                    props -> new DuctBlockItem(ModBlocks.DUCT.get(), props),
+                    UnaryOperator.identity());
 
     public static final DeferredItem<BlockItem> PROJECT_DUCT =
-            ITEMS.register("project_duct", () -> new BlockItem(ModBlocks.PROJECT_DUCT.get(), new Item.Properties()));
+            ITEMS.registerItem(
+                    "project_duct",
+                    props -> new BlockItem(ModBlocks.PROJECT_DUCT.get(), props),
+                    UnaryOperator.identity());
 
     public static final DeferredItem<DuctModuleItem> INC_MODULE_0 = registerModule("inc_module_0");
     public static final DeferredItem<DuctModuleItem> INC_MODULE_1 = registerModule("inc_module_1");
@@ -64,46 +63,49 @@ public final class ModItems {
     public static final DeferredItem<DuctModuleItem> FIL_MODULE_4 = registerModule("fil_module_4");
 
     public static final DeferredItem<DuctBlockItem> FLUID_DUCT =
-            ITEMS.register(
+            ITEMS.registerItem(
                     "fluid_duct",
-                    () ->
+                    props ->
                             new DuctBlockItem(
                                     ModBlocks.FLUID_DUCT.get(),
-                                    new Item.Properties(),
-                                    "another_dynamics:fluid_duct"));
+                                    props,
+                                    "another_dynamics:fluid_duct"),
+                    UnaryOperator.identity());
 
     public static final DeferredItem<DuctBlockItem> ITEM_FLUID_DUCT =
-            ITEMS.register(
+            ITEMS.registerItem(
                     "item_fluid_duct",
-                    () ->
+                    props ->
                             new DuctBlockItem(
                                     ModBlocks.ITEM_FLUID_DUCT.get(),
-                                    new Item.Properties(),
-                                    "another_dynamics:item_fluid_duct"));
+                                    props,
+                                    "another_dynamics:item_fluid_duct"),
+                    UnaryOperator.identity());
 
     /** Only registered when Mekanism is present. */
     public static final DeferredItem<DuctBlockItem> GAS_DUCT =
             MEKANISM_LOADED && ModBlocks.GAS_DUCT != null
-                    ? ITEMS.register(
+                    ? ITEMS.registerItem(
                             "gas_duct",
-                            () ->
+                            props ->
                                     new DuctBlockItem(
                                             ModBlocks.GAS_DUCT.get(),
-                                            new Item.Properties(),
-                                            "another_dynamics:gas_duct"))
+                                            props,
+                                            "another_dynamics:gas_duct"),
+                            UnaryOperator.identity())
                     : null;
 
     private ModItems() {}
 
     private static DeferredItem<DuctModuleItem> registerModule(String id) {
-        return ITEMS.register(
+        return ITEMS.registerItem(
                 id,
-                () ->
+                props ->
                         new DuctModuleItem(
-                                new Item.Properties()
-                                        .component(
-                                                ModDataComponents.DUCT_MODULE_DECLARATION.get(),
-                                                Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, id))));
+                                props.component(
+                                        ModDataComponents.DUCT_MODULE_DECLARATION.get(),
+                                        Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, id))),
+                UnaryOperator.identity());
     }
 
     /** Creative / recipe-friendly stack: block item matches enabled transport kinds; logical id in component. */

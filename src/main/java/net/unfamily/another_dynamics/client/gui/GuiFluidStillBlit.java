@@ -3,10 +3,10 @@ package net.unfamily.another_dynamics.client.gui;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.block.FluidModel;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.util.ARGB;
-import net.minecraft.world.inventory.InventoryMenu;
-import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
+import net.minecraft.world.level.material.FluidState;
 import net.neoforged.neoforge.fluids.FluidStack;
 
 /**
@@ -20,11 +20,10 @@ public final class GuiFluidStillBlit {
         if (fluid.isEmpty()) {
             return;
         }
-        var fluidType = fluid.getFluid().getFluidType();
-        IClientFluidTypeExtensions ext = IClientFluidTypeExtensions.of(fluidType);
-        TextureAtlasSprite sprite =
-                Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(ext.getStillTexture(fluid));
-        int tint = ext.getTintColor(fluid);
+        FluidState state = fluid.getFluid().defaultFluidState();
+        FluidModel model = Minecraft.getInstance().getModelManager().getFluidStateModelSet().get(state);
+        TextureAtlasSprite sprite = model.stillMaterial().sprite();
+        int tint = model.fluidTintSource() != null ? model.fluidTintSource().colorAsStack(fluid) : 0xFFFFFFFF;
         int alpha = (tint >> 24) & 0xFF;
         if (alpha == 0) {
             alpha = 0xFF;

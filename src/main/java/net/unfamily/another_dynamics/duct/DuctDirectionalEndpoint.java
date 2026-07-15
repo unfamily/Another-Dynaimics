@@ -6,8 +6,6 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtUtils;
-import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -91,11 +89,12 @@ public record DuctDirectionalEndpoint(BlockPos pos, Direction face) {
         if (tag == null || tag.isEmpty()) {
             return null;
         }
-        BlockPos p = NbtUtils.readBlockPos(tag, "position").orElse(null);
-        if (p == null) {
+        int[] posArr = tag.getIntArray("position").orElse(null);
+        if (posArr == null || posArr.length != 3) {
             return null;
         }
-        Direction d = Direction.byName(tag.getString("direction"));
+        BlockPos p = new BlockPos(posArr[0], posArr[1], posArr[2]);
+        Direction d = Direction.byName(tag.getStringOr("direction", ""));
         if (d == null) {
             return null;
         }

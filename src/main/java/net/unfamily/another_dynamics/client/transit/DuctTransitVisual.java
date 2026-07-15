@@ -11,13 +11,13 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.unfamily.another_dynamics.duct.DuctNbtCodecs;
 import net.unfamily.another_dynamics.duct.logistics.OutboundShipment;
 import net.unfamily.another_dynamics.duct.logistics.TransitPhase;
 
@@ -109,26 +109,26 @@ public final class DuctTransitVisual {
 
     public static List<DuctTransitVisual> listFromUpdateTag(
             BlockPos ownerDuct, CompoundTag root, HolderLookup.Provider registries, long clientWorldGameTime) {
-        if (!root.contains("TransitV1", Tag.TAG_LIST)) {
+        if (!root.contains("TransitV1")) {
             return List.of();
         }
-        ListTag list = root.getList("TransitV1", Tag.TAG_COMPOUND);
+        ListTag list = root.getListOrEmpty("TransitV1");
         ArrayList<DuctTransitVisual> out = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
-            CompoundTag t = list.getCompound(i);
+            CompoundTag t = list.getCompoundOrEmpty(i);
             ItemStack stack = ItemStack.EMPTY;
             // Prefer the full Stack compound (includes data components/NBT) over the bare VizId.
             // VizId is kept only as a lightweight fallback for legacy packets that lack Stack.
-            if (t.contains("Stack", Tag.TAG_COMPOUND)) {
-                CompoundTag stackTag = t.getCompound("Stack");
+            if (t.contains("Stack")) {
+                CompoundTag stackTag = t.getCompoundOrEmpty("Stack");
                 if (!stackTag.isEmpty()) {
-                    stack = ItemStack.parse(registries, stackTag).orElse(ItemStack.EMPTY);
+                    stack = DuctNbtCodecs.parseItemStack(registries, stackTag).orElse(ItemStack.EMPTY);
                 }
             }
-            if (stack.isEmpty() && t.contains("VizId", Tag.TAG_STRING)) {
-                Identifier rid = Identifier.tryParse(t.getString("VizId"));
+            if (stack.isEmpty() && t.contains("VizId")) {
+                Identifier rid = Identifier.tryParse(t.getStringOr("VizId", ""));
                 if (rid != null) {
-                    Item item = BuiltInRegistries.ITEM.get(rid);
+                    Item item = BuiltInRegistries.ITEM.getOptional(rid).orElse(Items.AIR);
                     if (item != Items.AIR) {
                         stack = new ItemStack(item, 1);
                     }
@@ -139,19 +139,19 @@ public final class DuctTransitVisual {
             }
             stack = stack.copy();
             stack.setCount(1);
-            ListTag plist = t.getList("Path", Tag.TAG_COMPOUND);
+            ListTag plist = t.getListOrEmpty("Path");
             ArrayList<BlockPos> path = new ArrayList<>(plist.size());
             for (int j = 0; j < plist.size(); j++) {
-                CompoundTag pt = plist.getCompound(j);
-                path.add(new BlockPos(pt.getInt("X"), pt.getInt("Y"), pt.getInt("Z")));
+                CompoundTag pt = plist.getCompoundOrEmpty(j);
+                path.add(new BlockPos(pt.getIntOr("X", 0), pt.getIntOr("Y", 0), pt.getIntOr("Z", 0)));
             }
             Direction srcFace = readOptionalFace(t, "SrcF");
             Direction dstFace = readOptionalFace(t, "DstF");
-            int tot = t.getInt("Tot");
-            int tr = t.getInt("Tr");
+            int tot = t.getIntOr("Tot", 0);
+            int tr = t.getIntOr("Tr", 0);
             int elapsed = Math.max(0, tot - tr);
             long anchor = clientWorldGameTime - elapsed;
-            long inId = t.contains("InId", Tag.TAG_LONG) ? t.getLong("InId") : 0L;
+            long inId = t.getLongOr("InId", 0L);
             out.add(
                     new DuctTransitVisual(
                             ownerDuct,
@@ -159,8 +159,8 @@ public final class DuctTransitVisual {
                             Collections.unmodifiableList(path),
                             tot,
                             tr,
-                            t.getInt("Ed"),
-                            t.getLong("J0"),
+                            t.getIntOr("Ed", 0),
+                            t.getLongOr("J0", 0L),
                             inId,
                             anchor,
                             srcFace,
@@ -171,10 +171,10 @@ public final class DuctTransitVisual {
 
     @Nullable
     private static Direction readOptionalFace(CompoundTag t, String key) {
-        if (!t.contains(key, Tag.TAG_BYTE)) {
+        if (!t.contains(key)) {
             return null;
         }
-        int o = t.getByte(key) & 0xFF;
+        int o = t.getByteOr(key, (byte) 0) & 0xFF;
         return o < 6 ? Direction.values()[o] : null;
     }
 

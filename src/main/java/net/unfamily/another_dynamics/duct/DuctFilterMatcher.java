@@ -3,7 +3,6 @@ package net.unfamily.another_dynamics.duct;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
@@ -69,15 +68,11 @@ public final class DuctFilterMatcher {
         if (filter.startsWith("?")) {
             String nbtFilter = filter.substring(1);
             try {
-                Tag tag = stack.save(registries);
-                if (tag instanceof CompoundTag compoundTag) {
-                    String nbtString = compoundTag.toString();
-                    return nbtString.contains(nbtFilter);
-                }
+                CompoundTag tag = DuctNbtCodecs.saveItemStack(registries, stack);
+                return tag.toString().contains(nbtFilter);
             } catch (Exception e) {
                 return false;
             }
-            return false;
         }
 
         return itemIdStr.equals(filter);

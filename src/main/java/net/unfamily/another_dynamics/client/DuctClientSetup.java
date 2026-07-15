@@ -5,6 +5,7 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.sprite.SpriteId;
 import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.event.RegisterSpecialModelRendererEvent;
@@ -13,8 +14,11 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.gui.SettingsCopierScreen;
+import net.unfamily.another_dynamics.client.project.ProjectDuctBlockStateModel;
 import net.unfamily.another_dynamics.client.project.ProjectDuctGeometryLoader;
 import net.unfamily.another_dynamics.duct.DuctDefinitionsReloadedEvent;
+import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
+import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
 
 /**
@@ -45,6 +49,10 @@ public final class DuctClientSetup {
         event.register(ModMenuTypes.SETTINGS_COPIER_HUB.get(), SettingsCopierScreen::new);
     }
 
+    public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        event.registerBlockEntityRenderer(ModBlockEntities.DUCT.get(), DuctTransitBlockEntityRenderer::new);
+    }
+
     public static void onRegisterModelLoaders(ModelEvent.RegisterLoaders event) {
         event.register(DuctGeometryLoader.ID, new DuctGeometryLoader());
         event.register(ProjectDuctGeometryLoader.ID, new ProjectDuctGeometryLoader());
@@ -69,5 +77,6 @@ public final class DuctClientSetup {
                 spriteGetter.apply(
                         DuctRenderingSupport.blockSprite(
                                 Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/node_buffer"))));
+        DuctRenderingSupport.updateProjectGeometry(ProjectDuctBlockStateModel.bakeGeometry(spriteGetter));
     }
 }

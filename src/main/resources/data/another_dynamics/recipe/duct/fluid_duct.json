@@ -2,11 +2,15 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "group": "another_dynamics:duct",
-  "pattern": [" B ", "ACA", " B "],
+  "pattern": [
+    " B ",
+    "ACA",
+    " B "
+  ],
   "key": {
-    "A": { "tag": "c:ingots/copper" },
-    "B": { "tag": "minecraft:planks" },
-    "C": { "tag": "c:glass_blocks" }
+    "A": "#c:ingots/copper",
+    "B": "#minecraft:planks",
+    "C": "#c:glass_blocks"
   },
   "result": {
     "id": "another_dynamics:duct",

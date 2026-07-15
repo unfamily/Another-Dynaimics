@@ -3,7 +3,7 @@ package net.unfamily.another_dynamics.item;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.common.util.TriState;
+import net.minecraft.util.TriState;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint;
 

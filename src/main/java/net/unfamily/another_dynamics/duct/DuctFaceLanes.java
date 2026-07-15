@@ -321,11 +321,11 @@ public final class DuctFaceLanes {
         shared.putInt("TransportMask", transportEnabledMask);
         tag.put("Shared", shared);
 
-        tag.put(NBT_MODULES, moduleSlots.serializeNBT(registries));
-        tag.put("StallBufOut", stalledBuffer.serializeNBT(registries));
-        tag.put("StallBufIn", inboundStallBuffer.serializeNBT(registries));
+        tag.put(NBT_MODULES, DuctNbtCodecs.serializeHandler(moduleSlots, registries));
+        tag.put("StallBufOut", DuctNbtCodecs.serializeHandler(stalledBuffer, registries));
+        tag.put("StallBufIn", DuctNbtCodecs.serializeHandler(inboundStallBuffer, registries));
         // Legacy key for older saves (read in load only).
-        tag.put("StallBuf", stalledBuffer.serializeNBT(registries));
+        tag.put("StallBuf", DuctNbtCodecs.serializeHandler(stalledBuffer, registries));
         tag.put("StallFluids", saveStalledFluids(registries));
         tag.put("StallGas", saveStalledGas());
         CompoundTag stallMeta = new CompoundTag();
@@ -374,24 +374,24 @@ public final class DuctFaceLanes {
         // Module column size must match {@link DuctBlockEntity#ensureFaceLaneModuleSlotCapacitiesMatchDefinition()}
         // before load (logical duct id). Do not resize to GUI max here or reload shrinks stacks to the wrong cap.
         if (tag.contains(NBT_MODULES)) {
-            moduleSlots.deserializeNBT(registries, tag.getCompoundOrEmpty(NBT_MODULES));
+            DuctNbtCodecs.deserializeHandler(moduleSlots, registries, tag.getCompoundOrEmpty(NBT_MODULES));
         } else if (tag.contains(NBT_MODULES_LEGACY)) {
-            moduleSlots.deserializeNBT(registries, tag.getCompoundOrEmpty(NBT_MODULES_LEGACY));
+            DuctNbtCodecs.deserializeHandler(moduleSlots, registries, tag.getCompoundOrEmpty(NBT_MODULES_LEGACY));
         } else {
             migrateLegacyModulesFromItemNodeGui(registries, tag);
         }
 
         if (tag.contains("StallBufOut")) {
-            stalledBuffer.deserializeNBT(registries, tag.getCompoundOrEmpty("StallBufOut"));
+            DuctNbtCodecs.deserializeHandler(stalledBuffer, registries, tag.getCompoundOrEmpty("StallBufOut"));
         } else if (tag.contains("StallBuf")) {
-            stalledBuffer.deserializeNBT(registries, tag.getCompoundOrEmpty("StallBuf"));
+            DuctNbtCodecs.deserializeHandler(stalledBuffer, registries, tag.getCompoundOrEmpty("StallBuf"));
         } else {
             for (int i = 0; i < stalledBuffer.getSlots(); i++) {
                 stalledBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
             }
         }
         if (tag.contains("StallBufIn")) {
-            inboundStallBuffer.deserializeNBT(registries, tag.getCompoundOrEmpty("StallBufIn"));
+            DuctNbtCodecs.deserializeHandler(inboundStallBuffer, registries, tag.getCompoundOrEmpty("StallBufIn"));
         } else {
             for (int i = 0; i < inboundStallBuffer.getSlots(); i++) {
                 inboundStallBuffer.setStackInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
@@ -492,7 +492,7 @@ public final class DuctFaceLanes {
             return;
         }
         net.neoforged.neoforge.items.ItemStackHandler legacy = new net.neoforged.neoforge.items.ItemStackHandler(6);
-        legacy.deserializeNBT(registries, nodeGuiHost.getCompoundOrEmpty("NodeGui"));
+        DuctNbtCodecs.deserializeHandler(legacy, registries, nodeGuiHost.getCompoundOrEmpty("NodeGui"));
         int limit = Math.min(5, moduleSlots.getSlots());
         for (int i = 0; i < limit; i++) {
             moduleSlots.setStackInSlot(i, legacy.getStackInSlot(i).copy());
@@ -502,9 +502,9 @@ public final class DuctFaceLanes {
     public void loadFromLegacyRootTag(HolderLookup.Provider registries, CompoundTag root) {
         loadSharedFromLegacyNodeTag(root);
         if (root.contains(NBT_MODULES)) {
-            moduleSlots.deserializeNBT(registries, root.getCompoundOrEmpty(NBT_MODULES));
+            DuctNbtCodecs.deserializeHandler(moduleSlots, registries, root.getCompoundOrEmpty(NBT_MODULES));
         } else if (root.contains(NBT_MODULES_LEGACY)) {
-            moduleSlots.deserializeNBT(registries, root.getCompoundOrEmpty(NBT_MODULES_LEGACY));
+            DuctNbtCodecs.deserializeHandler(moduleSlots, registries, root.getCompoundOrEmpty(NBT_MODULES_LEGACY));
         } else {
             migrateLegacyModulesFromItemNodeGui(registries, root);
         }
@@ -619,7 +619,7 @@ public final class DuctFaceLanes {
             }
             CompoundTag e = new CompoundTag();
             e.putByte("Slot", (byte) i);
-            e.put("Fluid", (CompoundTag) fs.save(registries));
+            e.put("Fluid", DuctNbtCodecs.saveFluidStack(registries, fs));
             list.add(e);
         }
         return list;
@@ -640,7 +640,7 @@ public final class DuctFaceLanes {
                 continue;
             }
             if (e.contains("Fluid")) {
-                stalledFluids[slot] = FluidStack.parse(registries, e.getCompoundOrEmpty("Fluid")).orElse(FluidStack.EMPTY);
+                stalledFluids[slot] = DuctNbtCodecs.parseFluidStack(registries, e.getCompoundOrEmpty("Fluid")).orElse(FluidStack.EMPTY);
             }
         }
     }

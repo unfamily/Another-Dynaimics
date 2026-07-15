@@ -2,11 +2,15 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "group": "another_dynamics:duct",
-  "pattern": [" B ", "ACA", " B "],
+  "pattern": [
+    " B ",
+    "ACA",
+    " B "
+  ],
   "key": {
-    "A": { "tag": "c:ingots/gold" },
-    "B": { "tag": "c:dusts/glowstone" },
-    "C": { "tag": "c:glass_blocks" }
+    "A": "#c:ingots/gold",
+    "B": "#c:dusts/glowstone",
+    "C": "#c:glass_blocks"
   },
   "result": {
     "id": "another_dynamics:duct",

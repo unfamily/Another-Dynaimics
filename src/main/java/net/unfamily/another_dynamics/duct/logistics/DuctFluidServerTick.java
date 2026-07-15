@@ -101,7 +101,7 @@ public final class DuctFluidServerTick {
             return;
         }
         IFluidHandler srcCap =
-                level.getCapability(Capabilities.FluidHandler.BLOCK, srcPos.relative(sourceFace), sourceFace.getOpposite());
+                DuctFluidCapHelper.blockHandler(level, srcPos.relative(sourceFace), sourceFace.getOpposite());
         if (srcCap == null) {
             return;
         }
@@ -209,9 +209,7 @@ public final class DuctFluidServerTick {
         BlockPos retrieverPos = retrieverBe.getBlockPos();
         DuctFaceLanes retrieverLanes = retrieverBe.getFaceLanes(retrieverFace);
         IFluidHandler destCap =
-                level.getCapability(
-                        Capabilities.FluidHandler.BLOCK,
-                        retrieverPos.relative(retrieverFace),
+                DuctFluidCapHelper.blockHandler(level, retrieverPos.relative(retrieverFace),
                         retrieverFace.getOpposite());
         if (destCap == null) {
             return;
@@ -256,9 +254,7 @@ public final class DuctFluidServerTick {
                 continue;
             }
             IFluidHandler srcCap =
-                    level.getCapability(
-                            Capabilities.FluidHandler.BLOCK,
-                            donor.relative(donorFace),
+                    DuctFluidCapHelper.blockHandler(level, donor.relative(donorFace),
                             donorFace.getOpposite());
             if (srcCap == null) {
                 continue;
@@ -398,7 +394,7 @@ public final class DuctFluidServerTick {
                     continue;
                 }
                 IFluidHandler srcCap =
-                        level.getCapability(Capabilities.FluidHandler.BLOCK, p.relative(d), d.getOpposite());
+                        DuctFluidCapHelper.blockHandler(level, p.relative(d), d.getOpposite());
                 if (srcCap == null) {
                     continue;
                 }
@@ -556,7 +552,7 @@ public final class DuctFluidServerTick {
         DuctFaceNode destNode = destLanes.fluid;
         NodeMode dm = destLanes.nodeMode;
         IFluidHandler destCap =
-                level.getCapability(Capabilities.FluidHandler.BLOCK, ep.pos().relative(df), df.getOpposite());
+                DuctFluidCapHelper.blockHandler(level, ep.pos().relative(df), df.getOpposite());
         if (destCap == null) {
             return java.util.Optional.empty();
         }
@@ -609,7 +605,7 @@ public final class DuctFluidServerTick {
         DuctFaceNode destNode = destLanes.fluid;
         NodeMode dm = destLanes.nodeMode;
         IFluidHandler destCap =
-                level.getCapability(Capabilities.FluidHandler.BLOCK, ep.pos().relative(df), df.getOpposite());
+                DuctFluidCapHelper.blockHandler(level, ep.pos().relative(df), df.getOpposite());
         if (destCap == null) {
             return java.util.Optional.empty();
         }
@@ -674,7 +670,7 @@ public final class DuctFluidServerTick {
         DuctFaceNode destNode = destLanes.fluid;
         NodeMode dm = destLanes.nodeMode;
         IFluidHandler destCap =
-                level.getCapability(Capabilities.FluidHandler.BLOCK, ep.pos().relative(df), df.getOpposite());
+                DuctFluidCapHelper.blockHandler(level, ep.pos().relative(df), df.getOpposite());
         if (destCap == null) {
             return java.util.Optional.empty();
         }
@@ -823,7 +819,7 @@ public final class DuctFluidServerTick {
             return false;
         }
         IFluidHandler destCap =
-                level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
+                DuctFluidCapHelper.blockHandler(level, destPos.relative(df), df.getOpposite());
         if (destCap == null) {
             return false;
         }
@@ -880,7 +876,7 @@ public final class DuctFluidServerTick {
             return;
         }
         IFluidHandler destCap =
-                level.getCapability(Capabilities.FluidHandler.BLOCK, destPos.relative(df), df.getOpposite());
+                DuctFluidCapHelper.blockHandler(level, destPos.relative(df), df.getOpposite());
         if (destCap == null) {
             return;
         }

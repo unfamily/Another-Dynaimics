@@ -5,8 +5,11 @@ import java.util.EnumSet;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.Direction;
+import net.minecraft.world.level.redstone.Orientation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
@@ -23,6 +26,7 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.ScheduledTickAccess;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
@@ -118,7 +122,11 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     }
 
     @Override
-    protected VoxelShape getOcclusionShape(BlockState state, BlockGetter level, BlockPos pos) {
+    protected VoxelShape getOcclusionShape(BlockState state) {
+        return DuctShapes.coreOnly();
+    }
+
+    protected VoxelShape occlusionShapeForState(BlockState state, BlockGetter level, BlockPos pos) {
         return getShape(state, level, pos, CollisionContext.empty());
     }
 
@@ -168,12 +176,10 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     }
 
     @Override
-    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
-        if (!state.is(newState.getBlock())) {
-            notifySameNetworkNeighbors(level, pos);
-            refreshAdjacentProjectDuctVisuals(level, pos);
-        }
-        super.onRemove(state, level, pos, newState, movedByPiston);
+    protected void affectNeighborsAfterRemoval(BlockState state, ServerLevel level, BlockPos pos, boolean movedByPiston) {
+        notifySameNetworkNeighbors(level, pos);
+        refreshAdjacentProjectDuctVisuals(level, pos);
+        super.affectNeighborsAfterRemoval(state, level, pos, movedByPiston);
     }
 
     @Override
@@ -190,7 +196,7 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     }
 
     @Override
-    public boolean canPlaceLiquid(@Nullable Player player, BlockGetter level, BlockPos pos, BlockState state, Fluid fluid) {
+    public boolean canPlaceLiquid(@Nullable LivingEntity user, BlockGetter level, BlockPos pos, BlockState state, Fluid fluid) {
         // Only water is allowed to be placed into ducts (via bucket or fluid placement logic).
         return fluid == Fluids.WATER && !state.getValue(WATERLOGGED);
     }
@@ -214,15 +220,18 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     @Override
     protected BlockState updateShape(
             BlockState state,
-            Direction direction,
-            BlockState neighborState,
-            LevelAccessor level,
+            LevelReader level,
+            ScheduledTickAccess ticks,
             BlockPos pos,
-            BlockPos neighborPos) {
+            Direction directionToNeighbour,
+            BlockPos neighbourPos,
+            BlockState neighbourState,
+            RandomSource random) {
         if (state.getValue(WATERLOGGED)) {
-            level.scheduleTick(pos, Fluids.WATER, Fluids.WATER.getTickDelay(level));
+            ticks.scheduleTick(pos, Fluids.WATER, Fluids.WATER.getTickDelay(level));
         }
-        return super.updateShape(state, direction, neighborState, level, pos, neighborPos);
+        return super.updateShape(
+                state, level, ticks, pos, directionToNeighbour, neighbourPos, neighbourState, random);
     }
 
     @Override
@@ -233,8 +242,13 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
 
     @Override
     protected void neighborChanged(
-            BlockState state, Level level, BlockPos pos, Block neighborBlock, BlockPos neighborPos, boolean movedByPiston) {
-        super.neighborChanged(state, level, pos, neighborBlock, neighborPos, movedByPiston);
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Block neighborBlock,
+            @Nullable Orientation orientation,
+            boolean movedByPiston) {
+        super.neighborChanged(state, level, pos, neighborBlock, orientation, movedByPiston);
         refreshAt(level, pos);
         refreshAdjacentProjectDuctVisuals(level, pos);
     }

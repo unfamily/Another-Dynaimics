@@ -20,7 +20,6 @@ import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
@@ -840,7 +839,7 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
             if (!pl.isClientSide()
                     && pl.getBlockEntity(pos) == linkedBlockEntity
                     && ModBlocks.isDuctBlock(pl.getBlockState(pos).getBlock())
-                    && player.canInteractWithBlock(pos, 4.0)) {
+                    && player.isWithinBlockInteractionRange(pos, 4.0)) {
                 return true;
             }
         }

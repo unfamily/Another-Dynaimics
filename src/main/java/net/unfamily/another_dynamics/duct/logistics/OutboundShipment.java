@@ -18,6 +18,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
+import net.unfamily.another_dynamics.duct.DuctNbtCodecs;
 import java.util.Optional;
 
 /**
@@ -105,9 +106,7 @@ public final class OutboundShipment {
 
     public CompoundTag save(HolderLookup.Provider registries) {
         CompoundTag t = new CompoundTag();
-        CompoundTag st = new CompoundTag();
-        stack.save(registries, st);
-        t.put("Stack", st);
+        t.put("Stack", DuctNbtCodecs.saveItemStack(registries, stack));
         t.putInt("DestX", destDuct.getX());
         t.putInt("DestY", destDuct.getY());
         t.putInt("DestZ", destDuct.getZ());
@@ -198,7 +197,7 @@ public final class OutboundShipment {
     private static ItemStack parsePlannedStack(HolderLookup.Provider registries, CompoundTag root) {
         CompoundTag stackTag = root.getCompoundOrEmpty("Stack");
         if (!stackTag.isEmpty()) {
-            Optional<ItemStack> primary = ItemStack.parse(registries, stackTag);
+            Optional<ItemStack> primary = DuctNbtCodecs.parseItemStack(registries, stackTag);
             if (primary.isPresent() && !primary.get().isEmpty()) {
                 return primary.get().copy();
             }

@@ -7,20 +7,12 @@
     "ABA"
   ],
   "key": {
-    "A": {
-      "item": "minecraft:stone"
-    },
+    "A": "minecraft:stone",
     "B": [
-      {
-        "tag": "c:ingots/iron"
-      },
-      {
-        "tag": "c:gems/quartz"
-      }
+      "#c:ingots/iron",
+      "#c:gems/quartz"
     ],
-    "C": {
-      "item": "minecraft:paper"
-    }
+    "C": "minecraft:paper"
   },
   "result": {
     "id": "another_dynamics:fil_module_0",

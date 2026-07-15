@@ -73,7 +73,8 @@ public class ItemIconButton extends Button {
 
     @Override
     protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        super.extractContents(graphics, mouseX, mouseY, partialTick);
+        extractDefaultSprite(graphics);
+        extractDefaultLabel(graphics.textRendererForWidget(this, GuiGraphicsExtractor.HoveredTextEffects.NONE));
         int iconSize = 12;
         int ix = getX() + (getWidth() - iconSize) / 2;
         int iy = getY() + (getHeight() - iconSize) / 2;

@@ -80,17 +80,5 @@ public final class AnotherDynamicsJeiPlugin implements IModPlugin {
             }
             return id;
         }
-
-        @Override
-        public String getLegacyStringSubtypeInfo(
-            ItemStack ingredient,
-            UidContext context
-        ) {
-            String id = ingredient.get(ModDataComponents.DUCT_LOGICAL_ID.get());
-            if (id == null || id.isEmpty()) {
-                return DuctIds.DEFAULT_LOGICAL_ID;
-            }
-            return id;
-        }
     };
 }

@@ -2,15 +2,11 @@
   "type": "minecraft:crafting_shapeless",
   "category": "misc",
   "ingredients": [
-    {
-      "item": "minecraft:paper"
-    },
-    {
-      "tag": "c:dyes/black"
-    },
+    "minecraft:paper",
+    "#c:dyes/black",
     [
-      {"item": "minecraft:glow_ink_sac"}, 
-      {"tag": "c:dyes/blue"}
+      "minecraft:glow_ink_sac",
+      "#c:dyes/blue"
     ]
   ],
   "result": {
@@ -18,4 +14,3 @@
     "count": 1
   }
 }
-

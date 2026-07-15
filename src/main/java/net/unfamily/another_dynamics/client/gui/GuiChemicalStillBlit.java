@@ -3,10 +3,11 @@ package net.unfamily.another_dynamics.client.gui;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.sprite.SpriteId;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ARGB;
-import net.minecraft.world.inventory.InventoryMenu;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
 /**
@@ -39,7 +40,7 @@ public final class GuiChemicalStillBlit {
             }
             int tint = (int) chemicalStack.getClass().getMethod("getChemicalTint").invoke(chemicalStack);
             TextureAtlasSprite sprite =
-                    Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(icon);
+                    Minecraft.getInstance().getAtlasManager().get(new SpriteId(TextureAtlas.LOCATION_BLOCKS, icon));
             int alpha = (tint >> 24) & 0xFF;
             if (alpha == 0) {
                 alpha = 0xFF;

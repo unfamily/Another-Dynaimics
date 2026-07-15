@@ -7,19 +7,12 @@
     "ABA"
   ],
   "key": {
-    "A": {
-      "tag": "c:end_stones"
-    },
-    "B": {
-      "item": "another_dynamics:ender_accellerant"
-    },
-    "C": {
-      "item": "another_dynamics:inc_module_5"
-    }
+    "A": "#c:end_stones",
+    "B": "another_dynamics:ender_accellerant",
+    "C": "another_dynamics:inc_module_5"
   },
   "result": {
     "id": "another_dynamics:inc_module_6",
     "count": 1
   }
 }
-

@@ -16,19 +16,17 @@ public final class ModBlockEntities {
                     "duct",
                     () ->
                             (ModBlocks.GAS_DUCT != null)
-                                    ? BlockEntityType.Builder.of(
-                                                    DuctBlockEntity::new,
-                                                    ModBlocks.DUCT.get(),
-                                                    ModBlocks.FLUID_DUCT.get(),
-                                                    ModBlocks.ITEM_FLUID_DUCT.get(),
-                                                    ModBlocks.GAS_DUCT.get())
-                                            .build(null)
-                                    : BlockEntityType.Builder.of(
-                                                    DuctBlockEntity::new,
-                                                    ModBlocks.DUCT.get(),
-                                                    ModBlocks.FLUID_DUCT.get(),
-                                                    ModBlocks.ITEM_FLUID_DUCT.get())
-                                            .build(null));
+                                    ? new BlockEntityType<>(
+                                            DuctBlockEntity::new,
+                                            ModBlocks.DUCT.get(),
+                                            ModBlocks.FLUID_DUCT.get(),
+                                            ModBlocks.ITEM_FLUID_DUCT.get(),
+                                            ModBlocks.GAS_DUCT.get())
+                                    : new BlockEntityType<>(
+                                            DuctBlockEntity::new,
+                                            ModBlocks.DUCT.get(),
+                                            ModBlocks.FLUID_DUCT.get(),
+                                            ModBlocks.ITEM_FLUID_DUCT.get()));
 
     private ModBlockEntities() {}
 }

@@ -104,7 +104,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     private final BlockPos ductBlockPos;
     private @Nullable SettingsCopierVirtualSession virtualSession;
     private final UniversalDuctMenuFilterBuffers filterBuffers = new UniversalDuctMenuFilterBuffers();
-    private final SimpleContainer importContainer = new SimpleContainer(2);
+    private final SimpleContainer importContainer;
     /** Server: channel selected in import GUI (synced from client). */
     private int importChannelOrdinal;
     /** Client-only: second copier slot visible when preview has inverted filter lists. */
@@ -195,6 +195,16 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
                         ? openingBandSlotFromSync
                         : resolveOpeningCopierMenuSlot(playerInventory, hand, playerInventory.player);
         initClientSyncDefaults(playerInventory);
+        this.importContainer =
+                new SimpleContainer(2) {
+                    @Override
+                    public void setChanged() {
+                        super.setChanged();
+                        if (!owner.level().isClientSide() && isImportLayer()) {
+                            reconcileImportSecondSlot(owner);
+                        }
+                    }
+                };
         addSlot(
                 new FilterImportSourceSlot(
                         this, importContainer, 0, IMPORT_SOURCE_GUI_X, IMPORT_SOURCE_GUI_Y));
@@ -205,12 +215,6 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
                         1,
                         importSecondCopierSlotX(DuctGuiLayout.NODE_TEXTURE_WIDTH),
                         IMPORT_SOURCE_GUI_Y));
-        importContainer.addListener(container -> {
-            if (owner.level().isClientSide() || !isImportLayer()) {
-                return;
-            }
-            reconcileImportSecondSlot(owner);
-        });
         addPlayerInventory(playerInventory, PLAYER_SLOTS_X, PLAYER_SLOTS_Y, openingCopierMenuSlotIndex);
         addDataSlots(rootLayer);
         addDataSlots(syncData);
@@ -348,7 +352,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         }
         FilterSyncDebugLog.serverPacket(
                 "COPIER_RETURN_TO_HUB",
-                "player=" + player.getGameProfile().getName() + " persisting virtual session");
+                "player=" + player.getName().getString() + " persisting virtual session");
         ItemStack copier = virtualSession.getCopierStack();
         if (!copier.isEmpty()) {
             virtualSession.persistToCopier(copier);
@@ -798,7 +802,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         if (held.isEmpty() || !(held.getItem() instanceof SettingsCopierItem)) {
             return -1;
         }
-        int selected = inv.selected;
+        int selected = inv.getSelectedSlot();
         if (selected >= 0
                 && selected < inv.getContainerSize()
                 && ItemStack.isSameItemSameComponents(held, inv.getItem(selected))) {

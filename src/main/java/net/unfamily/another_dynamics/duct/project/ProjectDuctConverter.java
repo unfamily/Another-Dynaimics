@@ -53,7 +53,12 @@ public final class ProjectDuctConverter {
         }
         logicalId = DuctIds.normalize(logicalId);
         if (DuctDefinitionRegistry.getByLogicalId(logicalId).isEmpty()) {
-            player.displayClientMessage(Component.translatable("another_dynamics.project_duct.convert.unknown_type"), true);
+            if (player instanceof ServerPlayer sp) {
+                sp.sendSystemMessage(
+                        Component.translatable("another_dynamics.project_duct.convert.unknown_type"), true);
+            } else {
+                player.sendSystemMessage(Component.translatable("another_dynamics.project_duct.convert.unknown_type"));
+            }
             return InteractionResult.FAIL;
         }
 
@@ -92,11 +97,12 @@ public final class ProjectDuctConverter {
 
         if (player instanceof ServerPlayer sp) {
             if (converted < targets.size()) {
-                sp.displayClientMessage(
+                sp.sendSystemMessage(
                         Component.translatable("another_dynamics.project_duct.convert.partial", converted, targets.size()),
                         true);
             } else {
-                sp.displayClientMessage(Component.translatable("another_dynamics.project_duct.convert.success", converted), true);
+                sp.sendSystemMessage(
+                        Component.translatable("another_dynamics.project_duct.convert.success", converted), true);
             }
         }
         serverLevel.playSound(null, anchor, SoundEvents.COPPER_PLACE, SoundSource.BLOCKS, 0.8f, 1.0f);

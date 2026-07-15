@@ -7,15 +7,9 @@
     "A  "
   ],
   "key": {
-    "A": {
-      "tag": "c:cobblestones" 
-    },
-    "B": {
-      "tag": "c:rods/wooden"
-    },
-    "C": {
-      "item": "minecraft:flint" 
-    }
+    "A": "#c:cobblestones",
+    "B": "#c:rods/wooden",
+    "C": "minecraft:flint"
   },
   "result": {
     "id": "another_dynamics:bulky_wrench",

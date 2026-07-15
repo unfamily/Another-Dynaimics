@@ -12,6 +12,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.transfer.energy.EnergyHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctEnergyTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
@@ -498,7 +499,8 @@ public final class DuctEnergyServerTick {
     private static @Nullable IEnergyStorage getExternalEnergyHandlerOnFace(
             ServerLevel level, BlockPos ductPos, Direction ductFace) {
         BlockPos neighbor = ductPos.relative(ductFace);
-        return level.getCapability(Capabilities.EnergyStorage.BLOCK, neighbor, ductFace.getOpposite());
+        EnergyHandler handler = level.getCapability(Capabilities.Energy.BLOCK, neighbor, ductFace.getOpposite());
+        return handler == null ? null : IEnergyStorage.of(handler);
     }
 
     private static int simulateMaxExtractable(@Nullable IEnergyStorage src, int maxWant) {

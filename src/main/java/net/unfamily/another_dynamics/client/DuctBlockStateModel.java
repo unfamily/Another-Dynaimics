@@ -58,9 +58,6 @@ public final class DuctBlockStateModel implements DynamicBlockStateModel {
             BlockState state,
             RandomSource random,
             List<BlockStateModelPart> parts) {
-        if (fallbackGeometry == null || !fallbackGeometry.isBuilt()) {
-            return;
-        }
         ModelData modelData =
                 level instanceof IBlockGetterExtension ext ? ext.getModelData(pos) : ModelData.EMPTY;
         List<BakedQuad> quads = buildWorldQuads(level, pos, modelData);

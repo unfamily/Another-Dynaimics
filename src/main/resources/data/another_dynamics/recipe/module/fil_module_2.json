@@ -7,17 +7,11 @@
     "ABA"
   ],
   "key": {
-    "A": {
-      "item": "minecraft:stone"
-    },
+    "A": "minecraft:stone",
     "B": [
-      {
-        "tag": "c:gems/amethyst"
-      }
+      "#c:gems/amethyst"
     ],
-    "C": {
-      "item": "another_dynamics:fil_module_1"
-    }
+    "C": "another_dynamics:fil_module_1"
   },
   "result": {
     "id": "another_dynamics:fil_module_2",

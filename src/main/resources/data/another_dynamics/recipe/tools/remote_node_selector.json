@@ -7,11 +7,11 @@
     "DED"
   ],
   "key": {
-    "A": { "tag": "c:ingots/copper" },
-    "B": { "tag": "c:glass_panes" },
-    "C": { "tag": "c:dusts/redstone" },
-    "D": { "tag": "c:ingots/iron" },
-    "E": { "tag": "minecraft:buttons" }
+    "A": "#c:ingots/copper",
+    "B": "#c:glass_panes",
+    "C": "#c:dusts/redstone",
+    "D": "#c:ingots/iron",
+    "E": "#minecraft:buttons"
   },
   "result": {
     "id": "another_dynamics:remote_node_selector",

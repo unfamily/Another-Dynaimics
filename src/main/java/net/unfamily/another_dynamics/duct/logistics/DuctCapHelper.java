@@ -12,6 +12,8 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.neoforged.neoforge.items.ItemStackHandler;
+import net.neoforged.neoforge.transfer.ResourceHandler;
+import net.neoforged.neoforge.transfer.item.ItemResource;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
@@ -46,7 +48,13 @@ public final class DuctCapHelper {
     @Nullable
     public static IItemHandler getHandlerOnFace(Level level, BlockPos ductPos, Direction ductOutwardFace) {
         BlockPos adj = ductPos.relative(ductOutwardFace);
-        return level.getCapability(Capabilities.ItemHandler.BLOCK, adj, ductOutwardFace.getOpposite());
+        return wrapItemHandler(level.getCapability(Capabilities.Item.BLOCK, adj, ductOutwardFace.getOpposite()));
+    }
+
+    /** Bridges the 26.x {@link ResourceHandler} item capability back onto the legacy {@link IItemHandler} API. */
+    @Nullable
+    private static IItemHandler wrapItemHandler(@Nullable ResourceHandler<ItemResource> handler) {
+        return handler == null ? null : IItemHandler.of(handler);
     }
 
     public static ItemStack insertIntoFace(
@@ -416,7 +424,7 @@ public final class DuctCapHelper {
                 continue;
             }
             BlockPos adj = ductPos.relative(dir);
-            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            IItemHandler h = wrapItemHandler(level.getCapability(Capabilities.Item.BLOCK, adj, dir.getOpposite()));
             if (h == null) {
                 continue;
             }
@@ -441,7 +449,7 @@ public final class DuctCapHelper {
                 continue;
             }
             BlockPos adj = ductPos.relative(dir);
-            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            IItemHandler h = wrapItemHandler(level.getCapability(Capabilities.Item.BLOCK, adj, dir.getOpposite()));
             if (h == null) {
                 continue;
             }
@@ -467,7 +475,7 @@ public final class DuctCapHelper {
                 continue;
             }
             BlockPos adj = ductPos.relative(dir);
-            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            IItemHandler h = wrapItemHandler(level.getCapability(Capabilities.Item.BLOCK, adj, dir.getOpposite()));
             if (h == null) {
                 continue;
             }
@@ -492,7 +500,7 @@ public final class DuctCapHelper {
                 continue;
             }
             BlockPos adj = ductPos.relative(dir);
-            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            IItemHandler h = wrapItemHandler(level.getCapability(Capabilities.Item.BLOCK, adj, dir.getOpposite()));
             if (h == null) {
                 continue;
             }
@@ -522,7 +530,7 @@ public final class DuctCapHelper {
                 continue;
             }
             BlockPos adj = ductPos.relative(dir);
-            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            IItemHandler h = wrapItemHandler(level.getCapability(Capabilities.Item.BLOCK, adj, dir.getOpposite()));
             if (h == null) {
                 continue;
             }
@@ -550,7 +558,7 @@ public final class DuctCapHelper {
                 continue;
             }
             BlockPos adj = ductPos.relative(dir);
-            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            IItemHandler h = wrapItemHandler(level.getCapability(Capabilities.Item.BLOCK, adj, dir.getOpposite()));
             if (h == null) {
                 continue;
             }
@@ -614,7 +622,7 @@ public final class DuctCapHelper {
                 continue;
             }
             BlockPos adj = ductPos.relative(dir);
-            IItemHandler h = level.getCapability(Capabilities.ItemHandler.BLOCK, adj, dir.getOpposite());
+            IItemHandler h = wrapItemHandler(level.getCapability(Capabilities.Item.BLOCK, adj, dir.getOpposite()));
             if (h == null) {
                 continue;
             }

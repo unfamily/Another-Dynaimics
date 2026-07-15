@@ -143,6 +143,11 @@ public final class DuctCompositeGeometry {
         return new DuctCompositeGeometry(Map.of(), List.of(), List.of(), List.of(), null, false);
     }
 
+    /** Shared empty geometry placeholder used before model baking completes. */
+    public static DuctCompositeGeometry emptyGeometry() {
+        return empty();
+    }
+
     // -------- baking primitives --------
 
     private static List<BakedQuad> bakeElement(CuboidModelElement element, Material.Baked material) {
