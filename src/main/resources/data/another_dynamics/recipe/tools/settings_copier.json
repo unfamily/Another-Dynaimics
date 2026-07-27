@@ -4,10 +4,7 @@
   "ingredients": [
     "minecraft:paper",
     "#c:dyes/black",
-    [
-      "minecraft:glow_ink_sac",
-      "#c:dyes/blue"
-    ]
+    "#another_dynamics:recipe_alts/glow_ink_or_blue_dye"
   ],
   "result": {
     "id": "another_dynamics:settings_copier",

@@ -8,10 +8,7 @@
   ],
   "key": {
     "A": "minecraft:stone",
-    "B": [
-      "#c:ingots/iron",
-      "#c:gems/quartz"
-    ],
+    "B": "#another_dynamics:recipe_alts/iron_or_quartz",
     "C": "minecraft:paper"
   },
   "result": {

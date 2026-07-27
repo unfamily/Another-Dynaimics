@@ -8,10 +8,7 @@
   ],
   "key": {
     "A": "minecraft:stone",
-    "B": [
-      "#c:gems/diamond",
-      "#c:gems/prismarine"
-    ],
+    "B": "#another_dynamics:recipe_alts/diamond_or_prismarine",
     "C": "another_dynamics:fil_module_2"
   },
   "result": {

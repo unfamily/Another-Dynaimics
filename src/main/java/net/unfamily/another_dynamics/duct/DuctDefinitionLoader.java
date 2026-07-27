@@ -1,12 +1,17 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -14,6 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.stream.Stream;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -26,6 +32,7 @@ import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.module.ModuleDefinitionLoader;
@@ -84,7 +91,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
     }
 
     static Map<Identifier, JsonElement> collectLoadJson(ResourceManager resourceManager) {
-        Map<Identifier, JsonElement> prepared = new HashMap<>();
+        Map<Identifier, JsonElement> prepared = new LinkedHashMap<>();
         Map<Identifier, List<Resource>> stacks =
                 resourceManager.listResourceStacks(LOAD_FOLDER, rl -> rl.getPath().endsWith(".json"));
         for (Map.Entry<Identifier, List<Resource>> entry : stacks.entrySet()) {
@@ -107,7 +114,83 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                         ex.getMessage());
             }
         }
+        // Client resource reload only sees assets/; data/*/load lives in datapacks. Fall back to mod jar
+        // / build resources so definitions exist before model baking (same pattern as Colossal Reactors).
+        if (prepared.isEmpty()) {
+            prepared.putAll(collectFromModClasspath());
+        }
         return prepared;
+    }
+
+    /**
+     * Reads {@code data/another_dynamics/load/} JSON trees from the mod jar or Gradle resources folder.
+     * Keys match {@link #stripLoadJsonKey} output (e.g. {@code another_dynamics:duct/item_duct}).
+     */
+    static Map<Identifier, JsonElement> collectFromModClasspath() {
+        Map<Identifier, JsonElement> out = new LinkedHashMap<>();
+        String loadRoot = "data/" + AnotherDynamicsMod.MOD_ID + "/" + LOAD_FOLDER;
+        ModList.get().getModContainerById(AnotherDynamicsMod.MOD_ID).ifPresentOrElse(
+                container -> {
+                    var modFileInfo = container.getModInfo().getOwningFile();
+                    if (modFileInfo == null) {
+                        AnotherDynamicsMod.LOGGER.warn(
+                                "No mod file for {}, cannot bootstrap {}", AnotherDynamicsMod.MOD_ID, loadRoot);
+                        return;
+                    }
+                    Path root = modFileInfo.getFile().getFilePath();
+                    try {
+                        if (Files.isDirectory(root)) {
+                            Path buildDir = root.getParent().getParent().getParent();
+                            Path resourcesFolder = buildDir.resolve("resources").resolve("main");
+                            Path base = Files.exists(resourcesFolder)
+                                    ? resourcesFolder.resolve(loadRoot)
+                                    : root.resolve(loadRoot);
+                            walkLoadJsonTree(base, out);
+                        } else {
+                            try (var fs = FileSystems.newFileSystem(root, Map.of())) {
+                                walkLoadJsonTree(fs.getPath(loadRoot), out);
+                            }
+                        }
+                    } catch (IOException ex) {
+                        AnotherDynamicsMod.LOGGER.error(
+                                "Failed walking mod load path {}: {}", loadRoot, ex.getMessage());
+                    }
+                },
+                () -> AnotherDynamicsMod.LOGGER.warn(
+                        "Mod container not found for {} during load bootstrap", AnotherDynamicsMod.MOD_ID));
+        if (!out.isEmpty()) {
+            AnotherDynamicsMod.LOGGER.info(
+                    "Bootstrapped {} load JSON file(s) from mod classpath ({})", out.size(), loadRoot);
+        }
+        return out;
+    }
+
+    private static void walkLoadJsonTree(Path base, Map<Identifier, JsonElement> out) throws IOException {
+        if (base == null || !Files.exists(base)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(base)) {
+            walk.filter(Files::isRegularFile)
+                    .filter(p -> p.toString().endsWith(".json"))
+                    .sorted()
+                    .forEach(file -> readClasspathLoadJson(base, file, out));
+        }
+    }
+
+    private static void readClasspathLoadJson(Path loadBase, Path file, Map<Identifier, JsonElement> out) {
+        try {
+            String rel = loadBase.relativize(file).toString().replace('\\', '/');
+            String pathPart = LOAD_FOLDER + "/" + rel;
+            Identifier fileId = Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, pathPart);
+            try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                JsonElement parsed = GSON.fromJson(reader, JsonElement.class);
+                if (parsed != null) {
+                    out.put(stripLoadJsonKey(fileId), parsed);
+                }
+            }
+        } catch (Exception ex) {
+            AnotherDynamicsMod.LOGGER.error("Failed reading classpath load file {}: {}", file, ex.getMessage());
+        }
     }
 
     /** Path {@code <ns>:load/foo.json} → definition map key {@code <ns>:foo} (matches legacy SimpleJson listener). */

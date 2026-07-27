@@ -8,9 +8,7 @@
   ],
   "key": {
     "A": "minecraft:stone",
-    "B": [
-      "#c:ingots/gold"
-    ],
+    "B": "#c:ingots/gold",
     "C": "another_dynamics:fil_module_0"
   },
   "result": {

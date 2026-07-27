@@ -16,9 +16,7 @@ import net.unfamily.another_dynamics.registry.ModBlocks;
 
 /**
  * Installs dynamic {@link DuctBlockStateModel} / {@link ProjectDuctBlockStateModel} wrappers after model baking.
- *
- * <p>Geometry is <em>not</em> baked here: the block atlas is not ready during {@link ModelEvent.ModifyBakingResult}.
- * See {@link DuctClientSetup#onBakingCompleted(ModelEvent.BakingCompleted)}.
+ * Geometry baking uses {@link ModelEvent.ModifyBakingResult#getTextureGetter()} (see {@link DuctClientSetup}).
  */
 public final class DuctBlockStateModels {
     private static final Map<Block, String> DEFAULT_LOGICAL_IDS = Map.of(

@@ -8,9 +8,7 @@
   ],
   "key": {
     "A": "minecraft:stone",
-    "B": [
-      "#c:gems/amethyst"
-    ],
+    "B": "#c:gems/amethyst",
     "C": "another_dynamics:fil_module_1"
   },
   "result": {

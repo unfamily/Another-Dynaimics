@@ -34,7 +34,17 @@ public final class DuctClientSetup {
     private static void onDuctDefinitionsReloaded(DuctDefinitionsReloadedEvent event) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft != null) {
-            minecraft.execute(DuctRenderingSupport::invalidateGlobalGeometryCacheForReload);
+            minecraft.execute(DuctClientSetup::rebakeDuctGeometries);
+        }
+    }
+
+    /** Rebuilds duct/item geometry after definition reload (atlas must already be available). */
+    private static void rebakeDuctGeometries() {
+        try {
+            bakeDuctGeometries(DuctRenderingSupport.blockAtlasSpriteGetter());
+        } catch (Exception ex) {
+            // Atlas may not be ready yet; ModifyBakingResult / BakingCompleted will bake shortly after.
+            AnotherDynamicsMod.LOGGER.debug("Deferred duct geometry rebake until atlas is ready: {}", ex.toString());
         }
     }
 
@@ -64,10 +74,23 @@ public final class DuctClientSetup {
 
     public static void onModifyBakingResult(ModelEvent.ModifyBakingResult event) {
         DuctBlockStateModels.onModifyBakingResult(event);
+        // Prefer the baking texture getter: AtlasManager is not initialized yet during this event.
+        java.util.function.Function<SpriteId, TextureAtlasSprite> spriteGetter =
+                spriteId -> event.getTextureGetter().apply(spriteId.texture());
+        bakeDuctGeometries(spriteGetter);
     }
 
     public static void onBakingCompleted(ModelEvent.BakingCompleted event) {
-        java.util.function.Function<SpriteId, TextureAtlasSprite> spriteGetter = DuctRenderingSupport.blockAtlasSpriteGetter();
+        // AtlasManager is usually ready here; refresh in case ModifyBakingResult ran before definitions loaded.
+        try {
+            bakeDuctGeometries(DuctRenderingSupport.blockAtlasSpriteGetter());
+        } catch (Exception ex) {
+            AnotherDynamicsMod.LOGGER.debug(
+                    "BakingCompleted duct geometry bake deferred: {}", ex.toString());
+        }
+    }
+
+    private static void bakeDuctGeometries(java.util.function.Function<SpriteId, TextureAtlasSprite> spriteGetter) {
         var cache = DuctRenderingSupport.bakeAllGeometries(spriteGetter, null);
         DuctRenderingSupport.updateGlobalGeometryCache(cache);
         DuctRenderingSupport.updateOverlaySprites(
@@ -78,5 +101,7 @@ public final class DuctClientSetup {
                         DuctRenderingSupport.blockSprite(
                                 Identifier.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "block/node_buffer"))));
         DuctRenderingSupport.updateProjectGeometry(ProjectDuctBlockStateModel.bakeGeometry(spriteGetter));
+        AnotherDynamicsMod.LOGGER.info(
+                "Baked duct composite geometries for {} definition(s)", cache.size());
     }
 }
