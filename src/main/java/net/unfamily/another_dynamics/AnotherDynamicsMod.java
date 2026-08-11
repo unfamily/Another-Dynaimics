@@ -16,6 +16,7 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
+import net.neoforged.neoforge.client.event.RegisterConditionalItemModelPropertyEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.event.RegisterSpecialModelRendererEvent;
 import net.minecraft.resources.Identifier;
@@ -73,6 +74,9 @@ public final class AnotherDynamicsMod {
             modEventBus.addListener(EntityRenderersEvent.RegisterRenderers.class, DuctClientSetup::onRegisterRenderers);
             modEventBus.addListener(ModelEvent.RegisterLoaders.class, DuctClientSetup::onRegisterModelLoaders);
             modEventBus.addListener(RegisterSpecialModelRendererEvent.class, DuctClientSetup::onRegisterSpecialModelRenderers);
+            modEventBus.addListener(
+                    RegisterConditionalItemModelPropertyEvent.class,
+                    DuctClientSetup::onRegisterConditionalItemModelProperties);
             modEventBus.addListener(ModelEvent.ModifyBakingResult.class, DuctClientSetup::onModifyBakingResult);
             modEventBus.addListener(ModelEvent.BakingCompleted.class, DuctClientSetup::onBakingCompleted);
         }

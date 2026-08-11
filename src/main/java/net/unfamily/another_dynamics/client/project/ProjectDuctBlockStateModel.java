@@ -90,14 +90,6 @@ public final class ProjectDuctBlockStateModel implements DynamicBlockStateModel 
         return new ProjectKey(ProjectDuctBlock.effectivePipeMask(state), nodePreviewFromModelData(modelData));
     }
 
-    public List<BakedQuad> itemPreviewQuads() {
-        DuctCompositeGeometry geometry = geometry();
-        if (!geometry.isBuilt()) {
-            return List.of();
-        }
-        return geometry.lineAllQuads();
-    }
-
     private static int nodePreviewFromModelData(ModelData modelData) {
         if (modelData == null || !modelData.has(ProjectDuctModelProperties.NODE_PREVIEW_MASK)) {
             return 0;

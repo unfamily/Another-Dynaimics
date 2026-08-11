@@ -2,26 +2,5 @@
   "parent": "minecraft:item/generated",
   "textures": {
     "layer0": "another_dynamics:item/settings_copier_all_0"
-  },
-  "overrides": [
-    {
-      "predicate": {
-        "another_dynamics:copier_filled": 1
-      },
-      "model": "another_dynamics:item/settings_copier_all_1"
-    },
-    {
-      "predicate": {
-        "another_dynamics:copier_filter": 1
-      },
-      "model": "another_dynamics:item/settings_copier_filter_0"
-    },
-    {
-      "predicate": {
-        "another_dynamics:copier_filter": 1,
-        "another_dynamics:copier_filled": 1
-      },
-      "model": "another_dynamics:item/settings_copier_filter_1"
-    }
-  ]
+  }
 }

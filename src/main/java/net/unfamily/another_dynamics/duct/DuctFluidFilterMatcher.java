@@ -80,6 +80,9 @@ public final class DuctFluidFilterMatcher {
             return false;
         }
         String m = macro.toLowerCase();
+        if (DuctFilterSpecialKeys.isAnythingElseMacroBody(m)) {
+            return true;
+        }
         String key;
         if (m.startsWith("temperature")) {
             key = "temperature";

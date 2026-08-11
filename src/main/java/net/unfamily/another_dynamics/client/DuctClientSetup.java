@@ -7,6 +7,7 @@ import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
+import net.neoforged.neoforge.client.event.RegisterConditionalItemModelPropertyEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.event.RegisterSpecialModelRendererEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -16,8 +17,8 @@ import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.gui.SettingsCopierScreen;
 import net.unfamily.another_dynamics.client.project.ProjectDuctBlockStateModel;
 import net.unfamily.another_dynamics.client.project.ProjectDuctGeometryLoader;
-import net.unfamily.another_dynamics.client.project.ProjectDuctItemSpecialRenderer;
 import net.unfamily.another_dynamics.duct.DuctDefinitionsReloadedEvent;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierItemProperties;
 import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
@@ -71,8 +72,17 @@ public final class DuctClientSetup {
 
     public static void onRegisterSpecialModelRenderers(RegisterSpecialModelRendererEvent event) {
         event.register(DuctItemSpecialRenderer.ID, new DuctItemSpecialRenderer.Unbaked().type());
+    }
+
+    /** 26.x item model conditions for settings copier filter/filled icons (replaces ItemProperties). */
+    public static void onRegisterConditionalItemModelProperties(
+            RegisterConditionalItemModelPropertyEvent event) {
         event.register(
-                ProjectDuctItemSpecialRenderer.ID, new ProjectDuctItemSpecialRenderer.Unbaked().type());
+                SettingsCopierItemProperties.COPIER_FILTER,
+                SettingsCopierConditionalProperties.CopierFilter.MAP_CODEC);
+        event.register(
+                SettingsCopierItemProperties.COPIER_FILLED,
+                SettingsCopierConditionalProperties.CopierFilled.MAP_CODEC);
     }
 
     public static void onModifyBakingResult(ModelEvent.ModifyBakingResult event) {

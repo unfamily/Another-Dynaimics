@@ -14,7 +14,7 @@ import net.minecraft.world.item.ItemStack;
  * Single filter entry matching, ported from DeepDrawerExtractorBlockEntity.matchesFilterEntry (iska_utils).
  *
  * <p>Item macros ({@code &}): {@code enchanted}; {@code damaged} (any damage &gt; 0) or {@code damaged} + operators on
- * {@link ItemStack#getDamageValue()} ({@code =, !=, <, <=, >, >=}).</p>
+ * {@link ItemStack#getDamageValue()} ({@code =, !=, <, <=, >, >=}); {@code anything_else} (matches any non-empty stack).</p>
  */
 public final class DuctFilterMatcher {
     private DuctFilterMatcher() {}
@@ -83,6 +83,9 @@ public final class DuctFilterMatcher {
             return false;
         }
         String lower = macro.toLowerCase();
+        if (DuctFilterSpecialKeys.isAnythingElseMacroBody(lower)) {
+            return true;
+        }
         if (lower.equals("enchanted")) {
             if (stack.isEnchanted()) {
                 return true;
