@@ -25,6 +25,7 @@ import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctReplaceHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctNetworkCache;
+import net.unfamily.another_dynamics.integration.cablefacades.CableFacadesCompat;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 import net.unfamily.another_dynamics.registry.ModItems;
 
@@ -121,7 +122,13 @@ public final class ProjectDuctConverter {
         if (waterlogged) {
             newState = newState.setValue(BlockStateProperties.WATERLOGGED, true);
         }
-        if (!level.setBlock(pos, newState, Block.UPDATE_ALL)) {
+        final BlockState placedState = newState;
+        final boolean[] placed = {false};
+        CableFacadesCompat.runPreservingFacade(
+                level,
+                pos,
+                () -> placed[0] = level.setBlock(pos, placedState, Block.UPDATE_ALL));
+        if (!placed[0]) {
             return false;
         }
         BlockEntity be = level.getBlockEntity(pos);
@@ -133,7 +140,7 @@ public final class ProjectDuctConverter {
                 syncDisconnectToDefinitiveNeighbors(level, pos, disconnected);
             }
             duct.refreshFromWorld();
-            level.sendBlockUpdated(pos, newState, newState, Block.UPDATE_ALL);
+            level.sendBlockUpdated(pos, placedState, placedState, Block.UPDATE_ALL);
         }
         return true;
     }

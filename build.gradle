@@ -149,8 +149,12 @@ dependencies {
     // compileOnly "curse.maven:mekanism-268560:<26.x-fileId>"
     // localRuntime "curse.maven:mekanism-268560:<26.x-fileId>"
     //
-    // Pipez (optional): filter import from upgrade data components; no compile-time API usage.
+    // Pipez (optional): filter import / whole-pipe Settings Copier (soft runtime).
     // localRuntime "curse.maven:pipez-443900:<26.x-fileId>"
+    //
+    // Cable Facades (optional): facade whitelist + hidden mesh under covers.
+    compileOnly "curse.maven:cable-facades-1140577:8271739"
+    localRuntime "curse.maven:cable-facades-1140577:8271739"
     //
     // FTB Ultimine (optional): same logical duct id + same pipe-connected network component.
     // 26.x uses NeoForge events (no Architectury); FTB Library is required transitively at runtime.

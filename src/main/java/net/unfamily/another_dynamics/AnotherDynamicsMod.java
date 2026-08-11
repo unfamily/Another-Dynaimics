@@ -63,6 +63,7 @@ public final class AnotherDynamicsMod {
         modEventBus.addListener(ModNetwork::register);
         modEventBus.addListener(AnotherDynamicsMod::onRegisterCapabilities);
         modEventBus.addListener(FilterImportBootstrap::onCommonSetup);
+        modEventBus.addListener(AnotherDynamicsMod::onCommonSetup);
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.COMMON, Config.SPEC);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
@@ -84,6 +85,18 @@ public final class AnotherDynamicsMod {
         }
 
         initOptionalIntegrations();
+    }
+
+    private static void onCommonSetup(net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent event) {
+        if (ModList.get().isLoaded("cable_facades")) {
+            try {
+                Class.forName("net.unfamily.another_dynamics.integration.cablefacades.CableFacadesCompat")
+                        .getMethod("register", net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent.class)
+                        .invoke(null, event);
+            } catch (ReflectiveOperationException e) {
+                LOGGER.error("Failed to register Cable Facades compatibility", e);
+            }
+        }
     }
 
     private static void initOptionalIntegrations() {

@@ -1,0 +1,13 @@
+{
+  "replace": false,
+  "values": [
+    "another_dynamics:duct",
+    "another_dynamics:project_duct",
+    "another_dynamics:fluid_duct",
+    "another_dynamics:item_fluid_duct",
+    {
+      "id": "another_dynamics:gas_duct",
+      "required": false
+    }
+  ]
+}

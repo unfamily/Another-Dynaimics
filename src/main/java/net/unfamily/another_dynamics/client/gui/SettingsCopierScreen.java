@@ -586,10 +586,13 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                     .withStyle(net.minecraft.ChatFormatting.RED);
         }
         SettingsCopierStoreKind mode = SettingsCopierStoreKind.getMode(menu.copierStack(minecraft.player));
-        return Component.translatable(
-                mode == SettingsCopierStoreKind.FILTER
-                        ? "gui.another_dynamics.settings_copier.mode_filter"
-                        : "gui.another_dynamics.settings_copier.mode_all");
+        String modeKey =
+                switch (mode) {
+                    case FILTER -> "gui.another_dynamics.settings_copier.mode_filter";
+                    case WHOLE -> "gui.another_dynamics.settings_copier.mode_whole";
+                    case ALL -> "gui.another_dynamics.settings_copier.mode_all";
+                };
+        return Component.translatable(modeKey);
     }
 
     private void refreshModeButtonLabel() {

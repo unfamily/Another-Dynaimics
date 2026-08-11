@@ -33,6 +33,7 @@ public final class DuctFaceSettingsSnapshot {
     private static final int FORMAT_VERSION_LEGACY = 2;
 
     public static final String KEY_FMT = "Fmt";
+    public static final String KEY_FACES = "Faces";
     private static final String KEY_SHARED = "Shared";
     private static final String KEY_ITEM = "Item";
     private static final String KEY_FLUID = "Fluid";
@@ -68,6 +69,61 @@ public final class DuctFaceSettingsSnapshot {
             return false;
         }
         return SettingsCopierStoreKind.fromCompound(tag) == SettingsCopierStoreKind.ALL;
+    }
+
+    public static boolean isWholePayload(CompoundTag tag) {
+        if (tag == null || !tag.contains(KEY_FMT)) {
+            return false;
+        }
+        if (!acceptsSnapshotFormat(tag.getIntOr(KEY_FMT, 0))) {
+            return false;
+        }
+        return SettingsCopierStoreKind.fromCompound(tag) == SettingsCopierStoreKind.WHOLE
+                && tag.contains(KEY_FACES);
+    }
+
+    /** Builds a WHOLE root holding per-direction face snapshots (each face is an ALL-style payload). */
+    public static CompoundTag buildWholeRoot(CompoundTag facesByDirection) {
+        CompoundTag root = new CompoundTag();
+        root.putInt(KEY_FMT, FORMAT_VERSION);
+        root.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.WHOLE.toTag());
+        root.put(KEY_FACES, facesByDirection);
+        return root;
+    }
+
+    /**
+     * Applies WHOLE payload to every direction that has an active storage/settings face on the target duct.
+     *
+     * @return true if at least one face was applied
+     */
+    public static boolean applyWhole(
+            DuctBlockEntity be, CompoundTag data, HolderLookup.Provider registries, Player player) {
+        if (!isWholePayload(data)) {
+            return false;
+        }
+        CompoundTag faces = data.getCompoundOrEmpty(KEY_FACES);
+        boolean any = false;
+        for (Direction face : Direction.values()) {
+            String key = Integer.toString(face.ordinal());
+            if (!faces.contains(key)) {
+                continue;
+            }
+            if (!be.faceShowsStorageNode(face) && (be.getSettingsFaceMask() & (1 << face.ordinal())) == 0) {
+                continue;
+            }
+            CompoundTag faceData = faces.getCompoundOrEmpty(key);
+            if (!isAllPayload(faceData)) {
+                faceData = faceData.copy();
+                faceData.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.ALL.toTag());
+                if (!faceData.contains(KEY_FMT)) {
+                    faceData.putInt(KEY_FMT, FORMAT_VERSION);
+                }
+            }
+            if (apply(be, face, faceData, registries, player)) {
+                any = true;
+            }
+        }
+        return any;
     }
 
     /** Copier in the used hand, or the other hand if it holds stored settings. */

@@ -16,6 +16,14 @@ public final class SettingsCopierFeedback {
         ModNetwork.sendDuctGuiFeedback(player, DuctGuiFeedbackPayload.COPIED);
     }
 
+    /** Pipez → Settings Copier whole-pipe import (no duct GUI open). */
+    public static void notifyPipezImported(Player player) {
+        sendActionBar(
+                player,
+                Component.translatable("message.another_dynamics.settings_copier.pipez_imported")
+                        .withStyle(ChatFormatting.GREEN));
+    }
+
     public static void notifyPasted(Player player) {
         notifyPasteActionBar(player, true);
     }

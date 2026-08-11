@@ -7,8 +7,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -143,6 +150,42 @@ public final class DuctShapes {
             }
         }
         return Optional.of(pick);
+    }
+
+    /**
+     * Pipez-style look-ray against active storage {@link #NODE} voxels. Used when facade overlays replace the
+     * block interaction shape with a full cube so the official hit location no longer lands inside a node.
+     */
+    public static Optional<Direction> resolveStorageNodeFaceFromLook(
+            BlockGetter level,
+            BlockPos pos,
+            BlockState state,
+            Player player,
+            int pipeMask,
+            int storageMask) {
+        Vec3 start = player.getEyePosition(1.0F);
+        double reach = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE);
+        Vec3 end = start.add(player.getLookAngle().normalize().scale(reach));
+        Direction best = null;
+        double shortest = Double.MAX_VALUE;
+        List<Direction> active = new ArrayList<>(6);
+        forEachActiveStorageNode(pipeMask, storageMask, active::add);
+        for (Direction d : active) {
+            VoxelShape shape = NODE.get(d);
+            if (shape == null || shape.isEmpty()) {
+                continue;
+            }
+            BlockHitResult hit = level.clipWithInteractionOverride(start, end, pos, shape, state);
+            if (hit == null) {
+                continue;
+            }
+            double dist = hit.getLocation().distanceToSqr(start);
+            if (dist < shortest) {
+                shortest = dist;
+                best = d;
+            }
+        }
+        return Optional.ofNullable(best);
     }
 
     /**

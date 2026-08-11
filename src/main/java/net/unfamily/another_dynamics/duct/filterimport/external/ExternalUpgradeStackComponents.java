@@ -12,11 +12,11 @@ import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportChannel;
 
 /** Reads upgrade filter data components from stacks without a compile-time mod dependency. */
-final class ExternalUpgradeStackComponents {
+public final class ExternalUpgradeStackComponents {
     private ExternalUpgradeStackComponents() {}
 
     @Nullable
-    static CompoundTag readChannelData(ItemStack stack, FilterImportChannel channel, HolderLookup.Provider registries) {
+    public static CompoundTag readChannelData(ItemStack stack, FilterImportChannel channel, HolderLookup.Provider registries) {
         if (stack.isEmpty()) {
             return null;
         }
@@ -36,7 +36,7 @@ final class ExternalUpgradeStackComponents {
         return null;
     }
 
-    static boolean hasAnyChannelData(ItemStack stack, HolderLookup.Provider registries) {
+    public static boolean hasAnyChannelData(ItemStack stack, HolderLookup.Provider registries) {
         for (FilterImportChannel ch : FilterImportChannel.values()) {
             if (readChannelData(stack, ch, registries) != null) {
                 return true;
@@ -45,7 +45,7 @@ final class ExternalUpgradeStackComponents {
         return false;
     }
 
-    static boolean isUpgradeItem(ItemStack stack) {
+    public static boolean isUpgradeItem(ItemStack stack) {
         Identifier id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem());
         return id != null
                 && ExternalUpgradeFilterImportSource.COMPANION_NAMESPACE.equals(id.getNamespace())

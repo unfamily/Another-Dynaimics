@@ -101,6 +101,12 @@ Another Dynamics adds a unified logistics duct network (items, fluids, energy, h
     side="BOTH"
 
 [[dependencies.${mod_id}]]
+    modId="cable_facades"
+    type="optional"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
     modId="ftbultimine"
     type="optional"
     ordering="AFTER"
