@@ -6853,10 +6853,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         boolean prevNetworkOpaque = clientNetworkOpaque;
         clientNetworkOpaque = tag.getBoolean("NetworkOpaque");
         if (prevNetworkOpaque != clientNetworkOpaque) {
+            // Per-block model-data + section rebuild only. Never allChanged() here: large networks would
+            // freeze the client (one full mesh rebuild per duct packet).
             requestModelDataUpdate();
             if (level != null && level.isClientSide) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
-                net.unfamily.another_dynamics.client.DuctOpaqueRenderRefresh.requestFullMeshRefresh();
             }
         }
         if (level != null && level.isClientSide) {

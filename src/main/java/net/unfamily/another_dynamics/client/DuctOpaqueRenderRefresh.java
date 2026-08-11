@@ -11,6 +11,10 @@ import net.unfamily.another_dynamics.registry.ModAttachments;
 /**
  * Duct quads depend on per-player opaque mode but chunk meshes cache baked geometry; refresh when the attachment
  * flips. Also exposes a stable {@link #snapshotPlayerAllOpaque()} for async chunk meshing (player may be null there).
+ *
+ * <p>Network opaque is refreshed per-block via BE update packets + ModelData (never {@code allChanged} per duct —
+ * that freezes the client on large networks). Player {@code All} mode still needs one world mesh rebuild because
+ * every duct changes without a BE packet.
  */
 @EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 public final class DuctOpaqueRenderRefresh {
@@ -23,14 +27,6 @@ public final class DuctOpaqueRenderRefresh {
     /** Player All-opaque as observed on the client tick thread (never reads {@code Minecraft.player} off-thread). */
     public static boolean snapshotPlayerAllOpaque() {
         return snapshotAllOpaque;
-    }
-
-    /** Force a full level mesh rebuild (e.g. network opaque flipped on one or more ducts). */
-    public static void requestFullMeshRefresh() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.levelRenderer != null) {
-            mc.levelRenderer.allChanged();
-        }
     }
 
     @SubscribeEvent
@@ -46,6 +42,7 @@ public final class DuctOpaqueRenderRefresh {
         snapshotAllOpaque = now;
         if (now != lastOpaque) {
             lastOpaque = now;
+            // Single rebuild when All flips — not per network duct.
             mc.levelRenderer.allChanged();
         }
     }
