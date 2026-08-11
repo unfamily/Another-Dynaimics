@@ -54,6 +54,7 @@ import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctFeatureKeys;
 import net.unfamily.another_dynamics.duct.DuctFeaturePolicy;
 import net.unfamily.another_dynamics.duct.DuctFilterLineReorder;
+import net.unfamily.another_dynamics.duct.DuctFilterSpecialKeys;
 import net.unfamily.another_dynamics.duct.FilterLineTextUtil;
 import net.unfamily.another_dynamics.duct.DuctGuiLayout;
 import net.unfamily.another_dynamics.duct.DuctIds;
@@ -538,6 +539,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private Button editModeClearButton;
     private Button editModeApplyButton;
     private Button editModeCloseButton;
+    /** Inserts {@link net.unfamily.another_dynamics.duct.DuctFilterSpecialKeys#ANYTHING_ELSE} into the entry EditBox. */
+    private Button editModeAnythingElseButton;
     private Button advancedFilteringOpenButton;
     /** Allow vs deny list that opened {@link SubView#ADVANCED_FILTERING}. */
     private SubView advancedFilterParentSubview = SubView.ALLOW_FILTERS;
@@ -3309,6 +3312,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             if (editModeClearButton != null) {
                 editModeClearButton.visible = showFilterEditChrome;
             }
+            if (editModeAnythingElseButton != null) {
+                editModeAnythingElseButton.visible = showFilterEditChrome;
+            }
             if (editModeApplyButton != null) {
                 editModeApplyButton.visible = showFilterEditChrome;
             }
@@ -4019,13 +4025,27 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
         int textBoxY = slotY + slotSize + 2;
         int textBoxHeight = 15;
+        int anyBtn = buttonSize;
+        int anyGap = buttonSpacing;
         int textBoxX = this.leftPos + ENTRY_X + EDIT_MODE_TEXT_INSET_X;
         int entryContentRight =
             this.leftPos + ENTRY_X + ENTRY_WIDTH - EDIT_MODE_TEXT_INSET_X;
+        // Reserve space for the anything-else button flush against the EditBox (right side).
         int textBoxWidth = entryContentRight - textBoxX;
+        if (editModeAnythingElseButton != null) {
+            textBoxWidth = Math.max(40, textBoxWidth - anyBtn - anyGap);
+        }
         editModeTextBox.setPosition(textBoxX, textBoxY);
         editModeTextBox.setWidth(textBoxWidth);
         editModeTextBox.setHeight(textBoxHeight);
+
+        if (editModeAnythingElseButton != null) {
+            int anyX = textBoxX + textBoxWidth + anyGap;
+            int anyY = textBoxY + (textBoxHeight - anyBtn) / 2;
+            editModeAnythingElseButton.setPosition(anyX, anyY);
+            editModeAnythingElseButton.setWidth(anyBtn);
+            editModeAnythingElseButton.setHeight(anyBtn);
+        }
 
         editModeClearButton.setPosition(clearButtonX, buttonRowY);
         editModeApplyButton.setPosition(applyButtonX, buttonRowY);
@@ -4223,6 +4243,24 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         editModeTextBox.setValue(originalFilterValue);
         editModeTextBox.setResponder(v -> {});
         addRenderableWidget(editModeTextBox);
+
+        editModeAnythingElseButton =
+                Button.builder(Component.literal("\u03A3"), b -> {
+                            playClickSound();
+                            if (editModeTextBox != null) {
+                                String token = DuctFilterSpecialKeys.ANYTHING_ELSE;
+                                editModeTextBox.setValue(token);
+                                editModeTextBox.setCursorPosition(token.length());
+                                editModeTextBox.setHighlightPos(token.length());
+                            }
+                        })
+                        .bounds(0, 0, buttonSize, buttonSize)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.duct_node.filters.anything_else.button.tooltip")))
+                        .build();
+        addRenderableWidget(editModeAnythingElseButton);
 
         editModeClearButton = Button.builder(Component.literal("C"), b -> {
             playClickSound();
@@ -4438,6 +4476,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (editModeClearButton != null) {
             removeWidget(editModeClearButton);
             editModeClearButton = null;
+        }
+        if (editModeAnythingElseButton != null) {
+            removeWidget(editModeAnythingElseButton);
+            editModeAnythingElseButton = null;
         }
         if (editModeApplyButton != null) {
             removeWidget(editModeApplyButton);
@@ -4937,6 +4979,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         if (filter.startsWith("&")) {
             String macro = filter.substring(1).toLowerCase();
+            if (DuctFilterSpecialKeys.isAnythingElseMacroBody(macro)) {
+                return new ItemStack(Items.KNOWLEDGE_BOOK);
+            }
             return switch (macro) {
                 case "enchanted" -> {
                     String snbt =
@@ -8035,12 +8080,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                               ? List.of(
                                       p + "macro.example1",
                                       p + "macro.example2",
-                                      p + "macro.example3")
+                                      p + "macro.example3",
+                                      p + "macro.example4")
                               : List.of(
                                       p + "macro.example1",
                                       p + "macro.example2",
                                       p + "macro.example3",
-                                      p + "macro.example4"),
+                                      p + "macro.example4",
+                                      p + "macro.example5"),
                       MACRO_HELP_FIRST_LINE_EXAMPLES,
                       MACRO_HELP_NEXT_LINE_EXAMPLES,
                       HELP_TEXT_X,
@@ -8057,6 +8104,24 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     0x404040,
                     false
             );
+            helpY += helpLineStep;
+            renderHelpLineWithExample(
+                    graphics,
+                    p + "anything_else",
+                    p + "anything_else.example",
+                    p + "anything_else.after",
+                    HELP_TEXT_X,
+                    helpY,
+                    mouseX,
+                    mouseY);
+            helpY += helpLineStep;
+            graphics.drawString(
+                    this.font,
+                    Component.translatable(p + "anything_else.detail"),
+                    HELP_TEXT_X,
+                    helpY,
+                    0x404040,
+                    false);
             helpY += helpLineStep;
             if (!isGasFilterTransport()) {
                 graphics.drawString(

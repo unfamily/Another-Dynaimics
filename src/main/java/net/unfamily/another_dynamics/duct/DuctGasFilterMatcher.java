@@ -83,6 +83,9 @@ public final class DuctGasFilterMatcher {
             return false;
         }
         String m = macro.toLowerCase().trim();
+        if (DuctFilterSpecialKeys.isAnythingElseMacroBody(m)) {
+            return true;
+        }
         if (m.equals("radioactive")) {
             return MekanismChemicalCompat.isRadioactive(stack);
         }

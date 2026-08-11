@@ -226,6 +226,17 @@ public final class DuctFilterLineReorder {
             ordered.addAll(group);
         }
         ordered.addAll(noneRows);
+        // &anything_else always last (after concat groups and other none rows).
+        ArrayList<SortRow> anythingElse = new ArrayList<>();
+        ordered.removeIf(
+                r -> {
+                    if (DuctFilterSpecialKeys.isAnythingElseLine(r.line())) {
+                        anythingElse.add(r);
+                        return true;
+                    }
+                    return false;
+                });
+        ordered.addAll(anythingElse);
         applySorted(lines, caps, caps2, concat, remote, ignoreChannel, anyFace, ordered);
     }
 
@@ -300,6 +311,9 @@ public final class DuctFilterLineReorder {
             return 10_000;
         }
         String t = line.trim();
+        if (DuctFilterSpecialKeys.isAnythingElseLine(t)) {
+            return 100_000;
+        }
         if (t.startsWith("#")) {
             return 100;
         }
