@@ -63,8 +63,8 @@ public final class DuctItemRenderer extends BlockEntityWithoutLevelRenderer {
         if (geo == null || !geo.isBuilt()) return;
 
         boolean opaqueRendering =
-                DuctOpaqueRendering.effectiveItemPreviewOpaque(
-                        logicalId, Minecraft.getInstance().player);
+                DuctOpaqueRendering.definitionAlwaysOpaque(logicalId)
+                        || DuctOpaqueRenderRefresh.snapshotPlayerAllOpaque();
 
         List<BakedQuad> quads;
         if (opaqueRendering) {

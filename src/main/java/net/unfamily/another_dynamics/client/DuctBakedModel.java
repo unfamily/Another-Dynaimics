@@ -316,12 +316,12 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
                         .orElse(false);
         boolean networkOpaque =
                 Boolean.TRUE.equals(modelData.get(DuctModelProperties.NETWORK_OPAQUE));
-        var player = Minecraft.getInstance().player;
         boolean opaqueRendering =
                 itemForceDefinitionOpaqueOnly
                         ? defOpaque
-                        : net.unfamily.another_dynamics.duct.DuctOpaqueRendering.effectiveOpaque(
-                                effectiveDuctId, networkOpaque, player);
+                        : defOpaque
+                                || DuctOpaqueRenderRefresh.snapshotPlayerAllOpaque()
+                                || networkOpaque;
         // Node icon layer (nodes.png) stays on the translucent pass; opaque mode only affects duct atlas + transit items.
         boolean includeOverlays = isOverlayPass;
         float ductVShift = 0f;
