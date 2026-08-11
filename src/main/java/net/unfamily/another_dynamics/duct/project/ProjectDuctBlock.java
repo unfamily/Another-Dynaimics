@@ -88,7 +88,8 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
 
     @Override
     protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext ctx) {
-        return getShape(state, level, pos, ctx);
+        int nodes = effectiveNodePreviewMask(level, pos, state);
+        return DuctShapes.collisionForMasks(effectivePipeMask(state), nodes);
     }
 
     @Override

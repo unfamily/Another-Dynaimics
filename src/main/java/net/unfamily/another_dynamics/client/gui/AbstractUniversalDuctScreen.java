@@ -1733,10 +1733,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
      * Detail view keeps a single horizontal picker row without toggles.
      */
     private void layoutHubTransportGrid() {
+        Optional<DuctDefinition> defOpt =
+            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId());
         EnumSet<DuctTransportKind> ductKinds =
-            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
-                .map(DuctDefinition::enabledTransportKinds)
-                .orElse(EnumSet.of(DuctTransportKind.ITEM));
+            defOpt.map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
+        EnumSet<DuctTransportKind> suppressedMek =
+            defOpt.map(DuctDefinition::suppressedMekKindsSet).orElse(EnumSet.noneOf(DuctTransportKind.class));
         boolean hubMain =
             menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
             menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0 &&
@@ -1747,7 +1749,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             int gridRowStride = 2 * cellStride;
             int idx = 0;
             for (DuctTransportKind k : DuctTransportKind.values()) {
-                if (!ductKinds.contains(k)) {
+                boolean show = ductKinds.contains(k) || suppressedMek.contains(k);
+                if (!show) {
                     if (k.ordinal() < transportToggleButtons.size()) {
                         transportToggleButtons.get(k.ordinal()).setWidth(0);
                         transportToggleButtons.get(k.ordinal()).setHeight(0);
@@ -1788,7 +1791,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     break;
                 }
                 Button b = transportKindPickerButtons.get(k.ordinal());
-                if (!ductKinds.contains(k)) {
+                boolean show = ductKinds.contains(k) || suppressedMek.contains(k);
+                if (!show) {
                     b.setWidth(0);
                     b.setHeight(0);
                     continue;
@@ -1807,6 +1811,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
         }
     }
+
 
     private boolean isUniversalDetailMain() {
         return (
@@ -6130,10 +6135,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             channelButton.setTooltip(Tooltip.create(channelTip));
         }
 
+        Optional<DuctDefinition> syncDefOpt =
+            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId());
         EnumSet<DuctTransportKind> enabledKinds =
-            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
-                .map(DuctDefinition::enabledTransportKinds)
-                .orElse(EnumSet.of(DuctTransportKind.ITEM));
+            syncDefOpt.map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
+        EnumSet<DuctTransportKind> suppressedMekKinds =
+            syncDefOpt.map(DuctDefinition::suppressedMekKindsSet).orElse(EnumSet.noneOf(DuctTransportKind.class));
         boolean hubMain =
             menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
             menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0 &&
@@ -6143,6 +6150,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 break;
             }
             Button picker = transportKindPickerButtons.get(k.ordinal());
+            boolean suppressed = suppressedMekKinds.contains(k);
             boolean inDuct = enabledKinds.contains(k);
             boolean laneOn = inDuct && isTransportKindEnabledInMask(k);
             if (hubMain && inDuct) {
@@ -6154,12 +6162,33 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     )
                 );
             }
-            picker.active = inDuct && (!hubMain || laneOn);
+            picker.active = inDuct && !suppressed && (!hubMain || laneOn);
             if (k.ordinal() < transportToggleButtons.size()) {
                 Button toggle = transportToggleButtons.get(k.ordinal());
+                if (suppressed) {
+                    toggle.active = false;
+                    if (hubMain) {
+                        toggle.setMessage(hubToggleLabel(false));
+                        ChatFormatting accent = hubTransportColumnColor(k);
+                        toggle.setTooltip(
+                            Tooltip.create(
+                                Component.translatable(
+                                                "gui.another_dynamics.duct_node.transport_toggle.tooltip.disabled")
+                                        .append(
+                                                Component.literal(" — ")
+                                                        .withStyle(ChatFormatting.GRAY))
+                                        .append(
+                                                Component.translatable(
+                                                                "gui.another_dynamics.duct_node.transport."
+                                                                        + k.name().toLowerCase())
+                                                        .withStyle(accent))));
+                    }
+                    continue;
+                }
                 if (!inDuct) {
                     continue;
                 }
+                toggle.active = true;
                 if (hubMain) {
                     toggle.setMessage(hubToggleLabel(laneOn));
                     ChatFormatting accent = hubTransportColumnColor(k);

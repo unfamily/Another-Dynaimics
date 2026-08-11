@@ -248,9 +248,10 @@ public final class DuctFaceNode {
     }
 
     /**
-     * Whether extract batch should track the GUI setting cap when modules raise it. Driven solely by the explicit
-     * flag (set by the GUI "M" button); a value the player set below the cap must never be auto-raised. Legacy saves
-     * without the flag are migrated once in {@link #loadExtractBatchPinnedFromTag}.
+     * Whether extract batch should track the GUI setting cap when modules raise it. Set when the player chooses max
+     * ("M" / amount == cap) or when clamp finds the stored amount already at the current cap. A value set below the
+     * cap must never be auto-raised. Legacy saves without the flag are migrated once in
+     * {@link #loadExtractBatchPinnedFromTag}.
      */
     public boolean isExtractBatchPinnedToCap() {
         return extractBatchPinnedToMax;

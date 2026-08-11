@@ -48,7 +48,8 @@ public record DuctDefinition(
         Set<String> disabledFeatures,
         Set<String> forbiddenFeatures,
         boolean alwaysOpaqueRendering,
-        int moduleSlotCount
+        int moduleSlotCount,
+        Set<DuctTransportKind> suppressedMekKinds
 ) {
     public DuctItemTransportSpec itemTransportOrFallback() {
         return itemTransport.orElseGet(DuctItemTransportSpec::fallback);
@@ -68,6 +69,14 @@ public record DuctDefinition(
 
     public DuctHeatTransportSpec heatTransportOrFallback() {
         return heatTransport.orElseGet(DuctHeatTransportSpec::fallback);
+    }
+
+    /** Mekanism kinds declared in JSON but unavailable (no Mek / support off); hub shows them disabled. */
+    public EnumSet<DuctTransportKind> suppressedMekKindsSet() {
+        if (suppressedMekKinds == null || suppressedMekKinds.isEmpty()) {
+            return EnumSet.noneOf(DuctTransportKind.class);
+        }
+        return EnumSet.copyOf(suppressedMekKinds);
     }
 
     /** Kinds enabled for this duct, in datapack order (then stable enum fill). */
