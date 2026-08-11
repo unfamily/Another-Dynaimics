@@ -99,6 +99,28 @@ public final class DuctShapes {
     }
 
     /**
+     * Collision variant of {@link #forMasks}: same footprint, but every box top is raised to y=1 so
+     * standing on a duct matches adjacent full blocks for jumping.
+     */
+    public static VoxelShape collisionForMasks(int pipeMask, int storageMask) {
+        return raiseTopsToFullBlock(forMasks(pipeMask, storageMask));
+    }
+
+    /** Collision variant of {@link #coreOnly()}. */
+    public static VoxelShape collisionCoreOnly() {
+        return raiseTopsToFullBlock(CENTER);
+    }
+
+    /** Raises each AABB's maxY to 1.0 (visual shapes stay unchanged). */
+    public static VoxelShape raiseTopsToFullBlock(VoxelShape visual) {
+        VoxelShape out = Shapes.empty();
+        for (AABB box : visual.toAabbs()) {
+            out = Shapes.or(out, Shapes.box(box.minX, box.minY, box.minZ, box.maxX, 1.0, box.maxZ));
+        }
+        return out.optimize();
+    }
+
+    /**
      * Which storage-side {@link Direction} node voxel (same boxes as {@link #NODE}) contains the hit, in block-local
      * coordinates {@code [0,1)} per axis as used by {@link #forMasks}. Only faces present for the given masks are
      * considered (matches line vs multi topology). Empty when the ray hits pipe/core only.

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -36,6 +37,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.module.ModuleDefinitionLoader;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
 
 /**
@@ -225,6 +227,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 }
             }
             List<String> kinds = new ArrayList<>();
+            EnumSet<DuctTransportKind> suppressedMekKinds = EnumSet.noneOf(DuctTransportKind.class);
             Optional<DuctItemTransportSpec> itemTransport = Optional.empty();
             Optional<DuctFluidTransportSpec> fluidTransport = Optional.empty();
             Optional<DuctGasTransportSpec> gasTransport = Optional.empty();
@@ -244,7 +247,17 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                                     "Duct '{}' ({}): unknown can_transport dec '{}'", logicalId, e.getKey(), dec);
                             continue;
                         }
+                        if (kind == DuctTransportKind.GAS && !MekanismChemicalCompat.isLoaded()) {
+                            suppressedMekKinds.add(DuctTransportKind.GAS);
+                            AnotherDynamicsMod.LOGGER.warn(
+                                    "Duct '{}' ({}): can_transport '{}' needs Mekanism chemical API; skipping entry",
+                                    logicalId,
+                                    e.getKey(),
+                                    dec);
+                            continue;
+                        }
                         if (kind == DuctTransportKind.HEAT && !MekanismHeatCompat.isHeatCapabilityAvailable()) {
+                            suppressedMekKinds.add(DuctTransportKind.HEAT);
                             AnotherDynamicsMod.LOGGER.warn(
                                     "Duct '{}' ({}): can_transport '{}' needs Mekanism heat API; skipping entry",
                                     logicalId,
@@ -262,6 +275,13 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                         }
                     }
                 }
+            }
+            if (kinds.isEmpty()) {
+                AnotherDynamicsMod.LOGGER.info(
+                        "Duct '{}' ({}): no enabled transport kinds after Mekanism gating; not registering",
+                        logicalId,
+                        e.getKey());
+                continue;
             }
             Identifier defaultTexture = Identifier.fromNamespaceAndPath(
                     AnotherDynamicsMod.MOD_ID,
@@ -339,7 +359,8 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             disabledFeatures,
                             forbiddenFeatures,
                             alwaysOpaqueRendering,
-                            moduleSlots));
+                            moduleSlots,
+                            Set.copyOf(suppressedMekKinds)));
         }
 
         ModuleDefinitionLoader.tryApplyPrepared(prepared);

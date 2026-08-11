@@ -24,15 +24,15 @@ public final class SettingsCopierClient {
     private SettingsCopierClient() {}
 
     public static void blitSlotFrame(GuiGraphicsExtractor graphics, int x, int y) {
-        graphics.blit(RenderPipelines.GUI_TEXTURED, SLOT_FRAME_TEXTURE, x, y, 0, 0, 18, 18, 18, 18);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, SLOT_FRAME_TEXTURE, x, y, 0.0F, 0.0F, 18, 18, 18, 18);
     }
 
     public static void blitModuleSlotFrame(GuiGraphicsExtractor graphics, int x, int y) {
-        graphics.blit(RenderPipelines.GUI_TEXTURED, MODULE_SLOT_TEXTURE, x, y, 0, 0, 18, 18, 18, 18);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, MODULE_SLOT_TEXTURE, x, y, 0.0F, 0.0F, 18, 18, 18, 18);
     }
 
     /** Placeholder icon when a module slot has no item (duct module column). */
     public static void blitModuleGhostIcon(GuiGraphicsExtractor graphics, int x, int y) {
-        graphics.blit(RenderPipelines.GUI_TEXTURED, MODULE_GHOST_TEXTURE, x, y, 0, 0, 16, 16, 16, 16);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, MODULE_GHOST_TEXTURE, x, y, 0.0F, 0.0F, 16, 16, 16, 16);
     }
 }

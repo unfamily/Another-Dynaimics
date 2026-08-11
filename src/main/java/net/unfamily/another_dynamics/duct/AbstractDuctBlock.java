@@ -118,7 +118,11 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
 
     @Override
     protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext ctx) {
-        return getShape(state, level, pos, ctx);
+        BlockEntity be = level.getBlockEntity(pos);
+        if (be instanceof AbstractDuctBlockEntity duct) {
+            return DuctShapes.collisionForMasks(duct.getPipeMask(), duct.getVisualStorageMask());
+        }
+        return DuctShapes.collisionCoreOnly();
     }
 
     @Override

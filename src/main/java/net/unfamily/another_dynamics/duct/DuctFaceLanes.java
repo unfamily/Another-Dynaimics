@@ -97,9 +97,9 @@ public final class DuctFaceLanes {
     public int energyTicksUntilAction;
     public int energyRoundRobinCursor;
     /** RF routing for this face (including {@link NodeMode#NONE} pass-through from external push). */
-    public RoutingMode energyRoutingMode = RoutingMode.NEAREST_FIRST;
-    public RoutingMode energyRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
-    public RoutingMode energyRoutingModeRetriever = RoutingMode.NEAREST_FIRST;
+    public RoutingMode energyRoutingMode = RoutingMode.ROUND_ROBIN;
+    public RoutingMode energyRoutingModeExtractor = RoutingMode.ROUND_ROBIN;
+    public RoutingMode energyRoutingModeRetriever = RoutingMode.ROUND_ROBIN;
     /** Per-face FE input buffer (external push / extract toward network). */
     public int energyInputBufferFe;
     /** Per-face FE output buffer (network insert / adjacent machine pull). */
@@ -116,9 +116,9 @@ public final class DuctFaceLanes {
     /** Mek heat logistics throttle / round-robin (same rationale as {@link #energyTicksUntilAction}). */
     public int heatTicksUntilAction;
     public int heatRoundRobinCursor;
-    public RoutingMode heatRoutingMode = RoutingMode.NEAREST_FIRST;
-    public RoutingMode heatRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
-    public RoutingMode heatRoutingModeRetriever = RoutingMode.NEAREST_FIRST;
+    public RoutingMode heatRoutingMode = RoutingMode.ROUND_ROBIN;
+    public RoutingMode heatRoutingModeExtractor = RoutingMode.ROUND_ROBIN;
+    public RoutingMode heatRoutingModeRetriever = RoutingMode.ROUND_ROBIN;
 
     public DuctFaceLanes(DuctBlockEntity duct, Direction face, int moduleSlotCount) {
         this.duct = duct;
@@ -533,14 +533,14 @@ public final class DuctFaceLanes {
         energyOutputBufferFe = 0;
         energyExtractBufferLimitFe = 0;
         energyInsertBufferLimitFe = 0;
-        energyRoutingMode = RoutingMode.NEAREST_FIRST;
-        energyRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
-        energyRoutingModeRetriever = RoutingMode.NEAREST_FIRST;
+        energyRoutingMode = RoutingMode.ROUND_ROBIN;
+        energyRoutingModeExtractor = RoutingMode.ROUND_ROBIN;
+        energyRoutingModeRetriever = RoutingMode.ROUND_ROBIN;
         heatTicksUntilAction = 0;
         heatRoundRobinCursor = 0;
-        heatRoutingMode = RoutingMode.NEAREST_FIRST;
-        heatRoutingModeExtractor = RoutingMode.NEAREST_FIRST;
-        heatRoutingModeRetriever = RoutingMode.NEAREST_FIRST;
+        heatRoutingMode = RoutingMode.ROUND_ROBIN;
+        heatRoutingModeExtractor = RoutingMode.ROUND_ROBIN;
+        heatRoutingModeRetriever = RoutingMode.ROUND_ROBIN;
         transportEnabledMask = -1;
     }
 

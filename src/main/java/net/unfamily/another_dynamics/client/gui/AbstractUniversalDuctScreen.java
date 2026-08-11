@@ -628,7 +628,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     @Nullable
     private Component transientFeedback;
     private long transientFeedbackHideAt;
-    private int transientFeedbackColor = 0xFFFFFF;
+    private int transientFeedbackColor = 0xFFFFFFFF;
 
     /**
      * Ghost ingredient consumer for JEI drag-and-drop into the filter calibration slot.
@@ -1741,10 +1741,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
      * Detail view keeps a single horizontal picker row without toggles.
      */
     private void layoutHubTransportGrid() {
+        Optional<DuctDefinition> defOpt =
+            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId());
         EnumSet<DuctTransportKind> ductKinds =
-            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
-                .map(DuctDefinition::enabledTransportKinds)
-                .orElse(EnumSet.of(DuctTransportKind.ITEM));
+            defOpt.map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
+        EnumSet<DuctTransportKind> suppressedMek =
+            defOpt.map(DuctDefinition::suppressedMekKindsSet).orElse(EnumSet.noneOf(DuctTransportKind.class));
         boolean hubMain =
             menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
             menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0 &&
@@ -1755,7 +1757,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             int gridRowStride = 2 * cellStride;
             int idx = 0;
             for (DuctTransportKind k : DuctTransportKind.values()) {
-                if (!ductKinds.contains(k)) {
+                boolean show = ductKinds.contains(k) || suppressedMek.contains(k);
+                if (!show) {
                     if (k.ordinal() < transportToggleButtons.size()) {
                         transportToggleButtons.get(k.ordinal()).setWidth(0);
                         transportToggleButtons.get(k.ordinal()).setHeight(0);
@@ -1796,7 +1799,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     break;
                 }
                 Button b = transportKindPickerButtons.get(k.ordinal());
-                if (!ductKinds.contains(k)) {
+                boolean show = ductKinds.contains(k) || suppressedMek.contains(k);
+                if (!show) {
                     b.setWidth(0);
                     b.setHeight(0);
                     continue;
@@ -2928,7 +2932,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 editW,
                 ENERGY_BUF_FILL_Y);
 
-        int insertColor = isExtractOnlyEnergyFace() ? 0x808080 : 0x404040;
+        int insertColor = isExtractOnlyEnergyFace() ? 0xFF808080 : 0xFF404040;
         drawCenteredEnergyBufferLabel(
                 graphics,
                 Component.translatable("gui.another_dynamics.duct_node.energy_buffer.insert"),
@@ -2960,7 +2964,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private void drawCenteredEnergyBufferLabel(
             GuiGraphicsExtractor graphics, Component text, int editGuiLeft, int editW, int guiY) {
-        drawCenteredEnergyBufferLabel(graphics, text, editGuiLeft, editW, guiY, 0x404040);
+        drawCenteredEnergyBufferLabel(graphics, text, editGuiLeft, editW, guiY, 0xFF404040);
     }
 
     private void applyFilterEntryEditBoxTextStyle() {
@@ -3147,7 +3151,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         energyBufInsertUndoButton.visible = showEnergyBufBlock && !extractOnlyEnergy;
         if (energyBufInsertBox != null) {
             energyBufInsertBox.setEditable(!extractOnlyEnergy);
-            energyBufInsertBox.setTextColor(extractOnlyEnergy ? 0x808080 : FILTER_ENTRY_EDIT_TEXT_COLOR);
+            energyBufInsertBox.setTextColor(extractOnlyEnergy ? 0xFF808080 : FILTER_ENTRY_EDIT_TEXT_COLOR);
         }
         routingMinusButton.visible = showAmountBlock;
         routingPlusButton.visible = showAmountBlock;
@@ -3625,15 +3629,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int slotX = row.slotScreenX();
         int slotY = row.slotScreenY();
         graphics.blit(
-                SINGLE_SLOT_REMOTE_NODE,
-                slotX,
-                slotY,
-                0,
-                0,
-                ADVANCED_REMOTE_NODE_SLOT_SIZE,
-                ADVANCED_REMOTE_NODE_SLOT_SIZE,
-                ADVANCED_REMOTE_NODE_SLOT_SIZE,
-                ADVANCED_REMOTE_NODE_SLOT_SIZE);
+            RenderPipelines.GUI_TEXTURED,
+            SINGLE_SLOT_REMOTE_NODE,
+            slotX,
+            slotY,
+            0.0F,
+            0.0F,
+            ADVANCED_REMOTE_NODE_SLOT_SIZE,
+            ADVANCED_REMOTE_NODE_SLOT_SIZE,
+            ADVANCED_REMOTE_NODE_SLOT_SIZE,
+            ADVANCED_REMOTE_NODE_SLOT_SIZE);
         if (editModeRemoteNodeDraft != null) {
             ItemStack icon = new ItemStack(ModItems.REMOTE_NODE_SELECTOR.get());
             icon.set(ModDataComponents.REMOTE_NODE_ENDPOINT.get(), editModeRemoteNodeDraft);
@@ -3649,7 +3654,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         coordLine,
                         centeredPanelTextScreenX(coordLine),
                         row.coordTextScreenY(),
-                        0x404040,
+                        0xFF404040,
                         false);
             } else {
                 String coordLine =
@@ -3660,7 +3665,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         coordLine,
                         centeredPanelTextScreenX(coordLine),
                         row.coordTextScreenY(),
-                        0x707070,
+                        0xFF707070,
                         false);
             }
         } else {
@@ -3713,11 +3718,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int groupW = labelW + REMOTE_NODE_AXIS_LABEL_GAP + REMOTE_NODE_COORD_EDIT_W;
         int textY = row.coordTextScreenY() + (BTN_H - this.font.lineHeight) / 2;
         int x = remoteNodeCoordAxisLabelScreenX;
-        graphics.text(this.font, labelX, x, textY, 0x404040, false);
+        graphics.text(this.font, labelX, x, textY, 0xFF404040, false);
         x += groupW + AMOUNT_INNER_GAP;
-        graphics.text(this.font, labelY, x, textY, 0x404040, false);
+        graphics.text(this.font, labelY, x, textY, 0xFF404040, false);
         x += groupW + AMOUNT_INNER_GAP;
-        graphics.text(this.font, labelZ, x, textY, 0x404040, false);
+        graphics.text(this.font, labelZ, x, textY, 0xFF404040, false);
     }
 
     private Component remoteNodeCoordLabel(@Nullable DuctDirectionalEndpoint bound) {
@@ -4064,7 +4069,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (!canOpenCopierFilterEntry()) {
             transientFeedback =
                     Component.translatable(FilterListMaterialKind.pickBeforeEditTooltipKey());
-            transientFeedbackColor = 0xFFAA55;
+            transientFeedbackColor = 0xFFFFAA55;
             transientFeedbackHideAt = Util.getMillis() + TRANSIENT_FEEDBACK_MS;
             return;
         }
@@ -4542,16 +4547,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int slotX = editModeSlotX();
         int slotY = editModeSlotY();
         guiGraphics.blit(
+            RenderPipelines.GUI_TEXTURED,
             SINGLE_SLOT,
             slotX,
             slotY,
-            0,
-            0,
+            0.0F,
+            0.0F,
             slotSize,
             slotSize,
             slotSize,
-            slotSize
-        );
+            slotSize);
         if (
             ghostSlotGas != null &&
             !MekanismChemicalCompat.isEmptyStack(ghostSlotGas)
@@ -6135,10 +6140,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             channelButton.setTooltip(Tooltip.create(channelTip));
         }
 
+        Optional<DuctDefinition> syncDefOpt =
+            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId());
         EnumSet<DuctTransportKind> enabledKinds =
-            DuctDefinitionRegistry.getByLogicalId(menu.getClientDuctLogicalId())
-                .map(DuctDefinition::enabledTransportKinds)
-                .orElse(EnumSet.of(DuctTransportKind.ITEM));
+            syncDefOpt.map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
+        EnumSet<DuctTransportKind> suppressedMekKinds =
+            syncDefOpt.map(DuctDefinition::suppressedMekKindsSet).orElse(EnumSet.noneOf(DuctTransportKind.class));
         boolean hubMain =
             menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1 &&
             menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0 &&
@@ -6148,6 +6155,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 break;
             }
             Button picker = transportKindPickerButtons.get(k.ordinal());
+            boolean suppressed = suppressedMekKinds.contains(k);
             boolean inDuct = enabledKinds.contains(k);
             boolean laneOn = inDuct && isTransportKindEnabledInMask(k);
             if (hubMain && inDuct) {
@@ -6159,12 +6167,33 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     )
                 );
             }
-            picker.active = inDuct && (!hubMain || laneOn);
+            picker.active = inDuct && !suppressed && (!hubMain || laneOn);
             if (k.ordinal() < transportToggleButtons.size()) {
                 Button toggle = transportToggleButtons.get(k.ordinal());
+                if (suppressed) {
+                    toggle.active = false;
+                    if (hubMain) {
+                        toggle.setMessage(hubToggleLabel(false));
+                        ChatFormatting accent = hubTransportColumnColor(k);
+                        toggle.setTooltip(
+                            Tooltip.create(
+                                Component.translatable(
+                                                "gui.another_dynamics.duct_node.transport_toggle.tooltip.disabled")
+                                        .append(
+                                                Component.literal(" — ")
+                                                        .withStyle(ChatFormatting.GRAY))
+                                        .append(
+                                                Component.translatable(
+                                                                "gui.another_dynamics.duct_node.transport."
+                                                                        + k.name().toLowerCase())
+                                                        .withStyle(accent))));
+                    }
+                    continue;
+                }
                 if (!inDuct) {
                     continue;
                 }
+                toggle.active = true;
                 if (hubMain) {
                     toggle.setMessage(hubToggleLabel(laneOn));
                     ChatFormatting accent = hubTransportColumnColor(k);
@@ -6608,30 +6637,30 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
         if (subView == SubView.HOW_TO_USE) {
             graphics.blit(
+                RenderPipelines.GUI_TEXTURED,
                 VALID_KEYS_TEXTURE,
                 this.leftPos,
                 this.topPos,
-                0,
-                0,
+                0.0F,
+                0.0F,
                 this.imageWidth,
                 this.imageHeight,
                 TEXTURE_WIDTH,
-                TEXTURE_HEIGHT
-            );
+                TEXTURE_HEIGHT);
             return;
         }
 
         graphics.blit(
+            RenderPipelines.GUI_TEXTURED,
             TEXTURE,
             this.leftPos,
             this.topPos,
-            0,
-            0,
+            0.0F,
+            0.0F,
             this.imageWidth,
             this.imageHeight,
             TEXTURE_WIDTH,
-            TEXTURE_HEIGHT
-        );
+            TEXTURE_HEIGHT);
 
         blitMachineSlotBackgrounds(graphics);
 
@@ -6672,21 +6701,21 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             int entryX = this.leftPos + ENTRY_X;
             int entryY = this.topPos + FIRST_FILTER_ROW_Y + i * ENTRY_HEIGHT;
             graphics.blit(
+                RenderPipelines.GUI_TEXTURED,
                 ENTRY_ROW_TEXTURE,
                 entryX,
                 entryY,
-                0,
-                0,
+                0.0F,
+                0.0F,
                 ENTRY_WIDTH,
                 ENTRY_HEIGHT,
                 ENTRY_WIDTH,
-                ENTRY_HEIGHT
-            );
+                ENTRY_HEIGHT);
 
             // Match DeepDrawerExtractorScreen: icon slot inset 3px from entry top-left (entry row is 24px tall).
             int slotX = entryX + 3;
             int slotY = entryY + 3;
-            graphics.blit(SINGLE_SLOT, slotX, slotY, 0, 0, 18, 18, 18, 18);
+            graphics.blit(RenderPipelines.GUI_TEXTURED, SINGLE_SLOT, slotX, slotY, 0.0F, 0.0F, 18, 18, 18, 18);
             String filter =
                 idx < list.size() && list.get(idx) != null ? list.get(idx) : "";
             renderFilterRowSlotIcon(graphics, filter, slotX, slotY);
@@ -6708,17 +6737,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     filterRemoteNodeUiEnabled() ? remoteNodeAt(idx) : null;
             if (boundRemote != null) {
                 int filterTextY = entryY + 4;
-                graphics.text(font, displayText, textX, filterTextY, 0x404040, false);
+                graphics.text(font, displayText, textX, filterTextY, 0xFF404040, false);
                 String coordLine =
                         truncateRemoteNodeCoordText(
                                 remoteNodeSummaryCoordText(
                                         boundRemote, remoteIgnoreChannelAt(idx)),
                                 maxTextWidth);
                 int coordY = filterTextY + font.lineHeight + 1;
-                graphics.text(font, coordLine, textX, coordY, 0x707070, false);
+                graphics.text(font, coordLine, textX, coordY, 0xFF707070, false);
             } else {
                 int textY = entryY + (ENTRY_HEIGHT - font.lineHeight) / 2;
-                graphics.text(font, displayText, textX, textY, 0x404040, false);
+                graphics.text(font, displayText, textX, textY, 0xFF404040, false);
             }
         }
 
@@ -6729,16 +6758,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             int scrollbarY = this.topPos + SCROLLBAR_Y_REL;
             int buttonDownY = this.topPos + BUTTON_DOWN_Y_REL;
             graphics.blit(
+                RenderPipelines.GUI_TEXTURED,
                 SCROLLBAR_TEXTURE,
                 scrollbarX,
                 scrollbarY,
-                0,
-                0,
+                0.0F,
+                0.0F,
                 SCROLLBAR_WIDTH,
                 SCROLLBAR_HEIGHT,
                 32,
-                34
-            );
+                34);
             int upV =
                 mouseX >= scrollbarX &&
                 mouseX < scrollbarX + SCROLLBAR_WIDTH &&
@@ -6747,16 +6776,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     ? HANDLE_SIZE
                     : 0;
             graphics.blit(
+                RenderPipelines.GUI_TEXTURED,
                 SCROLLBAR_TEXTURE,
                 scrollbarX,
                 buttonUpY,
-                SCROLLBAR_WIDTH * 2,
-                upV,
+                (float) (SCROLLBAR_WIDTH * 2),
+                (float) (upV),
                 HANDLE_SIZE,
                 HANDLE_SIZE,
                 32,
-                34
-            );
+                34);
             int downV =
                 mouseX >= scrollbarX &&
                 mouseX < scrollbarX + SCROLLBAR_WIDTH &&
@@ -6765,16 +6794,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     ? HANDLE_SIZE
                     : 0;
             graphics.blit(
+                RenderPipelines.GUI_TEXTURED,
                 SCROLLBAR_TEXTURE,
                 scrollbarX,
                 buttonDownY,
-                SCROLLBAR_WIDTH * 3,
-                downV,
+                (float) (SCROLLBAR_WIDTH * 3),
+                (float) (downV),
                 HANDLE_SIZE,
                 HANDLE_SIZE,
                 32,
-                34
-            );
+                34);
             int maxScroll = maxFilterScroll();
             if (maxScroll > 0) {
                 double ratio = (double) filterScrollOffset / maxScroll;
@@ -6789,16 +6818,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         ? HANDLE_SIZE
                         : 0;
                 graphics.blit(
+                    RenderPipelines.GUI_TEXTURED,
                     SCROLLBAR_TEXTURE,
                     scrollbarX,
                     handleY,
-                    SCROLLBAR_WIDTH,
-                    hV,
+                    (float) (SCROLLBAR_WIDTH),
+                    (float) (hV),
                     HANDLE_SIZE,
                     HANDLE_SIZE,
                     32,
-                    34
-                );
+                    34);
             }
         }
     }
@@ -6838,28 +6867,29 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         for (int i = 0; i < menu.moduleSlotCount(); i++) {
             int y = DuctNodeMenu.SLOT_MODULE_BACKGROUND_Y0 + i * 18;
             graphics.blit(
+                RenderPipelines.GUI_TEXTURED,
                 MODULE_SLOT,
                 this.leftPos + DuctNodeMenu.SLOT_MODULE_BACKGROUND_X,
                 this.topPos + y,
-                0,
-                0,
+                0.0F,
+                0.0F,
                 sw,
                 sh,
                 sw,
-                sh
-            );
+                sh);
         }
         if (channelButton != null && channelButton.visible) {
             graphics.blit(
-                    SINGLE_SLOT,
-                    this.leftPos + DuctNodeMenu.CHANNEL_BACKGROUND_X,
-                    this.topPos + DuctNodeMenu.CHANNEL_BACKGROUND_Y,
-                    0,
-                    0,
-                    sw,
-                    sh,
-                    sw,
-                    sh);
+                RenderPipelines.GUI_TEXTURED,
+                SINGLE_SLOT,
+                this.leftPos + DuctNodeMenu.CHANNEL_BACKGROUND_X,
+                this.topPos + DuctNodeMenu.CHANNEL_BACKGROUND_Y,
+                0.0F,
+                0.0F,
+                sw,
+                sh,
+                sw,
+                sh);
         }
         if (showsSettingsCopierColumn() && menu.copySettingsSlotIndex() >= 0) {
             SettingsCopierClient.blitSlotFrame(
@@ -6924,8 +6954,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             transientFeedbackColor =
                     messageId == DuctGuiFeedbackPayload.PASTE_FAILED
                                     || messageId == DuctGuiFeedbackPayload.WRONG_MODE
-                            ? 0xFF5555
-                            : 0x55FF55;
+                            ? 0xFFFF5555
+                            : 0xFF55FF55;
             transientFeedbackHideAt = Util.getMillis() + TRANSIENT_FEEDBACK_MS;
         }
     }
@@ -7509,7 +7539,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             beforeComponent,
             rowX,
             rowY,
-            0x404040,
+            0xFF404040,
             false
         );
         int exampleX = rowX + beforeWidth;
@@ -7521,7 +7551,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             mouseX <= sx + exampleWidth &&
             mouseY >= sy &&
             mouseY <= sy + this.font.lineHeight;
-        int exampleColor = hovered ? 0x0066FF : 0x0066CC;
+        int exampleColor = hovered ? 0xFF0066FF : 0xFF0066CC;
         guiGraphics.text(
             this.font,
             exampleText,
@@ -7550,7 +7580,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 afterComponent,
                 afterX,
                 rowY,
-                0x404040,
+                0xFF404040,
                 false
             );
         }
@@ -7605,7 +7635,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     beforeC,
                     cursorX,
                     rowY,
-                    0x404040,
+                    0xFF404040,
                     false
                 );
                 cursorX += this.font.width(beforeText);
@@ -7621,7 +7651,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     mouseX <= sx + exW &&
                     mouseY >= sy &&
                     mouseY <= sy + this.font.lineHeight;
-                int color = hovered ? 0x0066FF : 0x0066CC;
+                int color = hovered ? 0xFF0066FF : 0xFF0066CC;
                 guiGraphics.text(
                     this.font,
                     exText,
@@ -7645,7 +7675,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         middleC,
                         cursorX,
                         rowY,
-                        0x404040,
+                        0xFF404040,
                         false
                     );
                     cursorX += this.font.width(middleText);
@@ -7656,7 +7686,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                             middleC,
                             cursorX,
                             rowY,
-                            0x404040,
+                            0xFF404040,
                             false
                         );
                         cursorX += this.font.width(middleText);
@@ -7666,7 +7696,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                             afterC,
                             cursorX,
                             rowY,
-                            0x404040,
+                            0xFF404040,
                             false
                         );
                     }
@@ -7820,7 +7850,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             titleComponent,
             titleX,
             7,
-            0x404040,
+            0xFF404040,
             false
         );
 
@@ -7873,7 +7903,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 capLabel,
                 labelX,
                 labelY,
-                0x404040,
+                0xFF404040,
                 false
             );
 
@@ -7899,7 +7929,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     keepLabel,
                     labelX2,
                     labelY2,
-                    0x404040,
+                    0xFF404040,
                     false
                 );
             }
@@ -7933,7 +7963,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     amountLabel,
                     labelX,
                     labelY,
-                    0x404040,
+                    0xFF404040,
                     false
                 );
             }
@@ -8009,7 +8039,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     Component.translatable(p + "operators"),
                     HELP_TEXT_X,
                     helpY,
-                    0x404040,
+                    0xFF404040,
                     false
             );
             helpY += helpLineStep;
@@ -8019,7 +8049,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     Component.translatable(p + "nbt"),
                     HELP_TEXT_X,
                     helpY,
-                    0x404040,
+                    0xFF404040,
                     false
                 );
                 helpY += helpLineStep;

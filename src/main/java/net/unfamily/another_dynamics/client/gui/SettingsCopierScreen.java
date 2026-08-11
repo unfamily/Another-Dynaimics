@@ -8,6 +8,7 @@ import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.component.DataComponents;
@@ -200,11 +201,12 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (menu.isHubLayer()) {
             graphics.blit(
+                    RenderPipelines.GUI_TEXTURED,
                     HUB_TEXTURE,
                     this.leftPos,
                     this.topPos,
-                    0,
-                    0,
+                    0.0F,
+                    0.0F,
                     this.imageWidth,
                     this.imageHeight,
                     DuctGuiLayout.NODE_TEXTURE_WIDTH,
@@ -213,11 +215,12 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         }
         if (menu.isImportLayer()) {
             graphics.blit(
+                    RenderPipelines.GUI_TEXTURED,
                     VIRTUAL_NODE_TEXTURE,
                     this.leftPos,
                     this.topPos,
-                    0,
-                    0,
+                    0.0F,
+                    0.0F,
                     this.imageWidth,
                     this.imageHeight,
                     DuctGuiLayout.NODE_TEXTURE_WIDTH,
@@ -270,7 +273,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                     Component.translatable("gui.another_dynamics.settings_copier.importing");
             int titleWidth = this.font.width(importTitle);
             int titleX = (this.imageWidth - titleWidth) / 2;
-            graphics.text(this.font, importTitle, titleX, TITLE_Y, 0x404040, false);
+            graphics.text(this.font, importTitle, titleX, TITLE_Y, 0xFF404040, false);
             Component primaryCaption =
                     Component.translatable("gui.another_dynamics.settings_copier.import.name_primary");
             graphics.text(
@@ -278,7 +281,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                     primaryCaption,
                     SettingsCopierMenu.IMPORT_PRIMARY_NAME_X,
                     SettingsCopierMenu.IMPORT_LABEL_Y,
-                    0x404040,
+                    0xFF404040,
                     false);
             if (menu.clientImportNeedsSecondCopier()) {
                 Component secondaryCaption =
@@ -288,7 +291,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                         secondaryCaption,
                         SettingsCopierMenu.importSecondaryNameX(this.imageWidth),
                         SettingsCopierMenu.IMPORT_LABEL_Y,
-                        0x404040,
+                        0xFF404040,
                         false);
             }
             return;
@@ -296,13 +299,13 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         if (menu.isHubLayer()) {
             int titleWidth = this.font.width(this.title);
             int titleX = (this.imageWidth - titleWidth) / 2;
-            graphics.text(this.font, this.title, titleX, TITLE_Y, 0x404040, false);
+            graphics.text(this.font, this.title, titleX, TITLE_Y, 0xFF404040, false);
             Component renameCaption =
                     Component.translatable("gui.another_dynamics.settings_copier.rename_section");
             int captionWidth = this.font.width(renameCaption);
             int captionX = (this.imageWidth - captionWidth) / 2;
             int captionY = HUB_RENAME_Y - this.font.lineHeight - RENAME_LABEL_GAP_ABOVE_BOX;
-            graphics.text(this.font, renameCaption, captionX, captionY, 0x404040, false);
+            graphics.text(this.font, renameCaption, captionX, captionY, 0xFF404040, false);
             return;
         }
         super.extractLabels(graphics, mouseX, mouseY);

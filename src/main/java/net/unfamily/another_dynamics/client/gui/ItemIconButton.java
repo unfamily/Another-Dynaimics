@@ -80,7 +80,7 @@ public class ItemIconButton extends Button {
         int iy = getY() + (getHeight() - iconSize) / 2;
         Identifier texture = overlayTexture != null ? overlayTexture.get() : null;
         if (texture != null) {
-            graphics.blit(RenderPipelines.GUI_TEXTURED, texture, ix, iy, 0, 0, iconSize, iconSize, iconSize, iconSize);
+            graphics.blit(RenderPipelines.GUI_TEXTURED, texture, ix, iy, 0.0F, 0.0F, iconSize, iconSize, iconSize, iconSize);
             return;
         }
         ItemStack stack = iconStack.get();

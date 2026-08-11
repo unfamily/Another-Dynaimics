@@ -6257,15 +6257,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private static void applyExtractBatchAgainstCap(DuctFaceNode node, int cap, boolean trackMaxOnCapIncrease) {
         int prev = node.extractBatch;
-        boolean pinned = node.isExtractBatchPinnedToCap();
+        // Explicit pin, or value was already sitting on the previous setting cap (default max / "M" without a
+        // persisted pin). Otherwise inserting an increment module leaves quantity stuck below the new max.
+        boolean wasAtPreviousMax =
+                node.lastExtractBatchSettingCapApplied > 0
+                        && prev >= node.lastExtractBatchSettingCapApplied;
+        boolean pinned = node.isExtractBatchPinnedToCap() || wasAtPreviousMax;
         if (trackMaxOnCapIncrease && pinned) {
             node.extractBatch = cap;
             node.extractBatchPinnedToMax = true;
         } else {
             node.extractBatch = Mth.clamp(prev, 0, cap);
-            if (node.extractBatch < cap) {
-                node.extractBatchPinnedToMax = false;
-            }
+            // Persist "at max" whenever the stored amount equals the current cap (item/fluid/gas).
+            node.extractBatchPinnedToMax = cap > 0 && node.extractBatch >= cap;
         }
         node.lastExtractBatchSettingCapApplied = cap;
     }
@@ -6567,6 +6571,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             clampFaceFiltersToSpec();
             ensureAllFaceTransportMasks();
             migrateLegacyRemoteNodeEndpoints();
+            for (Direction d : Direction.values()) {
+                if (getFaceLanes(d).nodeMode.usesExtractBatchField()) {
+                    clampExtractAmount(getFaceNode(d), d);
+                    clampFluidExtractAmount(getFluidFaceNode(d), d);
+                    clampGasExtractAmount(getGasFaceNode(d), d);
+                }
+            }
             setChanged();
             return;
         }
