@@ -145,6 +145,12 @@ dependencies {
 
     // Pipez (optional): filter import from upgrade data components; no compile-time API usage.
     localRuntime "curse.maven:pipez-443900:5609056"
+    // PipezRetriever (optional, 1.21.1): retrieve mode sides when importing whole pipes.
+    localRuntime "curse.maven:pipezretriever-1405188:7336438"
+
+    // Cable Facades (optional): facade whitelist + hidden mesh under covers.
+    compileOnly "curse.maven:cable-facades-1140577:8271740"
+    localRuntime "curse.maven:cable-facades-1140577:8271740"
 
     // FTB Ultimine (optional): logical duct id selection grouping.
     compileOnly "curse.maven:architectury-api-419699:5786327"

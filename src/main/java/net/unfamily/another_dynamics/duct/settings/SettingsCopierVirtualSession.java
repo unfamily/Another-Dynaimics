@@ -9,6 +9,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -52,6 +53,13 @@ public final class SettingsCopierVirtualSession {
     private final SimpleContainerData menuData;
     private final EnumSet<DuctTransportKind> enabledKinds;
     private final List<DuctTransportKind> orderedKinds;
+
+    /**
+     * WHOLE mode: editable face inside the multi-face root. Virtual editor edits one face; persist writes it back
+     * into {@link #wholeRoot} without collapsing to FILTER/ALL.
+     */
+    private @org.jetbrains.annotations.Nullable CompoundTag wholeRoot;
+    private Direction wholeEditFace = VIRTUAL_FACE;
 
     private int menuTransportKindIndex;
     private int menuUiLayer;
@@ -174,6 +182,35 @@ public final class SettingsCopierVirtualSession {
             lanes.ensureTransportEnabledMask(enabledKinds);
             return;
         }
+        if (storeKind == SettingsCopierStoreKind.WHOLE) {
+            DuctFaceSettingsSnapshot.readFromCopier(copier).ifPresent(tag -> {
+                if (!DuctFaceSettingsSnapshot.isWholePayload(tag)) {
+                    return;
+                }
+                wholeRoot = tag.copy();
+                CompoundTag faces = wholeRoot.getCompound(DuctFaceSettingsSnapshot.KEY_FACES);
+                wholeEditFace = pickWholeEditFace(faces);
+                CompoundTag faceData = faces.getCompound(Integer.toString(wholeEditFace.ordinal()));
+                if (!faceData.isEmpty()) {
+                    if (!DuctFaceSettingsSnapshot.isAllPayload(faceData)) {
+                        faceData = faceData.copy();
+                        faceData.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.ALL.toTag());
+                        if (!faceData.contains(DuctFaceSettingsSnapshot.KEY_FMT, Tag.TAG_INT)) {
+                            faceData.putInt(
+                                    DuctFaceSettingsSnapshot.KEY_FMT, DuctFaceSettingsSnapshot.FORMAT_VERSION);
+                        }
+                    }
+                    int fmt = faceData.getInt(DuctFaceSettingsSnapshot.KEY_FMT);
+                    if (fmt == DuctFaceSettingsSnapshot.FORMAT_VERSION) {
+                        lanes.loadCopierSettings(registries, faceData, enabledKinds);
+                    } else {
+                        DuctFaceSettingsSnapshot.applyLegacyToLanes(lanes, faceData, registries, enabledKinds);
+                    }
+                }
+            });
+            lanes.ensureTransportEnabledMask(enabledKinds);
+            return;
+        }
         DuctFaceSettingsSnapshot.readFromCopier(copier).ifPresent(tag -> {
             if (DuctFilterListSnapshot.isFilterPayload(tag)) {
                 filterListMaterialKind = DuctFilterListSnapshot.getMaterialKind(tag);
@@ -201,11 +238,54 @@ public final class SettingsCopierVirtualSession {
         lanes.ensureTransportEnabledMask(enabledKinds);
     }
 
+    /** Prefer a configured (non-{@link NodeMode#NONE}) face; otherwise {@link #VIRTUAL_FACE}. */
+    private static Direction pickWholeEditFace(CompoundTag faces) {
+        Direction fallback = VIRTUAL_FACE;
+        for (Direction dir : Direction.values()) {
+            String key = Integer.toString(dir.ordinal());
+            if (!faces.contains(key, Tag.TAG_COMPOUND)) {
+                continue;
+            }
+            CompoundTag face = faces.getCompound(key);
+            if (face.contains("Shared", Tag.TAG_COMPOUND)) {
+                byte mode = face.getCompound("Shared").getByte("NodeMode");
+                if (mode != (byte) NodeMode.NONE.ordinal()) {
+                    return dir;
+                }
+            }
+            if (dir == VIRTUAL_FACE) {
+                fallback = dir;
+            }
+        }
+        return fallback;
+    }
+
     public void persistToCopier(ItemStack copier) {
         var registries = player.registryAccess();
         if (storeKind == SettingsCopierStoreKind.ALL) {
             DuctFaceSettingsSnapshot.writeToCopier(
                     copier, DuctFaceSettingsSnapshot.captureFromLanes(lanes, registries, enabledKinds));
+            return;
+        }
+        if (storeKind == SettingsCopierStoreKind.WHOLE) {
+            CompoundTag faceSnap = DuctFaceSettingsSnapshot.captureFromLanes(lanes, registries, enabledKinds);
+            if (wholeRoot == null) {
+                CompoundTag faces = new CompoundTag();
+                faces.put(Integer.toString(wholeEditFace.ordinal()), faceSnap);
+                DuctFaceSettingsSnapshot.writeToCopier(copier, DuctFaceSettingsSnapshot.buildWholeRoot(faces));
+                return;
+            }
+            CompoundTag root = wholeRoot.copy();
+            CompoundTag faces =
+                    root.contains(DuctFaceSettingsSnapshot.KEY_FACES, Tag.TAG_COMPOUND)
+                            ? root.getCompound(DuctFaceSettingsSnapshot.KEY_FACES).copy()
+                            : new CompoundTag();
+            faces.put(Integer.toString(wholeEditFace.ordinal()), faceSnap);
+            root.put(DuctFaceSettingsSnapshot.KEY_FACES, faces);
+            root.putInt(DuctFaceSettingsSnapshot.KEY_FMT, DuctFaceSettingsSnapshot.FORMAT_VERSION);
+            root.putByte(SettingsCopierStoreKind.TAG, SettingsCopierStoreKind.WHOLE.toTag());
+            DuctFaceSettingsSnapshot.writeToCopier(copier, root);
+            wholeRoot = root;
             return;
         }
         FilterListMaterialKind kind = filterListMaterialKind;
@@ -415,7 +495,9 @@ public final class SettingsCopierVirtualSession {
     }
 
     private boolean enterMenuDetail() {
-        if (storeKind != SettingsCopierStoreKind.ALL || orderedKinds.size() <= 1 || menuUiLayer != 0) {
+        if ((storeKind != SettingsCopierStoreKind.ALL && storeKind != SettingsCopierStoreKind.WHOLE)
+                || orderedKinds.size() <= 1
+                || menuUiLayer != 0) {
             return false;
         }
         menuUiLayer = 1;

@@ -8,6 +8,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
@@ -50,6 +51,7 @@ public final class AnotherDynamicsMod {
 
         modEventBus.addListener(ModNetwork::register);
         modEventBus.addListener(AnotherDynamicsMod::onRegisterCapabilities);
+        modEventBus.addListener(AnotherDynamicsMod::onCommonSetup);
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.COMMON, Config.SPEC);
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
@@ -57,6 +59,18 @@ public final class AnotherDynamicsMod {
         NeoForge.EVENT_BUS.register(DuctJumpAssistEvents.class);
 
         initOptionalIntegrations();
+    }
+
+    private static void onCommonSetup(FMLCommonSetupEvent event) {
+        if (ModList.get().isLoaded("cable_facades")) {
+            try {
+                Class.forName("net.unfamily.another_dynamics.integration.cablefacades.CableFacadesCompat")
+                        .getMethod("register", FMLCommonSetupEvent.class)
+                        .invoke(null, event);
+            } catch (ReflectiveOperationException e) {
+                LOGGER.error("Failed to register Cable Facades compatibility", e);
+            }
+        }
     }
 
     private static void initOptionalIntegrations() {

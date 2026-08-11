@@ -1,12 +1,16 @@
 package net.unfamily.another_dynamics.duct.settings;
 
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 /** Stored payload / GUI mode for {@link net.unfamily.another_dynamics.item.SettingsCopierItem}. */
 public enum SettingsCopierStoreKind {
     ALL,
-    FILTER;
+    FILTER,
+    /** Six-face Pipez→AD import (and whole-duct paste). */
+    WHOLE;
 
     /** Legacy key inside {@link ModDataComponents#DUCT_FACE_SETTINGS} snapshot root. */
     public static final String TAG = "Kind";
@@ -20,11 +24,14 @@ public enum SettingsCopierStoreKind {
         if (o == FILTER.ordinal()) {
             return FILTER;
         }
+        if (o == WHOLE.ordinal()) {
+            return WHOLE;
+        }
         return ALL;
     }
 
-    public static SettingsCopierStoreKind fromCompound(net.minecraft.nbt.CompoundTag tag) {
-        if (tag != null && tag.contains(TAG, net.minecraft.nbt.Tag.TAG_BYTE)) {
+    public static SettingsCopierStoreKind fromCompound(CompoundTag tag) {
+        if (tag != null && tag.contains(TAG, Tag.TAG_BYTE)) {
             return fromTag(tag.getByte(TAG));
         }
         return ALL;
@@ -32,7 +39,14 @@ public enum SettingsCopierStoreKind {
 
     /** Authoritative mode for tooltips, hub GUI, model predicates, and Copy/Paste checks. */
     public static SettingsCopierStoreKind getMode(ItemStack stack) {
-        return isFilterMode(stack) ? FILTER : ALL;
+        if (isFilterMode(stack)) {
+            return FILTER;
+        }
+        CompoundTag tag = stack.get(ModDataComponents.DUCT_FACE_SETTINGS.get());
+        if (tag != null && fromCompound(tag) == WHOLE) {
+            return WHOLE;
+        }
+        return ALL;
     }
 
     /** @see SettingsCopierItemProperties#isFilterMode */

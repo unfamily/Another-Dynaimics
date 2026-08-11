@@ -103,6 +103,18 @@ Example mod description.
     side="BOTH"
 
 [[dependencies.${mod_id}]]
+    modId="pipezretriever"
+    type="optional"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="cable_facades"
+    type="optional"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
     modId="ftbultimine"
     type="optional"
     ordering="AFTER"

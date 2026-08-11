@@ -31,7 +31,8 @@ import java.util.List;
 
 /**
  * Copies duct face <em>configuration</em> via GUI Copy; right-click (air or block) opens the configurator;
- * shift-right-click on a duct face pastes {@code all} mode only.
+ * shift-right-click on a duct face pastes {@code all}/{@code whole} mode; shift-right-click on a Pipez pipe
+ * copies the whole pipe one-way into the copier.
  */
 public class SettingsCopierItem extends Item {
     private static final String TOOLTIP_ROOT = "item.another_dynamics.settings_copier.tooltip.";
@@ -68,11 +69,15 @@ public class SettingsCopierItem extends Item {
         Level level = context.getLevel();
         BlockPos pos = context.getClickedPos();
         InteractionHand hand = context.getHand();
+        ItemStack stack = context.getItemInHand();
         if (player.isShiftKeyDown()) {
+            if (net.unfamily.another_dynamics.integration.pipez.PipezPipeSettingsImport.tryCopyWholePipe(
+                    level, pos, player, stack)) {
+                return InteractionResult.sidedSuccess(level.isClientSide());
+            }
             if (!(level.getBlockState(pos).getBlock() instanceof AbstractDuctBlock)) {
                 return InteractionResult.PASS;
             }
-            ItemStack stack = context.getItemInHand();
             BlockHitResult hit =
                     new BlockHitResult(context.getClickLocation(), context.getClickedFace(), pos, false);
             return DuctBlock.attemptSettingsCopierPaste(level, pos, player, stack, hit).result();

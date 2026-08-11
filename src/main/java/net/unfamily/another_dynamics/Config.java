@@ -9,6 +9,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue DUCT_TRANSIT_DEBUG;
     public static final ModConfigSpec.BooleanValue DUCT_ROUTING_DEBUG;
     public static final ModConfigSpec.BooleanValue DUCT_CACHE_DEBUG;
+    public static final ModConfigSpec.BooleanValue CABLE_FACADES_CONFIG_SEED;
 
     public static final ModConfigSpec.BooleanValue DUCT_GLOBAL_STALL_DRAIN_GUARD;
 
@@ -34,6 +35,12 @@ public final class Config {
                                 "Duct network cache invalidation tracing (log tag [DUCT-CCH]). "
                                         + "Logs topology invalidates with abbreviated caller.")
                         .define("003_ductCacheDebug", false);
+        CABLE_FACADES_CONFIG_SEED =
+                BUILDER.comment(
+                                "One-shot: when Cable Facades is present, append another_dynamics:* to its "
+                                        + "blocks whitelist once, then set this false. API/tag registration still "
+                                        + "runs every launch regardless.")
+                        .define("004_cableFacadesConfigSeed", true);
         BUILDER.pop();
 
         BUILDER.comment("Duct logistics tuning").push("logistics");
@@ -47,4 +54,9 @@ public final class Config {
     }
 
     static final ModConfigSpec SPEC = BUILDER.build();
+
+    /** Persist common config after programmatic {@link ModConfigSpec.ConfigValue#set} updates. */
+    public static void saveCommon() {
+        SPEC.save();
+    }
 }

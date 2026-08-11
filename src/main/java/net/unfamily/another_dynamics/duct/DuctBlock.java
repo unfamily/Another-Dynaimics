@@ -4,6 +4,7 @@ import java.util.EnumSet;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -116,13 +117,41 @@ public class DuctBlock extends AbstractDuctBlock {
         return DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
     }
 
+    /**
+     * Resolves an interactable storage node under facade/full-block hit shapes: location → look-ray → hit face.
+     */
+    public static Optional<Direction> resolveInteractableStorageNodeFace(
+            Level level, BlockPos pos, BlockHitResult hit, Player player, DuctBlockEntity duct) {
+        Optional<Direction> fromLoc = nodeFaceFromHitLocation(pos, hit, duct);
+        if (fromLoc.isPresent() && canInteractWithActiveStorageNode(duct, fromLoc.get())) {
+            return fromLoc;
+        }
+        Optional<Direction> fromLook =
+                DuctShapes.resolveStorageNodeFaceFromLook(
+                        level,
+                        pos,
+                        level.getBlockState(pos),
+                        player,
+                        duct.getPipeMask(),
+                        duct.getVisualStorageMask());
+        if (fromLook.isPresent() && canInteractWithActiveStorageNode(duct, fromLook.get())) {
+            return fromLook;
+        }
+        Direction hitFace = hit.getDirection();
+        if (canInteractWithActiveStorageNode(duct, hitFace)) {
+            return Optional.of(hitFace);
+        }
+        return Optional.empty();
+    }
+
     /** Whether the player may open the node GUI / shift-clear stall on this face. */
     private static boolean canInteractWithActiveStorageNode(DuctBlockEntity duct, Direction face) {
         return duct.faceShowsStorageNode(face);
     }
 
     /**
-     * Target face for shift+module equip: active storage node voxel only (matches world model / collision).
+     * Target face for shift+module equip: active storage node voxel only (matches world model / collision),
+     * with facade-aware look-ray / hit-face fallbacks.
      */
     public static Optional<Direction> resolveModuleEquipFace(
             DuctBlockEntity duct, BlockPos pos, Direction clickedBlockFace, Vec3 hitLocation) {
@@ -131,11 +160,14 @@ public class DuctBlock extends AbstractDuctBlock {
         double lz = hitLocation.z - pos.getZ();
         Optional<Direction> fromShape =
                 DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
-        if (fromShape.isEmpty()) {
-            return Optional.empty();
+        if (fromShape.isPresent()) {
+            Direction face = fromShape.get();
+            return canInteractWithActiveStorageNode(duct, face) ? Optional.of(face) : Optional.empty();
         }
-        Direction face = fromShape.get();
-        return canInteractWithActiveStorageNode(duct, face) ? Optional.of(face) : Optional.empty();
+        if (canInteractWithActiveStorageNode(duct, clickedBlockFace)) {
+            return Optional.of(clickedBlockFace);
+        }
+        return Optional.empty();
     }
 
     private static Optional<Direction> resolveNodeFaceForModuleEquip(
@@ -145,19 +177,14 @@ public class DuctBlock extends AbstractDuctBlock {
 
     /** Settings copier may target latched faces without a live storage neighbor. */
     private static Optional<Direction> settingsFaceFromHitForCopier(
-            BlockPos pos, BlockHitResult hit, DuctBlockEntity duct) {
-        Vec3 l = hit.getLocation();
-        double lx = l.x - pos.getX();
-        double ly = l.y - pos.getY();
-        double lz = l.z - pos.getZ();
+            Level level, BlockPos pos, BlockHitResult hit, Player player, DuctBlockEntity duct) {
         int settingsMask = duct.getSettingsFaceMask();
         if (settingsMask == 0) {
             return Optional.empty();
         }
-        Optional<Direction> fromShape =
-                DuctShapes.resolveStorageNodeFace(duct.getPipeMask(), duct.getVisualStorageMask(), lx, ly, lz);
-        if (fromShape.isPresent()) {
-            return fromShape;
+        Optional<Direction> interactable = resolveInteractableStorageNodeFace(level, pos, hit, player, duct);
+        if (interactable.isPresent() && (settingsMask & (1 << interactable.get().ordinal())) != 0) {
+            return interactable;
         }
         Direction hitFace = hit.getDirection();
         if ((settingsMask & (1 << hitFace.ordinal())) != 0) {
@@ -173,8 +200,7 @@ public class DuctBlock extends AbstractDuctBlock {
             Player player,
             ItemStack stack,
             InteractionHand hand,
-            Direction clickedBlockFace,
-            Vec3 hitLocation) {
+            BlockHitResult hit) {
         if (!player.isShiftKeyDown() || stack.isEmpty()) {
             return InteractionResult.PASS;
         }
@@ -186,8 +212,7 @@ public class DuctBlock extends AbstractDuctBlock {
                 || DuctModuleHelper.resolvedDeclarationId(stack).isEmpty()) {
             return InteractionResult.PASS;
         }
-        Optional<Direction> face =
-                resolveModuleEquipFace(duct, pos, clickedBlockFace, hitLocation);
+        Optional<Direction> face = resolveInteractableStorageNodeFace(level, pos, hit, player, duct);
         if (face.isEmpty()) {
             return InteractionResult.PASS;
         }
@@ -199,6 +224,18 @@ public class DuctBlock extends AbstractDuctBlock {
             return InteractionResult.CONSUME;
         }
         return InteractionResult.PASS;
+    }
+
+    public static InteractionResult attemptShiftModuleEquip(
+            Level level,
+            BlockPos pos,
+            Player player,
+            ItemStack stack,
+            InteractionHand hand,
+            Direction clickedBlockFace,
+            Vec3 hitLocation) {
+        BlockHitResult hit = new BlockHitResult(hitLocation, clickedBlockFace, pos, false);
+        return attemptShiftModuleEquip(level, pos, player, stack, hand, hit);
     }
 
     private static double[] localHit(BlockPos pos, BlockHitResult hit) {
@@ -224,7 +261,27 @@ public class DuctBlock extends AbstractDuctBlock {
         if (copierOpt.isEmpty()) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
-        Optional<Direction> nodeFace = settingsFaceFromHitForCopier(pos, hit, duct);
+        ItemStack copier = copierOpt.get();
+        var dataOpt = DuctFaceSettingsSnapshot.readFromCopier(copier);
+        if (dataOpt.isEmpty()) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        CompoundTag data = dataOpt.get();
+        if (DuctFaceSettingsSnapshot.isWholePayload(data)) {
+            if (level.isClientSide()) {
+                return ItemInteractionResult.SUCCESS;
+            }
+            if (level instanceof ServerLevel sl) {
+                if (DuctFaceSettingsSnapshot.applyWhole(duct, data, sl.registryAccess(), player)) {
+                    SettingsCopierFeedback.notifyPasted(player);
+                    return ItemInteractionResult.CONSUME;
+                }
+                SettingsCopierFeedback.notifyPasteFailed(player);
+                return ItemInteractionResult.CONSUME;
+            }
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        Optional<Direction> nodeFace = settingsFaceFromHitForCopier(level, pos, hit, player, duct);
         if (nodeFace.isEmpty()) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
@@ -232,15 +289,12 @@ public class DuctBlock extends AbstractDuctBlock {
             return ItemInteractionResult.SUCCESS;
         }
         if (level instanceof ServerLevel sl) {
-            ItemStack copier = copierOpt.get();
             if (DuctFaceSettingsSnapshot.getStoreKind(copier) != SettingsCopierStoreKind.ALL) {
                 SettingsCopierFeedback.notifyPasteFailed(player);
                 return ItemInteractionResult.CONSUME;
             }
-            var data = DuctFaceSettingsSnapshot.readFromCopier(copier);
-            if (data.isPresent()
-                    && DuctFaceSettingsSnapshot.apply(
-                            duct, nodeFace.get(), data.get(), sl.registryAccess(), player)) {
+            if (DuctFaceSettingsSnapshot.apply(
+                    duct, nodeFace.get(), data, sl.registryAccess(), player)) {
                 SettingsCopierFeedback.notifyPasted(player);
                 return ItemInteractionResult.CONSUME;
             }
@@ -257,8 +311,8 @@ public class DuctBlock extends AbstractDuctBlock {
             if (!level.isClientSide()) {
                 duct.refreshFromWorld();
             }
-            Optional<Direction> face = nodeFaceFromHitLocation(pos, hit, duct);
-            if (face.isEmpty() || !canInteractWithActiveStorageNode(duct, face.get())) {
+            Optional<Direction> face = resolveInteractableStorageNodeFace(level, pos, hit, player, duct);
+            if (face.isEmpty()) {
                 return InteractionResult.PASS;
             }
             if (player.isShiftKeyDown()) {
@@ -310,24 +364,16 @@ public class DuctBlock extends AbstractDuctBlock {
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
             }
             InteractionResult moduleEquip =
-                    attemptShiftModuleEquip(
-                            level,
-                            pos,
-                            player,
-                            stack,
-                            hand,
-                            hitResult.getDirection(),
-                            hitResult.getLocation());
+                    attemptShiftModuleEquip(level, pos, player, stack, hand, hitResult);
             if (moduleEquip == InteractionResult.CONSUME) {
                 return ItemInteractionResult.CONSUME;
             }
             if (moduleEquip == InteractionResult.SUCCESS) {
                 return ItemInteractionResult.sidedSuccess(level.isClientSide());
             }
-            Optional<Direction> nodeFace = resolveNodeFaceForModuleEquip(pos, hitResult, duct);
+            Optional<Direction> nodeFace = resolveInteractableStorageNodeFace(level, pos, hitResult, player, duct);
             if (player.isShiftKeyDown()
                     && nodeFace.isPresent()
-                    && canInteractWithActiveStorageNode(duct, nodeFace.get())
                     && duct.hasAnyStallOnFace(nodeFace.get())) {
                 if (level.isClientSide()) {
                     return ItemInteractionResult.SUCCESS;
@@ -381,8 +427,8 @@ public class DuctBlock extends AbstractDuctBlock {
                 }
                 return DuctReplaceHelper.tryReplace(player, level, pos, duct, newLogicalId, hand);
             }
-            Optional<Direction> face = nodeFaceFromHitLocation(pos, hitResult, duct);
-            if (face.isEmpty() || !canInteractWithActiveStorageNode(duct, face.get())) {
+            Optional<Direction> face = resolveInteractableStorageNodeFace(level, pos, hitResult, player, duct);
+            if (face.isEmpty()) {
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
             }
             if (!player.isShiftKeyDown()
