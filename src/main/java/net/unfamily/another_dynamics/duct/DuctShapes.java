@@ -98,26 +98,14 @@ public final class DuctShapes {
         return CENTER;
     }
 
-    /**
-     * Collision variant of {@link #forMasks}: same footprint, but every box top is raised to y=1 so
-     * standing on a duct matches adjacent full blocks for jumping.
-     */
+    /** Collision matches the physical pipe ({@link #forMasks}). */
     public static VoxelShape collisionForMasks(int pipeMask, int storageMask) {
-        return raiseTopsToFullBlock(forMasks(pipeMask, storageMask));
+        return forMasks(pipeMask, storageMask);
     }
 
-    /** Collision variant of {@link #coreOnly()}. */
+    /** Collision matches the physical pipe core ({@link #coreOnly}). */
     public static VoxelShape collisionCoreOnly() {
-        return raiseTopsToFullBlock(CENTER);
-    }
-
-    /** Raises each AABB's maxY to 1.0 (visual shapes stay unchanged). */
-    public static VoxelShape raiseTopsToFullBlock(VoxelShape visual) {
-        VoxelShape out = Shapes.empty();
-        for (AABB box : visual.toAabbs()) {
-            out = Shapes.or(out, Shapes.box(box.minX, box.minY, box.minZ, box.maxX, 1.0, box.maxZ));
-        }
-        return out.optimize();
+        return CENTER;
     }
 
     /**

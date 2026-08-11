@@ -226,17 +226,25 @@ public final class DuctFilterLineReorder {
             ordered.addAll(group);
         }
         ordered.addAll(noneRows);
-        // &anything_else always last (after concat groups and other none rows).
+        // One &anything_else after other filled lines, before empty rows (extra copies dropped).
         ArrayList<SortRow> anythingElse = new ArrayList<>();
+        ArrayList<SortRow> empties = new ArrayList<>();
         ordered.removeIf(
                 r -> {
                     if (DuctFilterSpecialKeys.isAnythingElseLine(r.line())) {
-                        anythingElse.add(r);
+                        if (anythingElse.isEmpty()) {
+                            anythingElse.add(r);
+                        }
+                        return true;
+                    }
+                    if (r.line() == null || r.line().trim().isEmpty()) {
+                        empties.add(r);
                         return true;
                     }
                     return false;
                 });
         ordered.addAll(anythingElse);
+        ordered.addAll(empties);
         applySorted(lines, caps, caps2, concat, remote, ignoreChannel, anyFace, ordered);
     }
 
@@ -312,7 +320,8 @@ public final class DuctFilterLineReorder {
         }
         String t = line.trim();
         if (DuctFilterSpecialKeys.isAnythingElseLine(t)) {
-            return 100_000;
+            // After other filled lines, before empty rows (empties use 10_000).
+            return 1_000;
         }
         if (t.startsWith("#")) {
             return 100;

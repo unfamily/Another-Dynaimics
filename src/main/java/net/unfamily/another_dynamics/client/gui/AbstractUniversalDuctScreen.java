@@ -370,13 +370,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     /**
      * Priority / quantity block: centered, two rows (numeric then 0/A/[M]/Close-without-saving). Slightly above player inventory.
      */
-    /** +/- steps: priority uses 1 / Ctrl+Alt 10 / Shift 100. Quantity and allow-cap Limit/Keep: 1 / Ctrl+Alt 8 / Shift 64. */
+    /** +/- steps: priority uses 1 / Ctrl+Alt 10 / Shift 100. Quantity and allow-cap Limit/Keep: 1 / Ctrl+Alt 8 / Shift 64. Energy buffer: 100 / Ctrl+Alt 1000 / Shift 10000. */
     private static final int PRIORITY_STEP_PLAIN = 1;
     private static final int PRIORITY_STEP_CTRL_OR_ALT = 10;
     private static final int PRIORITY_STEP_SHIFT = 100;
     private static final int BATCH_STEP_PLAIN = 1;
     private static final int BATCH_STEP_CTRL_OR_ALT = 8;
     private static final int BATCH_STEP_SHIFT = 64;
+    private static final int ENERGY_BUF_STEP_PLAIN = 100;
+    private static final int ENERGY_BUF_STEP_CTRL_OR_ALT = 1000;
+    private static final int ENERGY_BUF_STEP_SHIFT = 10000;
     private static final int AMOUNT_STEPPER_W = 14;
     private static final int AMOUNT_INNER_GAP = 2;
     private static final int AMOUNT_EDIT_W = 56;
@@ -446,8 +449,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     /** Left inset for Valid keys body text (inside panel border). */
     private static final int HELP_TEXT_X = 14;
-    /** "How to use" macro chained examples: first line fits two, the next up to three (then repeat that cap). */
-    private static final int MACRO_HELP_FIRST_LINE_EXAMPLES = 2;
+    /** "How to use" macro chained examples: first line one example (avoids clipping), then up to three per row. */
+    private static final int MACRO_HELP_FIRST_LINE_EXAMPLES = 1;
     private static final int MACRO_HELP_NEXT_LINE_EXAMPLES = 3;
     private static final int HELP_BACK_BUTTON_X = 8;
     private static final int HELP_BACK_BUTTON_Y = TEXTURE_HEIGHT - 25;
@@ -1228,61 +1231,145 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         .build();
         addRenderableWidget(remoteNodeCoordUndoButton);
 
-        energyBufExtractMinus = Button.builder(Component.literal("-"), b -> adjustEnergyBufExtract(-1))
+        energyBufExtractMinus = Button.builder(Component.literal("-"), b -> adjustEnergyBufExtract(-stepForEnergyBufAdjust()))
             .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.minus.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufExtractMinus);
         energyBufExtractBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.empty());
         energyBufExtractBox.setMaxLength(10);
         energyBufExtractBox.setResponder(v -> parseEnergyBufExtractBox(v));
+        energyBufExtractBox.setTooltip(
+            Tooltip.create(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.energy_buffer.field.tooltip"
+                )
+            )
+        );
         addRenderableWidget(energyBufExtractBox);
-        energyBufExtractPlus = Button.builder(Component.literal("+"), b -> adjustEnergyBufExtract(1))
+        energyBufExtractPlus = Button.builder(Component.literal("+"), b -> adjustEnergyBufExtract(stepForEnergyBufAdjust()))
             .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.plus.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufExtractPlus);
-        energyBufExtractAutoButton = Button.builder(Component.literal("~"), b -> {
+        energyBufExtractAutoButton = Button.builder(Component.literal("\u26A1"), b -> {
             playClickSound();
             energyBufExtractDraft = 0;
             syncEnergyBufExtractBoxDisplay();
         })
             .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.auto.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufExtractAutoButton);
         energyBufExtractApplyButton = Button.builder(Component.literal("A"), b -> applyEnergyBufferLimits())
             .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.apply.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufExtractApplyButton);
         energyBufExtractUndoButton = Button.builder(Component.literal("\u2715"), b -> cancelEnergyBufferDraft())
             .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.undo.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufExtractUndoButton);
 
-        energyBufInsertMinus = Button.builder(Component.literal("-"), b -> adjustEnergyBufInsert(-1))
+        energyBufInsertMinus = Button.builder(Component.literal("-"), b -> adjustEnergyBufInsert(-stepForEnergyBufAdjust()))
             .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.minus.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufInsertMinus);
         energyBufInsertBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.empty());
         energyBufInsertBox.setMaxLength(10);
         energyBufInsertBox.setResponder(v -> parseEnergyBufInsertBox(v));
+        energyBufInsertBox.setTooltip(
+            Tooltip.create(
+                Component.translatable(
+                    "gui.another_dynamics.duct_node.energy_buffer.field.tooltip"
+                )
+            )
+        );
         addRenderableWidget(energyBufInsertBox);
-        energyBufInsertPlus = Button.builder(Component.literal("+"), b -> adjustEnergyBufInsert(1))
+        energyBufInsertPlus = Button.builder(Component.literal("+"), b -> adjustEnergyBufInsert(stepForEnergyBufAdjust()))
             .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.plus.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufInsertPlus);
-        energyBufInsertAutoButton = Button.builder(Component.literal("~"), b -> {
+        energyBufInsertAutoButton = Button.builder(Component.literal("\u26A1"), b -> {
             playClickSound();
             energyBufInsertDraft = 0;
             syncEnergyBufInsertBoxDisplay();
         })
             .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.auto.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufInsertAutoButton);
         energyBufInsertApplyButton = Button.builder(Component.literal("A"), b -> applyEnergyBufferLimits())
             .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.apply.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufInsertApplyButton);
         energyBufInsertUndoButton = Button.builder(Component.literal("\u2715"), b -> cancelEnergyBufferDraft())
             .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .tooltip(
+                Tooltip.create(
+                    Component.translatable(
+                        "gui.another_dynamics.duct_node.energy_buffer.undo.tooltip"
+                    )
+                )
+            )
             .build();
         addRenderableWidget(energyBufInsertUndoButton);
 
@@ -2203,6 +2290,173 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 && inEditMode();
     }
 
+    /** EXTRACTOR advanced allow: always show Limit|Keep pair (Limit interactive only with destination). */
+    private boolean extractorShowsInsertLimitEditors() {
+        return showsAdvancedCapEditors()
+                && activeFilterBank == DuctFaceNode.FilterBank.EXTRACTOR
+                && editModeFilterIndex >= 0;
+    }
+
+    /**
+     * EXTRACTOR allow-line dual draft mapping (Limit in primary draft, Keep in secondary), independent of Advanced
+     * subview so commit/exit paths do not write Limit into Keep.
+     */
+    private boolean extractorDualCapDrafts() {
+        return activeFilterBank == DuctFaceNode.FilterBank.EXTRACTOR
+                && isEditingAllowFilterList()
+                && editModeFilterIndex >= 0;
+    }
+
+    /** Limit controls are interactive only when a destination is bound on this extractor line. */
+    private boolean extractorInsertLimitInteractive() {
+        return extractorShowsInsertLimitEditors() && editModeRemoteNodeDraft != null;
+    }
+
+    /** @deprecated use {@link #extractorShowsInsertLimitEditors()} / {@link #extractorInsertLimitInteractive()} */
+    private boolean extractorWithRemoteCapEditors() {
+        return extractorInsertLimitInteractive();
+    }
+
+    private boolean dualLimitKeepCapEditors() {
+        if (!showsAdvancedCapEditors()) {
+            return false;
+        }
+        if (extractorShowsInsertLimitEditors()) {
+            return true;
+        }
+        if (activeFilterBank != DuctFaceNode.FilterBank.FILTER) {
+            return false;
+        }
+        return DuctFaceNode.EligibilityMode.fromOrdinal(
+                        menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE))
+                == DuctFaceNode.EligibilityMode.BOTH;
+    }
+
+    /** Primary editor: Limit for FILTER insertable / EXTRACTOR dual / RETRIEVER; else Keep. */
+    private boolean primaryCapIsLimitContext() {
+        if (isSettingsCopierFilterListEditor()) {
+            return true;
+        }
+        if (extractorDualCapDrafts() || extractorShowsInsertLimitEditors()) {
+            return true;
+        }
+        if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
+            return DuctFaceNode.EligibilityMode.fromOrdinal(
+                            menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE))
+                    .isInsertable();
+        }
+        return activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
+    }
+
+    private void loadAllowCapDraftsFromBuffers() {
+        if (editModeFilterIndex < 0 || !isEditingAllowFilterList()) {
+            return;
+        }
+        menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
+        if (extractorDualCapDrafts()) {
+            List<Integer> keepCaps = menu.getClientAllowCaps(activeFilterBank);
+            List<Integer> limCaps = menu.getClientExtractorLimitCaps();
+            while (keepCaps.size() <= editModeFilterIndex) {
+                keepCaps.add(0);
+            }
+            while (limCaps.size() <= editModeFilterIndex) {
+                limCaps.add(0);
+            }
+            editModeAllowCapValue = limCaps.get(editModeFilterIndex);
+            originalAllowCapValue = editModeAllowCapValue;
+            editModeAllowCap2Value = keepCaps.get(editModeFilterIndex);
+            originalAllowCap2Value = editModeAllowCap2Value;
+            return;
+        }
+        List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+        while (caps.size() <= editModeFilterIndex) {
+            caps.add(0);
+        }
+        editModeAllowCapValue = caps.get(editModeFilterIndex);
+        originalAllowCapValue = editModeAllowCapValue;
+        if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
+            List<Integer> caps2 = menu.getClientFilterKeepCaps();
+            while (caps2.size() <= editModeFilterIndex) {
+                caps2.add(0);
+            }
+            editModeAllowCap2Value = caps2.get(editModeFilterIndex);
+            originalAllowCap2Value = editModeAllowCap2Value;
+        } else {
+            editModeAllowCap2Value = 0;
+            originalAllowCap2Value = 0;
+        }
+    }
+
+    private void writePrimaryAllowCapToBuffers(int value) {
+        if (editModeFilterIndex < 0) {
+            return;
+        }
+        if (extractorDualCapDrafts()) {
+            List<Integer> limCaps = menu.getClientExtractorLimitCaps();
+            while (limCaps.size() <= editModeFilterIndex) {
+                limCaps.add(0);
+            }
+            limCaps.set(editModeFilterIndex, value);
+            return;
+        }
+        List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+        while (caps.size() <= editModeFilterIndex) {
+            caps.add(0);
+        }
+        caps.set(editModeFilterIndex, value);
+    }
+
+    private void writeSecondaryAllowCapToBuffers(int value) {
+        if (editModeFilterIndex < 0) {
+            return;
+        }
+        if (extractorDualCapDrafts()) {
+            List<Integer> keepCaps = menu.getClientAllowCaps(activeFilterBank);
+            while (keepCaps.size() <= editModeFilterIndex) {
+                keepCaps.add(0);
+            }
+            keepCaps.set(editModeFilterIndex, value);
+            return;
+        }
+        List<Integer> caps2 = menu.getClientFilterKeepCaps();
+        while (caps2.size() <= editModeFilterIndex) {
+            caps2.add(0);
+        }
+        caps2.set(editModeFilterIndex, value);
+    }
+
+    /** Pull typed Limit/Keep values from Advanced edit boxes into drafts before commit. */
+    private void syncAllowCapDraftsFromEditBoxes() {
+        if (!isAdvancedFilterCapSubview()) {
+            return;
+        }
+        if (advCapEditBox != null && advCapEditBox.visible) {
+            if (!(extractorShowsInsertLimitEditors() && !extractorInsertLimitInteractive())) {
+                editModeAllowCapValue = parseAllowCapFromEditBox(advCapEditBox.getValue());
+            }
+        }
+        if (advCap2EditBox != null && advCap2EditBox.visible) {
+            editModeAllowCap2Value = parseAllowCapFromEditBox(advCap2EditBox.getValue());
+        }
+    }
+
+    private List<Integer> caps2ForPush(DuctFaceNode.FilterBank bank) {
+        List<Integer> caps2 = menu.getClientAllowCaps2(bank);
+        return caps2 != null ? new ArrayList<>(caps2) : List.of();
+    }
+
+    /** After destination bind/clear on EXTRACTOR, refresh Limit interactivity (editors stay dual). */
+    private void remountExtractorCapsAfterRemoteChange() {
+        if (!extractorShowsInsertLimitEditors()) {
+            return;
+        }
+        // Keep drafts only; Apply commits to client buffers / server.
+        syncAllowCapEditBoxDisplay();
+        syncAllowCap2EditBoxDisplay();
+        layoutAdvancedCapBlock();
+        applySubViewVisibility();
+    }
+
     private AdvancedRemoteNodeRowLayout advancedRemoteNodeRowLayout() {
         int slotScreenX = this.leftPos + ADVANCED_REMOTE_NODE_SLOT_GUI_X;
         int slotScreenY = this.topPos + ADVANCED_REMOTE_NODE_ROW_GUI_Y;
@@ -2384,9 +2638,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             editModeRemoteNodeDraft =
                     new DuctDirectionalEndpoint(editModeRemoteNodeDraft.pos(), selection.face());
         }
-        commitRemoteNodeDraftToLine();
         syncRemoteNodeFaceButtonDisplay();
-        pushFiltersToServer();
         playClickSound();
     }
 
@@ -2462,7 +2714,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         remoteNodeCoordSnapshotX = x;
         remoteNodeCoordSnapshotY = y;
         remoteNodeCoordSnapshotZ = z;
-        commitRemoteNodeDraftToLine();
         remoteNodeCoordEditOpen = false;
         if (remoteNodeCoordXEditBox != null) {
             remoteNodeCoordXEditBox.setFocused(false);
@@ -2471,7 +2722,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         layoutAdvancedRemoteNodeBlock();
         applySubViewVisibility();
-        pushFiltersToServer();
     }
 
     private static @Nullable Integer parseCoordEditBox(@Nullable EditBox box) {
@@ -2622,6 +2872,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         boolean filterBoth = filter && em == DuctFaceNode.EligibilityMode.BOTH;
         boolean filterRetrieveOnly =
             filter && em == DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
+        boolean dualPair = filterBoth || extractorShowsInsertLimitEditors();
 
         int editW = AMOUNT_EDIT_W;
         int numericRowW1 =
@@ -2636,8 +2887,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             AMOUNT_ACTION_BTN +
             AMOUNT_BTN_GAP +
             AMOUNT_ACTION_BTN;
-        int pairGap = filterBoth ? 18 : 0;
-        int numericRowW = filterBoth
+        int pairGap = dualPair ? 18 : 0;
+        int numericRowW = dualPair
             ? (numericRowW1 * 2 + pairGap)
             : numericRowW1;
         int blockW = numericRowW;
@@ -2669,7 +2920,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
         advCapUndoButton.setPosition(ax, actY);
 
-        if (filterBoth) {
+        if (dualPair) {
             int offsetX = numericRowW1 + pairGap;
             int amX2 = amX + offsetX;
             int boxX2 = amX2 + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
@@ -3022,22 +3273,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             list.set(editModeFilterIndex, value);
             originalFilterValue = value;
         }
-        if (parent == SubView.ALLOW_FILTERS) {
-            List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
-            while (caps.size() <= editModeFilterIndex) {
-                caps.add(0);
-            }
-            editModeAllowCapValue = caps.get(editModeFilterIndex);
-            originalAllowCapValue = editModeAllowCapValue;
-            if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
-                List<Integer> caps2 = menu.getClientFilterKeepCaps();
-                while (caps2.size() <= editModeFilterIndex) {
-                    caps2.add(0);
-                }
-                editModeAllowCap2Value = caps2.get(editModeFilterIndex);
-                originalAllowCap2Value = editModeAllowCap2Value;
-            }
-        }
         if (filterRemoteNodeUiEnabled()) {
             editModeRemoteNodeDraft = remoteNodeAt(editModeFilterIndex);
             originalRemoteNodeValue = editModeRemoteNodeDraft;
@@ -3060,6 +3295,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             originalRemoteIgnoreChannelValue = false;
             editModeRemoteAnyFaceDraft = false;
             originalRemoteAnyFaceValue = false;
+        }
+        if (parent == SubView.ALLOW_FILTERS) {
+            loadAllowCapDraftsFromBuffers();
         }
         subView = SubView.ADVANCED_FILTERING;
         reloadFilterEntryTextBoxFromList(false);
@@ -3191,6 +3429,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
             ) ==
             DuctFaceNode.EligibilityMode.RETRIEVE_ONLY;
+        boolean extractorDual = extractorShowsInsertLimitEditors();
+        boolean extractorLimitOn = extractorInsertLimitInteractive();
 
         // Primary cap editor acts as Limit for FILTER, otherwise as Keep/Limit depending on bank.
         if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
@@ -3200,14 +3440,35 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             advCapInfinityButton.visible = filterBoth || filterInsertOnly;
             advCapApplyButton.visible = filterBoth || filterInsertOnly;
             advCapUndoButton.visible = filterBoth || filterInsertOnly;
+        } else if (extractorDual) {
+            // EXTRACTOR: Limit always visible; interactive only with destination.
+            advCapMinusButton.visible = true;
+            advCapPlusButton.visible = true;
+            advCapEditBox.visible = true;
+            advCapInfinityButton.visible = true;
+            advCapApplyButton.visible = true;
+            advCapUndoButton.visible = true;
         }
 
-        advCap2MinusButton.visible = filterBoth || filterRetrieveOnly;
-        advCap2PlusButton.visible = filterBoth || filterRetrieveOnly;
-        advCap2EditBox.visible = filterBoth || filterRetrieveOnly;
-        advCap2InfinityButton.visible = filterBoth || filterRetrieveOnly;
-        advCap2ApplyButton.visible = filterBoth || filterRetrieveOnly;
-        advCap2UndoButton.visible = filterBoth || filterRetrieveOnly;
+        advCapMinusButton.active = !extractorDual || extractorLimitOn;
+        advCapPlusButton.active = !extractorDual || extractorLimitOn;
+        advCapEditBox.active = !extractorDual || extractorLimitOn;
+        advCapInfinityButton.active = !extractorDual || extractorLimitOn;
+        advCapApplyButton.active = !extractorDual || extractorLimitOn;
+        advCapUndoButton.active = !extractorDual || extractorLimitOn;
+
+        advCap2MinusButton.visible = filterBoth || filterRetrieveOnly || extractorDual;
+        advCap2PlusButton.visible = filterBoth || filterRetrieveOnly || extractorDual;
+        advCap2EditBox.visible = filterBoth || filterRetrieveOnly || extractorDual;
+        advCap2InfinityButton.visible = filterBoth || filterRetrieveOnly || extractorDual;
+        advCap2ApplyButton.visible = filterBoth || filterRetrieveOnly || extractorDual;
+        advCap2UndoButton.visible = filterBoth || filterRetrieveOnly || extractorDual;
+        advCap2MinusButton.active = true;
+        advCap2PlusButton.active = true;
+        advCap2EditBox.active = true;
+        advCap2InfinityButton.active = true;
+        advCap2ApplyButton.active = true;
+        advCap2UndoButton.active = true;
 
         if (remoteIgnoreChannelButton != null) {
             boolean showRemoteBlock = showsAdvancedRemoteNodeBlock();
@@ -3463,6 +3724,19 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         caps.add(0);
                     }
                     caps.set(idx, 0);
+                    if (activeFilterBank == DuctFaceNode.FilterBank.EXTRACTOR) {
+                        List<Integer> limCaps = menu.getClientExtractorLimitCaps();
+                        while (limCaps.size() <= idx) {
+                            limCaps.add(0);
+                        }
+                        limCaps.set(idx, 0);
+                    } else if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
+                        List<Integer> keepCaps = menu.getClientFilterKeepCaps();
+                        while (keepCaps.size() <= idx) {
+                            keepCaps.add(0);
+                        }
+                        keepCaps.set(idx, 0);
+                    }
                 }
                 pushFiltersToServer();
                 rebuildFilterEntryWidgets();
@@ -3751,9 +4025,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return;
         }
         editModeRemoteIgnoreChannelDraft = !editModeRemoteIgnoreChannelDraft;
-        commitRemoteNodeDraftToLine();
         syncRemoteIgnoreChannelButtonDisplay();
-        pushFiltersToServer();
         playClickSound();
     }
 
@@ -3771,17 +4043,18 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     DestinationToolEndpointReader.readFromItemStack(
                             carried, minecraft.level.registryAccess());
         }
+        boolean previouslyHadRemote = editModeRemoteNodeDraft != null;
         editModeRemoteNodeDraft = endpoint;
         if (endpoint == null) {
             editModeRemoteIgnoreChannelDraft = false;
+            editModeRemoteAnyFaceDraft = false;
         }
         closeRemoteNodeCoordEdit(false);
-        commitRemoteNodeDraftToLine();
+        remountExtractorCapsAfterRemoteChange();
         syncRemoteIgnoreChannelButtonDisplay();
         syncRemoteNodeFaceButtonDisplay();
         syncRemoteNodeCoordEditButtonDisplay();
         applySubViewVisibility();
-        pushFiltersToServer();
         playClickSound();
     }
 
@@ -4094,15 +4367,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         originalFilterValue = list.get(index) != null ? list.get(index) : "";
         if (effectiveFilterLineSubview() == SubView.ALLOW_FILTERS) {
             menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
-            List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
-            while (caps.size() <= index) {
-                caps.add(0);
-            }
-            editModeAllowCapValue = caps.get(index);
-            originalAllowCapValue = editModeAllowCapValue;
+            loadAllowCapDraftsFromBuffers();
         } else {
             editModeAllowCapValue = 0;
             originalAllowCapValue = 0;
+            editModeAllowCap2Value = 0;
+            originalAllowCap2Value = 0;
         }
         if (filterRemoteNodeUiEnabled()) {
             menu.ensureClientFilterBufferSizes(useHybridFilterCaps());
@@ -4146,11 +4416,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
             list.set(editModeFilterIndex, originalFilterValue);
             if (isEditingAllowFilterList()) {
-                List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
-                while (caps.size() <= editModeFilterIndex) {
-                    caps.add(0);
+                if (extractorDualCapDrafts()) {
+                    writePrimaryAllowCapToBuffers(originalAllowCapValue);
+                    writeSecondaryAllowCapToBuffers(originalAllowCap2Value);
+                } else {
+                    List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
+                    while (caps.size() <= editModeFilterIndex) {
+                        caps.add(0);
+                    }
+                    caps.set(editModeFilterIndex, originalAllowCapValue);
                 }
-                caps.set(editModeFilterIndex, originalAllowCapValue);
             }
             if (filterRemoteNodeUiEnabled()) {
                 setRemoteNodeAt(editModeFilterIndex, originalRemoteNodeValue);
@@ -4349,6 +4624,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (editModeTextBox == null || editModeFilterIndex < 0) {
             return;
         }
+        syncAllowCapDraftsFromEditBoxes();
         menu.markClientFiltersDirty();
         String value = sanitizeFilterLineForCommit(editModeTextBox.getValue());
         editModeTextBox.setValue(value);
@@ -4360,12 +4636,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
         list.set(editModeFilterIndex, value);
         if (isEditingAllowFilterList()) {
-            List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
-            while (caps.size() <= editModeFilterIndex) {
-                caps.add(0);
-            }
-            caps.set(editModeFilterIndex, editModeAllowCapValue);
+            writePrimaryAllowCapToBuffers(editModeAllowCapValue);
             originalAllowCapValue = editModeAllowCapValue;
+            if (extractorDualCapDrafts()
+                    || activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
+                writeSecondaryAllowCapToBuffers(editModeAllowCap2Value);
+                originalAllowCap2Value = editModeAllowCap2Value;
+            }
         }
         originalFilterValue = value;
         commitRemoteNodeDraftToLine();
@@ -4408,13 +4685,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         editModeTextBox.setCursorPosition(0);
         editModeTextBox.setHighlightPos(0);
         editModeAllowCapValue = originalAllowCapValue;
+        editModeAllowCap2Value = originalAllowCap2Value;
         if (showsAdvancedCapEditors()) {
             syncAllowCapEditBoxDisplay();
+            syncAllowCap2EditBoxDisplay();
         }
         editModeRemoteNodeDraft = originalRemoteNodeValue;
         editModeRemoteIgnoreChannelDraft = originalRemoteIgnoreChannelValue;
         editModeRemoteAnyFaceDraft = originalRemoteAnyFaceValue;
         closeRemoteNodeCoordEdit(false);
+        remountExtractorCapsAfterRemoteChange();
         syncRemoteIgnoreChannelButtonDisplay();
         syncRemoteNodeFaceButtonDisplay();
         syncRemoteNodeCoordEditButtonDisplay();
@@ -4430,6 +4710,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private void applyEditModeAndClose() {
         if (editModeTextBox != null && editModeFilterIndex >= 0) {
+            syncAllowCapDraftsFromEditBoxes();
             menu.markClientFiltersDirty();
             String value = sanitizeFilterLineForCommit(editModeTextBox.getValue());
             List<String> list = getEditingList();
@@ -4438,18 +4719,23 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
             list.set(editModeFilterIndex, value);
             if (isEditingAllowFilterList()) {
-                List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
-                while (caps.size() <= editModeFilterIndex) {
-                    caps.add(0);
-                }
-                caps.set(editModeFilterIndex, editModeAllowCapValue);
+                writePrimaryAllowCapToBuffers(editModeAllowCapValue);
                 originalAllowCapValue = editModeAllowCapValue;
+                if (extractorDualCapDrafts()
+                        || activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
+                    writeSecondaryAllowCapToBuffers(editModeAllowCap2Value);
+                    originalAllowCap2Value = editModeAllowCap2Value;
+                }
+            }
+            if (isAdvancedFilterCapSubview()) {
+                commitRemoteNodeDraftToLine();
             }
             pushFiltersToServer();
         }
         editModeFilterIndex = -1;
         originalFilterValue = "";
         originalAllowCapValue = 0;
+        originalAllowCap2Value = 0;
         removeEditModeUI();
         applySubViewVisibility();
         rebuildFilterEntryWidgets();
@@ -4458,6 +4744,17 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             0,
             maxFilterScroll()
         );
+    }
+
+    /** Save all Advanced drafts (filter text, Limit/Keep, destination) then leave Advanced and edit mode. */
+    private void applyAdvancedFilterEditAndCloseAll() {
+        if (!isAdvancedFilterCapSubview() || editModeFilterIndex < 0) {
+            return;
+        }
+        playClickSound();
+        syncAllowCapDraftsFromEditBoxes();
+        closeAdvancedFiltering();
+        exitEditMode(false);
     }
 
     private void removeEditModeUI() {
@@ -4550,13 +4847,23 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private String allowCapLimitTooltipKey() {
+        boolean extractorDest = extractorShowsInsertLimitEditors();
+        if (extractorDest && !extractorInsertLimitInteractive()) {
+            return "gui.another_dynamics.duct_node.allow_cap.field.limit_extractor_needs_destination";
+        }
         if (isFluidFilterTransport()) {
-            return "gui.another_dynamics.duct_node.allow_cap.field.limit_mb";
+            return extractorDest
+                    ? "gui.another_dynamics.duct_node.allow_cap.field.limit_mb_extractor"
+                    : "gui.another_dynamics.duct_node.allow_cap.field.limit_mb";
         }
         if (isGasFilterTransport()) {
-            return "gui.another_dynamics.duct_node.allow_cap.field.limit_gas";
+            return extractorDest
+                    ? "gui.another_dynamics.duct_node.allow_cap.field.limit_gas_extractor"
+                    : "gui.another_dynamics.duct_node.allow_cap.field.limit_gas";
         }
-        return "gui.another_dynamics.duct_node.allow_cap.field.limit";
+        return extractorDest
+                ? "gui.another_dynamics.duct_node.allow_cap.field.limit_extractor"
+                : "gui.another_dynamics.duct_node.allow_cap.field.limit";
     }
 
     private String allowCapKeepTooltipKey() {
@@ -4978,26 +5285,32 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return new ItemStack(Items.KNOWLEDGE_BOOK);
         }
         if (filter.startsWith("&")) {
-            String macro = filter.substring(1).toLowerCase();
-            if (DuctFilterSpecialKeys.isAnythingElseMacroBody(macro)) {
-                return new ItemStack(Items.KNOWLEDGE_BOOK);
+            String macro = filter.substring(1).trim().toLowerCase();
+            if (macro.equals("enchanted") || macro.startsWith("enchanted")) {
+                String snbt =
+                    "{components:{\"minecraft:enchantments\":{levels:{\"minecraft:aqua_affinity\":1}},\"minecraft:repair_cost\":1},count:1,id:\"minecraft:iron_pickaxe\"}";
+                ItemStack st = parseItemStackFromSNBT(snbt);
+                return st.isEmpty() ? new ItemStack(Items.DIAMOND_PICKAXE) : st;
             }
-            return switch (macro) {
-                case "enchanted" -> {
-                    String snbt =
-                        "{components:{\"minecraft:enchantments\":{levels:{\"minecraft:aqua_affinity\":1}},\"minecraft:repair_cost\":1},count:1,id:\"minecraft:iron_pickaxe\"}";
-                    ItemStack st = parseItemStackFromSNBT(snbt);
-                    yield st.isEmpty()
-                        ? new ItemStack(Items.DIAMOND_PICKAXE)
-                        : st;
-                }
-                case "damaged" -> {
-                    ItemStack st = new ItemStack(Items.DIAMOND_SWORD);
-                    st.setDamageValue(st.getMaxDamage() / 2);
-                    yield st;
-                }
-                default -> ItemStack.EMPTY;
-            };
+            if (macro.equals("damaged") || macro.startsWith("damaged")) {
+                ItemStack st = new ItemStack(Items.DIAMOND_SWORD);
+                st.setDamageValue(st.getMaxDamage() / 2);
+                return st;
+            }
+            if (macro.startsWith("temperature")) {
+                return new ItemStack(Items.BLAZE_POWDER);
+            }
+            if (macro.startsWith("light")) {
+                return new ItemStack(Items.LANTERN);
+            }
+            if (macro.startsWith("tint")) {
+                return new ItemStack(Items.RED_DYE);
+            }
+            if (macro.startsWith("radioactiv")) {
+                return itemStackFromIdOrBook("mekanism:radioactive_waste_barrel");
+            }
+            // Unspecified & macros (anything_else, density, viscosity, …): knowledge book.
+            return new ItemStack(Items.KNOWLEDGE_BOOK);
         }
         // Support command-style bracket filters for display only (e.g. minecraft:enchanted_book[...]).
         if (filter.startsWith("minecraft:enchanted_book[")) {
@@ -5008,6 +5321,19 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return new ItemStack(BuiltInRegistries.ITEM.get(id));
         } catch (Exception e) {
             return ItemStack.EMPTY;
+        }
+    }
+
+    private static ItemStack itemStackFromIdOrBook(String idStr) {
+        try {
+            ResourceLocation id = ResourceLocation.parse(idStr);
+            Item item = BuiltInRegistries.ITEM.get(id);
+            if (item == null || item == Items.AIR) {
+                return new ItemStack(Items.KNOWLEDGE_BOOK);
+            }
+            return new ItemStack(item);
+        } catch (Exception e) {
+            return new ItemStack(Items.KNOWLEDGE_BOOK);
         }
     }
 
@@ -5216,15 +5542,18 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (minecraft == null || minecraft.level == null) {
             return;
         }
-        List<Integer> keepCaps =
-                bank == DuctFaceNode.FilterBank.FILTER ? menu.getClientFilterKeepCaps() : null;
+        List<Integer> caps2 =
+                bank == DuctFaceNode.FilterBank.FILTER
+                                || bank == DuctFaceNode.FilterBank.EXTRACTOR
+                        ? menu.getClientAllowCaps2(bank)
+                        : null;
         DuctFilterLineReorder.sortAllowDenyRows(
                 menu.getClientAllowFilters(bank),
                 menu.getClientDenyFilters(bank),
                 menu.getClientAllowCaps(bank),
                 null,
                 minecraft.level.registryAccess(),
-                keepCaps,
+                caps2,
                 menu.getClientAllowConcatChannels(bank),
                 menu.getClientDenyConcatChannels(bank),
                 menu.getClientAllowRemoteNodes(bank),
@@ -5283,10 +5612,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 continue;
             }
             reorderFilterBank(bank);
-            List<Integer> caps2 =
-                    bank == DuctFaceNode.FilterBank.FILTER
-                            ? new ArrayList<>(menu.getClientFilterKeepCaps())
-                            : List.of();
+            List<Integer> caps2 = caps2ForPush(bank);
             boolean allowListCtx =
                     bank == activeFilterBank ? subView == SubView.ALLOW_FILTERS : true;
             menu.pushFilterConfigToServer(
@@ -5340,7 +5666,12 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
     private void flushPendingFilterEditsBeforeClose() {
         if (editModeFilterIndex >= 0) {
-            applyEditModeAndClose();
+            if (isAdvancedFilterCapSubview()) {
+                persistFilterEditDraftToClientBuffers(true);
+                exitEditMode(false);
+            } else {
+                applyEditModeAndClose();
+            }
             return;
         }
         if (advCapEditBox != null && advCapEditBox.isFocused()) {
@@ -5378,10 +5709,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                         + " deny="
                         + FilterSyncDebugLog.listPreview(menu.getClientDenyFilters(activeFilterBank)));
         menu.markClientFiltersDirty();
-        List<Integer> caps2 =
-            activeFilterBank == DuctFaceNode.FilterBank.FILTER
-                ? new ArrayList<>(menu.getClientFilterKeepCaps())
-                : List.of();
+        List<Integer> caps2 = caps2ForPush(activeFilterBank);
         menu.pushFilterConfigToServer(
             activeFilterBank,
             new ArrayList<>(menu.getClientAllowFilters(activeFilterBank)),
@@ -5407,15 +5735,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (advCapEditBox.isFocused()) {
             return;
         }
-        boolean limitCtx;
-        if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
-            int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
-            DuctFaceNode.EligibilityMode em =
-                DuctFaceNode.EligibilityMode.fromOrdinal(ord);
-            limitCtx = em.isInsertable();
-        } else {
-            limitCtx = activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
-        }
+        boolean limitCtx = primaryCapIsLimitContext();
         if (editModeAllowCapValue <= 0) {
             advCapEditBox.setValue(limitCtx ? "\u221e" : "0");
         } else {
@@ -5453,6 +5773,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void adjustAdvCap(int sign) {
+        if (extractorShowsInsertLimitEditors() && !extractorInsertLimitInteractive()) {
+            return;
+        }
         playClickSound();
         int step = stepForBatchAdjust();
         if (sign < 0) {
@@ -5475,6 +5798,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void adjustAdvCapWithStep(int sign, int step) {
+        if (extractorShowsInsertLimitEditors() && !extractorInsertLimitInteractive()) {
+            return;
+        }
         playClickSound();
         step = Math.max(1, step);
         if (sign < 0) {
@@ -5557,15 +5883,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         ) {
             return;
         }
+        if (extractorShowsInsertLimitEditors() && !extractorInsertLimitInteractive()) {
+            return;
+        }
         playClickSound();
         editModeAllowCapValue = parseAllowCapFromEditBox(
             advCapEditBox.getValue()
         );
-        List<Integer> caps = menu.getClientAllowCaps(activeFilterBank);
-        while (caps.size() <= editModeFilterIndex) {
-            caps.add(0);
-        }
-        caps.set(editModeFilterIndex, editModeAllowCapValue);
+        writePrimaryAllowCapToBuffers(editModeAllowCapValue);
         originalAllowCapValue = editModeAllowCapValue;
         pushFiltersToServer();
     }
@@ -5573,7 +5898,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private void applyAllowCap2Field() {
         if (
             !isAdvancedFilterCapSubview() ||
-            activeFilterBank != DuctFaceNode.FilterBank.FILTER ||
+            !(activeFilterBank == DuctFaceNode.FilterBank.FILTER
+                    || extractorShowsInsertLimitEditors()) ||
             editModeFilterIndex < 0 ||
             advCap2EditBox == null
         ) {
@@ -5583,11 +5909,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         editModeAllowCap2Value = parseAllowCapFromEditBox(
             advCap2EditBox.getValue()
         );
-        List<Integer> caps2 = menu.getClientFilterKeepCaps();
-        while (caps2.size() <= editModeFilterIndex) {
-            caps2.add(0);
-        }
-        caps2.set(editModeFilterIndex, editModeAllowCap2Value);
+        writeSecondaryAllowCapToBuffers(editModeAllowCap2Value);
         originalAllowCap2Value = editModeAllowCap2Value;
         pushFiltersToServer();
     }
@@ -5730,17 +6052,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 // Keep editor displays 0 when unfocused.
                 syncAllowCap2EditBoxDisplay();
             }
-            boolean limitCtx;
-            if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
-                // FILTER bank cap is interpreted as Limit when the face is insertable, and as Keep when it is retriever-only.
-                int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
-                DuctFaceNode.EligibilityMode em =
-                    DuctFaceNode.EligibilityMode.fromOrdinal(ord);
-                limitCtx = em.isInsertable();
-            } else {
-                limitCtx =
-                    activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
-            }
+            boolean limitCtx = primaryCapIsLimitContext();
             advCapMinusButton.setTooltip(
                 Tooltip.create(
                     Component.translatable(
@@ -6484,6 +6796,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return BATCH_STEP_CTRL_OR_ALT;
         }
         return BATCH_STEP_PLAIN;
+    }
+
+    private int stepForEnergyBufAdjust() {
+        if (hasShiftDown()) {
+            return ENERGY_BUF_STEP_SHIFT;
+        }
+        if (hasControlDown() || hasAltDown()) {
+            return ENERGY_BUF_STEP_CTRL_OR_ALT;
+        }
+        return ENERGY_BUF_STEP_PLAIN;
     }
 
     private int stackStepForCapAdjust() {
@@ -7372,7 +7694,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             advCapEditBox.isFocused() &&
             keyCode == InputConstants.KEY_RETURN
         ) {
-            applyAllowCapField();
+            if (!(extractorShowsInsertLimitEditors() && !extractorInsertLimitInteractive())) {
+                applyAllowCapField();
+            }
             return true;
         }
 
@@ -7435,6 +7759,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 return true;
             }
             if (keyCode == InputConstants.KEY_RETURN) {
+                if (isAdvancedFilterCapSubview()) {
+                    applyAdvancedFilterEditAndCloseAll();
+                    return true;
+                }
                 applyEditModeAndClose();
                 return true;
             }
@@ -7649,8 +7977,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     /**
-     * One opening/closing pair; comma-separated clickable examples, wrapped: {@value #MACRO_HELP_FIRST_LINE_EXAMPLES}
-     * on the first row, up to {@value #MACRO_HELP_NEXT_LINE_EXAMPLES} on further rows (fluid/gas: four examples → 2+2).
+     * One opening/closing pair; comma-separated clickable examples wrapped by {@code rowCaps}
+     * (examples per row). When {@code rowCaps} is null, uses {@value #MACRO_HELP_FIRST_LINE_EXAMPLES}
+     * then chunks of {@value #MACRO_HELP_NEXT_LINE_EXAMPLES}.
      */
     private int renderHelpLineWithChainedExamples(
         GuiGraphics guiGraphics,
@@ -7665,18 +7994,64 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int mouseX,
         int mouseY
     ) {
+        return renderHelpLineWithChainedExamples(
+            guiGraphics,
+            beforeKey,
+            middleKey,
+            afterKey,
+            exampleKeys,
+            null,
+            maxExamplesFirstLine,
+            maxExamplesNextLines,
+            x,
+            y,
+            mouseX,
+            mouseY
+        );
+    }
+
+    private int renderHelpLineWithChainedExamples(
+        GuiGraphics guiGraphics,
+        String beforeKey,
+        String middleKey,
+        String afterKey,
+        List<String> exampleKeys,
+        @Nullable List<Integer> rowCaps,
+        int maxExamplesFirstLine,
+        int maxExamplesNextLines,
+        int x,
+        int y,
+        int mouseX,
+        int mouseY
+    ) {
         if (exampleKeys.isEmpty()) {
             return 0;
         }
         List<List<String>> rows = new ArrayList<>();
-        int idx = 0;
-        boolean firstChunk = true;
-        while (idx < exampleKeys.size()) {
-            int cap = firstChunk ? maxExamplesFirstLine : maxExamplesNextLines;
-            int end = Math.min(idx + cap, exampleKeys.size());
-            rows.add(new ArrayList<>(exampleKeys.subList(idx, end)));
-            idx = end;
-            firstChunk = false;
+        if (rowCaps != null && !rowCaps.isEmpty()) {
+            int idx = 0;
+            for (int cap : rowCaps) {
+                if (idx >= exampleKeys.size()) {
+                    break;
+                }
+                int take = Math.max(1, cap);
+                int end = Math.min(idx + take, exampleKeys.size());
+                rows.add(new ArrayList<>(exampleKeys.subList(idx, end)));
+                idx = end;
+            }
+            if (idx < exampleKeys.size()) {
+                rows.add(new ArrayList<>(exampleKeys.subList(idx, exampleKeys.size())));
+            }
+        } else {
+            int idx = 0;
+            boolean firstChunk = true;
+            while (idx < exampleKeys.size()) {
+                int cap = firstChunk ? maxExamplesFirstLine : maxExamplesNextLines;
+                int end = Math.min(idx + cap, exampleKeys.size());
+                rows.add(new ArrayList<>(exampleKeys.subList(idx, end)));
+                idx = end;
+                firstChunk = false;
+            }
         }
         Component beforeC = Component.translatable(beforeKey);
         Component middleC = Component.translatable(middleKey);
@@ -7919,18 +8294,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
 
         if (showsAdvancedCapEditors()) {
-            boolean limitCtx;
-            if (isSettingsCopierFilterListEditor()) {
-                limitCtx = true;
-            } else if (activeFilterBank == DuctFaceNode.FilterBank.FILTER) {
-                int ord = menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE);
-                DuctFaceNode.EligibilityMode em =
-                    DuctFaceNode.EligibilityMode.fromOrdinal(ord);
-                limitCtx = em.isInsertable();
-            } else {
-                limitCtx =
-                    activeFilterBank == DuctFaceNode.FilterBank.RETRIEVER;
-            }
+            boolean limitCtx = primaryCapIsLimitContext();
             Component capLabel = Component.translatable(
                 limitCtx
                     ? "gui.another_dynamics.duct_node.allow_cap.label.limit"
@@ -7967,13 +8331,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 false
             );
 
-            if (
-                activeFilterBank == DuctFaceNode.FilterBank.FILTER &&
-                DuctFaceNode.EligibilityMode.fromOrdinal(
-                    menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
-                ) ==
-                DuctFaceNode.EligibilityMode.BOTH
-            ) {
+            if (dualLimitKeepCapEditors()) {
                 Component keepLabel = Component.translatable(
                     "gui.another_dynamics.duct_node.allow_cap.label.keep"
                 );
@@ -8071,23 +8429,29 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 );
                 helpY += helpLineStep;
             }
+            List<String> macroExamples =
+                    p.endsWith("general_filter_text.")
+                            ? List.of(
+                                    p + "macro.example1",
+                                    p + "macro.example2",
+                                    p + "macro.example3",
+                                    p + "macro.example4")
+                            : List.of(
+                                    p + "macro.example1",
+                                    p + "macro.example2",
+                                    p + "macro.example3",
+                                    p + "macro.example4",
+                                    p + "macro.example5");
+            // Fluid: temperature | light | density,viscosity,anything_else (break after light).
+            List<Integer> fluidMacroRowCaps =
+                    p.endsWith("fluid_filter_text.") ? List.of(1, 1, 3) : null;
             int macroRows = renderHelpLineWithChainedExamples(
                       graphics,
                       p + "macro",
                       p + "macro.middle",
                       p + "macro.after",
-                      p.endsWith("general_filter_text.")
-                              ? List.of(
-                                      p + "macro.example1",
-                                      p + "macro.example2",
-                                      p + "macro.example3",
-                                      p + "macro.example4")
-                              : List.of(
-                                      p + "macro.example1",
-                                      p + "macro.example2",
-                                      p + "macro.example3",
-                                      p + "macro.example4",
-                                      p + "macro.example5"),
+                      macroExamples,
+                      fluidMacroRowCaps,
                       MACRO_HELP_FIRST_LINE_EXAMPLES,
                       MACRO_HELP_NEXT_LINE_EXAMPLES,
                       HELP_TEXT_X,
@@ -8115,14 +8479,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                     mouseX,
                     mouseY);
             helpY += helpLineStep;
-            graphics.drawString(
-                    this.font,
-                    Component.translatable(p + "anything_else.detail"),
-                    HELP_TEXT_X,
-                    helpY,
-                    0x404040,
-                    false);
-            helpY += helpLineStep;
+            for (String detailSuffix : List.of(".detail.1", ".detail.2", ".detail.3")) {
+                graphics.drawString(
+                        this.font,
+                        Component.translatable(p + "anything_else" + detailSuffix),
+                        HELP_TEXT_X,
+                        helpY,
+                        0x404040,
+                        false);
+                helpY += helpLineStep;
+            }
             if (!isGasFilterTransport()) {
                 graphics.drawString(
                     this.font,

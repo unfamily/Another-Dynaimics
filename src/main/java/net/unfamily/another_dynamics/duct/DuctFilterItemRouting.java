@@ -119,7 +119,8 @@ final class DuctFilterItemRouting {
                             rrFrozen,
                             unitIdx,
                             roundRobinRouting,
-                            destCounterparty)) {
+                            destCounterparty,
+                            unit)) {
                         return true;
                     }
                 }
@@ -178,7 +179,8 @@ final class DuctFilterItemRouting {
                             rrFrozen,
                             candIdx,
                             roundRobinRouting,
-                            destCounterparty)) {
+                            destCounterparty,
+                            null)) {
                         return true;
                     }
                     if (!DuctIncomingIndex.snapshot(level, dest, destFace).isEmpty()) {
@@ -346,7 +348,8 @@ final class DuctFilterItemRouting {
             int rrFrozen,
             int rrOffset,
             boolean roundRobinRouting,
-            @Nullable DuctDirectionalEndpoint destCounterparty) {
+            @Nullable DuctDirectionalEndpoint destCounterparty,
+            @Nullable DuctFilterUnitLogic.FilterUnit boundUnit) {
         if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
             return false;
         }
@@ -400,6 +403,16 @@ final class DuctFilterItemRouting {
         if (plannedCount <= 0) {
             return false;
         }
+        if (boundUnit != null) {
+            plannedCount =
+                    Math.min(
+                            plannedCount,
+                            capInsertableForExtractorUnitLimit(
+                                    level, dest, destFace, node, boundUnit, probe, plannedCount));
+            if (plannedCount <= 0) {
+                return false;
+            }
+        }
         ItemStack planned = probe.copy();
         planned.setCount(plannedCount);
         int destCap = self.maxSchedulableTowardFaceRouting(level, dest, destBe, destFace, planned, plannedCount);
@@ -434,6 +447,49 @@ final class DuctFilterItemRouting {
                 rrFrozen,
                 rrOffset,
                 roundRobinRouting);
+    }
+
+    /**
+     * Caps planned extract count by EXTRACTOR Insert Limit on the bound destination inventory
+     * (0 = unlimited). Uses only the allow unit's lines.
+     */
+    private static int capInsertableForExtractorUnitLimit(
+            ServerLevel level,
+            BlockPos destDuct,
+            Direction destFace,
+            DuctFaceNode sourceNode,
+            DuctFilterUnitLogic.FilterUnit unit,
+            ItemStack template,
+            int maxFromCapacity) {
+        if (maxFromCapacity <= 0 || template.isEmpty() || unit == null) {
+            return 0;
+        }
+        IItemHandler raw = DuctCapHelper.getHandlerOnFace(level, destDuct, destFace);
+        if (raw == null) {
+            return maxFromCapacity;
+        }
+        List<String> allows = sourceNode.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR);
+        List<Integer> lims = sourceNode.extractorBankLimitCaps();
+        List<Integer> concat = sourceNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.EXTRACTOR);
+        java.util.ArrayList<String> uAllows = new java.util.ArrayList<>(unit.lineIndices().size());
+        java.util.ArrayList<Integer> uCaps = new java.util.ArrayList<>(unit.lineIndices().size());
+        java.util.ArrayList<Integer> uConcat = new java.util.ArrayList<>(unit.lineIndices().size());
+        for (int idx : unit.lineIndices()) {
+            uAllows.add(idx < allows.size() ? allows.get(idx) : "");
+            uCaps.add(idx < lims.size() ? Math.max(0, lims.get(idx)) : 0);
+            uConcat.add(FilterConcatChannel.channelAt(concat, idx));
+        }
+        if (!DuctAllowLimitLogic.hasAnyPositiveAllowCapOnNonEmptyLine(uAllows, uCaps)) {
+            return maxFromCapacity;
+        }
+        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct, destFace);
+        int maxAdd =
+                DuctAllowLimitLogic.maxAdditionalInsertAcrossAllowLines(
+                        raw, uAllows, uCaps, uConcat, template, prior, level.registryAccess());
+        if (maxAdd == Integer.MAX_VALUE) {
+            return maxFromCapacity;
+        }
+        return Math.min(maxFromCapacity, Math.max(0, maxAdd));
     }
 
     private static boolean tryPullFromDonor(

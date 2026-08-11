@@ -8,7 +8,7 @@ import org.jetbrains.annotations.Nullable;
 public final class DuctFilterSpecialKeys {
     /**
      * Matches any non-empty stack that reaches this line (use after more specific filters).
-     * Reorder always sinks these lines to the bottom of the list.
+     * Reorder keeps a single copy after other filled filters and before empty rows.
      */
     public static final String ANYTHING_ELSE = "&anything_else";
 

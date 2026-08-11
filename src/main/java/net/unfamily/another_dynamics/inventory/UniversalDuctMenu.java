@@ -50,6 +50,11 @@ public interface UniversalDuctMenu {
 
     List<Integer> getClientFilterKeepCaps();
 
+    List<Integer> getClientExtractorLimitCaps();
+
+    @Nullable
+    List<Integer> getClientAllowCaps2(DuctFaceNode.FilterBank bank);
+
     List<Integer> getClientAllowConcatChannels(DuctFaceNode.FilterBank bank);
 
     List<Integer> getClientDenyConcatChannels(DuctFaceNode.FilterBank bank);

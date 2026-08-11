@@ -3,6 +3,8 @@ package net.unfamily.another_dynamics.duct;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -142,7 +144,13 @@ public final class DuctFaceNode {
     public boolean denyOverridesAllowExtractor = true;
     public final List<String> allowFiltersExtractor = new ArrayList<>();
     public final List<String> denyFiltersExtractor = new ArrayList<>();
+    /** EXTRACTOR Keep (leave N in source). Primary {@code AllowCap} / {@link #bankAllowCaps}. */
     public final List<Integer> allowAllowCapsExtractor = new ArrayList<>();
+    /**
+     * EXTRACTOR Insert Limit (max matching at bound destination). Secondary caps via {@link #extractorBankLimitCaps()};
+     * only applied when the allow line/unit has a remote destination.
+     */
+    public final List<Integer> allowAllowCapsExtractorLimit = new ArrayList<>();
     public final List<Integer> allowConcatChannelsExtractor = new ArrayList<>();
     public final List<Integer> denyConcatChannelsExtractor = new ArrayList<>();
     public final List<DuctDirectionalEndpoint> allowRemoteNodesExtractor = new ArrayList<>();
@@ -436,6 +444,7 @@ public final class DuctFaceNode {
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
+        syncAllowCapsToAllowSize(allowAllowCapsExtractorLimit, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsExtractor, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsExtractor, denyFiltersExtractor.size());
         DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesExtractor, allowFiltersExtractor.size());
@@ -497,6 +506,7 @@ public final class DuctFaceNode {
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
+        syncAllowCapsToAllowSize(allowAllowCapsExtractorLimit, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsExtractor, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsExtractor, denyFiltersExtractor.size());
         DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesExtractor, allowFiltersExtractor.size());
@@ -557,6 +567,7 @@ public final class DuctFaceNode {
         clampList(allowFiltersExtractor, bankA);
         clampList(denyFiltersExtractor, bankD);
         syncAllowCapsToAllowSize(allowAllowCapsExtractor, allowFiltersExtractor.size());
+        syncAllowCapsToAllowSize(allowAllowCapsExtractorLimit, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(allowConcatChannelsExtractor, allowFiltersExtractor.size());
         FilterConcatChannel.syncToLineSize(denyConcatChannelsExtractor, denyFiltersExtractor.size());
         DuctFilterRemoteNodeLogic.syncToLineSize(allowRemoteNodesExtractor, allowFiltersExtractor.size());
@@ -626,6 +637,7 @@ public final class DuctFaceNode {
         ex.put("Allow", toStringListTag(allowFiltersExtractor));
         ex.put("Deny", toStringListTag(denyFiltersExtractor));
         putAllowCapArray(ex, allowAllowCapsExtractor);
+        putAllowCapArray(ex, "AllowCapLim", allowAllowCapsExtractorLimit);
         putConcatChannelArray(ex, "AllowConcat", allowConcatChannelsExtractor);
         putConcatChannelArray(ex, "DenyConcat", denyConcatChannelsExtractor);
         DuctFilterRemoteNodeLogic.putRemoteNodeList(ex, "AllowRemoteNode", allowRemoteNodesExtractor);
@@ -687,6 +699,7 @@ public final class DuctFaceNode {
         allowFiltersExtractor.clear();
         denyFiltersExtractor.clear();
         allowAllowCapsExtractor.clear();
+        allowAllowCapsExtractorLimit.clear();
         allowConcatChannelsExtractor.clear();
         denyConcatChannelsExtractor.clear();
         allowRemoteNodesExtractor.clear();
@@ -751,6 +764,7 @@ public final class DuctFaceNode {
             readStringListInto(ex, "Allow", allowFiltersExtractor);
             readStringListInto(ex, "Deny", denyFiltersExtractor);
             readAllowCapsInto(ex, allowAllowCapsExtractor, allowFiltersExtractor.size());
+            readAllowCapsInto(ex, "AllowCapLim", allowAllowCapsExtractorLimit, allowFiltersExtractor.size());
             readConcatChannelsInto(ex, "AllowConcat", allowConcatChannelsExtractor, allowFiltersExtractor.size());
             readConcatChannelsInto(ex, "DenyConcat", denyConcatChannelsExtractor, denyFiltersExtractor.size());
             DuctFilterRemoteNodeLogic.readRemoteNodeListInto(
@@ -874,6 +888,22 @@ public final class DuctFaceNode {
 
     public List<Integer> filterBankKeepCaps() {
         return allowAllowCapsFilterKeep;
+    }
+
+    /** EXTRACTOR Insert Limit caps (0 = unlimited). Applied only with a bound destination. */
+    public List<Integer> extractorBankLimitCaps() {
+        return allowAllowCapsExtractorLimit;
+    }
+
+    /**
+     * Secondary allow caps synced as {@code allowCaps2}: FILTER Keep, EXTRACTOR Insert Limit; unused for RETRIEVER.
+     */
+    public @Nullable List<Integer> bankAllowCaps2(FilterBank bank) {
+        return switch (bank) {
+            case FILTER -> allowAllowCapsFilterKeep;
+            case EXTRACTOR -> allowAllowCapsExtractorLimit;
+            case RETRIEVER -> null;
+        };
     }
 
     public List<Integer> bankAllowConcatChannels(FilterBank bank) {

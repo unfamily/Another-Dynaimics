@@ -18,6 +18,7 @@ import net.unfamily.another_dynamics.duct.DuctFaceNode;
 import net.unfamily.another_dynamics.duct.DuctFluidAllowLimitLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidFilterLogic;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
+import net.unfamily.another_dynamics.duct.FilterConcatChannel;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.DuctStallAllowBank;
@@ -135,7 +136,8 @@ final class DuctFilterFluidRouting {
                             rf.ductPos(),
                             rf.face(),
                             spec,
-                            edgeTicks)) {
+                            edgeTicks,
+                            unit)) {
                         return true;
                     }
                 }
@@ -351,7 +353,8 @@ final class DuctFilterFluidRouting {
             BlockPos destPos,
             Direction destFace,
             DuctFluidTransportSpec spec,
-            long edgeTicks) {
+            long edgeTicks,
+            @Nullable net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.FilterUnit boundUnit) {
         if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
             return false;
         }
@@ -366,6 +369,12 @@ final class DuctFilterFluidRouting {
             return false;
         }
         FluidStack toMove = available.copy();
+        if (boundUnit != null) {
+            toMove = applyExtractorInsertLimitMb(destCap, node, boundUnit, toMove, level, destPos);
+            if (toMove.isEmpty()) {
+                return false;
+            }
+        }
         int simulated = DuctFluidCapHelper.simulateFill(destCap, toMove);
         if (simulated <= 0) {
             return false;
@@ -382,6 +391,47 @@ final class DuctFilterFluidRouting {
         DuctFluidServerTick.DestCandidate pick =
                 new DuctFluidServerTick.DestCandidate(destPos, destFace, destNode.insertionPriority, 0L, simulated);
         return commitExtract(level, sourceBe, sourceFace, node, srcCap, available, pick, spec, edgeTicks);
+    }
+
+    private static FluidStack applyExtractorInsertLimitMb(
+            IFluidHandler destCap,
+            DuctFaceNode sourceNode,
+            net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.FilterUnit unit,
+            FluidStack available,
+            ServerLevel level,
+            BlockPos destPos) {
+        if (available.isEmpty() || unit == null) {
+            return available;
+        }
+        List<String> allows = sourceNode.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR);
+        List<Integer> lims = sourceNode.extractorBankLimitCaps();
+        List<Integer> concat = sourceNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.EXTRACTOR);
+        java.util.ArrayList<String> uAllows = new java.util.ArrayList<>(unit.lineIndices().size());
+        java.util.ArrayList<Integer> uCaps = new java.util.ArrayList<>(unit.lineIndices().size());
+        java.util.ArrayList<Integer> uConcat = new java.util.ArrayList<>(unit.lineIndices().size());
+        for (int idx : unit.lineIndices()) {
+            uAllows.add(idx < allows.size() ? allows.get(idx) : "");
+            uCaps.add(idx < lims.size() ? Math.max(0, lims.get(idx)) : 0);
+            uConcat.add(FilterConcatChannel.channelAt(concat, idx));
+        }
+        if (!DuctFluidAllowLimitLogic.hasAnyPositiveAllowCapOnNonEmptyLine(uAllows, uCaps)) {
+            return available;
+        }
+        List<FluidStack> prior = DuctFluidIncomingIndex.snapshot(level, destPos);
+        int maxAdd =
+                DuctFluidAllowLimitLogic.maxAdditionalInsertAcrossAllowLinesMb(
+                        destCap, uAllows, uCaps, uConcat, available, prior, level.registryAccess());
+        if (maxAdd == Integer.MAX_VALUE) {
+            return available;
+        }
+        int capped = Math.min(available.getAmount(), Math.max(0, maxAdd));
+        if (capped <= 0) {
+            return FluidStack.EMPTY;
+        }
+        if (capped < available.getAmount()) {
+            return new FluidStack(available.getFluid(), capped);
+        }
+        return available;
     }
 
     private static boolean commitExtract(
@@ -677,6 +727,14 @@ final class DuctFilterFluidRouting {
                         continue;
                     }
                     FluidStack planned = new FluidStack(stalled.getFluid(), moved);
+                    planned =
+                            applyExtractorInsertLimitMb(
+                                    destCap, node, unit, planned, level, rf.ductPos());
+                    if (planned.isEmpty()) {
+                        continue;
+                    }
+                    moved = planned.getAmount();
+                    planned = new FluidStack(stalled.getFluid(), moved);
                     List<BlockPos> rawPath;
                     if (rf.ductPos().equals(srcPos)) {
                         rawPath = List.of(srcPos);

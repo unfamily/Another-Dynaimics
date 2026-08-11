@@ -456,6 +456,16 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     }
 
     @Override
+    public List<Integer> getClientExtractorLimitCaps() {
+        return filterBuffers.getClientExtractorLimitCaps(filterTransportKindOrdinal());
+    }
+
+    @Override
+    public @Nullable List<Integer> getClientAllowCaps2(DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientAllowCaps2(filterTransportKindOrdinal(), bank);
+    }
+
+    @Override
     public List<Integer> getClientAllowConcatChannels(DuctFaceNode.FilterBank bank) {
         return filterBuffers.getClientAllowConcatChannels(filterTransportKindOrdinal(), bank);
     }
@@ -539,10 +549,9 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         filterBuffers.logPushState(transportKindOrdinal, "pushAll_start");
         ClientFilterLaneMirror mirror = filterBuffers.mirrorForTransport(transportKindOrdinal);
         for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
+            List<Integer> caps2List = mirror.allowCaps2(bank);
             List<Integer> caps2 =
-                    bank == DuctFaceNode.FilterBank.FILTER
-                            ? new java.util.ArrayList<>(mirror.filterKeepCaps())
-                            : List.of();
+                    caps2List != null ? new java.util.ArrayList<>(caps2List) : List.of();
             FilterSyncDebugLog.clientPush(
                     "SettingsCopierMenu.pushAll",
                     ductBlockPos,
