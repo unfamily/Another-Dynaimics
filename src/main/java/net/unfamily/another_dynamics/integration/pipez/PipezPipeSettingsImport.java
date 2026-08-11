@@ -48,6 +48,12 @@ public final class PipezPipeSettingsImport {
     private static final String RETRIEVER_MOD = "pipezretriever";
     private static final String RETRIEVING_SIDES = "PipezRetriever_RetrievingSides";
 
+    /**
+     * Master switch for PipezRetriever sides. {@code false} on NeoForge 26.x until PipezRetriever ships for this
+     * loader; import still works for Pipez extract upgrades, but never maps faces to {@code RETRIEVING}.
+     */
+    public static final boolean RETRIEVER_SUPPORT_ENABLED = false;
+
     private PipezPipeSettingsImport() {}
 
     public static boolean isPipezPipe(BlockState state) {
@@ -370,7 +376,7 @@ public final class PipezPipeSettingsImport {
     }
 
     private static Set<Direction> readRetrievingSides(BlockEntity be, HolderLookup.Provider registries) {
-        if (!ModList.get().isLoaded(RETRIEVER_MOD)) {
+        if (!RETRIEVER_SUPPORT_ENABLED || !ModList.get().isLoaded(RETRIEVER_MOD)) {
             return Set.of();
         }
         try {

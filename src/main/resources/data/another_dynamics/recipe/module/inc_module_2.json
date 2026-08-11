@@ -8,7 +8,7 @@
   ],
   "key": {
     "A": "minecraft:cobblestone",
-    "B": "#c:ingots/gold",
+    "B": "#c:gems/diamond",
     "C": "another_dynamics:inc_module_1"
   },
   "result": {

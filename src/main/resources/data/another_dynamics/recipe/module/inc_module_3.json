@@ -7,8 +7,8 @@
     "ABA"
   ],
   "key": {
-    "A": "minecraft:cobblestone",
-    "B": "#c:gems/amethyst",
+    "A": "#c:netherracks",
+    "B": "#c:nuggets/netherite",
     "C": "another_dynamics:inc_module_2"
   },
   "result": {

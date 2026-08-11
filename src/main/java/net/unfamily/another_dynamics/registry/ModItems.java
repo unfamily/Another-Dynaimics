@@ -53,14 +53,6 @@ public final class ModItems {
     public static final DeferredItem<DuctModuleItem> INC_MODULE_2 = registerModule("inc_module_2");
     public static final DeferredItem<DuctModuleItem> INC_MODULE_3 = registerModule("inc_module_3");
     public static final DeferredItem<DuctModuleItem> INC_MODULE_4 = registerModule("inc_module_4");
-    public static final DeferredItem<DuctModuleItem> INC_MODULE_5 = registerModule("inc_module_5");
-    public static final DeferredItem<DuctModuleItem> INC_MODULE_6 = registerModule("inc_module_6");
-
-    public static final DeferredItem<DuctModuleItem> FIL_MODULE_0 = registerModule("fil_module_0");
-    public static final DeferredItem<DuctModuleItem> FIL_MODULE_1 = registerModule("fil_module_1");
-    public static final DeferredItem<DuctModuleItem> FIL_MODULE_2 = registerModule("fil_module_2");
-    public static final DeferredItem<DuctModuleItem> FIL_MODULE_3 = registerModule("fil_module_3");
-    public static final DeferredItem<DuctModuleItem> FIL_MODULE_4 = registerModule("fil_module_4");
 
     public static final DeferredItem<DuctBlockItem> FLUID_DUCT =
             ITEMS.registerItem(

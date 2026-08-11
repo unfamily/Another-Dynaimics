@@ -7,8 +7,8 @@
     "ABA"
   ],
   "key": {
-    "A": "minecraft:cobblestone",
-    "B": "#c:gems/diamond",
+    "A": "#c:end_stones",
+    "B": "another_dynamics:ender_accellerant",
     "C": "another_dynamics:inc_module_3"
   },
   "result": {

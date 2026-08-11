@@ -336,7 +336,7 @@ public final class DuctModuleEffects {
     }
 
     /**
-     * Applies module quantity modifiers without {@code int} overflow (e.g. {@code inc_module_5} {@code mult: 500000}
+     * Applies module quantity modifiers without {@code int} overflow (e.g. {@code inc_module_3} {@code mult: 500000}
      * on high datapack {@code extract} values).
      */
     private static int applyStackedQuantityToBase(ModuleDefinition.ItemQuantityModifiers m, int datapackDefault) {

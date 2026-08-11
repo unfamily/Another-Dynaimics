@@ -8,7 +8,7 @@
   ],
   "key": {
     "A": "minecraft:cobblestone",
-    "B": "minecraft:lapis_lazuli",
+    "B": "#c:ingots/gold",
     "C": "another_dynamics:inc_module_0"
   },
   "result": {

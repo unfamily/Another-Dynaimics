@@ -5,61 +5,61 @@
     {
       "for": "item",
       "quantity": {
-        "set": 32
+        "set": 64
       },
       "filter": {
-        "allow": { "add": 8 },
-        "deny": { "add": 8 },
-        "allow_hybrid": { "add": 4 },
-        "deny_hybrid": { "add": 4 }
+        "allow": { "add": 12 },
+        "deny": { "add": 12 },
+        "allow_hybrid": { "add": 6 },
+        "deny_hybrid": { "add": 6 }
       },
-      "speed": { "mult": 0.85 },
-      "rate": { "mult": 0.75 }
+      "speed": { "mult": 0.8 },
+      "rate": { "mult": 0.5 }
     },
     {
       "for": "fluid",
       "quantity": {
-        "set": 16000
+        "set": 64000
       },
       "filter": {
-        "allow": { "add": 8 },
-        "deny": { "add": 8 },
-        "allow_hybrid": { "add": 4 },
-        "deny_hybrid": { "add": 4 }
+        "allow": { "add": 12 },
+        "deny": { "add": 12 },
+        "allow_hybrid": { "add": 6 },
+        "deny_hybrid": { "add": 6 }
       },
-      "speed": { "mult": 0.85 },
-      "rate": { "mult": 0.75 }
+      "speed": { "mult": 0.8 },
+      "rate": { "mult": 0.5 }
     },
     {
       "for": "gas",
       "quantity": {
-        "set": 16000
+        "set": 64000
       },
       "filter": {
-        "allow": { "add": 8 },
-        "deny": { "add": 8 },
-        "allow_hybrid": { "add": 4 },
-        "deny_hybrid": { "add": 4 }
+        "allow": { "add": 12 },
+        "deny": { "add": 12 },
+        "allow_hybrid": { "add": 6 },
+        "deny_hybrid": { "add": 6 }
       },
-      "speed": { "mult": 0.85 },
-      "rate": { "mult": 0.75 }
+      "speed": { "mult": 0.8 },
+      "rate": { "mult": 0.5 }
     },
     {
       "for": "energy",
       "extract": {
-        "mult": 5
+        "mult": 15
       },
       "rate": {
-        "mult": 0.75
+        "mult": 0.5
       }
     },
     {
       "for": "heat",
       "quantity": {
-        "set": 4200
+        "set": 8000
       },
       "rate": {
-        "mult": 0.75
+        "mult": 0.5
       }
     }
   ],
