@@ -16,6 +16,7 @@ import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.gui.SettingsCopierScreen;
 import net.unfamily.another_dynamics.client.project.ProjectDuctBlockStateModel;
 import net.unfamily.another_dynamics.client.project.ProjectDuctGeometryLoader;
+import net.unfamily.another_dynamics.client.project.ProjectDuctItemSpecialRenderer;
 import net.unfamily.another_dynamics.duct.DuctDefinitionsReloadedEvent;
 import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
@@ -70,6 +71,8 @@ public final class DuctClientSetup {
 
     public static void onRegisterSpecialModelRenderers(RegisterSpecialModelRendererEvent event) {
         event.register(DuctItemSpecialRenderer.ID, new DuctItemSpecialRenderer.Unbaked().type());
+        event.register(
+                ProjectDuctItemSpecialRenderer.ID, new ProjectDuctItemSpecialRenderer.Unbaked().type());
     }
 
     public static void onModifyBakingResult(ModelEvent.ModifyBakingResult event) {

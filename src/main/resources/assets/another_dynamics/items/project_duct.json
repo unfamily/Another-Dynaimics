@@ -3,7 +3,7 @@
     "type": "minecraft:special",
     "base": "another_dynamics:item/project_duct",
     "model": {
-      "type": "another_dynamics:duct_item"
+      "type": "another_dynamics:project_duct_item"
     }
   }
 }

@@ -24,10 +24,6 @@ import org.jetbrains.annotations.Nullable;
 
 /** Dynamic block model for project ducts (pipe mask from block state, node preview from model data). */
 public final class ProjectDuctBlockStateModel implements DynamicBlockStateModel {
-    /** North + south arms for item preview line. */
-    private static final int ITEM_PIPE_MASK =
-            (1 << net.minecraft.core.Direction.NORTH.ordinal()) | (1 << net.minecraft.core.Direction.SOUTH.ordinal());
-
     private final Material.Baked particleMaterial;
 
     public ProjectDuctBlockStateModel(BlockStateModel delegate) {
@@ -99,9 +95,7 @@ public final class ProjectDuctBlockStateModel implements DynamicBlockStateModel 
         if (!geometry.isBuilt()) {
             return List.of();
         }
-        java.util.ArrayList<BakedQuad> out = new java.util.ArrayList<>();
-        geometry.appendForWorld(out, ITEM_PIPE_MASK, 0);
-        return out;
+        return geometry.lineAllQuads();
     }
 
     private static int nodePreviewFromModelData(ModelData modelData) {

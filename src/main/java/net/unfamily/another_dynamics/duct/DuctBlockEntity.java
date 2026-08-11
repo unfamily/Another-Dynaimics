@@ -3896,6 +3896,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     if (cand.priority() > highestPendingFullPriority) {
                         highestPendingFullPriority = cand.priority();
                     }
+                    // Nearest/farthest/middlest: wait for the preferred dest instead of falling through to a
+                    // farther same-priority target (reads as Round Robin).
+                    if (!roundRobinRouting && rm != RoutingMode.RANDOM) {
+                        return;
+                    }
                 } else if (roundRobinRouting && firstGenuinelyFullCandIdx < 0) {
                     firstGenuinelyFullCandIdx = candIdx;
                 }
@@ -4593,8 +4598,13 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                         level, destDuct, destFace, destBe, t, want, prior, retrieverAllowBank);
         if (schedulable <= 0) {
             if (!forStallResend) {
-                // Normal scheduling: record reject to avoid re-probing a truly-full destination.
-                recordDestInsertRejected(level, destDuct, destFace, template);
+                // Same as stall resend: do not latch reject when capacity exists but is covered by in-flight pending.
+                int withoutPending =
+                        maxInsertableAfterPendingOnFaceRespectingAllowLimit(
+                                level, destDuct, destFace, destBe, t, want, List.of(), retrieverAllowBank);
+                if (withoutPending <= 0) {
+                    recordDestInsertRejected(level, destDuct, destFace, template);
+                }
                 return 0;
             }
             // Stall resend: distinguish "covered by in-flight pending" (transient, do not latch reject)
@@ -6528,9 +6538,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         CompoundTag ov = new CompoundTag();
         overflowBuffer.save(registries, ov);
         tag.put("DuctOverflow", ov);
-        if (networkOpaqueRendering) {
-            tag.putBoolean("NetworkOpaque", true);
-        }
+        tag.putBoolean("NetworkOpaque", networkOpaqueRendering);
         output.store("Data", CompoundTag.CODEC, tag);
     }
 
@@ -6809,9 +6817,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         t.put("GasTransitV1", gasTransitList);
         t.putString("DuctLogicalId", logicalDuctId);
-        if (networkOpaqueRendering) {
-            t.putBoolean("NetworkOpaque", true);
-        }
+        t.putBoolean("NetworkOpaque", networkOpaqueRendering);
         outer.put("DuctData", t);
         return outer;
     }
@@ -6859,6 +6865,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         boolean prevNetworkOpaque = clientNetworkOpaque;
         clientNetworkOpaque = tag.getBooleanOr("NetworkOpaque", false);
         if (prevNetworkOpaque != clientNetworkOpaque) {
+            // Per-block model-data + section rebuild only. Never allChanged() here: large networks would
+            // freeze the client (one full mesh rebuild per duct packet).
             requestModelDataUpdate();
             if (level != null && level.isClientSide()) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);

@@ -408,8 +408,12 @@ public final class DuctCapHelper {
         // Measure insert capacity on the real handler using repeated simulated inserts (chunked by max stack size).
         // Do not copy into an ItemStackHandler: drawers-like inventories expose large storage through a small slot count,
         // and a plain ItemStackHandler snapshot would clamp to vanilla stack limits and under-estimate capacity.
-        int physicalCap = DuctItemInsertProbe.estimateMaxInsertable(h, template, limit);
+        // Probe at least pending+want: capping the probe at {@code limit} alone makes any in-flight batch of size
+        // {@code limit} report destCap=0 even when the chest still has room (serializes to one task at a time).
         int pendingSame = countSameItemCount(priorPending, template);
+        long probeLimitLong = (long) pendingSame + (long) limit;
+        int probeLimit = probeLimitLong >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) probeLimitLong;
+        int physicalCap = DuctItemInsertProbe.estimateMaxInsertable(h, template, probeLimit);
         return Math.max(0, Math.min(limit, physicalCap - pendingSame));
     }
 

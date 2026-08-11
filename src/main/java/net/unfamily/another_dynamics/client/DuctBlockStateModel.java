@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
@@ -137,9 +136,8 @@ public final class DuctBlockStateModel implements DynamicBlockStateModel {
                         .map(d -> d.alwaysOpaqueRendering())
                         .orElse(false);
         boolean networkOpaque = Boolean.TRUE.equals(modelData.get(DuctModelProperties.NETWORK_OPAQUE));
-        var player = Minecraft.getInstance().player;
-        boolean opaqueRendering =
-                DuctOpaqueRendering.effectiveOpaque(effectiveDuctId, networkOpaque, player);
+        boolean playerAll = DuctOpaqueRenderRefresh.snapshotPlayerAllOpaque();
+        boolean opaqueRendering = defOpaque || playerAll || networkOpaque;
 
         float ductVShift = 0f;
         Material.Baked particle = resolveParticleMaterial(modelData);
@@ -234,9 +232,10 @@ public final class DuctBlockStateModel implements DynamicBlockStateModel {
                 logicalId = defaultDuctLogicalId;
             }
             boolean networkOpaque = Boolean.TRUE.equals(modelData.get(DuctModelProperties.NETWORK_OPAQUE));
-            var player = Minecraft.getInstance().player;
             boolean opaque =
-                    DuctOpaqueRendering.effectiveOpaque(logicalId, networkOpaque, player);
+                    DuctOpaqueRendering.definitionAlwaysOpaque(logicalId)
+                            || DuctOpaqueRenderRefresh.snapshotPlayerAllOpaque()
+                            || networkOpaque;
             return new DuctGeometryKey(
                     logicalId,
                     pipe != null ? pipe : 0,

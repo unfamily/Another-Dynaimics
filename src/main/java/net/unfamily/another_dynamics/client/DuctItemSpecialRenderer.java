@@ -9,7 +9,6 @@ import java.util.function.Consumer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.serialization.MapCodec;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.resources.model.SimpleModelWrapper;
@@ -92,7 +91,8 @@ public final class DuctItemSpecialRenderer implements SpecialModelRenderer<Strin
         }
 
         boolean opaqueRendering =
-                DuctOpaqueRendering.effectiveItemPreviewOpaque(logicalId, Minecraft.getInstance().player);
+                DuctOpaqueRendering.definitionAlwaysOpaque(logicalId)
+                        || DuctOpaqueRenderRefresh.snapshotPlayerAllOpaque();
 
         if (opaqueRendering) {
             List<BakedQuad> centerQuads = geo.lineCenterQuads();

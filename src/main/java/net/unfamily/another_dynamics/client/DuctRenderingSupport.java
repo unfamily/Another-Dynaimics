@@ -12,7 +12,6 @@ import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.client.resources.model.geometry.QuadCollection;
 import net.minecraft.client.resources.model.sprite.Material;
 import net.minecraft.client.resources.model.sprite.SpriteId;
-import net.minecraft.core.Direction;
 import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
@@ -91,18 +90,17 @@ public final class DuctRenderingSupport {
         return "__fallback__";
     }
 
+    /**
+     * Builds a {@link QuadCollection} for duct geometry. Faces are always unculled: ducts are cutout/transparent
+     * and must keep sides visible next to solid neighbors (culled faces would disappear against full blocks).
+     */
     public static QuadCollection quadsFromList(List<BakedQuad> quads) {
         if (quads.isEmpty()) {
             return QuadCollection.EMPTY;
         }
         QuadCollection.Builder builder = new QuadCollection.Builder();
         for (BakedQuad quad : quads) {
-            Direction direction = quad.direction();
-            if (direction == null) {
-                builder.addUnculledFace(quad);
-            } else {
-                builder.addCulledFace(direction, quad);
-            }
+            builder.addUnculledFace(quad);
         }
         return builder.build();
     }

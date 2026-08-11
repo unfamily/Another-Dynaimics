@@ -181,9 +181,13 @@ final class DuctFilterItemRouting {
                             destCounterparty)) {
                         return true;
                     }
-                    if (!DuctIncomingIndex.snapshot(level, dest, destFace).isEmpty()
-                            && cand.priority() > highestPendingFullPriority) {
-                        highestPendingFullPriority = cand.priority();
+                    if (!DuctIncomingIndex.snapshot(level, dest, destFace).isEmpty()) {
+                        if (cand.priority() > highestPendingFullPriority) {
+                            highestPendingFullPriority = cand.priority();
+                        }
+                        if (!roundRobinRouting && rm != RoutingMode.RANDOM) {
+                            return false;
+                        }
                     }
                 }
             }

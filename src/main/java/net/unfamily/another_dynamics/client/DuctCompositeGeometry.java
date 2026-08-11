@@ -494,8 +494,8 @@ public final class DuctCompositeGeometry {
             float nu = u0 + du * ((cellX + tu * 16.0f) / 64.0f);
             float nv = vv0 + dv * ((cellY + tv * 8.0f) / 32.0f);
             m.setUv(i, nu, nv);
-            // 75% alpha to keep the node texture readable beneath.
-            m.setColor(i, 0xBFFFFFFF);
+            // Opaque-ish overlay; full alpha reads closest to the bright 1.21 emissive node icons.
+            m.setColor(i, 0xFFFFFFFF);
         }
         m.setTintIndex(-1);
         m.setShade(false);
