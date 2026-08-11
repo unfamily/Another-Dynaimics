@@ -8,10 +8,10 @@
   ],
   "key": {
     "A": {
-      "item": "minecraft:cobblestone"
+      "tag": "c:end_stones"
     },
     "B": {
-      "tag": "c:gems/diamond"
+      "item": "another_dynamics:ender_accellerant"
     },
     "C": {
       "item": "another_dynamics:inc_module_3"
@@ -22,3 +22,4 @@
     "count": 1
   }
 }
+

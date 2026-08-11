@@ -1,12 +1,9 @@
 {
-  "replace": false,
   "values": [
     "another_dynamics:inc_module_0",
     "another_dynamics:inc_module_1",
     "another_dynamics:inc_module_2",
     "another_dynamics:inc_module_3",
-    "another_dynamics:inc_module_4",
-    "another_dynamics:inc_module_5",
-    "another_dynamics:inc_module_6"
+    "another_dynamics:inc_module_4"
   ]
 }

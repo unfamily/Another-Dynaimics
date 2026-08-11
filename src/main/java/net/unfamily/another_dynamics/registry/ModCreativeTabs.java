@@ -40,13 +40,6 @@ public final class ModCreativeTabs {
                     output.accept(ModItems.INC_MODULE_2.get().getDefaultInstance());
                     output.accept(ModItems.INC_MODULE_3.get().getDefaultInstance());
                     output.accept(ModItems.INC_MODULE_4.get().getDefaultInstance());
-                    output.accept(ModItems.INC_MODULE_5.get().getDefaultInstance());
-                    output.accept(ModItems.INC_MODULE_6.get().getDefaultInstance());
-                    output.accept(ModItems.FIL_MODULE_0.get().getDefaultInstance());
-                    output.accept(ModItems.FIL_MODULE_1.get().getDefaultInstance());
-                    output.accept(ModItems.FIL_MODULE_2.get().getDefaultInstance());
-                    output.accept(ModItems.FIL_MODULE_3.get().getDefaultInstance());
-                    output.accept(ModItems.FIL_MODULE_4.get().getDefaultInstance());
                     output.accept(ModItems.NETHERITE_NUGGET.get().getDefaultInstance());
                     output.accept(ModItems.RESONANTING_CONDUCTOR.get().getDefaultInstance());
                     output.accept(ModItems.ENDER_ACCELERANT.get().getDefaultInstance());

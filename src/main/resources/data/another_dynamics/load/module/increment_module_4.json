@@ -14,16 +14,16 @@
         "deny_hybrid": { "add": 50 }
       },
       "speed": {
-        "mult": 0.333
+        "mult": 0.0
       },
       "rate": {
-        "mult": 0.333
+        "mult": 0.05
       }
     },
     {
       "for": "fluid",
       "quantity": {
-        "set": 64000
+        "set": 2147483647
       },
       "filter": {
         "allow": { "add": 100 },
@@ -32,16 +32,16 @@
         "deny_hybrid": { "add": 50 }
       },
       "speed": {
-        "mult": 0.333
+        "mult": 0.0
       },
       "rate": {
-        "mult": 0.333
+        "mult": 0.05
       }
     },
     {
       "for": "gas",
       "quantity": {
-        "set": 64000
+        "set": 2147483647
       },
       "filter": {
         "allow": { "add": 100 },
@@ -50,28 +50,28 @@
         "deny_hybrid": { "add": 50 }
       },
       "speed": {
-        "mult": 0.333
+        "mult": 0.0
       },
       "rate": {
-        "mult": 0.333
+        "mult": 0.05
       }
     },
     {
       "for": "energy",
       "extract": {
-        "mult": 100
+        "set": 2147483647
       },
       "rate": {
-        "mult": 0.333
+        "mult": 0.05
       }
     },
     {
       "for": "heat",
       "quantity": {
-        "set": 100000
+        "set": 2147483647
       },
       "rate": {
-        "mult": 0.333
+        "mult": 0.05
       }
     }
   ],
@@ -81,3 +81,4 @@
     "#another_dynamics:increment_modules"
   ]
 }
+

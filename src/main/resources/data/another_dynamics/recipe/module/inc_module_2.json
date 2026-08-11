@@ -11,7 +11,7 @@
       "item": "minecraft:cobblestone"
     },
     "B": {
-      "tag": "c:ingots/gold"
+      "tag": "c:gems/diamond"
     },
     "C": {
       "item": "another_dynamics:inc_module_1"
