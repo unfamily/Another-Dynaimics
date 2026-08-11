@@ -33,6 +33,7 @@ import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.unfamily.another_dynamics.duct.AbstractDuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
@@ -99,7 +100,7 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
 
     @Override
     protected VoxelShape getOcclusionShape(BlockState state) {
-        return DuctShapes.coreOnly();
+        return Shapes.empty();
     }
 
     @Override

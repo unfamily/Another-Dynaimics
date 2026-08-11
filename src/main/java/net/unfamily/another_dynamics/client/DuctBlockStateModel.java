@@ -65,7 +65,7 @@ public final class DuctBlockStateModel implements DynamicBlockStateModel {
         }
         QuadCollection geometry = DuctRenderingSupport.quadsFromList(quads);
         Material.Baked particle = resolveParticleMaterial(modelData);
-        parts.add(new SimpleModelWrapper(geometry, true, particle));
+        parts.add(new SimpleModelWrapper(geometry, false, particle));
     }
 
     @Override

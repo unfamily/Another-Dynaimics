@@ -54,7 +54,7 @@ public final class ProjectDuctBlockStateModel implements DynamicBlockStateModel 
         if (quads.isEmpty()) {
             return;
         }
-        parts.add(new SimpleModelWrapper(DuctRenderingSupport.quadsFromList(quads), true, particleMaterial));
+        parts.add(new SimpleModelWrapper(DuctRenderingSupport.quadsFromList(quads), false, particleMaterial));
     }
 
     @Override

@@ -33,6 +33,7 @@ import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
@@ -127,7 +128,7 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
 
     @Override
     protected VoxelShape getOcclusionShape(BlockState state) {
-        return DuctShapes.coreOnly();
+        return Shapes.empty();
     }
 
     protected VoxelShape occlusionShapeForState(BlockState state, BlockGetter level, BlockPos pos) {
