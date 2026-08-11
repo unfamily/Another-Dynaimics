@@ -26,6 +26,8 @@ import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects.FilterSlotBonuses;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 
+import org.jetbrains.annotations.Nullable;
+
 /** Entry-first gas extract/retrieve scheduling with bound filter destinations. */
 final class DuctFilterGasRouting {
     private static final int ROUTE_RETRY_CAP = 32;
@@ -138,7 +140,8 @@ final class DuctFilterGasRouting {
                             rf.face(),
                             spec,
                             edgeTicks,
-                            radioactivePayload)) {
+                            radioactivePayload,
+                            unit)) {
                         return true;
                     }
                 }
@@ -364,7 +367,8 @@ final class DuctFilterGasRouting {
             Direction destFace,
             DuctGasTransportSpec spec,
             long edgeTicks,
-            boolean radioactivePayload) {
+            boolean radioactivePayload,
+            @Nullable net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.FilterUnit boundUnit) {
         if (!(level.getBlockEntity(destPos) instanceof DuctBlockEntity destBe)) {
             return false;
         }
@@ -376,24 +380,79 @@ final class DuctFilterGasRouting {
         if (destHandler == null) {
             return false;
         }
-        long availAmt = MekanismChemicalCompat.getAmount(available);
+        Object toMove = available;
+        if (boundUnit != null) {
+            toMove = applyExtractorInsertLimitGas(destHandler, node, boundUnit, available, level, destPos);
+            if (MekanismChemicalCompat.isEmptyStack(toMove)) {
+                return false;
+            }
+        }
+        long availAmt = MekanismChemicalCompat.getAmount(toMove);
         if (availAmt <= 0) {
             return false;
         }
-        Object tryStack = MekanismChemicalCompat.copyWithAmount(available, availAmt);
+        Object tryStack = MekanismChemicalCompat.copyWithAmount(toMove, availAmt);
         long simulated = MekanismChemicalCompat.simulateInsert(destHandler, tryStack);
         if (simulated <= 0) {
             return false;
         }
         if ((dm == NodeMode.FILTERING_INSERTION || dm == NodeMode.EXTRACTION_FILTERING)
                 && !DuctGasFilterLogic.passesGasFiltersForBank(
-                        destNode, DuctFaceNode.FilterBank.FILTER, available, level, sourceEp)) {
+                        destNode, DuctFaceNode.FilterBank.FILTER, toMove, level, sourceEp)) {
             return false;
         }
         DuctGasServerTick.DestCandidate pick =
                 new DuctGasServerTick.DestCandidate(destPos, destFace, destNode.insertionPriority, 0L, simulated);
         return commitExtract(
-                level, sourceBe, sourceFace, node, srcHandler, available, pick, spec, edgeTicks, radioactivePayload);
+                level, sourceBe, sourceFace, node, srcHandler, toMove, pick, spec, edgeTicks, radioactivePayload);
+    }
+
+    private static Object applyExtractorInsertLimitGas(
+            Object destHandler,
+            DuctFaceNode sourceNode,
+            net.unfamily.another_dynamics.duct.DuctFilterUnitLogic.FilterUnit unit,
+            Object available,
+            ServerLevel level,
+            BlockPos destPos) {
+        if (MekanismChemicalCompat.isEmptyStack(available) || unit == null) {
+            return available;
+        }
+        List<String> allows = sourceNode.bankAllowFilters(DuctFaceNode.FilterBank.EXTRACTOR);
+        List<Integer> lims = sourceNode.extractorBankLimitCaps();
+        List<Integer> concat = sourceNode.bankAllowConcatChannels(DuctFaceNode.FilterBank.EXTRACTOR);
+        java.util.ArrayList<String> uAllows = new java.util.ArrayList<>(unit.lineIndices().size());
+        java.util.ArrayList<Integer> uCaps = new java.util.ArrayList<>(unit.lineIndices().size());
+        java.util.ArrayList<Integer> uConcat = new java.util.ArrayList<>(unit.lineIndices().size());
+        for (int idx : unit.lineIndices()) {
+            uAllows.add(idx < allows.size() ? allows.get(idx) : "");
+            uCaps.add(idx < lims.size() ? Math.max(0, lims.get(idx)) : 0);
+            uConcat.add(net.unfamily.another_dynamics.duct.FilterConcatChannel.channelAt(concat, idx));
+        }
+        if (!DuctGasAllowLimitLogic.hasAnyPositiveAllowCapOnNonEmptyLine(uAllows, uCaps)) {
+            return available;
+        }
+        long maxAdd =
+                DuctGasAllowLimitLogic.maxAdditionalInsertAcrossAllowLines(
+                        destHandler,
+                        uAllows,
+                        uCaps,
+                        uConcat,
+                        available,
+                        level.registryAccess(),
+                        (line, reg) ->
+                                DuctGasAllowLimitLogic.countMatchingInStacks(
+                                        DuctGasIncomingIndex.snapshot(level, destPos), line, reg));
+        if (maxAdd == Long.MAX_VALUE) {
+            return available;
+        }
+        long capped = Math.min(MekanismChemicalCompat.getAmount(available), Math.max(0L, maxAdd));
+        if (capped <= 0) {
+            return MekanismChemicalCompat.emptyStack();
+        }
+        if (capped < MekanismChemicalCompat.getAmount(available)) {
+            return MekanismChemicalCompat.copyWithAmount(available, capped);
+        }
+        return available;
     }
 
     private static boolean commitExtract(
@@ -698,6 +757,14 @@ final class DuctFilterGasRouting {
                         continue;
                     }
                     Object planned = MekanismChemicalCompat.copyWithAmount(stalled, moved);
+                    planned =
+                            applyExtractorInsertLimitGas(
+                                    destHandler, node, unit, planned, level, rf.ductPos());
+                    if (MekanismChemicalCompat.isEmptyStack(planned)) {
+                        continue;
+                    }
+                    moved = MekanismChemicalCompat.getAmount(planned);
+                    planned = MekanismChemicalCompat.copyWithAmount(stalled, moved);
                     List<BlockPos> rawPath;
                     if (rf.ductPos().equals(srcPos)) {
                         rawPath = List.of(srcPos);

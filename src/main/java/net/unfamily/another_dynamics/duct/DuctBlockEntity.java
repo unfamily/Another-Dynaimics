@@ -5485,7 +5485,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         List<String> a = node.bankAllowFilters(bank);
         List<String> d = node.bankDenyFilters(bank);
         List<Integer> caps = node.bankAllowCaps(bank);
-        List<Integer> caps2 = bank == DuctFaceNode.FilterBank.FILTER ? node.filterBankKeepCaps() : null;
+        List<Integer> caps2 = node.bankAllowCaps2(bank);
         List<Integer> allowConcat = node.bankAllowConcatChannels(bank);
         List<Integer> denyConcat = node.bankDenyConcatChannels(bank);
         List<DuctDirectionalEndpoint> allowRemote = node.bankAllowRemoteNodes(bank);

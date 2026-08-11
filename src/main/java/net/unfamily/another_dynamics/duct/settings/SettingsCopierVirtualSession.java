@@ -690,6 +690,13 @@ public final class SettingsCopierVirtualSession {
                 dst.filterBankKeepCaps().add(Math.max(0, v != null ? v : 0));
             }
             syncCapSize(dst.filterBankKeepCaps(), allow.size());
+        } else if (bank == DuctFaceNode.FilterBank.EXTRACTOR) {
+            List<Integer> lim = new ArrayList<>(src.extractorBankLimitCaps());
+            dst.extractorBankLimitCaps().clear();
+            for (Integer v : lim) {
+                dst.extractorBankLimitCaps().add(Math.max(0, v != null ? v : 0));
+            }
+            syncCapSize(dst.extractorBankLimitCaps(), allow.size());
         }
     }
 
@@ -752,6 +759,13 @@ public final class SettingsCopierVirtualSession {
                 keep.add(Math.max(0, v != null ? v : 0));
             }
             syncCapSize(keep, a.size());
+        } else if (bank == DuctFaceNode.FilterBank.EXTRACTOR && allowCaps2In != null) {
+            List<Integer> lim = node.extractorBankLimitCaps();
+            lim.clear();
+            for (Integer v : allowCaps2In) {
+                lim.add(Math.max(0, v != null ? v : 0));
+            }
+            syncCapSize(lim, a.size());
         }
         if (allowConcatIn != null) {
             List<Integer> allowCh = node.bankAllowConcatChannels(bank);

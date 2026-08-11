@@ -45,9 +45,8 @@ base {
 }
 
 // Optional integrations whose compile-time API is not available on the 26.1.2 baseline.
-// The source is kept intact and only excluded from compilation; it is loaded via reflection
-// at runtime and guarded by ModList.isLoaded(...), so it stays dormant until the dependency ships.
-sourceSets.main.java.exclude('net/unfamily/another_dynamics/integration/ftbultimine/FTBUltimineCompat.java')
+// Keep sources intact and exclude only integrations that still lack a 26.x artifact.
+// FTB Ultimine ships for 26.1.2 — compiled and soft-loaded via ModList.isLoaded("ftbultimine").
 
 // Mojang ships Java 25 to end users in 26.1.2, so mods should target Java 25.
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
@@ -153,11 +152,12 @@ dependencies {
     // Pipez (optional): filter import from upgrade data components; no compile-time API usage.
     // localRuntime "curse.maven:pipez-443900:<26.x-fileId>"
     //
-    // FTB Ultimine (optional): logical duct id selection grouping.
-    // compileOnly "curse.maven:architectury-api-419699:<26.x-fileId>"
-    // compileOnly "curse.maven:ftb-ultimine-forge-386134:<26.x-fileId>"
-    // localRuntime "curse.maven:architectury-api-419699:<26.x-fileId>"
-    // localRuntime "curse.maven:ftb-ultimine-forge-386134:<26.x-fileId>"
+    // FTB Ultimine (optional): same logical duct id + same pipe-connected network component.
+    // 26.x uses NeoForge events (no Architectury); FTB Library is required transitively at runtime.
+    compileOnly "curse.maven:ftb-library-forge-404465:8148929"
+    compileOnly "curse.maven:ftb-ultimine-forge-386134:8231335"
+    localRuntime "curse.maven:ftb-library-forge-404465:8148929"
+    localRuntime "curse.maven:ftb-ultimine-forge-386134:8231335"
     //
     // Construction Sticks (optional).
     // localRuntime "curse.maven:construction-sticks-1156098:<26.x-fileId>"

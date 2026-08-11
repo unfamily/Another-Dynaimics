@@ -21,6 +21,8 @@ public final class DuctFilterListSnapshot {
     private static final String KEY_CAPS = "Caps";
     private static final String KEY_CAPS_KEEP = "CapsKeep";
     private static final String KEY_HAS_KEEP = "HasKeepCaps";
+    private static final String KEY_CAPS_LIMIT = "CapsLimit";
+    private static final String KEY_HAS_LIMIT = "HasLimitCaps";
     private static final String KEY_MATERIAL_KIND = "MaterialKind";
     private static final String KEY_ALLOW_CONCAT = "AllowConcat";
     private static final String KEY_DENY_CONCAT = "DenyConcat";
@@ -121,6 +123,10 @@ public final class DuctFilterListSnapshot {
                 List<Integer> keep = new ArrayList<>(node.filterBankKeepCaps());
                 root.putBoolean(KEY_HAS_KEEP, true);
                 root.putIntArray(KEY_CAPS_KEEP, keep.stream().mapToInt(i -> Math.max(0, i)).toArray());
+            } else if (bank == DuctFaceNode.FilterBank.EXTRACTOR) {
+                List<Integer> lim = new ArrayList<>(node.extractorBankLimitCaps());
+                root.putBoolean(KEY_HAS_LIMIT, true);
+                root.putIntArray(KEY_CAPS_LIMIT, lim.stream().mapToInt(i -> Math.max(0, i)).toArray());
             }
         }
         List<DuctDirectionalEndpoint> remote =
@@ -169,6 +175,14 @@ public final class DuctFilterListSnapshot {
                     targetKeep.add(Math.max(0, c));
                 }
                 syncAllowCapsSize(targetKeep, lines.size());
+            } else if (bank == DuctFaceNode.FilterBank.EXTRACTOR && data.getBooleanOr(KEY_HAS_LIMIT, false)) {
+                List<Integer> lim = readIntList(data, KEY_CAPS_LIMIT, lines.size());
+                List<Integer> targetLim = node.extractorBankLimitCaps();
+                targetLim.clear();
+                for (int c : lim) {
+                    targetLim.add(Math.max(0, c));
+                }
+                syncAllowCapsSize(targetLim, lines.size());
             }
         }
         List<DuctDirectionalEndpoint> remoteTarget =

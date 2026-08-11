@@ -5,13 +5,14 @@ import java.util.Map;
 import java.util.Set;
 
 import dev.ftb.mods.ftbultimine.api.blockselection.BlockSelectionHandler;
-import dev.ftb.mods.ftbultimine.api.blockselection.RegisterBlockSelectionHandlerEvent;
+import dev.ftb.mods.ftbultimine.api.neoforge.FTBUltimineEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctConnectable;
 import net.unfamily.another_dynamics.duct.DuctIds;
@@ -21,15 +22,17 @@ import net.unfamily.another_dynamics.duct.logistics.DuctPathfinder;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctNetwork;
 
 /**
- * FTB Ultimine: same {@link DuctBlockEntity#getLogicalDuctId()} and same pipe-connected component per
- * {@link DuctNetworkType} (item does not pull fluid). Project ducts use {@link ProjectDuctNetwork} only.
+ * FTB Ultimine (26+): only the same logical duct type on the same pipe-connected
+ * {@link DuctNetworkType} component. Adjacency / shape is left to Ultimine.
+ * Project ducts use {@link ProjectDuctNetwork} only.
  */
 public final class FTBUltimineCompat {
     private FTBUltimineCompat() {}
 
     public static void register() {
-        RegisterBlockSelectionHandlerEvent.REGISTER.register(
-                registry -> registry.registerHandler(DuctSelectionHandler.INSTANCE));
+        NeoForge.EVENT_BUS.addListener(
+                FTBUltimineEvent.RegisterBlockSelectionHandler.class,
+                event -> event.getEventData().consumer().accept(DuctSelectionHandler.INSTANCE));
     }
 
     enum DuctSelectionHandler implements BlockSelectionHandler {

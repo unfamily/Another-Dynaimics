@@ -792,8 +792,8 @@ public final class ModNetwork {
         Direction face = session.accessFace();
         for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
             java.util.List<Integer> caps2 =
-                    bank == DuctFaceNode.FilterBank.FILTER
-                            ? copyFilterSyncList(node.filterBankKeepCaps())
+                    node.bankAllowCaps2(bank) != null
+                            ? copyFilterSyncList(node.bankAllowCaps2(bank))
                             : java.util.List.of();
             FilterSyncDebugLog.serverSyncSend(
                     "virtual",
@@ -882,8 +882,8 @@ public final class ModNetwork {
         int tk = lane.ordinal();
         for (DuctFaceNode.FilterBank bank : DuctFaceNode.FilterBank.values()) {
             java.util.List<Integer> caps2 =
-                    bank == DuctFaceNode.FilterBank.FILTER
-                            ? copyFilterSyncList(node.filterBankKeepCaps())
+                    node.bankAllowCaps2(bank) != null
+                            ? copyFilterSyncList(node.bankAllowCaps2(bank))
                             : java.util.List.of();
             FilterSyncDebugLog.serverSyncSend(
                     "duct",

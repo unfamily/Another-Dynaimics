@@ -36,6 +36,7 @@ import net.unfamily.another_dynamics.registry.ModMenuTypes;
 import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.item.RemoteNodeSelectorEvents;
+import net.unfamily.another_dynamics.duct.DuctJumpAssistEvents;
 
 @Mod(AnotherDynamicsMod.MOD_ID)
 public final class AnotherDynamicsMod {
@@ -66,6 +67,7 @@ public final class AnotherDynamicsMod {
 
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
         NeoForge.EVENT_BUS.register(RemoteNodeSelectorEvents.class);
+        NeoForge.EVENT_BUS.register(DuctJumpAssistEvents.class);
 
         if (FMLEnvironment.getDist() == Dist.CLIENT) {
             modEventBus.addListener(FMLClientSetupEvent.class, DuctClientSetup::onClientSetup);

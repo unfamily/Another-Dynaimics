@@ -535,6 +535,17 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
     }
 
     @Override
+    public List<Integer> getClientExtractorLimitCaps() {
+        return filterBuffers.getClientExtractorLimitCaps(filterTransportKindOrdinal());
+    }
+
+    @Override
+    public @Nullable List<Integer> getClientAllowCaps2(
+            net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
+        return filterBuffers.getClientAllowCaps2(filterTransportKindOrdinal(), bank);
+    }
+
+    @Override
     public List<Integer> getClientAllowConcatChannels(
             net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank) {
         return filterBuffers.getClientAllowConcatChannels(filterTransportKindOrdinal(), bank);
@@ -664,10 +675,9 @@ public final class DuctNodeMenu extends AbstractContainerMenu implements Univers
         ClientFilterLaneMirror mirror = filterBuffers.mirrorForTransport(transportKindOrdinal);
         for (net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank bank :
                 net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.values()) {
+            List<Integer> caps2List = mirror.allowCaps2(bank);
             List<Integer> caps2 =
-                    bank == net.unfamily.another_dynamics.duct.DuctFaceNode.FilterBank.FILTER
-                            ? new ArrayList<>(mirror.filterKeepCaps())
-                            : List.of();
+                    caps2List != null ? new ArrayList<>(caps2List) : List.of();
             FilterSyncDebugLog.clientPush(
                     "DuctNodeMenu.pushAll",
                     ductBlockPos,

@@ -69,6 +69,15 @@ final class UniversalDuctMenuFilterBuffers {
         return mirrorForKind(filterTransportKindOrdinal).filterKeepCaps();
     }
 
+    List<Integer> getClientExtractorLimitCaps(int filterTransportKindOrdinal) {
+        return mirrorForKind(filterTransportKindOrdinal).extractorLimitCaps();
+    }
+
+    @Nullable
+    List<Integer> getClientAllowCaps2(int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
+        return mirrorForKind(filterTransportKindOrdinal).allowCaps2(bank);
+    }
+
     List<Integer> getClientAllowConcatChannels(int filterTransportKindOrdinal, DuctFaceNode.FilterBank bank) {
         return mirrorForKind(filterTransportKindOrdinal).allowConcat(bank);
     }
@@ -116,14 +125,14 @@ final class UniversalDuctMenuFilterBuffers {
             DuctFaceNode.FilterBank bank,
             net.minecraft.core.RegistryAccess registryAccess) {
         ClientFilterLaneMirror mirror = mirrors.mirror(transportKindOrdinal);
-        List<Integer> keepCaps = bank == DuctFaceNode.FilterBank.FILTER ? mirror.filterKeepCaps() : null;
+        List<Integer> caps2 = mirror.allowCaps2(bank);
         DuctFilterLineReorder.sortAllowDenyRows(
                 mirror.allowFilters(bank),
                 mirror.denyFilters(bank),
                 mirror.allowCaps(bank),
                 null,
                 registryAccess,
-                keepCaps,
+                caps2,
                 mirror.allowConcat(bank),
                 mirror.denyConcat(bank),
                 mirror.allowRemote(bank),
@@ -243,12 +252,14 @@ final class UniversalDuctMenuFilterBuffers {
                 denyAnyFace.add(v != null && v);
             }
         }
-        if (bank == DuctFaceNode.FilterBank.FILTER) {
-            List<Integer> keep = lane.filterKeepCaps();
-            keep.clear();
-            if (allowCaps2 != null) {
-                for (Integer v : allowCaps2) {
-                    keep.add(Math.max(0, v != null ? v : 0));
+        if (bank == DuctFaceNode.FilterBank.FILTER || bank == DuctFaceNode.FilterBank.EXTRACTOR) {
+            List<Integer> caps2 = lane.allowCaps2(bank);
+            if (caps2 != null) {
+                caps2.clear();
+                if (allowCaps2 != null) {
+                    for (Integer v : allowCaps2) {
+                        caps2.add(Math.max(0, v != null ? v : 0));
+                    }
                 }
             }
         }

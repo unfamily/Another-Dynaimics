@@ -18,6 +18,7 @@ final class ClientFilterLaneMirror {
     private final List<String> allowFiltersFilter = new ArrayList<>();
     private final List<String> denyFiltersFilter = new ArrayList<>();
     private final List<Integer> allowCapsExtractor = new ArrayList<>();
+    private final List<Integer> allowCapsExtractorLimit = new ArrayList<>();
     private final List<Integer> allowCapsRetriever = new ArrayList<>();
     private final List<Integer> allowCapsFilter = new ArrayList<>();
     private final List<Integer> allowCapsFilterKeep = new ArrayList<>();
@@ -93,6 +94,20 @@ final class ClientFilterLaneMirror {
         return allowCapsFilterKeep;
     }
 
+    List<Integer> extractorLimitCaps() {
+        return allowCapsExtractorLimit;
+    }
+
+    /** Secondary caps: FILTER Keep or EXTRACTOR Insert Limit. */
+    @Nullable
+    List<Integer> allowCaps2(DuctFaceNode.FilterBank bank) {
+        return switch (bank) {
+            case FILTER -> allowCapsFilterKeep;
+            case EXTRACTOR -> allowCapsExtractorLimit;
+            case RETRIEVER -> null;
+        };
+    }
+
     List<Integer> allowConcat(DuctFaceNode.FilterBank bank) {
         return switch (bank) {
             case EXTRACTOR -> allowConcatExtractor;
@@ -165,6 +180,7 @@ final class ClientFilterLaneMirror {
         clampList(allowFiltersFilter, maxAllow);
         clampList(denyFiltersFilter, maxDeny);
         clampIntList(allowCapsExtractor, maxAllow);
+        clampIntList(allowCapsExtractorLimit, maxAllow);
         clampIntList(allowCapsRetriever, maxAllow);
         clampIntList(allowCapsFilter, maxAllow);
         clampIntList(allowCapsFilterKeep, maxAllow);
