@@ -25,6 +25,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.ChunkRenderTypeSet;
 import net.neoforged.neoforge.client.model.BakedModelWrapper;
 import net.neoforged.neoforge.client.model.data.ModelData;
+import net.neoforged.neoforge.common.util.TriState;
 import net.unfamily.another_dynamics.duct.DuctDefinition;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctIds;
@@ -243,6 +244,16 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
      */
     @SuppressWarnings("deprecation")
     @Override
+    public boolean useAmbientOcclusion() {
+        return false;
+    }
+
+    @Override
+    public TriState useAmbientOcclusion(BlockState state, ModelData data, RenderType renderType) {
+        return TriState.FALSE;
+    }
+
+    @Override
     public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource rand) {
         if (state == null) {
             return getItemQuads(side, null);
@@ -340,13 +351,8 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
             appendStallOverlayOnNodes(built, effectiveGeometry, effectiveStall);
         }
         if (side != null) {
-            List<BakedQuad> culled = new ArrayList<>();
-            for (BakedQuad q : built) {
-                if (q.getDirection() == side) {
-                    culled.add(q);
-                }
-            }
-            return culled;
+            // Unculled geometry: emit only on the general (side == null) pass.
+            return List.of();
         }
         return built;
     }

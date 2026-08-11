@@ -15,6 +15,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.ChunkRenderTypeSet;
 import net.neoforged.neoforge.client.model.BakedModelWrapper;
 import net.neoforged.neoforge.client.model.data.ModelData;
+import net.neoforged.neoforge.common.util.TriState;
 import net.unfamily.another_dynamics.client.DuctCompositeGeometry;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctModelProperties;
@@ -39,6 +40,16 @@ public final class ProjectDuctBakedModel extends BakedModelWrapper<net.minecraft
     }
 
     @Override
+    public boolean useAmbientOcclusion() {
+        return false;
+    }
+
+    @Override
+    public TriState useAmbientOcclusion(BlockState state, ModelData data, RenderType renderType) {
+        return TriState.FALSE;
+    }
+
+    @Override
     public List<BakedQuad> getQuads(
             @Nullable BlockState state,
             @Nullable Direction side,
@@ -47,6 +58,9 @@ public final class ProjectDuctBakedModel extends BakedModelWrapper<net.minecraft
             @Nullable RenderType renderType) {
         if (!geometry.isBuilt()) {
             return originalModel.getQuads(state, side, rand, modelData, renderType);
+        }
+        if (side != null) {
+            return List.of();
         }
         if (state == null) {
             return itemQuads(side);

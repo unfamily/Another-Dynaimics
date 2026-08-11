@@ -62,7 +62,9 @@ public final class DuctNetworkOpaquePropagation {
     }
 
     /**
-     * After place or topology change: if any adjacent component is network-opaque, mark the union opaque.
+     * After place or topology change: if the true pipe-connected component already has any network-opaque
+     * flag, paint the whole component. Does <strong>not</strong> infect mere grid neighbors (wrench-disconnected
+     * faces or ducts that do not share a pipe hop — e.g. different transport kinds).
      */
     public static void onStructuralChange(ServerLevel level, BlockPos pos) {
         if (!(level.getBlockState(pos).getBlock() instanceof DuctConnectable)) {
@@ -70,13 +72,6 @@ public final class DuctNetworkOpaquePropagation {
         }
         if (componentHasNetworkOpaque(level, pos)) {
             setNetworkOpaqueOnComponent(level, pos, true);
-            return;
-        }
-        for (BlockPos n : neighbors6(pos)) {
-            if (componentHasNetworkOpaque(level, n)) {
-                setNetworkOpaqueOnComponent(level, pos, true);
-                return;
-            }
         }
     }
 
