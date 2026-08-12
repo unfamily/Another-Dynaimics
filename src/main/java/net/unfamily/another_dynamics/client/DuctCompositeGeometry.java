@@ -550,10 +550,9 @@ public final class DuctCompositeGeometry {
             out[base + uv0] = Float.floatToRawIntBits(nu);
             out[base + uv0 + 1] = Float.floatToRawIntBits(nv);
 
-            // 75% alpha to keep the node texture readable beneath.
+            // PNG already carries ~75% alpha; full vertex alpha matches 26.1.2 (0xBF stacked too transparent).
             if (out.length > base + color) {
-                int c = out[base + color];
-                out[base + color] = (c & 0x00FFFFFF) | (0xBF << 24);
+                out[base + color] = 0xFFFFFFFF;
             }
         }
         BakedQuad overlay = new BakedQuad(out, -1, q.getDirection(), nodesSprite, false);
