@@ -17,8 +17,8 @@ item_ids:
   <ItemIcon id="another_dynamics:ender_accellerant" />
 </ItemGrid>
 
-Crafting parts used across the mod:
+Shared materials used across the mod:
 
 - **Resonanting Conductor** — conductive piece for ducts and modules.
-- **Netherite Nugget** — compact netherite for high-tier crafts.
-- **Ender Accelerant** — ender-based catalyst for advanced recipes.
+- **Netherite Nugget** — compact netherite for high-tier parts.
+- **Ender Accelerant** — ender-based catalyst for advanced components.

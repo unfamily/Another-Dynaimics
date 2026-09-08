@@ -1563,7 +1563,8 @@ public final class SequentialCopierVirtualUi {
         listNameBox.setTextColor(0xFFFFFFFF);
         listNameBox.setHint(
                 Component.translatable(
-                        "gui.another_dynamics.sequential_buffer.sequence_list", editingListIndex + 1));
+                                "gui.another_dynamics.sequential_buffer.sequence_list", editingListIndex + 1)
+                        .withStyle(Style.EMPTY.withColor(ChatFormatting.WHITE)));
         listNameBox.setValue(current);
         listNameBox.setResponder(this::onListNameDraftChanged);
         host.addSequentialWidget(listNameBox);
