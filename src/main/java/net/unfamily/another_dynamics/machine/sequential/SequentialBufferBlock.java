@@ -24,12 +24,17 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.phys.BlockHitResult;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Directional sequential buffer: front faces the clicked block (output), other faces accept input.
+ * Directional sequential buffer: front is output, other faces accept input.
+ *
+ * <p>Placement: if the clicked block exposes an item/fluid/chemical handler on the contact face,
+ * the front points at that block; otherwise the front follows the player's look direction.
  */
 public final class SequentialBufferBlock extends Block implements EntityBlock {
     public static final MapCodec<SequentialBufferBlock> CODEC = simpleCodec(SequentialBufferBlock::new);
@@ -54,9 +59,32 @@ public final class SequentialBufferBlock extends Block implements EntityBlock {
 
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context) {
-        // Front looks toward the clicked block (the inventory being targeted).
-        Direction towardClicked = context.getClickedFace().getOpposite();
-        return defaultBlockState().setValue(FACING, towardClicked);
+        Direction clickedFace = context.getClickedFace();
+        Direction facing;
+        if (hasInteractableHandler(context.getLevel(), context.getClickedPos(), clickedFace)) {
+            // Front toward the clicked inventory / tank / chemical handler.
+            facing = clickedFace.getOpposite();
+        } else {
+            // No usable destination on the click target: front looks where the player looks.
+            facing = context.getNearestLookingDirection();
+        }
+        return defaultBlockState().setValue(FACING, facing);
+    }
+
+    /**
+     * True when {@code pos} exposes an item, fluid, or chemical handler on {@code side} (the face
+     * the Sequential Buffer would attach to as its front destination).
+     */
+    private static boolean hasInteractableHandler(Level level, BlockPos pos, Direction side) {
+        var items = level.getCapability(Capabilities.Item.BLOCK, pos, side);
+        if (items != null && items.size() > 0) {
+            return true;
+        }
+        if (level.getCapability(Capabilities.Fluid.BLOCK, pos, side) != null) {
+            return true;
+        }
+        return MekanismChemicalCompat.isLoaded()
+                && MekanismChemicalCompat.getChemicalHandlerAt(level, pos, side) != null;
     }
 
     @Override
