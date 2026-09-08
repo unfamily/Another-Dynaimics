@@ -5,7 +5,7 @@ navigation:
 ---
 # Another Dynamics
 
-Handbook for **ducts**, **machines**, and **tools**. Open a hub below, then pick the topic you need.
+Handbook for **ducts**, **logistics devices**, and **tools**. Open a hub below, then pick the topic you need.
 
 ## Contents
 
