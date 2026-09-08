@@ -74,6 +74,12 @@ public final class ModItems {
                                     "another_dynamics:item_fluid_duct"),
                     UnaryOperator.identity());
 
+    public static final DeferredItem<BlockItem> SEQUENTIAL_BUFFER =
+            ITEMS.registerItem(
+                    "sequential_buffer",
+                    props -> new BlockItem(ModBlocks.SEQUENTIAL_BUFFER.get(), props),
+                    UnaryOperator.identity());
+
     /** Only registered when Mekanism is present. */
     public static final DeferredItem<DuctBlockItem> GAS_DUCT =
             MEKANISM_LOADED && ModBlocks.GAS_DUCT != null

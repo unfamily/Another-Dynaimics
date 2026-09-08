@@ -14,6 +14,7 @@ import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.gui.SettingsCopierScreen;
 import net.unfamily.another_dynamics.duct.DuctIds;
 import net.unfamily.another_dynamics.integration.jei.ghost.AnDynamicsGhostIngredientHandler;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferScreen;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 import net.unfamily.another_dynamics.registry.ModItems;
 
@@ -55,6 +56,10 @@ public final class AnotherDynamicsJeiPlugin implements IModPlugin {
         );
         registration.addGhostIngredientHandler(
             SettingsCopierScreen.class,
+            new AnDynamicsGhostIngredientHandler<>()
+        );
+        registration.addGhostIngredientHandler(
+            SequentialBufferScreen.class,
             new AnDynamicsGhostIngredientHandler<>()
         );
     }

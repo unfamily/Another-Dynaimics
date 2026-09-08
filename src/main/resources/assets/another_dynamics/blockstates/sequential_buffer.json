@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=north": { "model": "another_dynamics:block/sequential_buffer" },
+    "facing=south": { "model": "another_dynamics:block/sequential_buffer", "y": 180 },
+    "facing=west":  { "model": "another_dynamics:block/sequential_buffer", "y": 270 },
+    "facing=east":  { "model": "another_dynamics:block/sequential_buffer", "y": 90 },
+    "facing=up":    { "model": "another_dynamics:block/sequential_buffer", "x": -90 },
+    "facing=down":  { "model": "another_dynamics:block/sequential_buffer", "x": 90 }
+  }
+}

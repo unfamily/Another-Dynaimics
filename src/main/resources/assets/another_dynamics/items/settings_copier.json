@@ -16,14 +16,30 @@
     },
     "on_false": {
       "type": "minecraft:condition",
-      "property": "another_dynamics:copier_filled",
+      "property": "another_dynamics:copier_sequential",
       "on_true": {
-        "type": "minecraft:model",
-        "model": "another_dynamics:item/settings_copier_all_1"
+        "type": "minecraft:condition",
+        "property": "another_dynamics:copier_filled",
+        "on_true": {
+          "type": "minecraft:model",
+          "model": "another_dynamics:item/settings_copier_sequential_1"
+        },
+        "on_false": {
+          "type": "minecraft:model",
+          "model": "another_dynamics:item/settings_copier_sequential_0"
+        }
       },
       "on_false": {
-        "type": "minecraft:model",
-        "model": "another_dynamics:item/settings_copier_all_0"
+        "type": "minecraft:condition",
+        "property": "another_dynamics:copier_filled",
+        "on_true": {
+          "type": "minecraft:model",
+          "model": "another_dynamics:item/settings_copier_all_1"
+        },
+        "on_false": {
+          "type": "minecraft:model",
+          "model": "another_dynamics:item/settings_copier_all_0"
+        }
       }
     }
   }

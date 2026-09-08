@@ -47,6 +47,7 @@ public final class ModCreativeTabs {
                     output.accept(ModItems.BULKY_WRENCH.get().getDefaultInstance());
                     output.accept(ModItems.REMOTE_NODE_SELECTOR.get().getDefaultInstance());
                     output.accept(ModItems.PROJECT_DUCT.get().getDefaultInstance());
+                    output.accept(ModItems.SEQUENTIAL_BUFFER.get().getDefaultInstance());
                 })
                 .build();
     }

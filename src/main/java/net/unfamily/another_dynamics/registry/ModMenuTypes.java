@@ -8,6 +8,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferMenu;
 
 public final class ModMenuTypes {
     public static final DeferredRegister<MenuType<?>> MENUS =
@@ -20,6 +21,11 @@ public final class ModMenuTypes {
             MENUS.register(
                     "settings_copier_hub",
                     () -> IMenuTypeExtension.create(SettingsCopierMenu::createClient));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<SequentialBufferMenu>> SEQUENTIAL_BUFFER =
+            MENUS.register(
+                    "sequential_buffer",
+                    () -> IMenuTypeExtension.create(SequentialBufferMenu::createClient));
 
     private ModMenuTypes() {}
 }

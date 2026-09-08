@@ -61,6 +61,30 @@ public final class ModDataComponents {
                                     .networkSynchronized(ByteBufCodecs.BOOL)
                                     .build());
 
+    /**
+     * When {@code true}, copier is in sequential-buffer mode ({@link
+     * net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind#SEQUENTIAL}). Absent / false = not sequential.
+     */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Boolean>> SETTINGS_COPIER_SEQUENTIAL =
+            TYPES.register(
+                    "settings_copier_sequential",
+                    () ->
+                            DataComponentType.<Boolean>builder()
+                                    .persistent(Codec.BOOL)
+                                    .networkSynchronized(ByteBufCodecs.BOOL)
+                                    .build());
+
+    /** Sequential Buffer settings snapshot for {@link net.unfamily.another_dynamics.item.SettingsCopierItem}. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<CompoundTag>>
+            SETTINGS_COPIER_SEQUENTIAL_DATA =
+                    TYPES.register(
+                            "settings_copier_sequential_data",
+                            () ->
+                                    DataComponentType.<CompoundTag>builder()
+                                            .persistent(CompoundTag.CODEC)
+                                            .networkSynchronized(ByteBufCodecs.COMPOUND_TAG)
+                                            .build());
+
     /** Bound inventory endpoint for {@link net.unfamily.another_dynamics.item.RemoteNodeSelectorItem}. */
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<net.unfamily.another_dynamics.duct.DuctDirectionalEndpoint>> REMOTE_NODE_ENDPOINT =
             TYPES.register(

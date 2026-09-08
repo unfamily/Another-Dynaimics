@@ -15,6 +15,7 @@ import net.unfamily.another_dynamics.duct.GasDuctBlock;
 import net.unfamily.another_dynamics.duct.HybridItemFluidDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlock;
 
 /**
  * Block registrations use {@link DeferredRegister.Blocks#registerBlock} so {@link BlockBehaviour.Properties}
@@ -46,6 +47,15 @@ public final class ModBlocks {
 
     public static final DeferredBlock<Block> ITEM_FLUID_DUCT =
             BLOCKS.registerBlock("item_fluid_duct", HybridItemFluidDuctBlock::new, DUCT_PROPERTIES);
+
+    public static final DeferredBlock<Block> SEQUENTIAL_BUFFER =
+            BLOCKS.registerBlock(
+                    "sequential_buffer",
+                    SequentialBufferBlock::new,
+                    p -> p.mapColor(MapColor.COLOR_GRAY)
+                            .strength(1.5f, 6.0f)
+                            .sound(SoundType.METAL)
+                            .requiresCorrectToolForDrops());
 
     /** Only registered when Mekanism gas support is enabled (disabled on the 26.1.2 baseline). */
     public static final DeferredBlock<Block> GAS_DUCT =

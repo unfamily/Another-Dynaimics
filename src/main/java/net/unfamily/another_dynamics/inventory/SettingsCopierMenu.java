@@ -29,6 +29,13 @@ import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
 import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierVirtualSession;
+import net.unfamily.another_dynamics.network.SequentialBufferActionPayload;
+import net.unfamily.another_dynamics.machine.sequential.SettingsCopierSequentialVirtualSession;
+import net.unfamily.another_dynamics.machine.sequential.SettingsCopierSequentialSnapshot;
+import net.unfamily.another_dynamics.machine.sequential.SequentialGateMode;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity;
+import net.unfamily.another_dynamics.machine.sequential.SequenceListData;
+import net.minecraft.nbt.CompoundTag;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.minecraft.world.SimpleContainer;
 import net.unfamily.another_dynamics.network.ModNetwork;
@@ -103,6 +110,12 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     private final Direction accessFace;
     private final BlockPos ductBlockPos;
     private @Nullable SettingsCopierVirtualSession virtualSession;
+    private @Nullable SettingsCopierSequentialVirtualSession sequentialVirtual;
+    /** Client mirror of sequential virtual lists (from copier stack sync). */
+    private final SequenceListData[] clientSequentialLists =
+            new SequenceListData[SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT];
+    private SequentialGateMode clientSequentialGate = SequentialGateMode.IGNORED;
+    private boolean clientSequentialStrictIntake = true;
     private final UniversalDuctMenuFilterBuffers filterBuffers = new UniversalDuctMenuFilterBuffers();
     private final SimpleContainer importContainer;
     /** Server: channel selected in import GUI (synced from client). */
@@ -194,6 +207,9 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
                 openingBandSlotFromSync != Integer.MIN_VALUE
                         ? openingBandSlotFromSync
                         : resolveOpeningCopierMenuSlot(playerInventory, hand, playerInventory.player);
+        for (int i = 0; i < clientSequentialLists.length; i++) {
+            clientSequentialLists[i] = new SequenceListData();
+        }
         initClientSyncDefaults(playerInventory);
         this.importContainer =
                 new SimpleContainer(2) {
@@ -249,6 +265,22 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         return rootLayer.get(0) == ROOT_VIRTUAL;
     }
 
+    /** Virtual sequential editor (same root layer as duct virtual; distinguished by store kind / session). */
+    public boolean isSequentialVirtualLayer() {
+        if (!isVirtualLayer()) {
+            return false;
+        }
+        if (sequentialVirtual != null) {
+            return true;
+        }
+        return storeKind(owner) == SettingsCopierStoreKind.SEQUENTIAL;
+    }
+
+    /** Duct virtual editor only (not sequential). */
+    public boolean isDuctVirtualLayer() {
+        return isVirtualLayer() && !isSequentialVirtualLayer();
+    }
+
     public boolean isImportLayer() {
         return rootLayer.get(0) == ROOT_IMPORT;
     }
@@ -292,6 +324,11 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         return virtualSession;
     }
 
+    @Nullable
+    public SettingsCopierSequentialVirtualSession sequentialVirtual() {
+        return sequentialVirtual;
+    }
+
     public ItemStack copierStack(Player player) {
         return player.getItemInHand(hand);
     }
@@ -301,10 +338,17 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         if (player.level().isClientSide()) {
             player.setItemInHand(hand, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
             clearClientFilterListMaterialKindOverride();
+            if (isSequentialVirtualLayer()
+                    || SettingsCopierStoreKind.getMode(stack) == SettingsCopierStoreKind.SEQUENTIAL) {
+                loadClientSequentialFromStack(stack);
+            }
         }
     }
 
     public SettingsCopierStoreKind storeKind(Player player) {
+        if (sequentialVirtual != null) {
+            return SettingsCopierStoreKind.SEQUENTIAL;
+        }
         if (virtualSession != null) {
             return virtualSession.storeKind();
         }
@@ -320,11 +364,95 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         if (copier.isEmpty() || !(copier.getItem() instanceof SettingsCopierItem)) {
             return;
         }
+        if (SettingsCopierStoreKind.getMode(copier) == SettingsCopierStoreKind.SEQUENTIAL) {
+            enterSequentialVirtual(player);
+            return;
+        }
         clientFilterMaterialKindOrdinal = -1;
+        sequentialVirtual = null;
         virtualSession = new SettingsCopierVirtualSession(player, hand, copier, syncData);
         rootLayer.set(0, ROOT_VIRTUAL);
         broadcastChanges();
     }
+
+    /** Server: open Sequential Buffer virtual editor inside this menu (no nested openMenu). */
+    public void enterSequentialVirtual(ServerPlayer player) {
+        if (!isHubLayer()) {
+            return;
+        }
+        ItemStack copier = copierStack(player);
+        if (copier.isEmpty() || !(copier.getItem() instanceof SettingsCopierItem)) {
+            return;
+        }
+        SettingsCopierStoreKind.setMode(copier, SettingsCopierStoreKind.SEQUENTIAL);
+        virtualSession = null;
+        sequentialVirtual = new SettingsCopierSequentialVirtualSession(player, hand, copier);
+        sequentialVirtual.persistAndSync();
+        rootLayer.set(0, ROOT_VIRTUAL);
+        broadcastChanges();
+    }
+
+    /** Server: apply sequential hub/list/step actions to the virtual session. */
+    public boolean handleSequentialAction(Player player, SequentialBufferActionPayload payload) {
+        if (player.level().isClientSide() || sequentialVirtual == null || !isSequentialVirtualLayer()) {
+            return false;
+        }
+        return sequentialVirtual.handleAction(payload);
+    }
+
+    public SequentialGateMode sequentialGateMode() {
+        if (sequentialVirtual != null) {
+            return sequentialVirtual.gateMode();
+        }
+        return clientSequentialGate;
+    }
+
+    public boolean sequentialStrictIntake() {
+        if (sequentialVirtual != null) {
+            return sequentialVirtual.strictSequentialIntake();
+        }
+        return clientSequentialStrictIntake;
+    }
+
+    public SequenceListData sequentialList(int index) {
+        if (sequentialVirtual != null) {
+            return sequentialVirtual.list(index);
+        }
+        int i = Math.floorMod(index, clientSequentialLists.length);
+        if (clientSequentialLists[i] == null) {
+            clientSequentialLists[i] = new SequenceListData();
+        }
+        return clientSequentialLists[i];
+    }
+
+    /** Client: rebuild sequential mirror from the copier stack NBT. */
+    public void loadClientSequentialFromStack(ItemStack stack) {
+        for (int i = 0; i < clientSequentialLists.length; i++) {
+            clientSequentialLists[i] = new SequenceListData();
+        }
+        clientSequentialGate = SequentialGateMode.IGNORED;
+        clientSequentialStrictIntake = true;
+        var data = SettingsCopierSequentialSnapshot.read(stack);
+        if (data.isEmpty()) {
+            return;
+        }
+        CompoundTag tag = data.get();
+        byte kind = tag.getByteOr(SettingsCopierSequentialSnapshot.KIND_TAG, (byte) 0);
+        if (kind == 1 && tag.contains("List")) {
+            int idx = Math.floorMod(tag.getIntOr("ListIndex", 0), clientSequentialLists.length);
+            clientSequentialLists[idx].load(tag.getCompoundOrEmpty("List"));
+            return;
+        }
+        clientSequentialGate = SequentialGateMode.fromOrdinal(tag.getByteOr("Gate", (byte) 0) & 0xFF);
+        clientSequentialStrictIntake = tag.getBooleanOr("StrictIntake", true);
+        net.minecraft.nbt.ListTag listTag = tag.getListOrEmpty("Lists");
+        for (int i = 0; i < clientSequentialLists.length; i++) {
+            if (i < listTag.size()) {
+                clientSequentialLists[i].load(listTag.getCompoundOrEmpty(i));
+            }
+        }
+    }
+
 
     /** Client: material kind for FILTER virtual editor (from NBT or last cycle). */
     public FilterListMaterialKind clientFilterListMaterialKind(Player player) {
@@ -347,7 +475,24 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
 
     /** Server: persist virtual state and return to hub layer without closing the container. */
     public void returnToHub(ServerPlayer player) {
-        if (!isVirtualLayer() || virtualSession == null) {
+        if (!isVirtualLayer()) {
+            return;
+        }
+        if (sequentialVirtual != null) {
+            ItemStack copier = sequentialVirtual.getCopierStack();
+            if (!copier.isEmpty()) {
+                sequentialVirtual.persistToCopier(copier);
+                player.setItemInHand(hand, copier);
+                ModNetwork.sendSettingsCopierStackSync(player, copier);
+            }
+            sequentialVirtual = null;
+            rootLayer.set(0, ROOT_HUB);
+            broadcastChanges();
+            return;
+        }
+        if (virtualSession == null) {
+            rootLayer.set(0, ROOT_HUB);
+            broadcastChanges();
             return;
         }
         FilterSyncDebugLog.serverPacket(
@@ -366,7 +511,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
 
     @Override
     public boolean isSettingsCopierVirtualEditor() {
-        return isVirtualLayer();
+        return isDuctVirtualLayer();
     }
 
     @Override
@@ -733,7 +878,20 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             ejectImportContainerContents(player);
         }
         super.removed(player);
-        if (player.level().isClientSide() || virtualSession == null || !(player instanceof ServerPlayer sp)) {
+        if (player.level().isClientSide() || !(player instanceof ServerPlayer sp)) {
+            return;
+        }
+        if (sequentialVirtual != null) {
+            ItemStack copier = sequentialVirtual.getCopierStack();
+            if (!copier.isEmpty()) {
+                sequentialVirtual.persistToCopier(copier);
+                sp.setItemInHand(hand, copier);
+                ModNetwork.sendSettingsCopierStackSync(sp, copier);
+            }
+            sequentialVirtual = null;
+            return;
+        }
+        if (virtualSession == null) {
             return;
         }
         ItemStack copier = virtualSession.getCopierStack();

@@ -15,6 +15,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.gui.SettingsCopierScreen;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferScreen;
 import net.unfamily.another_dynamics.client.project.ProjectDuctBlockStateModel;
 import net.unfamily.another_dynamics.client.project.ProjectDuctGeometryLoader;
 import net.unfamily.another_dynamics.duct.DuctDefinitionsReloadedEvent;
@@ -59,6 +60,7 @@ public final class DuctClientSetup {
     public static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
         event.register(ModMenuTypes.DUCT_NODE.get(), DuctNodeScreen::new);
         event.register(ModMenuTypes.SETTINGS_COPIER_HUB.get(), SettingsCopierScreen::new);
+        event.register(ModMenuTypes.SEQUENTIAL_BUFFER.get(), SequentialBufferScreen::new);
     }
 
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
@@ -80,6 +82,9 @@ public final class DuctClientSetup {
         event.register(
                 SettingsCopierItemProperties.COPIER_FILTER,
                 SettingsCopierConditionalProperties.CopierFilter.MAP_CODEC);
+        event.register(
+                SettingsCopierItemProperties.COPIER_SEQUENTIAL,
+                SettingsCopierConditionalProperties.CopierSequential.MAP_CODEC);
         event.register(
                 SettingsCopierItemProperties.COPIER_FILLED,
                 SettingsCopierConditionalProperties.CopierFilled.MAP_CODEC);

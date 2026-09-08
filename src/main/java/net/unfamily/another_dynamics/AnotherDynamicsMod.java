@@ -22,6 +22,7 @@ import net.neoforged.neoforge.client.event.RegisterSpecialModelRendererEvent;
 import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
 import net.unfamily.another_dynamics.client.DuctClientSetup;
+import net.unfamily.another_dynamics.client.GuideMeRegistration;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.unfamily.another_dynamics.duct.DuctDefinitionLoader;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportBootstrap;
@@ -71,6 +72,7 @@ public final class AnotherDynamicsMod {
         NeoForge.EVENT_BUS.register(DuctJumpAssistEvents.class);
 
         if (FMLEnvironment.getDist() == Dist.CLIENT) {
+            GuideMeRegistration.register();
             modEventBus.addListener(FMLClientSetupEvent.class, DuctClientSetup::onClientSetup);
             modEventBus.addListener(AddClientReloadListenersEvent.class, DuctClientSetup::onAddClientReloadListeners);
             modEventBus.addListener(RegisterMenuScreensEvent.class, DuctClientSetup::onRegisterMenuScreens);
@@ -125,6 +127,18 @@ public final class AnotherDynamicsMod {
                     var storage = ((DuctBlockEntity) be).energyBufferCapability(side);
                     return storage == null ? null : new net.unfamily.another_dynamics.duct.logistics.LegacyEnergyStorageHandler(storage);
                 });
+        event.registerBlockEntity(
+                Capabilities.Item.BLOCK,
+                ModBlockEntities.SEQUENTIAL_BUFFER.get(),
+                (be, side) ->
+                        ((net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity) be)
+                                .itemCapability(side));
+        event.registerBlockEntity(
+                Capabilities.Fluid.BLOCK,
+                ModBlockEntities.SEQUENTIAL_BUFFER.get(),
+                (be, side) ->
+                        ((net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity) be)
+                                .fluidCapability(side));
     }
 
 }

@@ -55,4 +55,23 @@ public final class SettingsCopierConditionalProperties {
             return MAP_CODEC;
         }
     }
+
+    public record CopierSequential() implements ConditionalItemModelProperty {
+        public static final MapCodec<CopierSequential> MAP_CODEC = MapCodec.unit(new CopierSequential());
+
+        @Override
+        public boolean get(
+                ItemStack stack,
+                @Nullable ClientLevel level,
+                @Nullable LivingEntity owner,
+                int seed,
+                ItemDisplayContext displayContext) {
+            return SettingsCopierItemProperties.isSequentialMode(stack);
+        }
+
+        @Override
+        public MapCodec<CopierSequential> type() {
+            return MAP_CODEC;
+        }
+    }
 }
