@@ -148,7 +148,21 @@ public final class SettingsCopierSequentialVirtualSession {
         }
     }
 
-    /** Persist session into the held copier and sync to the client. */
+    /**
+     * Push an in-memory mirror to the client UI without writing the held item.
+     * Authoritative persist happens when the Settings Copier container fully closes.
+     */
+    public void syncClientMirror() {
+        ItemStack mirror = getCopierStack().copy();
+        if (mirror.isEmpty() || !(mirror.getItem() instanceof SettingsCopierItem)) {
+            return;
+        }
+        SettingsCopierStoreKind.setMode(mirror, SettingsCopierStoreKind.SEQUENTIAL);
+        persistToCopier(mirror);
+        ModNetwork.sendSettingsCopierStackSync(player, mirror);
+    }
+
+    /** Persist session into the held copier and sync to the client (full GUI close). */
     public void persistAndSync() {
         ItemStack copier = getCopierStack();
         if (copier.isEmpty() || !(copier.getItem() instanceof SettingsCopierItem)) {
@@ -281,7 +295,7 @@ public final class SettingsCopierSequentialVirtualSession {
                     default -> false;
                 };
         if (changed) {
-            persistAndSync();
+            syncClientMirror();
         }
         return changed;
     }

@@ -274,20 +274,7 @@ public final class SequentialCopierVirtualUi {
         exampleDataList.clear();
 
         Button close =
-                Button.builder(Component.literal("\u2715"), b -> {
-                            if (subView == SubView.VALID_KEYS) {
-                                closeValidKeys();
-                            } else if (subView == SubView.HUB) {
-                                host.requestSequentialVirtualLeave();
-                            } else if (subView == SubView.SEQUENCE_LISTS) {
-                                subView = SubView.HUB;
-                                rebuildUi();
-                            } else if (subView == SubView.STEP_EDIT) {
-                                closeStepEdit();
-                            } else {
-                                closeEditList();
-                            }
-                        })
+                Button.builder(Component.literal("\u2715"), b -> requestBackOrLeave())
                         .bounds(leftPos + CLOSE_X, topPos + CLOSE_Y, CLOSE_SIZE, CLOSE_SIZE)
                         .tooltip(
                                 Tooltip.create(
@@ -352,12 +339,17 @@ public final class SequentialCopierVirtualUi {
                         .build();
         host.addSequentialWidget(sequenceLists);
 
-        Button chromeEmpty =
-                Button.builder(Component.empty(), b -> {})
+        Button hubBack =
+                Button.builder(
+                                Component.translatable("gui.another_dynamics.settings_copier.back_to_hub"),
+                                b -> host.requestSequentialVirtualLeave())
                         .bounds(leftPos + CENTER_X + 2 * (ROW_BTN_W + ROW_GAP), y, ROW_BTN_W, BTN_H)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.settings_copier.back_to_hub")))
                         .build();
-        chromeEmpty.active = false;
-        host.addSequentialWidget(chromeEmpty);
+        host.addSequentialWidget(hubBack);
     }
 
     private void initSequenceLists() {
@@ -1568,7 +1560,8 @@ public final class SequentialCopierVirtualUi {
         listNameBox.setTextColor(0xFFFFFFFF);
         listNameBox.setHint(
                 Component.translatable(
-                        "gui.another_dynamics.sequential_buffer.sequence_list", editingListIndex + 1));
+                                "gui.another_dynamics.sequential_buffer.sequence_list", editingListIndex + 1)
+                        .withStyle(Style.EMPTY.withColor(ChatFormatting.WHITE)));
         listNameBox.setValue(current);
         listNameBox.setResponder(this::onListNameDraftChanged);
         host.addSequentialWidget(listNameBox);

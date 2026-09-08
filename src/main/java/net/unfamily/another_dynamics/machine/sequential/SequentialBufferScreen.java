@@ -342,32 +342,55 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                         Component.translatable(gateTooltipKey()));
         addRenderableWidget(gateButton);
 
+        boolean singleList = subView == SubView.EDIT_LIST;
         int colX = leftPos + SequentialBufferMenu.SEQ_COPY_BG_X;
         Button copy =
                 Button.builder(
                                 Component.translatable("gui.another_dynamics.duct_node.settings_copier.copy"),
-                                b ->
+                                b -> {
+                                    if (singleList) {
                                         sendAction(
                                                 new SequentialBufferActionPayload(
-                                                        SequentialBufferActionPayload.ACTION_COPY_SETTINGS)))
+                                                        SequentialBufferActionPayload.ACTION_COPY_LIST,
+                                                        editingListIndex));
+                                    } else {
+                                        sendAction(
+                                                new SequentialBufferActionPayload(
+                                                        SequentialBufferActionPayload.ACTION_COPY_SETTINGS));
+                                    }
+                                })
                         .bounds(colX, topPos + SequentialBufferMenu.SEQ_COPY_SAVE_Y, COPIER_BTN_W, COPIER_BTN_H)
                         .tooltip(
                                 Tooltip.create(
-                                        Component.translatable("gui.another_dynamics.sequential_buffer.copy.tooltip")))
+                                        Component.translatable(
+                                                singleList
+                                                        ? "gui.another_dynamics.sequential_buffer.copy_list.tooltip"
+                                                        : "gui.another_dynamics.sequential_buffer.copy.tooltip")))
                         .build();
         addRenderableWidget(copy);
 
         Button paste =
                 Button.builder(
                                 Component.translatable("gui.another_dynamics.duct_node.settings_copier.paste"),
-                                b ->
+                                b -> {
+                                    if (singleList) {
                                         sendAction(
                                                 new SequentialBufferActionPayload(
-                                                        SequentialBufferActionPayload.ACTION_PASTE_SETTINGS)))
+                                                        SequentialBufferActionPayload.ACTION_PASTE_LIST,
+                                                        editingListIndex));
+                                    } else {
+                                        sendAction(
+                                                new SequentialBufferActionPayload(
+                                                        SequentialBufferActionPayload.ACTION_PASTE_SETTINGS));
+                                    }
+                                })
                         .bounds(colX, topPos + SequentialBufferMenu.SEQ_COPY_LOAD_Y, COPIER_BTN_W, COPIER_BTN_H)
                         .tooltip(
                                 Tooltip.create(
-                                        Component.translatable("gui.another_dynamics.sequential_buffer.paste.tooltip")))
+                                        Component.translatable(
+                                                singleList
+                                                        ? "gui.another_dynamics.sequential_buffer.paste_list.tooltip"
+                                                        : "gui.another_dynamics.sequential_buffer.paste.tooltip")))
                         .build();
         addRenderableWidget(paste);
 
@@ -1744,7 +1767,8 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         listNameBox.setTextColor(0xFFFFFFFF);
         listNameBox.setHint(
                 Component.translatable(
-                        "gui.another_dynamics.sequential_buffer.sequence_list", editingListIndex + 1));
+                                "gui.another_dynamics.sequential_buffer.sequence_list", editingListIndex + 1)
+                        .withStyle(Style.EMPTY.withColor(ChatFormatting.WHITE)));
         listNameBox.setValue(current);
         listNameBox.setResponder(this::onListNameDraftChanged);
         addRenderableWidget(listNameBox);

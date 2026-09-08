@@ -20,11 +20,9 @@ The front face is the **output**; every other face is **input**.
 - Place against a chest, tank, duct, or other block with an item / fluid / chemical handler on the contact face → the front points at that destination.
 - Otherwise (floor, wall, etc.) → the front faces the direction you are looking.
 
-Craft it with iron, a Resonating Conductor, a wooden chest or barrel, a hopper, and two comparators (chest and barrel recipes share the same group).
-
 ## How a sequence runs
 
-1. **Intake** — matching resources fill the input buffer (27 item slots; large fluid / chemical tanks).
+1. **Intake** — matching resources fill the input buffer. Item slots and fluid / chemical tank capacity grow to fit **enabled** Sequence Lists (input can hold all of them; output fits the largest single list).
 2. **Ready** — when every step of an enabled Sequence List is satisfied in the input, that list can stage.
 3. **Stage** — the machine moves one ready list into the output buffer (only one list is active at a time).
 4. **Eject** — steps leave toward the front **in list order**, with a short pause between steps (5 ticks) and backpressure if the destination cannot accept more.
@@ -98,9 +96,9 @@ Editing lists can also clear input that no longer matches any enabled list (orph
 
 Put a **Settings Copier** in the GUI slot:
 
-- **C** — copy **all** Sequence Lists (and related buffer settings) into the copier.
-- **P** — paste from the copier.
-- Available on the hub, Sequence Lists view, and list editor.
+- On the hub and Sequence Lists views: **C** / **P** copy or paste **all** Sequence Lists.
+- Inside one Sequence List editor: **C** / **P** copy or paste **that list only**.
+- Available wherever the copier column is shown.
 
 You can also **Shift+right-click** the block with the copier, or open **Configure** on the copier in Sequential mode for a virtual editor. Details: [Settings Copier](../tools/settings_copier.md).
 

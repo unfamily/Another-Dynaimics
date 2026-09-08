@@ -45,9 +45,8 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class SequentialBufferBlockEntity extends BlockEntity implements MenuProvider {
     public static final int SEQUENCE_LIST_COUNT = 10;
-    public static final int INPUT_SLOTS = 27;
-    public static final int OUTPUT_SLOTS = 27;
-    public static final int FLUID_CAPACITY_MB = 64_000;
+    /** Assumed max stack when sizing item slots from step amounts (unknown item until insert). */
+    private static final int ITEM_STACK_ASSUMED_MAX = 64;
     /** Ticks between finishing one step eject and starting the next. */
     public static final int STEP_EJECT_DELAY = 5;
     /** Default pause after a sequence fully clears output before staging another. */
@@ -57,29 +56,30 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     private static final int PULSE_EMIT_TICKS = 4;
 
     private final SequenceListData[] lists = new SequenceListData[SEQUENCE_LIST_COUNT];
+    /** Sized from enabled Sequence Lists ({@link #recomputeBufferSizes}). */
     private final ItemStackHandler inputItems =
-            new ItemStackHandler(INPUT_SLOTS) {
+            new ItemStackHandler(0) {
                 @Override
                 protected void onContentsChanged(int slot) {
                     setChanged();
                 }
             };
     private final ItemStackHandler outputItems =
-            new ItemStackHandler(OUTPUT_SLOTS) {
+            new ItemStackHandler(0) {
                 @Override
                 protected void onContentsChanged(int slot) {
                     setChanged();
                 }
             };
     private final FluidTank inputFluid =
-            new FluidTank(FLUID_CAPACITY_MB) {
+            new FluidTank(0) {
                 @Override
                 protected void onContentsChanged() {
                     setChanged();
                 }
             };
     private final FluidTank outputFluid =
-            new FluidTank(FLUID_CAPACITY_MB) {
+            new FluidTank(0) {
                 @Override
                 protected void onContentsChanged() {
                     setChanged();
@@ -127,6 +127,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
             lists[i] = new SequenceListData();
         }
         initGasTanksIfNeeded();
+        recomputeBufferSizes(null);
     }
 
     private void initGasTanksIfNeeded() {
@@ -464,7 +465,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
                     if (!out.isEmpty() && !FluidStack.isSameFluidSameComponents(out, in)) {
                         return false;
                     }
-                    int space = FLUID_CAPACITY_MB - out.getAmount();
+                    int space = outputFluid.getCapacity() - out.getAmount();
                     if (space < Math.min(step.amount(), in.getAmount())) {
                         return false;
                     }
@@ -1158,8 +1159,11 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
             clearGasTank(inputGasTank);
             changed = true;
         }
+        recomputeBufferSizes(player);
         if (changed) {
             syncToClients();
+        } else {
+            setChanged();
         }
     }
 
@@ -1224,7 +1228,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     /** Try player inventory first; leftover drops at {@code pos}. */
-    private static void giveOrDrop(@Nullable Player player, Level level, BlockPos pos, ItemStack stack) {
+    private static void giveOrDrop(@Nullable Player player, @Nullable Level level, BlockPos pos, ItemStack stack) {
         if (stack.isEmpty()) {
             return;
         }
@@ -1232,9 +1236,99 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         if (player != null) {
             player.getInventory().add(remaining);
         }
-        if (!remaining.isEmpty()) {
+        if (!remaining.isEmpty() && level != null && pos != null) {
             Containers.dropItemStack(
                     level, pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D, remaining);
+        }
+    }
+
+    /**
+     * Resize item slots and fluid tank capacities to match enabled Sequence Lists.
+     * Input holds all enabled lists at once; output holds the largest single list.
+     * Overflow from a shrink is given to {@code player} when present, otherwise dropped.
+     */
+    public void recomputeBufferSizes(@Nullable Player player) {
+        int inputItemSlots = 0;
+        int outputItemSlots = 0;
+        int inputFluidMb = 0;
+        int outputFluidMb = 0;
+        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+            SequenceListData list = lists[li];
+            if (!list.isEnabled() || !list.hasContent()) {
+                continue;
+            }
+            int listItemSlots = 0;
+            int listFluidMb = 0;
+            for (SequenceStepData step : list.steps()) {
+                if (step == null || step.isEmpty()) {
+                    continue;
+                }
+                switch (step.kind()) {
+                    case ITEM -> listItemSlots += itemSlotsForAmount(step.amount());
+                    case FLUID -> listFluidMb = addCap(listFluidMb, step.amount());
+                    case GAS -> {
+                        // Gas tanks soft-dep; size when tanks are wired.
+                    }
+                }
+            }
+            inputItemSlots = addCap(inputItemSlots, listItemSlots);
+            inputFluidMb = addCap(inputFluidMb, listFluidMb);
+            outputItemSlots = Math.max(outputItemSlots, listItemSlots);
+            outputFluidMb = Math.max(outputFluidMb, listFluidMb);
+        }
+        resizeItemHandler(inputItems, inputItemSlots, player);
+        resizeItemHandler(outputItems, outputItemSlots, player);
+        resizeFluidTank(inputFluid, inputFluidMb);
+        resizeFluidTank(outputFluid, outputFluidMb);
+        setChanged();
+    }
+
+    private static int itemSlotsForAmount(int amount) {
+        int n = Math.max(0, amount);
+        if (n <= 0) {
+            return 0;
+        }
+        return (n + ITEM_STACK_ASSUMED_MAX - 1) / ITEM_STACK_ASSUMED_MAX;
+    }
+
+    private static int addCap(int a, int b) {
+        long sum = (long) a + (long) b;
+        return sum > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) sum;
+    }
+
+    private void resizeItemHandler(ItemStackHandler handler, int newSize, @Nullable Player player) {
+        int oldSize = handler.getSlots();
+        if (oldSize == newSize) {
+            return;
+        }
+        ItemStack[] kept = new ItemStack[Math.min(oldSize, newSize)];
+        for (int i = 0; i < kept.length; i++) {
+            kept[i] = handler.getStackInSlot(i).copy();
+        }
+        for (int i = newSize; i < oldSize; i++) {
+            ItemStack stack = handler.getStackInSlot(i);
+            if (!stack.isEmpty()) {
+                giveOrDrop(player, level, worldPosition, stack.copy());
+            }
+        }
+        handler.setSize(newSize);
+        for (int i = 0; i < kept.length; i++) {
+            if (kept[i] != null && !kept[i].isEmpty()) {
+                handler.setStackInSlot(i, kept[i]);
+            }
+        }
+    }
+
+    private void resizeFluidTank(FluidTank tank, int newCapacity) {
+        int cap = Math.max(0, newCapacity);
+        tank.setCapacity(cap);
+        FluidStack fluid = tank.getFluid();
+        if (!fluid.isEmpty() && fluid.getAmount() > cap) {
+            if (cap <= 0) {
+                tank.setFluid(FluidStack.EMPTY);
+            } else {
+                tank.setFluid(fluid.copyWithAmount(cap));
+            }
         }
     }
 
@@ -1362,6 +1456,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
                 outputFluid.readFromNBT(registries, tag.getCompound("OutFluid"));
             }
         }
+        recomputeBufferSizes(null);
     }
 
     @Override
@@ -1452,6 +1547,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
                 }
             }
         }
+        recomputeBufferSizes(null);
         setChanged();
         syncToClients();
     }
