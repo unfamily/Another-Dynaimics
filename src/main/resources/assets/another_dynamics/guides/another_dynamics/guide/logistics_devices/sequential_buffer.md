@@ -2,7 +2,7 @@
 navigation:
   title: Sequential Buffer
   icon: another_dynamics:sequential_buffer
-  parent: hubs/machines.md
+  parent: hubs/logistics_devices.md
   position: 1
 item_ids:
   - another_dynamics:sequential_buffer
@@ -15,7 +15,10 @@ The **Sequential Buffer** gathers matching **items**, **fluids**, and (with Meka
 
 ## Placement and sides
 
-The block **faces** the destination. That front face is the **output**: the buffer pushes staged resources into whatever inventory, tank, or chemical handler sits there. Every other face is **input** for ducts, hoppers, and similar inserts.
+The front face is the **output**; every other face is **input**.
+
+- Place against a chest, tank, duct, or other block with an item / fluid / chemical handler on the contact face → the front points at that destination.
+- Otherwise (floor, wall, etc.) → the front faces the direction you are looking.
 
 Craft it with iron, a Resonating Conductor, a wooden chest or barrel, a hopper, and two comparators (chest and barrel recipes share the same group).
 
