@@ -1,6 +1,7 @@
 ---
 navigation:
   title: Transport kinds
+  icon: another_dynamics:guide_transport_icon
   parent: hubs/ducts.md
   position: 2
 ---

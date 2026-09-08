@@ -1,10 +1,13 @@
 ---
 navigation:
   title: Filters
+  icon: another_dynamics:guide_filter_icon
   parent: hubs/ducts.md
   position: 4
 ---
 # Filters
+
+![Filter](../assets/filter_icon.png)
 
 Node faces can use **Deny** and **Allow** lists. Deny blocks matches; Allow only lets matching things through when filtering is on. List logic chooses whether deny wins or allow can bypass deny.
 

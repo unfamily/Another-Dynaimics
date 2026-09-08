@@ -19,8 +19,8 @@ import net.unfamily.another_dynamics.network.SequentialBufferActionPayload;
 public final class SettingsCopierSequentialVirtualSession {
     private final ServerPlayer player;
     private final InteractionHand hand;
-    private SequentialGateMode gate = SequentialGateMode.IGNORED;
-    private boolean strictSequentialIntake = true;
+    private SequentialGateMode gate = SequentialGateMode.AUTO;
+    private boolean strictSequentialIntake = false;
     private final SequenceListData[] lists = new SequenceListData[SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT];
     private int editingListIndex = -1;
 
@@ -42,7 +42,7 @@ public final class SettingsCopierSequentialVirtualSession {
     }
 
     public void setGateMode(SequentialGateMode mode) {
-        this.gate = mode == null ? SequentialGateMode.IGNORED : mode;
+        this.gate = mode == null ? SequentialGateMode.AUTO : mode;
     }
 
     public boolean strictSequentialIntake() {
@@ -76,8 +76,8 @@ public final class SettingsCopierSequentialVirtualSession {
     public void loadFromCopier(ItemStack copier) {
         var data = SettingsCopierSequentialSnapshot.read(copier);
         if (data.isEmpty()) {
-            gate = SequentialGateMode.IGNORED;
-            strictSequentialIntake = true;
+            gate = SequentialGateMode.AUTO;
+            strictSequentialIntake = false;
             for (int i = 0; i < lists.length; i++) {
                 lists[i] = new SequenceListData();
             }
@@ -126,13 +126,15 @@ public final class SettingsCopierSequentialVirtualSession {
             }
             lists[idx] = new SequenceListData();
             lists[idx].load(tag.getCompound("List"));
-            gate = SequentialGateMode.IGNORED;
-            strictSequentialIntake = true;
+            gate = SequentialGateMode.AUTO;
+            strictSequentialIntake = false;
         } else {
             gate =
                     SequentialGateMode.fromOrdinal(
-                            tag.contains("Gate", Tag.TAG_BYTE) ? tag.getByte("Gate") & 0xFF : 0);
-            strictSequentialIntake = !tag.contains("StrictIntake") || tag.getBoolean("StrictIntake");
+                            tag.contains("Gate", Tag.TAG_BYTE)
+                                    ? tag.getByte("Gate") & 0xFF
+                                    : SequentialGateMode.AUTO.ordinal());
+            strictSequentialIntake = tag.contains("StrictIntake") && tag.getBoolean("StrictIntake");
             ListTag listTag =
                     tag.contains("Lists", Tag.TAG_LIST)
                             ? tag.getList("Lists", Tag.TAG_COMPOUND)

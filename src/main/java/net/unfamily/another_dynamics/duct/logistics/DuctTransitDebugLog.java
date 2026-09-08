@@ -1,5 +1,7 @@
 package net.unfamily.another_dynamics.duct.logistics;
 
+import java.util.List;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -7,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -125,6 +128,10 @@ public final class DuctTransitDebugLog {
         LOG.info("[DUCT-TRN] stall drain failed duct={} face={} reason={}", ductPos, face, reason);
     }
 
+    /**
+     * Logs every scheduled item extract when transit debug is on (no tick throttle). Call before
+     * {@link DuctIncomingIndex#register} so {@code pendingSame} matches what capacity probing saw.
+     */
     public static void scheduleExtract(
             ServerLevel level,
             BlockPos sourceDuct,
@@ -136,18 +143,44 @@ public final class DuctTransitDebugLog {
         if (!Config.DUCT_TRANSIT_DEBUG.get()) {
             return;
         }
-        long t = level.getGameTime();
-        if ((t + sourceDuct.asLong()) % 40L != 0L) {
-            return;
-        }
+        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct, destFace);
+        int pendingSame = countSameItemCount(prior, stack);
+        int seqNeed = sequentialRemainingItemNeed(level, destDuct, destFace, stack);
         LOG.info(
-                "[DUCT-TRN] schedule extract={} destCap={} source={} dest={} face={} item={}",
+                "[DUCT-TRN] schedule extract={} destCap={} pendingSame={} seqNeed={} source={} dest={} face={} item={}",
                 extracted,
                 destCap,
+                pendingSame,
+                seqNeed,
                 sourceDuct,
                 destDuct,
                 destFace,
                 stack.isEmpty() ? "empty" : stack.getHoverName().getString());
+    }
+
+    private static int countSameItemCount(List<ItemStack> stacks, ItemStack template) {
+        if (stacks == null || stacks.isEmpty() || template == null || template.isEmpty()) {
+            return 0;
+        }
+        int sum = 0;
+        for (ItemStack s : stacks) {
+            if (s != null && !s.isEmpty() && ItemStack.isSameItemSameComponents(s, template)) {
+                sum += s.getCount();
+            }
+        }
+        return sum;
+    }
+
+    private static int sequentialRemainingItemNeed(
+            ServerLevel level, BlockPos destDuct, Direction destFace, ItemStack stack) {
+        if (stack == null || stack.isEmpty() || destFace == null) {
+            return -1;
+        }
+        BlockPos neighbor = destDuct.relative(destFace);
+        if (!(level.getBlockEntity(neighbor) instanceof SequentialBufferBlockEntity seq)) {
+            return -1;
+        }
+        return seq.debugRemainingItemNeed(stack);
     }
 
     public static void deliveryPartialInsert(ServerLevel level, OutboundShipment s, int inserted, int remainder) {

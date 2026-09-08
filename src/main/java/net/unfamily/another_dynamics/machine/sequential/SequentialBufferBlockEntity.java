@@ -97,12 +97,12 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     private final IFluidHandler inputFluidInsertOnly = filteredFluidInsert(inputFluid);
     private final IFluidHandler outputFluidExtractOnly = extractOnly(outputFluid);
 
-    private SequentialGateMode gateMode = SequentialGateMode.IGNORED;
+    private SequentialGateMode gateMode = SequentialGateMode.AUTO;
     /**
      * When true (default), inserts only satisfy the first incomplete step per enabled list.
      * When false, all incomplete matching steps may accept in parallel (can jam buffered ducts).
      */
-    private boolean strictSequentialIntake = true;
+    private boolean strictSequentialIntake = false;
     private boolean emitting;
     private int emitTicksLeft;
     private boolean prevNeighborPowered;
@@ -166,7 +166,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     public void setGateMode(SequentialGateMode mode) {
-        this.gateMode = mode == null ? SequentialGateMode.IGNORED : mode;
+        this.gateMode = mode == null ? SequentialGateMode.AUTO : mode;
         setChanged();
     }
 
@@ -255,13 +255,14 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         }
 
         // Pipeline: finish active eject / inter-sequence cooldown before staging another list.
+        boolean destHasResources = destinationHasResources();
         if (activeListIndex >= 0) {
             tickOrderedEject(level, pos);
         } else if (interSequenceCooldown > 0) {
             interSequenceCooldown--;
             setChanged();
-        } else if (gateMode.allowsWork(neighborPowered) || emitting) {
-            if (gateMode.allowsWork(neighborPowered)) {
+        } else if (gateMode.allowsWork(neighborPowered, destHasResources) || emitting) {
+            if (gateMode.allowsWork(neighborPowered, destHasResources)) {
                 tryCompleteLists();
             }
         }
@@ -1319,8 +1320,10 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     private void readCustom(CompoundTag tag, @Nullable HolderLookup.Provider registries) {
         gateMode =
                 SequentialGateMode.fromOrdinal(
-                        tag.contains("Gate", Tag.TAG_BYTE) ? tag.getByte("Gate") & 0xFF : 0);
-        strictSequentialIntake = !tag.contains("StrictIntake") || tag.getBoolean("StrictIntake");
+                        tag.contains("Gate", Tag.TAG_BYTE)
+                                ? tag.getByte("Gate") & 0xFF
+                                : SequentialGateMode.AUTO.ordinal());
+        strictSequentialIntake = tag.contains("StrictIntake") && tag.getBoolean("StrictIntake");
         emitting = tag.contains("Emitting") && tag.getBoolean("Emitting");
         emitTicksLeft = tag.contains("EmitTicks", Tag.TAG_INT) ? tag.getInt("EmitTicks") : 0;
         editingListIndex = tag.contains("EditList", Tag.TAG_INT) ? tag.getInt("EditList") : -1;
@@ -1434,8 +1437,10 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         } else {
             gateMode =
                     SequentialGateMode.fromOrdinal(
-                            tag.contains("Gate", Tag.TAG_BYTE) ? tag.getByte("Gate") & 0xFF : 0);
-            strictSequentialIntake = !tag.contains("StrictIntake") || tag.getBoolean("StrictIntake");
+                            tag.contains("Gate", Tag.TAG_BYTE)
+                                    ? tag.getByte("Gate") & 0xFF
+                                    : SequentialGateMode.AUTO.ordinal());
+            strictSequentialIntake = tag.contains("StrictIntake") && tag.getBoolean("StrictIntake");
             ListTag listTag =
                     tag.contains("Lists", Tag.TAG_LIST)
                             ? tag.getList("Lists", Tag.TAG_COMPOUND)
@@ -1545,6 +1550,45 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     /**
+     * True when the front-face destination holds any items, fluids, or chemicals (comparator-style
+     * occupancy used by {@link SequentialGateMode#AUTO}).
+     */
+    private boolean destinationHasResources() {
+        if (level == null) {
+            return false;
+        }
+        Direction front = front();
+
+        var items = DuctCapHelper.getHandlerOnFace(level, worldPosition, front);
+        if (items != null) {
+            for (int i = 0; i < items.getSlots(); i++) {
+                if (!items.getStackInSlot(i).isEmpty()) {
+                    return true;
+                }
+            }
+        }
+
+        BlockPos target = worldPosition.relative(front);
+        IFluidHandler fluids =
+                level.getCapability(Capabilities.FluidHandler.BLOCK, target, front.getOpposite());
+        if (fluids != null) {
+            for (int i = 0; i < fluids.getTanks(); i++) {
+                if (!fluids.getFluidInTank(i).isEmpty()) {
+                    return true;
+                }
+            }
+        }
+
+        Object chemicals = MekanismChemicalCompat.getChemicalHandlerOnFace(level, worldPosition, front);
+        return MekanismChemicalCompat.handlerHasStoredChemical(chemicals);
+    }
+
+    /** Debug/probe: remaining insert need for {@code stack} (buffer only; ignores duct IncomingIndex). */
+    public int debugRemainingItemNeed(ItemStack stack) {
+        return remainingItemNeed(stack);
+    }
+
+    /**
      * How many more matching items enabled lists still need after reservations. Caps duct/hopper
      * inserts so a batch cannot overshoot the configured step amount (e.g. need 5 of 13 must not
      * accept a full AD batch of 8).
@@ -1553,6 +1597,9 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
      */
     private int remainingItemNeed(ItemStack stack) {
         if (stack == null || stack.isEmpty() || level == null) {
+            return 0;
+        }
+        if (gateMode == SequentialGateMode.AUTO && destinationHasResources()) {
             return 0;
         }
         ItemStack probe = stack.copyWithCount(1);
@@ -1600,6 +1647,9 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
 
     private int remainingFluidNeed(FluidStack resource) {
         if (resource == null || resource.isEmpty() || level == null) {
+            return 0;
+        }
+        if (gateMode == SequentialGateMode.AUTO && destinationHasResources()) {
             return 0;
         }
         FluidStack probe = resource.copyWithAmount(1);

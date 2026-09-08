@@ -9,6 +9,7 @@ import net.neoforged.neoforge.fluids.FluidStack;
 import net.unfamily.another_dynamics.duct.module.DuctFaceModuleItemHandler;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
 import net.neoforged.neoforge.items.ItemStackHandler;
+import net.unfamily.another_dynamics.Config;
 
 import java.util.EnumSet;
 
@@ -59,18 +60,18 @@ public final class DuctFaceLanes {
     public DuctFaceModuleItemHandler moduleSlots;
 
     /** Outbound stall: re-send toward network extract destinations. */
-    public final ItemStackHandler stalledBuffer = new ItemStackHandler(5);
+    public final ItemStackHandler stalledBuffer;
     /** Inbound stall: retriever-side buffer drained into adjacent inventory every tick. */
-    public final ItemStackHandler inboundStallBuffer = new ItemStackHandler(5);
+    public final ItemStackHandler inboundStallBuffer;
 
-    /** Physical buffered fluids (mB) that could not be refunded; up to 5 entries. */
-    public final FluidStack[] stalledFluids = new FluidStack[5];
+    /** Physical buffered fluids (mB) that could not be refunded. */
+    public final FluidStack[] stalledFluids;
 
     /**
      * Physical buffered gases ("chemicals") that could not be refunded; stored as tags to keep Mekanism optional.
      * Each entry is a {@link CompoundTag} holding {@code ChemId}/{@code Amt}.
      */
-    public final CompoundTag[] stalledGas = new CompoundTag[5];
+    public final CompoundTag[] stalledGas;
 
     /** Marker counts for stalled energy / heat (clearing deletes). */
     public int stalledEnergyCount;
@@ -124,6 +125,11 @@ public final class DuctFaceLanes {
         this.duct = duct;
         this.detachedChangedCallback = null;
         this.face = face;
+        int stallSlots = Config.ductStallSlots();
+        this.stalledBuffer = new ItemStackHandler(stallSlots);
+        this.inboundStallBuffer = new ItemStackHandler(stallSlots);
+        this.stalledFluids = new FluidStack[stallSlots];
+        this.stalledGas = new CompoundTag[stallSlots];
         int n = Math.max(0, moduleSlotCount);
         this.moduleSlots = new DuctFaceModuleItemHandler(duct, face, n);
         this.item = new DuctFaceNode(duct::setChanged);
@@ -146,6 +152,11 @@ public final class DuctFaceLanes {
         this.duct = null;
         this.detachedChangedCallback = onChanged;
         this.face = face;
+        int stallSlots = Config.ductStallSlots();
+        this.stalledBuffer = new ItemStackHandler(stallSlots);
+        this.inboundStallBuffer = new ItemStackHandler(stallSlots);
+        this.stalledFluids = new FluidStack[stallSlots];
+        this.stalledGas = new CompoundTag[stallSlots];
         this.moduleSlots = new DuctFaceModuleItemHandler(null, face, 0);
         this.item = new DuctFaceNode(this::markChanged);
         this.fluid = new DuctFaceNode(this::markChanged);

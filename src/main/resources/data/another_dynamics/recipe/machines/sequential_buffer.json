@@ -2,12 +2,13 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "group": "another_dynamics:sequential_buffer",
-  "pattern": ["ABA", "ACA", "ADA"],
+  "pattern": ["ABA", "RCR", "ADA"],
   "key": {
     "A": { "tag": "c:ingots/iron" },
     "B": { "item": "another_dynamics:resonanting_conductor" },
     "C": { "tag": "c:chests/wooden" },
-    "D": { "item": "minecraft:hopper" }
+    "D": { "item": "minecraft:hopper" },
+    "R": { "item": "minecraft:comparator" }
   },
   "result": {
     "id": "another_dynamics:sequential_buffer",

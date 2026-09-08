@@ -116,6 +116,59 @@ public final class DuctIncomingIndex {
         }
     }
 
+    /**
+     * Reduces reserved amounts matching {@code template} by up to {@code count} (FIFO). Used when inbound-stalled
+     * items finally insert into the destination inventory.
+     */
+    public static void consumeMatching(
+            ServerLevel level, BlockPos destDuct, Direction destFace, ItemStack template, int count) {
+        if (count <= 0 || template == null || template.isEmpty()) {
+            return;
+        }
+        if (destFace == null) {
+            destFace = Direction.NORTH;
+        }
+        Map<IncomingKey, List<Reservation>> dim = BY_DIMENSION.get(level.dimension());
+        if (dim == null) {
+            return;
+        }
+        IncomingKey key = new IncomingKey(destDuct, destFace.ordinal());
+        List<Reservation> list = dim.get(key);
+        if (list == null || list.isEmpty()) {
+            return;
+        }
+        synchronized (list) {
+            int left = count;
+            for (Iterator<Reservation> it = list.iterator(); it.hasNext() && left > 0; ) {
+                Reservation r = it.next();
+                if (r == null || r.stack() == null || r.stack().isEmpty()) {
+                    it.remove();
+                    continue;
+                }
+                if (!ItemStack.isSameItemSameComponents(r.stack(), template)) {
+                    continue;
+                }
+                int have = r.stack().getCount();
+                if (have <= left) {
+                    left -= have;
+                    it.remove();
+                } else {
+                    ItemStack shrunk = r.stack().copy();
+                    shrunk.setCount(have - left);
+                    // replace in-place: records are immutable, remove+add
+                    long id = r.id();
+                    it.remove();
+                    list.add(new Reservation(id, shrunk));
+                    left = 0;
+                    break;
+                }
+            }
+            if (list.isEmpty()) {
+                dim.remove(key);
+            }
+        }
+    }
+
     // Backward-compatible overloads (used only by legacy call sites; reservation id is auto-generated).
     public static void register(ServerLevel level, BlockPos destDuct, Direction destFace, ItemStack stack) {
         register(level, destDuct, destFace, newReservationId(), stack);

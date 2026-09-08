@@ -65,7 +65,7 @@ public record SequentialBufferActionPayload(
     public static final int ACTION_SET_INTER_DELAY = 22;
     /** Set Sequence List custom name from {@code filter} (blank → default label). */
     public static final int ACTION_SET_LIST_NAME = 23;
-    /** Toggle {@code strictSequentialIntake} on the buffer (default ON). */
+    /** Toggle {@code strictSequentialIntake} on the buffer (default OFF). */
     public static final int ACTION_TOGGLE_STRICT_INTAKE = 24;
 
     public static final Type<SequentialBufferActionPayload> TYPE =

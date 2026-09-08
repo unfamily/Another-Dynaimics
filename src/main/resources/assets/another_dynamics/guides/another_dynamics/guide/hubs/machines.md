@@ -7,6 +7,6 @@ navigation:
 ---
 # Machines
 
-Blocks that work alongside ducts — buffering and running ordered sequences.
+Blocks that work alongside ducts. Start with the **Sequential Buffer** for ordered item, fluid, and chemical sequences.
 
 <SubPages icons={true} alphabetical={true} />

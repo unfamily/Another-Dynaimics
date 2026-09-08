@@ -20,6 +20,15 @@ Copies duct **node** settings, **filter lists**, or **Sequential Buffer** sequen
 
 The tooltip tells you what mode is active and whether something is stored.
 
+## Pipez import
+
+When **Pipez** is installed, the Settings Copier can **import** (one-way) into Another Dynamics — it never writes back to Pipez.
+
+- **Shift+right-click** a Pipez pipe to copy face settings into the copier as **whole** duct settings.
+- In the copier GUI, **Import** can pull filter lists from compatible Pipez filter upgrades/modules when Pipez is present.
+
+Paste the result onto AD duct nodes (or use Sequential Buffer copy/paste as usual).
+
 ## Other mods
 
 The Settings Copier is also wired into other Unfamily mods — for example **Iskandert's Utilities** and **Another Quarries**. Compatible machines expose a dedicated Settings Copier slot in their GUI (with Copy / Paste); put the item there and use those buttons.

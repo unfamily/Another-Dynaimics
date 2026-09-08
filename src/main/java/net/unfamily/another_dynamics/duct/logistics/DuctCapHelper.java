@@ -15,6 +15,7 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctFaceLanes;
 import net.unfamily.another_dynamics.duct.DuctFaceNode;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -373,7 +374,8 @@ public final class DuctCapHelper {
             return 0;
         }
         IItemHandler h = getHandlerOnFace(level, ductPos, face);
-        return maxInsertableOnHandler(h, template, limit);
+        int cap = maxInsertableOnHandler(h, template, limit);
+        return clampPhysicalCapForSequentialNeighbor(level, ductPos, face, template, cap);
     }
 
     public static int maxInsertableOnHandler(IItemHandler h, ItemStack template, int limit) {
@@ -406,7 +408,25 @@ public final class DuctCapHelper {
         long probeLimitLong = (long) pendingSame + (long) limit;
         int probeLimit = probeLimitLong >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) probeLimitLong;
         int physicalCap = DuctItemInsertProbe.estimateMaxInsertable(h, template, probeLimit);
+        // Sequential filtered insert caps by remainingItemNeed on the live buffer only; repeated simulate=true
+        // probes do not accumulate need and over-report. Clamp to need before subtracting pending.
+        physicalCap = clampPhysicalCapForSequentialNeighbor(level, ductPos, face, template, physicalCap);
         return Math.max(0, Math.min(limit, physicalCap - pendingSame));
+    }
+
+    /**
+     * Caps probed insert capacity when the face neighbor is a Sequential Buffer. Simulate-only probes ignore
+     * need accumulation and would otherwise schedule more than the step still requires.
+     */
+    private static int clampPhysicalCapForSequentialNeighbor(
+            Level level, BlockPos ductPos, Direction face, ItemStack template, int physicalCap) {
+        if (physicalCap <= 0 || face == null || template.isEmpty()) {
+            return physicalCap;
+        }
+        if (!(level.getBlockEntity(ductPos.relative(face)) instanceof SequentialBufferBlockEntity seq)) {
+            return physicalCap;
+        }
+        return Math.min(physicalCap, seq.debugRemainingItemNeed(template));
     }
 
     public static ItemStack insertIntoStorageFaces(Level level, BlockPos ductPos, DuctBlockEntity duct, ItemStack stack) {

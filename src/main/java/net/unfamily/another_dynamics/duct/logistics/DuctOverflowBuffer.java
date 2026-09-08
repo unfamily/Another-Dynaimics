@@ -13,11 +13,17 @@ import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import org.jetbrains.annotations.Nullable;
 /**
  * Per-duct internal overflow: adaptive list of stacks (hidden; not a GUI inventory).
- * {@link #SCHEDULING_UNAVAILABLE_LINE_THRESHOLD} only gates new pulls (node “busy”); the list may grow without a hard cap.
+ * {@link #schedulingUnavailableLineThreshold()} only gates new pulls (node “busy”); the list may grow without a hard cap.
  */
 public final class DuctOverflowBuffer {
-    /** Fixed in code: at or above this many non-empty buffer lines, the duct stops accepting new extraction/retrieve schedules. */
-    public static final int SCHEDULING_UNAVAILABLE_LINE_THRESHOLD = 5;
+    /** At or above this many non-empty buffer lines, the duct stops accepting new extraction/retrieve schedules. */
+    public static int schedulingUnavailableLineThreshold() {
+        try {
+            return net.unfamily.another_dynamics.Config.ductStallSlots();
+        } catch (Throwable t) {
+            return 5;
+        }
+    }
 
     private final ArrayList<ItemStack> stacks = new ArrayList<>();
 
@@ -36,7 +42,7 @@ public final class DuctOverflowBuffer {
     }
 
     public boolean isSchedulingUnavailableForNewPulls() {
-        return nonEmptyLineCount() >= SCHEDULING_UNAVAILABLE_LINE_THRESHOLD;
+        return nonEmptyLineCount() >= schedulingUnavailableLineThreshold();
     }
 
     /**

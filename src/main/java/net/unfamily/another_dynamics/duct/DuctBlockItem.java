@@ -16,7 +16,7 @@ import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 import net.unfamily.another_dynamics.client.DuctItemRenderer;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctConverter;
-import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.unfamily.another_dynamics.item.ModItemTooltips;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 import java.util.List;
@@ -115,8 +115,10 @@ public final class DuctBlockItem extends BlockItem {
     public void appendHoverText(
             ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         super.appendHoverText(stack, context, tooltip, flag);
+        tooltip.add(ModItemTooltips.secondary("item.another_dynamics.duct.tooltip.summary"));
+        tooltip.add(ModItemTooltips.ductTransportsLine(stack, defaultLogicalId));
         for (int i = 0; i < 3; i++) {
-            tooltip.add(SettingsCopierItem.grayTooltipLine(OPAQUE_TOOLTIP_ROOT + i));
+            tooltip.add(ModItemTooltips.important(OPAQUE_TOOLTIP_ROOT + i));
         }
     }
 

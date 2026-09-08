@@ -3,7 +3,6 @@ package net.unfamily.another_dynamics.registry;
 import java.util.Optional;
 
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
@@ -15,6 +14,8 @@ import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctModuleItem;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.item.RemoteNodeSelectorItem;
+import net.unfamily.another_dynamics.item.SummaryTooltipBlockItem;
+import net.unfamily.another_dynamics.item.SummaryTooltipItem;
 
 public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(AnotherDynamicsMod.MOD_ID);
@@ -29,11 +30,24 @@ public final class ModItems {
     public static final DeferredItem<Item> ENDER_ACCELERANT =
             ITEMS.register("ender_accellerant", () -> new Item(new Item.Properties()));
 
+    /** GuideME navigation icon only (Filters page); not listed in the creative tab. */
+    public static final DeferredItem<Item> GUIDE_FILTER_ICON =
+            ITEMS.register("guide_filter_icon", () -> new Item(new Item.Properties()));
+
+    /** GuideME navigation icon only (Transport kinds page); not listed in the creative tab. */
+    public static final DeferredItem<Item> GUIDE_TRANSPORT_ICON =
+            ITEMS.register("guide_transport_icon", () -> new Item(new Item.Properties()));
+
     public static final DeferredItem<SettingsCopierItem> SETTINGS_COPIER =
             ITEMS.register("settings_copier", () -> new SettingsCopierItem(new Item.Properties().stacksTo(1)));
 
-    public static final DeferredItem<Item> BULKY_WRENCH =
-            ITEMS.register("bulky_wrench", () -> new Item(new Item.Properties().stacksTo(1)));
+    public static final DeferredItem<SummaryTooltipItem> BULKY_WRENCH =
+            ITEMS.register(
+                    "bulky_wrench",
+                    () ->
+                            new SummaryTooltipItem(
+                                    new Item.Properties().stacksTo(1),
+                                    "item.another_dynamics.bulky_wrench.tooltip.summary"));
 
     public static final DeferredItem<RemoteNodeSelectorItem> REMOTE_NODE_SELECTOR =
             ITEMS.register("remote_node_selector", () -> new RemoteNodeSelectorItem(new Item.Properties().stacksTo(1)));
@@ -46,13 +60,23 @@ public final class ModItems {
                                     ModBlocks.DUCT.get(),
                                     new Item.Properties()));
 
-    public static final DeferredItem<BlockItem> PROJECT_DUCT =
-            ITEMS.register("project_duct", () -> new BlockItem(ModBlocks.PROJECT_DUCT.get(), new Item.Properties()));
+    public static final DeferredItem<SummaryTooltipBlockItem> PROJECT_DUCT =
+            ITEMS.register(
+                    "project_duct",
+                    () ->
+                            new SummaryTooltipBlockItem(
+                                    ModBlocks.PROJECT_DUCT.get(),
+                                    new Item.Properties(),
+                                    "item.another_dynamics.project_duct.tooltip.summary"));
 
-    public static final DeferredItem<BlockItem> SEQUENTIAL_BUFFER =
+    public static final DeferredItem<SummaryTooltipBlockItem> SEQUENTIAL_BUFFER =
             ITEMS.register(
                     "sequential_buffer",
-                    () -> new BlockItem(ModBlocks.SEQUENTIAL_BUFFER.get(), new Item.Properties()));
+                    () ->
+                            new SummaryTooltipBlockItem(
+                                    ModBlocks.SEQUENTIAL_BUFFER.get(),
+                                    new Item.Properties(),
+                                    "item.another_dynamics.sequential_buffer.tooltip.summary"));
 
     public static final DeferredItem<DuctModuleItem> INC_MODULE_0 = registerModule("inc_module_0");
     public static final DeferredItem<DuctModuleItem> INC_MODULE_1 = registerModule("inc_module_1");

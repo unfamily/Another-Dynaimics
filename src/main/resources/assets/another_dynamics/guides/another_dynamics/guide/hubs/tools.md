@@ -7,6 +7,6 @@ navigation:
 ---
 # Tools
 
-Helpers for placing, copying settings, and pointing extractors at remote blocks.
+Helpers for placing (including **Project Duct** scaffolds), copying settings, wrenching faces, and pointing extractors at remote blocks.
 
 <SubPages icons={true} alphabetical={true} />
