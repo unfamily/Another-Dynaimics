@@ -63,11 +63,12 @@ public class RemoteNodeSelectorItem extends Item {
     @Override
     public void appendHoverText(
             ItemStack stack, TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag flag) {
+        tooltip.accept(ModItemTooltips.secondary("item.another_dynamics.remote_node_selector.tooltip.summary"));
         DuctDirectionalEndpoint endpoint = getEndpoint(stack);
         if (endpoint == null) {
             tooltip.accept(
                     Component.translatable("item.another_dynamics.remote_node_selector.tooltip.unbound")
-                            .withStyle(ChatFormatting.GRAY));
+                            .withStyle(ChatFormatting.AQUA));
             return;
         }
         BlockPos p = endpoint.pos();

@@ -405,6 +405,24 @@ public final class MekanismChemicalCompat {
         }
     }
 
+    /** True when any tank on a block chemical handler holds a non-empty stack. */
+    public static boolean handlerHasStoredChemical(@Nullable Object handler) {
+        if (handler == null || !isLoaded()) {
+            return false;
+        }
+        try {
+            int tanks = (int) handler.getClass().getMethod("getChemicalTanks").invoke(handler);
+            for (int i = 0; i < tanks; i++) {
+                Object inTank = handler.getClass().getMethod("getChemicalInTank", int.class).invoke(handler, i);
+                if (!isEmptyStack(inTank) && getAmount(inTank) > 0L) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
     public static boolean isEmptyStack(Object stack) {
         if (stack == null) {
             return true;

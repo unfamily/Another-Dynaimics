@@ -4,7 +4,6 @@ import java.util.Optional;
 import java.util.function.UnaryOperator;
 
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
@@ -14,8 +13,10 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlockItem;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctModuleItem;
-import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.item.RemoteNodeSelectorItem;
+import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.unfamily.another_dynamics.item.SummaryTooltipBlockItem;
+import net.unfamily.another_dynamics.item.SummaryTooltipItem;
 
 public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(AnotherDynamicsMod.MOD_ID);
@@ -27,11 +28,20 @@ public final class ModItems {
 
     public static final DeferredItem<Item> ENDER_ACCELERANT = ITEMS.registerSimpleItem("ender_accellerant");
 
+    /** GuideME navigation icon only (Filters page); not listed in the creative tab. */
+    public static final DeferredItem<Item> GUIDE_FILTER_ICON = ITEMS.registerSimpleItem("guide_filter_icon");
+
+    /** GuideME navigation icon only (Transport kinds page); not listed in the creative tab. */
+    public static final DeferredItem<Item> GUIDE_TRANSPORT_ICON = ITEMS.registerSimpleItem("guide_transport_icon");
+
     public static final DeferredItem<SettingsCopierItem> SETTINGS_COPIER =
             ITEMS.registerItem("settings_copier", SettingsCopierItem::new, props -> props.stacksTo(1));
 
-    public static final DeferredItem<Item> BULKY_WRENCH =
-            ITEMS.registerItem("bulky_wrench", Item::new, props -> props.stacksTo(1));
+    public static final DeferredItem<SummaryTooltipItem> BULKY_WRENCH =
+            ITEMS.registerItem(
+                    "bulky_wrench",
+                    props -> new SummaryTooltipItem(props, "item.another_dynamics.bulky_wrench.tooltip.summary"),
+                    props -> props.stacksTo(1));
 
     public static final DeferredItem<RemoteNodeSelectorItem> REMOTE_NODE_SELECTOR =
             ITEMS.registerItem("remote_node_selector", RemoteNodeSelectorItem::new, props -> props.stacksTo(1));
@@ -42,10 +52,14 @@ public final class ModItems {
                     props -> new DuctBlockItem(ModBlocks.DUCT.get(), props),
                     UnaryOperator.identity());
 
-    public static final DeferredItem<BlockItem> PROJECT_DUCT =
+    public static final DeferredItem<SummaryTooltipBlockItem> PROJECT_DUCT =
             ITEMS.registerItem(
                     "project_duct",
-                    props -> new BlockItem(ModBlocks.PROJECT_DUCT.get(), props),
+                    props ->
+                            new SummaryTooltipBlockItem(
+                                    ModBlocks.PROJECT_DUCT.get(),
+                                    props,
+                                    "item.another_dynamics.project_duct.tooltip.summary"),
                     UnaryOperator.identity());
 
     public static final DeferredItem<DuctModuleItem> INC_MODULE_0 = registerModule("inc_module_0");
@@ -74,10 +88,14 @@ public final class ModItems {
                                     "another_dynamics:item_fluid_duct"),
                     UnaryOperator.identity());
 
-    public static final DeferredItem<BlockItem> SEQUENTIAL_BUFFER =
+    public static final DeferredItem<SummaryTooltipBlockItem> SEQUENTIAL_BUFFER =
             ITEMS.registerItem(
                     "sequential_buffer",
-                    props -> new BlockItem(ModBlocks.SEQUENTIAL_BUFFER.get(), props),
+                    props ->
+                            new SummaryTooltipBlockItem(
+                                    ModBlocks.SEQUENTIAL_BUFFER.get(),
+                                    props,
+                                    "item.another_dynamics.sequential_buffer.tooltip.summary"),
                     UnaryOperator.identity());
 
     /** Only registered when Mekanism is present. */

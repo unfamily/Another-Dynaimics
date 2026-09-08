@@ -366,6 +366,7 @@ public final class SequentialCopierVirtualUi {
     }
 
     private void initSequenceLists() {
+        initRightColumn();
         addScrollControls(0);
 
         int bx = fixedNavButtonScreenX();
@@ -1559,6 +1560,7 @@ public final class SequentialCopierVirtualUi {
                         Component.translatable("gui.another_dynamics.sequential_buffer.list_name"));
         listNameBox.setMaxLength(SequenceListData.MAX_NAME_LENGTH);
         listNameBox.setBordered(true);
+        listNameBox.setTextColor(0xFFFFFFFF);
         listNameBox.setHint(
                 Component.translatable(
                         "gui.another_dynamics.sequential_buffer.sequence_list", editingListIndex + 1));
@@ -1692,12 +1694,20 @@ public final class SequentialCopierVirtualUi {
 
     private void refreshGateTooltip() {
         if (gateButton != null) {
-            gateButton.setTooltip(Tooltip.create(Component.translatable(gateTooltipKey())));
+            gateButton.setTooltip(gateTooltip());
         }
     }
 
     private String gateTooltipKey() {
         return "gui.another_dynamics.sequential_buffer.gate." + gate().name().toLowerCase();
+    }
+
+    private Tooltip gateTooltip() {
+        String key = gateTooltipKey();
+        return Tooltip.create(
+                Component.translatable(key)
+                        .append("\n")
+                        .append(Component.translatable(key + ".desc").withStyle(ChatFormatting.GRAY)));
     }
 
     private String listOutputTooltipKey(SequentialRedstoneMode mode) {
@@ -1718,6 +1728,7 @@ public final class SequentialCopierVirtualUi {
             case LOW -> new ItemStack(Items.REDSTONE);
             case HIGH -> ItemStack.EMPTY;
             case DISABLED -> new ItemStack(Items.BARRIER);
+            case AUTO -> new ItemStack(Items.COMPARATOR);
         };
     }
 

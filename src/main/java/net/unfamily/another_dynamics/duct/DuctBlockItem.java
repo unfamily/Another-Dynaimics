@@ -15,7 +15,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctConverter;
-import net.unfamily.another_dynamics.item.SettingsCopierItem;
+import net.unfamily.another_dynamics.item.ModItemTooltips;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 /**
@@ -93,8 +93,10 @@ public final class DuctBlockItem extends BlockItem {
     public void appendHoverText(
             ItemStack stack, TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag flag) {
         super.appendHoverText(stack, context, display, tooltip, flag);
+        tooltip.accept(ModItemTooltips.secondary("item.another_dynamics.duct.tooltip.summary"));
+        tooltip.accept(ModItemTooltips.ductTransportsLine(stack, defaultLogicalId));
         for (int i = 0; i < 3; i++) {
-            tooltip.accept(SettingsCopierItem.grayTooltipLine(OPAQUE_TOOLTIP_ROOT + i));
+            tooltip.accept(ModItemTooltips.important(OPAQUE_TOOLTIP_ROOT + i));
         }
     }
 

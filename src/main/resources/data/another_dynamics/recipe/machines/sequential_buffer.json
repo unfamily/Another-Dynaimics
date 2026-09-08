@@ -4,14 +4,15 @@
   "group": "another_dynamics:sequential_buffer",
   "pattern": [
     "ABA",
-    "ACA",
+    "RCR",
     "ADA"
   ],
   "key": {
     "A": "#c:ingots/iron",
     "B": "another_dynamics:resonanting_conductor",
     "C": "#c:chests/wooden",
-    "D": "minecraft:hopper"
+    "D": "minecraft:hopper",
+    "R": "minecraft:comparator"
   },
   "result": {
     "id": "another_dynamics:sequential_buffer",

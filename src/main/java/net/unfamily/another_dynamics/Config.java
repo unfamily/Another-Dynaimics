@@ -12,6 +12,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue CABLE_FACADES_CONFIG_SEED;
 
     public static final ModConfigSpec.BooleanValue DUCT_GLOBAL_STALL_DRAIN_GUARD;
+    public static final ModConfigSpec.IntValue DUCT_STALL_SLOTS;
 
     static {
         BUILDER.comment("Developer diagnostics").push("dev");
@@ -50,10 +51,22 @@ public final class Config {
                                         + "stall drain makes no progress is skipped entirely for a few ticks (lighter on "
                                         + "TPS). Set false to keep only the finer per-face throttle.")
                         .define("100_ductGlobalStallDrainGuard", true);
+        DUCT_STALL_SLOTS =
+                BUILDER.comment(
+                                "Per-face stall buffer slot count (outbound + inbound item stalls, and matching "
+                                        + "fluid/gas stall slots). Also used as the distinct stalled-kind / overflow "
+                                        + "busy threshold. Applies to newly created ducts; existing blocks keep their "
+                                        + "saved buffer size until rebuilt.")
+                        .defineInRange("101_ductStallSlots", 5, 1, 27);
         BUILDER.pop();
     }
 
     static final ModConfigSpec SPEC = BUILDER.build();
+
+    /** Effective stall slot count from config (clamped). */
+    public static int ductStallSlots() {
+        return DUCT_STALL_SLOTS.get();
+    }
 
     /** Persist common config after programmatic {@link ModConfigSpec.ConfigValue#set} updates. */
     public static void saveCommon() {

@@ -6565,11 +6565,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
         redstoneModeStub = menu.getSyncData().get(DuctMenuSync.REDSTONE_MODE);
         if (redstoneModeButton != null) {
+            String key = "gui.another_dynamics.duct_node.redstone_mode." + redstoneModeStub;
             redstoneModeButton.setTooltip(
                     Tooltip.create(
-                            Component.translatable(
-                                    "gui.another_dynamics.duct_node.redstone_mode."
-                                            + redstoneModeStub)));
+                            Component.translatable(key)
+                                    .append("\n")
+                                    .append(
+                                            Component.translatable(key + ".desc")
+                                                    .withStyle(net.minecraft.ChatFormatting.GRAY))));
         }
         if (isHubChannelLocked()) {
             channelButton.setHubPlaceholder(true);

@@ -21,6 +21,6 @@ item_ids:
   <ItemIcon id="another_dynamics:inc_module_4" />
 </ItemGrid>
 
-**Increment Modules** (tiers I–V) go in a duct face module slot. Higher tiers move more per tick / larger batches. Only one increment module fits on a face at a time.
+**Increment Modules** (tiers I–V) go in a duct face module slot. Higher tiers move more per tick / larger quantities. Only one increment module fits on a face at a time.
 
 What they boost depends on the duct kind (items, fluids, gas, heat, energy).

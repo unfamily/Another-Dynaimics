@@ -7,6 +7,6 @@ navigation:
 ---
 # Ducts
 
-Pipes that move items, fluids, energy, and more. Connect them, open a face as a **node**, and tune filters or modules there.
+Ducts that move items, fluids, energy, and more. Connect them, open a face as a **node**, and tune filters or modules there. Use **Project Duct** when you need a mass-placement scaffold first.
 
 <SubPages icons={true} alphabetical={true} />

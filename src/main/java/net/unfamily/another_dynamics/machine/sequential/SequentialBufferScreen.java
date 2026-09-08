@@ -146,8 +146,10 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     private static final int DELAY_ACTION_BTN = 12;
     private static final int DELAY_STEP_W = 24;
     private static final int DELAY_GAP = 2;
-    private static final int DELAY_ROW1_Y_REL = CHROME_Y + BTN_H + DELAY_GAP;
+    /** Same Y as duct hub priority/amount row ({@code AMOUNT_ROW_Y}). */
+    private static final int DELAY_ROW1_Y_REL = 118;
     private static final int DELAY_ROW2_Y_REL = DELAY_ROW1_Y_REL + BTN_H + DELAY_GAP;
+    private static final int DELAY_LABEL_ABOVE_GAP = 3;
     private static final int[] DELAY_STEP_TICKS = {20, 100, 200, 1200, 6000};
     private static final String[] DELAY_STEP_LABELS = {"1s", "5s", "10s", "1m", "5m"};
     private static final String[] DELAY_UNIT_LABELS = {"m", "s", "t"};
@@ -237,6 +239,9 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     private int amountEditBoxGuiLeft;
     /** Relative X of unit letters m/s/t after each delay EditBox (for hub labels). */
     private final int[] delayUnitLabelGuiX = new int[3];
+    /** GUI-relative left of the delay control block (for "Delay" label centering). */
+    private int delayBlockGuiLeft;
+    private int delayBlockW;
 
     public SequentialBufferScreen(SequentialBufferMenu menu, Inventory inv, Component title) {
         super(menu, inv, title, TEXTURE_WIDTH, TEXTURE_HEIGHT);
@@ -422,6 +427,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private void initSequenceLists() {
+        initRightColumn();
         addScrollControls(0);
 
         int bx = fixedNavButtonScreenX();
@@ -532,6 +538,8 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         int row2W = DELAY_STEP_W * DELAY_STEP_TICKS.length + DELAY_GAP * (DELAY_STEP_TICKS.length - 1);
         int blockW = Math.max(row1W, row2W);
         int blockGuiX = (TEXTURE_WIDTH - blockW) / 2;
+        delayBlockGuiLeft = blockGuiX;
+        delayBlockW = blockW;
         int row1GuiX = blockGuiX + (blockW - row1W) / 2;
         int row2GuiX = blockGuiX + (blockW - row2W) / 2;
         int x = leftPos + row1GuiX;
@@ -596,7 +604,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
 
         int xx = dx + DELAY_ACTION_BTN + DELAY_GAP;
         delayDiscardButton =
-                Button.builder(Component.literal("X"), b -> discardInterDelayDraft())
+                Button.builder(Component.literal("\u2715"), b -> discardInterDelayDraft())
                         .bounds(xx, row1Y, DELAY_ACTION_BTN, BTN_H)
                         .tooltip(
                                 Tooltip.create(
@@ -1726,6 +1734,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                         Component.translatable("gui.another_dynamics.sequential_buffer.list_name"));
         listNameBox.setMaxLength(SequenceListData.MAX_NAME_LENGTH);
         listNameBox.setBordered(true);
+        listNameBox.setTextColor(0xFFFFFFFF);
         listNameBox.setHint(
                 Component.translatable(
                         "gui.another_dynamics.sequential_buffer.sequence_list", editingListIndex + 1));
@@ -1954,12 +1963,20 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
 
     private void refreshGateTooltip() {
         if (gateButton != null) {
-            gateButton.setTooltip(Tooltip.create(Component.translatable(gateTooltipKey())));
+            gateButton.setTooltip(gateTooltip());
         }
     }
 
     private String gateTooltipKey() {
         return "gui.another_dynamics.sequential_buffer.gate." + be().gateMode().name().toLowerCase();
+    }
+
+    private Tooltip gateTooltip() {
+        String key = gateTooltipKey();
+        return Tooltip.create(
+                Component.translatable(key)
+                        .append("\n")
+                        .append(Component.translatable(key + ".desc").withStyle(ChatFormatting.GRAY)));
     }
 
     private String listOutputTooltipKey(SequentialRedstoneMode mode) {
@@ -1980,6 +1997,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
             case LOW -> new ItemStack(Items.REDSTONE);
             case HIGH -> ItemStack.EMPTY;
             case DISABLED -> new ItemStack(Items.BARRIER);
+            case AUTO -> new ItemStack(Items.COMPARATOR);
         };
     }
 
@@ -2063,7 +2081,9 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                 TEXTURE_WIDTH,
                 TEXTURE_HEIGHT);
 
-        if (subView == SubView.HUB || subView == SubView.EDIT_LIST) {
+        if (subView == SubView.HUB
+                || subView == SubView.SEQUENCE_LISTS
+                || subView == SubView.EDIT_LIST) {
             SettingsCopierClient.blitSlotFrame(
                     graphics,
                     leftPos + SequentialBufferMenu.SEQ_COPY_BG_X,
@@ -2282,9 +2302,13 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
 
     @Override
     protected void extractLabels(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
-        if (subView == SubView.SEQUENCE_LISTS || subView == SubView.VALID_KEYS) {
+        if (subView == SubView.HUB
+                || subView == SubView.SEQUENCE_LISTS
+                || subView == SubView.VALID_KEYS) {
             Component title =
                     switch (subView) {
+                        case HUB -> Component.translatable(
+                                "gui.another_dynamics.sequential_buffer.title");
                         case SEQUENCE_LISTS -> Component.translatable(
                                 "gui.another_dynamics.sequential_buffer.list_of_sequences");
                         case VALID_KEYS -> Component.translatable(
@@ -2314,6 +2338,13 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
             }
         } else if (subView == SubView.HUB) {
             if (delayMinutesBox != null) {
+                Component delayTitle =
+                        Component.translatable("gui.another_dynamics.sequential_buffer.delay.label");
+                int dw = font.width(delayTitle);
+                int delayTitleX = delayBlockGuiLeft + (delayBlockW - dw) / 2;
+                int delayTitleY = DELAY_ROW1_Y_REL - font.lineHeight - DELAY_LABEL_ABOVE_GAP;
+                graphics.text(font, delayTitle, delayTitleX, delayTitleY, 0xFF404040, false);
+
                 int labelY = DELAY_ROW1_Y_REL + (BTN_H - font.lineHeight) / 2;
                 for (int i = 0; i < DELAY_UNIT_LABELS.length; i++) {
                     graphics.text(
@@ -2909,7 +2940,8 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
 
         @Override
         protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-            // Text-only delay step button; AbstractButton requires extractContents on 26+.
+            extractDefaultSprite(graphics);
+            extractDefaultLabel(graphics.textRendererForWidget(this, GuiGraphicsExtractor.HoveredTextEffects.NONE));
         }
 
         @Override
