@@ -4,15 +4,18 @@ import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
 
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.capabilities.Capabilities;
+import net.unfamily.another_dynamics.client.GuideMeRegistration;
 import net.unfamily.another_dynamics.duct.DuctDefinitionLoader;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
@@ -58,6 +61,10 @@ public final class AnotherDynamicsMod {
         NeoForge.EVENT_BUS.register(RemoteNodeSelectorEvents.class);
         NeoForge.EVENT_BUS.register(DuctJumpAssistEvents.class);
 
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            GuideMeRegistration.register();
+        }
+
         initOptionalIntegrations();
     }
 
@@ -95,6 +102,18 @@ public final class AnotherDynamicsMod {
                 Capabilities.EnergyStorage.BLOCK,
                 ModBlockEntities.DUCT.get(),
                 (be, side) -> ((DuctBlockEntity) be).energyBufferCapability(side));
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                ModBlockEntities.SEQUENTIAL_BUFFER.get(),
+                (be, side) ->
+                        ((net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity) be)
+                                .itemCapability(side));
+        event.registerBlockEntity(
+                Capabilities.FluidHandler.BLOCK,
+                ModBlockEntities.SEQUENTIAL_BUFFER.get(),
+                (be, side) ->
+                        ((net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity) be)
+                                .fluidCapability(side));
     }
 
 }

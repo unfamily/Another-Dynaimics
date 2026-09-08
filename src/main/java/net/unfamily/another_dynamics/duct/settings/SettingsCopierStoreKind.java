@@ -10,7 +10,9 @@ public enum SettingsCopierStoreKind {
     ALL,
     FILTER,
     /** Six-face Pipez→AD import (and whole-duct paste). */
-    WHOLE;
+    WHOLE,
+    /** Sequential Buffer Sequence Lists. */
+    SEQUENTIAL;
 
     /** Legacy key inside {@link ModDataComponents#DUCT_FACE_SETTINGS} snapshot root. */
     public static final String TAG = "Kind";
@@ -27,6 +29,9 @@ public enum SettingsCopierStoreKind {
         if (o == WHOLE.ordinal()) {
             return WHOLE;
         }
+        if (o == SEQUENTIAL.ordinal()) {
+            return SEQUENTIAL;
+        }
         return ALL;
     }
 
@@ -37,10 +42,13 @@ public enum SettingsCopierStoreKind {
         return ALL;
     }
 
-    /** Authoritative mode for tooltips, hub GUI, model predicates, and Copy/Paste checks. */
+    /** Authoritative mode: FILTER > SEQUENTIAL > WHOLE > ALL. */
     public static SettingsCopierStoreKind getMode(ItemStack stack) {
         if (isFilterMode(stack)) {
             return FILTER;
+        }
+        if (isSequentialMode(stack)) {
+            return SEQUENTIAL;
         }
         CompoundTag tag = stack.get(ModDataComponents.DUCT_FACE_SETTINGS.get());
         if (tag != null && fromCompound(tag) == WHOLE) {
@@ -54,16 +62,28 @@ public enum SettingsCopierStoreKind {
         return SettingsCopierItemProperties.isFilterMode(stack);
     }
 
+    /** @see SettingsCopierItemProperties#isSequentialMode */
+    public static boolean isSequentialMode(ItemStack stack) {
+        return SettingsCopierItemProperties.isSequentialMode(stack);
+    }
+
     public static void setMode(ItemStack stack, SettingsCopierStoreKind kind) {
         if (kind == FILTER) {
             stack.set(ModDataComponents.SETTINGS_COPIER_FILTER.get(), true);
+            stack.remove(ModDataComponents.SETTINGS_COPIER_SEQUENTIAL.get());
+        } else if (kind == SEQUENTIAL) {
+            stack.set(ModDataComponents.SETTINGS_COPIER_SEQUENTIAL.get(), true);
+            stack.remove(ModDataComponents.SETTINGS_COPIER_FILTER.get());
         } else {
             stack.remove(ModDataComponents.SETTINGS_COPIER_FILTER.get());
+            stack.remove(ModDataComponents.SETTINGS_COPIER_SEQUENTIAL.get());
         }
     }
 
     public static void clear(ItemStack stack) {
         stack.remove(ModDataComponents.DUCT_FACE_SETTINGS.get());
         stack.remove(ModDataComponents.SETTINGS_COPIER_FILTER.get());
+        stack.remove(ModDataComponents.SETTINGS_COPIER_SEQUENTIAL.get());
+        stack.remove(ModDataComponents.SETTINGS_COPIER_SEQUENTIAL_DATA.get());
     }
 }

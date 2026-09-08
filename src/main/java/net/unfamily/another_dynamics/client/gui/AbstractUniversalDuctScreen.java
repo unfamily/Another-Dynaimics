@@ -312,10 +312,11 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             AnotherDynamicsMod.MOD_ID,
             "textures/gui/entry_duct.png"
         );
-    private static final ResourceLocation SCROLLBAR_TEXTURE =
+    /** Scroll thumb only (CR-style); track is drawn as a black fill. */
+    private static final ResourceLocation SCROLLER_TEXTURE =
         ResourceLocation.fromNamespaceAndPath(
             AnotherDynamicsMod.MOD_ID,
-            "textures/gui/scrollbar.png"
+            "textures/gui/scroller.png"
         );
 
     private static final int TEXTURE_WIDTH = DuctGuiLayout.NODE_TEXTURE_WIDTH;
@@ -430,9 +431,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     /** Filter entries start directly under the title row (Back / Valid keys are below the list). */
     private static final int FIRST_FILTER_ROW_Y = ROW1_Y;
 
-    private static final int SCROLLBAR_WIDTH = 8;
-    private static final int SCROLLBAR_HEIGHT = 34;
-    private static final int HANDLE_SIZE = 8;
+    /** {@code scroller.png} thumb width (Colossal Reactors style). */
+    private static final int SCROLLER_WIDTH = 12;
+    /** {@code scroller.png} thumb height. */
+    private static final int SCROLLER_HEIGHT = 15;
+    private static final int SCROLL_ARROW_SIZE = 12;
+    private static final int SCROLL_ARROW_TRACK_GAP = 4;
+    private static final int SCROLL_TRACK_COLOR = 0xFF000000;
     /** Gap between last entry row and Back / Valid keys row (tight vs {@link DuctNodeMenu#PLAYER_SLOTS_Y}). */
     private static final int FILTER_NAV_GAP = 4;
     /**
@@ -442,10 +447,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private static final int EDIT_MODE_GAP_BELOW_LIST = 4;
 
     private static final int SCROLLBAR_X_REL = ENTRY_X + ENTRY_WIDTH + 4;
+    private static final int FILTER_LIST_BOTTOM_Y =
+            FIRST_FILTER_ROW_Y + VISIBLE_FILTER_ENTRIES * ENTRY_HEIGHT;
     private static final int BUTTON_UP_Y_REL = FIRST_FILTER_ROW_Y;
-    private static final int SCROLLBAR_Y_REL = BUTTON_UP_Y_REL + HANDLE_SIZE;
-    private static final int BUTTON_DOWN_Y_REL =
-        SCROLLBAR_Y_REL + SCROLLBAR_HEIGHT;
+    private static final int BUTTON_DOWN_Y_REL = FILTER_LIST_BOTTOM_Y - SCROLL_ARROW_SIZE;
+    private static final int SCROLLBAR_Y_REL =
+            BUTTON_UP_Y_REL + SCROLL_ARROW_SIZE + SCROLL_ARROW_TRACK_GAP;
+    private static final int SCROLLBAR_HEIGHT =
+            BUTTON_DOWN_Y_REL - SCROLL_ARROW_TRACK_GAP - SCROLLBAR_Y_REL;
 
     /** Left inset for Valid keys body text (inside panel border). */
     private static final int HELP_TEXT_X = 14;
@@ -501,6 +510,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private boolean isDraggingHandle;
     private int dragStartY;
     private int dragStartScrollOffset;
+    private Button filterScrollUpButton;
+    private Button filterScrollDownButton;
 
     /** Main GUI priority/batch: unsent local edits until Apply (or Enter); discard reverts draft (tooltip Cancel). */
     private boolean amountFieldsDirty;
@@ -1496,6 +1507,28 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             )
             .build();
         addRenderableWidget(backButton);
+
+        filterScrollUpButton =
+                Button.builder(Component.literal("\u25b2"), b -> scrollUp())
+                        .bounds(
+                                this.leftPos + SCROLLBAR_X_REL,
+                                this.topPos + BUTTON_UP_Y_REL,
+                                SCROLL_ARROW_SIZE,
+                                SCROLL_ARROW_SIZE)
+                        .build();
+        filterScrollUpButton.visible = false;
+        addRenderableWidget(filterScrollUpButton);
+
+        filterScrollDownButton =
+                Button.builder(Component.literal("\u25bc"), b -> scrollDown())
+                        .bounds(
+                                this.leftPos + SCROLLBAR_X_REL,
+                                this.topPos + BUTTON_DOWN_Y_REL,
+                                SCROLL_ARROW_SIZE,
+                                SCROLL_ARROW_SIZE)
+                        .build();
+        filterScrollDownButton.visible = false;
+        addRenderableWidget(filterScrollDownButton);
 
         validKeysButton = Button.builder(
             Component.translatable(
@@ -3244,8 +3277,44 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         editModeTextBox.setCursorPosition(0);
         editModeTextBox.setHighlightPos(0);
         applyFilterEntryEditBoxTextStyle();
+        tryPopulateGhostFromExactIdFilterLine(line);
         if (grabFilterFocus) {
             editModeTextBox.setFocused(true);
+        }
+    }
+
+    /**
+     * When reopening an existing {@code -registry:id} filter line, fill the selector ghost slot so the entry can be
+     * cycled/replaced. Other key prefixes ({@code #}, {@code @}, {@code &}, {@code ?}) stay text-only.
+     */
+    private void tryPopulateGhostFromExactIdFilterLine(String line) {
+        if (line == null) {
+            return;
+        }
+        String trimmed = line.trim();
+        if (trimmed.isEmpty() || !trimmed.startsWith("-")) {
+            return;
+        }
+        if (isFluidFilterTransport()) {
+            FluidStack fluid = getDisplayFluidForFilter(trimmed);
+            if (!fluid.isEmpty()) {
+                applyGhostFromFluidStack(fluid, false);
+                syncVariantIndexFromEditBoxText();
+            }
+            return;
+        }
+        if (isGasFilterTransport() && MekanismChemicalCompat.isLoaded()) {
+            Object gas = getDisplayGasForFilter(trimmed);
+            if (gas != null && !MekanismChemicalCompat.isEmptyStack(gas)) {
+                applyGhostFromGasSample(gas, false);
+                syncVariantIndexFromEditBoxText();
+            }
+            return;
+        }
+        ItemStack item = getDisplayItemForFilter(trimmed);
+        if (!item.isEmpty()) {
+            applyGhostFromItemStack(item, false);
+            syncVariantIndexFromEditBoxText();
         }
     }
 
@@ -3542,6 +3611,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
 
         backButton.visible =
             howto || advancedFiltering || (filterList && !edit);
+        refreshFilterScrollArrowVisibility();
         // Valid keys should always be consultable while browsing filters (allow/deny) and in advanced filtering.
         validKeysButton.visible =
             (filterList || advancedFiltering) && !howto && !hubLayer;
@@ -4107,6 +4177,27 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
         }
         rebuildFilterEntryWidgets();
+        refreshFilterScrollArrowVisibility();
+    }
+
+    private void refreshFilterScrollArrowVisibility() {
+        boolean show =
+                isAllowOrDenyFilterListContext()
+                        && !inEditMode()
+                        && currentFilterMaxSlots() > visibleFilterEntries();
+        if (filterScrollUpButton != null) {
+            filterScrollUpButton.visible = show;
+            filterScrollUpButton.active = show && filterScrollOffset > 0;
+            filterScrollUpButton.setPosition(
+                    this.leftPos + SCROLLBAR_X_REL, this.topPos + BUTTON_UP_Y_REL);
+        }
+        if (filterScrollDownButton != null) {
+            filterScrollDownButton.visible = show;
+            filterScrollDownButton.active =
+                    show && filterScrollOffset < maxFilterScroll();
+            filterScrollDownButton.setPosition(
+                    this.leftPos + SCROLLBAR_X_REL, this.topPos + BUTTON_DOWN_Y_REL);
+        }
     }
 
     private void scrollUp() {
@@ -4144,36 +4235,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         return false;
     }
 
-    private boolean handleFilterScrollButtonClick(
-        double mouseX,
-        double mouseY
-    ) {
-        if (currentFilterMaxSlots() <= visibleFilterEntries()) {
-            return false;
-        }
-        int gx = this.leftPos;
-        int gy = this.topPos;
-        if (
-            mouseX >= gx + SCROLLBAR_X_REL &&
-            mouseX < gx + SCROLLBAR_X_REL + SCROLLBAR_WIDTH &&
-            mouseY >= gy + BUTTON_UP_Y_REL &&
-            mouseY < gy + BUTTON_UP_Y_REL + HANDLE_SIZE
-        ) {
-            scrollUp();
-            return true;
-        }
-        if (
-            mouseX >= gx + SCROLLBAR_X_REL &&
-            mouseX < gx + SCROLLBAR_X_REL + SCROLLBAR_WIDTH &&
-            mouseY >= gy + BUTTON_DOWN_Y_REL &&
-            mouseY < gy + BUTTON_DOWN_Y_REL + HANDLE_SIZE
-        ) {
-            scrollDown();
-            return true;
-        }
-        return false;
-    }
-
     private boolean handleFilterHandleClick(double mouseX, double mouseY) {
         if (currentFilterMaxSlots() <= visibleFilterEntries()) {
             return false;
@@ -4185,15 +4246,16 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int gx = this.leftPos;
         int gy = this.topPos;
         double scrollRatio = (double) filterScrollOffset / maxScroll;
+        int handleRange = Math.max(0, SCROLLBAR_HEIGHT - SCROLLER_HEIGHT);
         int handleY =
             gy +
             SCROLLBAR_Y_REL +
-            (int) (scrollRatio * (SCROLLBAR_HEIGHT - HANDLE_SIZE));
+            (int) (scrollRatio * handleRange);
         if (
             mouseX >= gx + SCROLLBAR_X_REL &&
-            mouseX < gx + SCROLLBAR_X_REL + HANDLE_SIZE &&
+            mouseX < gx + SCROLLBAR_X_REL + SCROLLER_WIDTH &&
             mouseY >= handleY &&
-            mouseY < handleY + HANDLE_SIZE
+            mouseY < handleY + SCROLLER_HEIGHT
         ) {
             isDraggingHandle = true;
             dragStartY = (int) mouseY;
@@ -4215,7 +4277,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int gy = this.topPos;
         if (
             mouseX >= gx + SCROLLBAR_X_REL &&
-            mouseX < gx + SCROLLBAR_X_REL + SCROLLBAR_WIDTH &&
+            mouseX < gx + SCROLLBAR_X_REL + SCROLLER_WIDTH &&
             mouseY >= gy + SCROLLBAR_Y_REL &&
             mouseY < gy + SCROLLBAR_Y_REL + SCROLLBAR_HEIGHT
         ) {
@@ -5104,8 +5166,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     /**
-     * Filter presets from a sample item (ghost slot): ID, mod, macros, tags, then {@code ?} + full stack SNBT (last), for
-     * {@link net.unfamily.another_dynamics.duct.DuctFilterMatcher} {@code ?} substring matching without commands.
+     * Filter presets from a sample item (ghost slot). Cycle order matches filter weights:
+     * {@code -} → {@code #} → {@code @} → {@code &} → {@code ?}.
      */
     private List<String> generateAllFilterVariants(ItemStack stack) {
         List<String> variants = new ArrayList<>();
@@ -5119,8 +5181,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return variants;
         }
         variants.add("-" + itemId);
-        String namespace = itemId.getNamespace();
-        variants.add("@" + namespace);
         Item item = stack.getItem();
         var holder = BuiltInRegistries.ITEM.wrapAsHolder(item);
         List<String> itemTags = BuiltInRegistries.ITEM.getTagNames()
@@ -5136,6 +5196,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         for (String tagId : itemTags) {
             variants.add("#" + tagId);
         }
+        variants.add("@" + itemId.getNamespace());
         boolean enchantedMacro =
             stack.isEnchanted() || stack.is(Items.ENCHANTED_BOOK);
         if (enchantedMacro) {
@@ -5182,8 +5243,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return variants;
         }
         variants.add("-" + fluidId);
-        String namespace = fluidId.getNamespace();
-        variants.add("@" + namespace);
         var holder = BuiltInRegistries.FLUID.wrapAsHolder(fluid);
         List<String> fluidTags = BuiltInRegistries.FLUID.getTagNames()
             .filter(tagKey ->
@@ -5198,6 +5257,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         for (String tagId : fluidTags) {
             variants.add("#" + tagId);
         }
+        variants.add("@" + fluidId.getNamespace());
         // Fluid predefined filters: always offer macros with the current fluid's values (fallback to 0 if unknown).
         var ft = fluid.getFluidType();
         int temperature = 0;
@@ -7133,80 +7193,28 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         // After entry rows so the handle draws above the list edge (DeepDrawerExtractorScreen order).
         if (maxSlots > vis) {
             int scrollbarX = this.leftPos + SCROLLBAR_X_REL;
-            int buttonUpY = this.topPos + BUTTON_UP_Y_REL;
             int scrollbarY = this.topPos + SCROLLBAR_Y_REL;
-            int buttonDownY = this.topPos + BUTTON_DOWN_Y_REL;
-            graphics.blit(
-                SCROLLBAR_TEXTURE,
-                scrollbarX,
-                scrollbarY,
-                0,
-                0,
-                SCROLLBAR_WIDTH,
-                SCROLLBAR_HEIGHT,
-                32,
-                34
-            );
-            int upV =
-                mouseX >= scrollbarX &&
-                mouseX < scrollbarX + SCROLLBAR_WIDTH &&
-                mouseY >= buttonUpY &&
-                mouseY < buttonUpY + HANDLE_SIZE
-                    ? HANDLE_SIZE
-                    : 0;
-            graphics.blit(
-                SCROLLBAR_TEXTURE,
-                scrollbarX,
-                buttonUpY,
-                SCROLLBAR_WIDTH * 2,
-                upV,
-                HANDLE_SIZE,
-                HANDLE_SIZE,
-                32,
-                34
-            );
-            int downV =
-                mouseX >= scrollbarX &&
-                mouseX < scrollbarX + SCROLLBAR_WIDTH &&
-                mouseY >= buttonDownY &&
-                mouseY < buttonDownY + HANDLE_SIZE
-                    ? HANDLE_SIZE
-                    : 0;
-            graphics.blit(
-                SCROLLBAR_TEXTURE,
-                scrollbarX,
-                buttonDownY,
-                SCROLLBAR_WIDTH * 3,
-                downV,
-                HANDLE_SIZE,
-                HANDLE_SIZE,
-                32,
-                34
-            );
+            graphics.fill(
+                    scrollbarX,
+                    scrollbarY,
+                    scrollbarX + SCROLLER_WIDTH,
+                    scrollbarY + SCROLLBAR_HEIGHT,
+                    SCROLL_TRACK_COLOR);
             int maxScroll = maxFilterScroll();
             if (maxScroll > 0) {
                 double ratio = (double) filterScrollOffset / maxScroll;
-                int handleY =
-                    scrollbarY +
-                    (int) (ratio * (SCROLLBAR_HEIGHT - HANDLE_SIZE));
-                int hV =
-                    mouseX >= scrollbarX &&
-                    mouseX < scrollbarX + HANDLE_SIZE &&
-                    mouseY >= handleY &&
-                    mouseY < handleY + HANDLE_SIZE
-                        ? HANDLE_SIZE
-                        : 0;
+                int handleRange = Math.max(0, SCROLLBAR_HEIGHT - SCROLLER_HEIGHT);
+                int handleY = scrollbarY + (int) (ratio * handleRange);
                 graphics.blit(
-                    SCROLLBAR_TEXTURE,
-                    scrollbarX,
-                    handleY,
-                    SCROLLBAR_WIDTH,
-                    hV,
-                    HANDLE_SIZE,
-                    HANDLE_SIZE,
-                    32,
-                    34
-                );
+                        SCROLLER_TEXTURE,
+                        scrollbarX,
+                        handleY,
+                        0,
+                        0,
+                        SCROLLER_WIDTH,
+                        SCROLLER_HEIGHT,
+                        SCROLLER_WIDTH,
+                        SCROLLER_HEIGHT);
             }
         }
     }
@@ -7452,6 +7460,22 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         ) {
             unfocusAllTextFields();
         }
+        if (GuiInput.clearEditBoxOnRightClick(
+                mouseX,
+                mouseY,
+                button,
+                routingPriorityBox,
+                editModeTextBox,
+                advCapEditBox,
+                advCap2EditBox,
+                remoteNodeCoordXEditBox,
+                remoteNodeCoordYEditBox,
+                remoteNodeCoordZEditBox,
+                energyBufExtractBox,
+                energyBufInsertBox)) {
+            playClickSound();
+            return true;
+        }
         // Right-click on Mode cycles backward.
         if (button == 1 && nodeModeButton != null && nodeModeButton.visible) {
             if (
@@ -7564,9 +7588,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             }
         }
         if (isAllowOrDenyFilterListContext()) {
-            if (handleFilterScrollButtonClick(mouseX, mouseY)) {
-                return true;
-            }
             if (handleFilterHandleClick(mouseX, mouseY)) {
                 return true;
             }
@@ -7635,7 +7656,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             if (maxScroll > 0) {
                 int deltaY = (int) mouseY - dragStartY;
                 float scrollRatio =
-                    (float) deltaY / (SCROLLBAR_HEIGHT - HANDLE_SIZE);
+                    (float) deltaY / (SCROLLBAR_HEIGHT - SCROLLER_HEIGHT);
                 int newOffset =
                     dragStartScrollOffset + (int) (scrollRatio * maxScroll);
                 setFilterScrollOffset(newOffset);

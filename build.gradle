@@ -27,6 +27,7 @@ sourceSets.main.resources {
 }
 
 repositories {
+    mavenCentral()
     maven {
         name = 'Jared Maven (JEI)'
         url = 'https://maven.blamejared.com'
@@ -159,6 +160,10 @@ dependencies {
     localRuntime "curse.maven:ftb-ultimine-forge-386134:8078515"
 
     localRuntime "curse.maven:construction-sticks-1156098:7687867"
+
+    // GuideME (optional): in-game guidebook. API for compile; full jar for local runs only.
+    compileOnly "org.appliedenergistics:guideme:${guideme_version}:api"
+    localRuntime "org.appliedenergistics:guideme:${guideme_version}"
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'

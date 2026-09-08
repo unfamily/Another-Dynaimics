@@ -6,6 +6,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity;
 
 public final class ModBlockEntities {
     public static final DeferredRegister<BlockEntityType<?>> TYPES =
@@ -28,6 +29,16 @@ public final class ModBlockEntities {
                                                     ModBlocks.DUCT.get(),
                                                     ModBlocks.FLUID_DUCT.get(),
                                                     ModBlocks.ITEM_FLUID_DUCT.get())
+                                            .build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SequentialBufferBlockEntity>>
+            SEQUENTIAL_BUFFER =
+                    TYPES.register(
+                            "sequential_buffer",
+                            () ->
+                                    BlockEntityType.Builder.of(
+                                                    SequentialBufferBlockEntity::new,
+                                                    ModBlocks.SEQUENTIAL_BUFFER.get())
                                             .build(null));
 
     private ModBlockEntities() {}

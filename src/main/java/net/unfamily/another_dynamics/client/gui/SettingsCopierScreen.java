@@ -4,6 +4,10 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.narration.NarratableEntry;
+import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.component.DataComponents;
@@ -20,10 +24,13 @@ import net.unfamily.another_dynamics.duct.filterimport.FilterImportChannel;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportPreview;
 import net.unfamily.another_dynamics.duct.filterimport.FilterImportRegistry;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
+import net.unfamily.another_dynamics.integration.jei.ghost.IAnDynamicsGhostTarget;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
 import net.unfamily.another_dynamics.network.ModNetwork;
 import net.unfamily.another_dynamics.network.SettingsCopierHubActionPayload;
 import net.neoforged.fml.ModList;
+
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Settings copier: hub and virtual universal duct editor in one screen (root layer sync, no nested openMenu).
@@ -76,6 +83,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     private ItemStack lastImportSourceForAutofill = ItemStack.EMPTY;
     private boolean modeConfirmPending;
     private boolean virtualBackConfirmPending;
+    private @Nullable SequentialCopierVirtualUi sequentialVirtualUi;
 
     public SettingsCopierScreen(SettingsCopierMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
@@ -83,6 +91,32 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         this.imageHeight = DuctGuiLayout.NODE_TEXTURE_HEIGHT;
         this.titleLabelY = 10_000;
         this.inventoryLabelY = 10_000;
+    }
+
+    net.minecraft.client.Minecraft sequentialUiMinecraft() {
+        return this.minecraft;
+    }
+
+    net.minecraft.client.gui.Font sequentialUiFont() {
+        return this.font;
+    }
+
+    void clearWidgetsForSequentialVirtual() {
+        this.clearWidgets();
+    }
+
+    <T extends GuiEventListener & Renderable & NarratableEntry> T addSequentialWidget(T widget) {
+        return this.addRenderableWidget(widget);
+    }
+
+    void requestSequentialVirtualLeave() {
+        playClickSound();
+        if (!virtualBackConfirmPending) {
+            virtualBackConfirmPending = true;
+            return;
+        }
+        virtualBackConfirmPending = false;
+        ModNetwork.sendSettingsCopierReturnToHub();
     }
 
     @Override
@@ -93,7 +127,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     @Override
     protected boolean showsChannelLetterControl(
             boolean hubLayer, boolean filterList, boolean advancedFiltering, boolean bufferLimits) {
-        if (!menu.isVirtualLayer() || menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0) {
+        if (!menu.isDuctVirtualLayer() || menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0) {
             return false;
         }
         return !hubLayer || filterList || advancedFiltering || bufferLimits;
@@ -101,13 +135,13 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
 
     @Override
     protected boolean useSettingsCopierHubNavigation() {
-        return menu.isVirtualLayer();
+        return menu.isDuctVirtualLayer();
     }
 
     @Override
-    @org.jetbrains.annotations.Nullable
+    @Nullable
     protected net.minecraft.network.chat.Component settingsCopierVirtualMainTitle() {
-        if (!menu.isVirtualLayer() || minecraft == null || minecraft.player == null) {
+        if (!menu.isDuctVirtualLayer() || minecraft == null || minecraft.player == null) {
             return null;
         }
         if (menu.storeKind(minecraft.player) == SettingsCopierStoreKind.FILTER) {
@@ -126,6 +160,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     protected void init() {
         modeConfirmPending = false;
         virtualBackConfirmPending = false;
+        sequentialVirtualUi = null;
         if (menu.isHubLayer()) {
             layoutScreenCenter();
             initHubWidgets();
@@ -136,6 +171,13 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             layoutScreenCenter();
             initImportWidgets();
             cachedRootLayer = SettingsCopierMenu.ROOT_IMPORT;
+            return;
+        }
+        if (menu.isSequentialVirtualLayer()) {
+            layoutScreenCenter();
+            sequentialVirtualUi = new SequentialCopierVirtualUi(this);
+            sequentialVirtualUi.init();
+            cachedRootLayer = SettingsCopierMenu.ROOT_VIRTUAL;
             return;
         }
         super.init();
@@ -158,10 +200,17 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             if (!modeConfirmPending) {
                 refreshModeButtonLabel();
             }
+            refreshConfigureEnabled();
             return;
         }
         if (menu.isImportLayer()) {
             refreshImportUi();
+            return;
+        }
+        if (menu.isSequentialVirtualLayer()) {
+            if (sequentialVirtualUi != null) {
+                sequentialVirtualUi.tick();
+            }
             return;
         }
         if (!virtualBackConfirmPending) {
@@ -175,6 +224,23 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         if (menu.isImportLayer()) {
             playClickSound();
             ModNetwork.sendSettingsCopierHubAction(SettingsCopierHubActionPayload.ACTION_BACK_FROM_IMPORT);
+            return;
+        }
+        if (menu.isSequentialVirtualLayer()) {
+            if (virtualBackConfirmPending) {
+                playClickSound();
+                cancelVirtualBackConfirm();
+                return;
+            }
+            if (sequentialVirtualUi != null && sequentialVirtualUi.handleBack()) {
+                return;
+            }
+            playClickSound();
+            if (!virtualBackConfirmPending) {
+                virtualBackConfirmPending = true;
+            } else {
+                ModNetwork.sendSettingsCopierReturnToHub();
+            }
             return;
         }
         if (menu.isVirtualLayer() && virtualBackConfirmPending) {
@@ -223,6 +289,10 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             blitImportSlotFrames(graphics);
             return;
         }
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null) {
+            sequentialVirtualUi.renderBg(graphics, partialTick, mouseX, mouseY);
+            return;
+        }
         super.renderBg(graphics, partialTick, mouseX, mouseY);
     }
 
@@ -267,6 +337,23 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         }
         if (menu.isImportLayer()) {
             super.render(graphics, mouseX, mouseY, partialTick);
+            return;
+        }
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null) {
+            renderBackground(graphics, mouseX, mouseY, partialTick);
+            renderBg(graphics, partialTick, mouseX, mouseY);
+            if (!sequentialVirtualUi.hidesPlayerSlots()) {
+                for (Slot slot : menu.slots) {
+                    if (slot.isActive() && slot.index >= SettingsCopierMenu.PLAYER_SLOT_START) {
+                        renderSlot(graphics, slot);
+                    }
+                }
+            }
+            for (Renderable renderable : renderables) {
+                renderable.render(graphics, mouseX, mouseY, partialTick);
+            }
+            sequentialVirtualUi.renderOverlay(graphics, mouseX, mouseY);
+            renderTooltip(graphics, mouseX, mouseY);
             return;
         }
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -348,6 +435,11 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             }
             return;
         }
+        if (menu.isSequentialVirtualLayer()
+                && sequentialVirtualUi != null
+                && sequentialVirtualUi.hidesPlayerSlots()) {
+            return;
+        }
         super.renderSlot(graphics, slot);
     }
 
@@ -373,6 +465,11 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         if (menu.isVirtualLayer() && slot.index == lockedCopierMenuSlotIndex()) {
             return;
         }
+        if (menu.isSequentialVirtualLayer()
+                && sequentialVirtualUi != null
+                && sequentialVirtualUi.hidesPlayerSlots()) {
+            return;
+        }
         super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
     }
 
@@ -383,10 +480,11 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                 cancelModeConfirm();
                 return true;
             }
-            if (button == 1 && renameBox != null && renameBox.isMouseOver(mouseX, mouseY)) {
+            if (GuiInput.clearEditBoxOnRightClick(mouseX, mouseY, button, renameBox)) {
                 playClickSound();
-                renameBox.setValue("");
-                renameBox.setFocused(true);
+                if (renameBox != null) {
+                    renameBox.setFocused(true);
+                }
                 return true;
             }
             if (renameBox != null) {
@@ -402,6 +500,11 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             return deliverMouseToWidgets(mouseX, mouseY, button);
         }
         if (menu.isImportLayer()) {
+            if (GuiInput.clearEditBoxOnRightClick(
+                    mouseX, mouseY, button, importPrimaryNameBox, importSecondaryNameBox)) {
+                playClickSound();
+                return true;
+            }
             if (importPrimaryNameBox != null && importPrimaryNameBox.isMouseOver(mouseX, mouseY)) {
                 importPrimaryNameBox.setFocused(true);
                 importNamesAutoFill = false;
@@ -424,6 +527,23 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             }
             if (deliverMouseToWidgets(mouseX, mouseY, button)) {
                 return true;
+            }
+            return super.mouseClicked(mouseX, mouseY, button);
+        }
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null) {
+            if (button == 1 && virtualBackConfirmPending) {
+                cancelVirtualBackConfirm();
+                return true;
+            }
+            if (button == 1 && isOverCloseButton(mouseX, mouseY) && sequentialVirtualUi.isHubSubView()) {
+                onVirtualBackRightClick();
+                return true;
+            }
+            if (sequentialVirtualUi.mouseClicked(mouseX, mouseY, button)) {
+                return true;
+            }
+            if (sequentialVirtualUi.hidesPlayerSlots()) {
+                return deliverMouseToWidgets(mouseX, mouseY, button);
             }
             return super.mouseClicked(mouseX, mouseY, button);
         }
@@ -479,6 +599,15 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             }
             return false;
         }
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null) {
+            if (sequentialVirtualUi.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+            if (virtualBackConfirmPending && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+                cancelVirtualBackConfirm();
+                return true;
+            }
+        }
         if (menu.isVirtualLayer() && virtualBackConfirmPending) {
             if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
                 cancelVirtualBackConfirm();
@@ -506,6 +635,9 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                 return importSecondaryNameBox.charTyped(codePoint, modifiers);
             }
             return false;
+        }
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null) {
+            return sequentialVirtualUi.charTyped(codePoint, modifiers);
         }
         return super.charTyped(codePoint, modifiers);
     }
@@ -539,12 +671,18 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                                 })
                         .bounds(this.leftPos + CENTER_X, this.topPos + HUB_ROW1_Y, CENTER_PANEL_W, BTN_H)
                         .build();
+        configureButton.setTooltip(
+                Tooltip.create(
+                        Component.translatable(
+                                "gui.another_dynamics.settings_copier.configure.tooltip")));
         addRenderableWidget(configureButton);
+        refreshConfigureEnabled();
 
         modeButton =
                 Button.builder(modeButtonLabel(), b -> onModeLeftClick())
                         .bounds(this.leftPos + CENTER_X, this.topPos + HUB_ROW2_Y, CENTER_PANEL_W, BTN_H)
                         .build();
+        refreshModeButtonTooltip();
         addRenderableWidget(modeButton);
 
         importFilterHubButton =
@@ -565,7 +703,14 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                                 CENTER_PANEL_W,
                                 BTN_H)
                         .build();
-        importFilterHubButton.active = ModList.get().isLoaded("pipez");
+        boolean pipezLoaded = ModList.get().isLoaded("pipez");
+        importFilterHubButton.active = pipezLoaded;
+        importFilterHubButton.setTooltip(
+                Tooltip.create(
+                        Component.translatable(
+                                pipezLoaded
+                                        ? "gui.another_dynamics.settings_copier.import_filter.tooltip"
+                                        : "gui.another_dynamics.settings_copier.import_filter.tooltip.requires_pipez")));
         addRenderableWidget(importFilterHubButton);
 
         renameBox = new EditBox(this.font, 0, 0, RENAME_BOX_W, BTN_H, Component.empty());
@@ -575,6 +720,10 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             renameBox.setValue(stack.getHoverName().getString());
         }
         renameBox.setPosition(this.leftPos + CENTER_X, this.topPos + HUB_RENAME_Y);
+        renameBox.setTooltip(
+                Tooltip.create(
+                        Component.translatable(
+                                "gui.another_dynamics.settings_copier.rename.tooltip")));
         addRenderableWidget(renameBox);
 
         renameConfirmButton =
@@ -592,6 +741,10 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                                 RENAME_CONFIRM_W,
                                 BTN_H)
                         .build();
+        renameConfirmButton.setTooltip(
+                Tooltip.create(
+                        Component.translatable(
+                                "gui.another_dynamics.settings_copier.rename_confirm.tooltip")));
         addRenderableWidget(renameConfirmButton);
     }
 
@@ -604,6 +757,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         String modeKey =
                 switch (mode) {
                     case FILTER -> "gui.another_dynamics.settings_copier.mode_filter";
+                    case SEQUENTIAL -> "gui.another_dynamics.settings_copier.mode_sequential";
                     case WHOLE -> "gui.another_dynamics.settings_copier.mode_whole";
                     case ALL -> "gui.another_dynamics.settings_copier.mode_all";
                 };
@@ -613,7 +767,40 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     private void refreshModeButtonLabel() {
         if (modeButton != null) {
             modeButton.setMessage(modeButtonLabel());
+            refreshModeButtonTooltip();
         }
+        refreshConfigureEnabled();
+    }
+
+    private void refreshConfigureEnabled() {
+        if (configureButton == null || minecraft == null || minecraft.player == null) {
+            return;
+        }
+        configureButton.active = true;
+        configureButton.setTooltip(
+                Tooltip.create(
+                        Component.translatable(
+                                "gui.another_dynamics.settings_copier.configure.tooltip")));
+    }
+
+    private void refreshModeButtonTooltip() {
+        if (modeButton == null) {
+            return;
+        }
+        String tipKey;
+        if (modeConfirmPending) {
+            tipKey = "gui.another_dynamics.settings_copier.mode.tooltip.warn";
+        } else {
+            SettingsCopierStoreKind mode = SettingsCopierStoreKind.getMode(menu.copierStack(minecraft.player));
+            tipKey =
+                    switch (mode) {
+                        case FILTER -> "gui.another_dynamics.settings_copier.mode.tooltip.filter";
+                        case SEQUENTIAL -> "gui.another_dynamics.settings_copier.mode.tooltip.sequential";
+                        case WHOLE -> "gui.another_dynamics.settings_copier.mode.tooltip.whole";
+                        case ALL -> "gui.another_dynamics.settings_copier.mode.tooltip.all";
+                    };
+        }
+        modeButton.setTooltip(Tooltip.create(Component.translatable(tipKey)));
     }
 
     private void onModeLeftClick() {
@@ -888,6 +1075,51 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
                         ? importSecondaryNameBox.getValue().trim()
                         : "";
         ModNetwork.sendFilterImportExecute(channels.get(importChannelIndex).ordinal(), primary, secondary);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null
+                && sequentialVirtualUi.mouseDragged(mouseX, mouseY, button, dragX, dragY)) {
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null
+                && sequentialVirtualUi.mouseReleased(mouseX, mouseY, button)) {
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null
+                && sequentialVirtualUi.mouseScrolled(mouseX, mouseY, deltaX, deltaY)) {
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY);
+    }
+
+    @Override
+    @Nullable
+    public IAnDynamicsGhostTarget.IGhostIngredientConsumer getGhostHandler() {
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null) {
+            return sequentialVirtualUi.getGhostHandler();
+        }
+        return super.getGhostHandler();
+    }
+
+    @Override
+    @Nullable
+    public Rect2i getGhostTargetArea() {
+        if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null) {
+            return sequentialVirtualUi.getGhostTargetArea();
+        }
+        return super.getGhostTargetArea();
     }
 
 }

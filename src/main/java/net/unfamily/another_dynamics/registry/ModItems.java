@@ -49,6 +49,11 @@ public final class ModItems {
     public static final DeferredItem<BlockItem> PROJECT_DUCT =
             ITEMS.register("project_duct", () -> new BlockItem(ModBlocks.PROJECT_DUCT.get(), new Item.Properties()));
 
+    public static final DeferredItem<BlockItem> SEQUENTIAL_BUFFER =
+            ITEMS.register(
+                    "sequential_buffer",
+                    () -> new BlockItem(ModBlocks.SEQUENTIAL_BUFFER.get(), new Item.Properties()));
+
     public static final DeferredItem<DuctModuleItem> INC_MODULE_0 = registerModule("inc_module_0");
     public static final DeferredItem<DuctModuleItem> INC_MODULE_1 = registerModule("inc_module_1");
     public static final DeferredItem<DuctModuleItem> INC_MODULE_2 = registerModule("inc_module_2");

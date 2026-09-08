@@ -29,6 +29,7 @@ import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
 import net.unfamily.another_dynamics.inventory.FilterSyncDebugLog;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
 import net.unfamily.another_dynamics.inventory.UniversalDuctMenu;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferMenu;
 
 import org.jetbrains.annotations.Nullable;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
@@ -424,12 +425,22 @@ public final class ModNetwork {
                             return;
                         }
                         switch (payload.action()) {
-                            case SettingsCopierHubActionPayload.ACTION_CONFIGURE -> copier.enterVirtual(player);
+                            case SettingsCopierHubActionPayload.ACTION_CONFIGURE -> {
+                                if (SettingsCopierStoreKind.getMode(stack)
+                                        == SettingsCopierStoreKind.SEQUENTIAL) {
+                                    copier.enterSequentialVirtual(player);
+                                } else {
+                                    copier.enterVirtual(player);
+                                }
+                            }
                             case SettingsCopierHubActionPayload.ACTION_MODE_TOGGLE -> {
+                                SettingsCopierStoreKind current = SettingsCopierStoreKind.getMode(stack);
                                 SettingsCopierStoreKind next =
-                                        SettingsCopierStoreKind.getMode(stack) == SettingsCopierStoreKind.FILTER
-                                                ? SettingsCopierStoreKind.ALL
-                                                : SettingsCopierStoreKind.FILTER;
+                                        switch (current) {
+                                            case ALL -> SettingsCopierStoreKind.FILTER;
+                                            case FILTER -> SettingsCopierStoreKind.SEQUENTIAL;
+                                            case SEQUENTIAL, WHOLE -> SettingsCopierStoreKind.ALL;
+                                        };
                                 SettingsCopierStoreKind.clear(stack);
                                 SettingsCopierStoreKind.setMode(stack, next);
                                 player.setItemInHand(hand, stack);
@@ -609,6 +620,27 @@ public final class ModNetwork {
                     });
                 });
 
+        reg.playToServer(
+                SequentialBufferActionPayload.TYPE,
+                SequentialBufferActionPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    ctx.enqueueWork(() -> {
+                        ServerPlayer player = (ServerPlayer) ctx.player();
+                        if (player.containerMenu instanceof SequentialBufferMenu menu) {
+                            if (!menu.stillValid(player)) {
+                                return;
+                            }
+                            menu.handleAction(player, payload);
+                            menu.broadcastChanges();
+                            return;
+                        }
+                        if (player.containerMenu instanceof SettingsCopierMenu copier
+                                && copier.isSequentialVirtualLayer()) {
+                            copier.handleSequentialAction(player, payload);
+                            copier.broadcastChanges();
+                        }
+                    });
+                });
     }
 
     /**
@@ -737,6 +769,10 @@ public final class ModNetwork {
 
     public static void sendSettingsCopierHubAction(int action) {
         PacketDistributor.sendToServer(new SettingsCopierHubActionPayload(action));
+    }
+
+    public static void sendSequentialBufferAction(SequentialBufferActionPayload payload) {
+        PacketDistributor.sendToServer(payload);
     }
 
     public static void sendSettingsCopierHubAction(int action, String renameText) {

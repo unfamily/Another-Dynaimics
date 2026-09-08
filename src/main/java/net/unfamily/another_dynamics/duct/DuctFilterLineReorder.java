@@ -313,15 +313,17 @@ public final class DuctFilterLineReorder {
         }
     }
 
-    /** Lower weight = earlier in list (more specific). */
+    /** Lower weight = earlier in list (more specific). Order: - # @ & ? &anything_else unknown empty. */
     private static int weightForLine(String line, HolderLookup.Provider registries) {
         if (line == null || line.trim().isEmpty()) {
             return 10_000;
         }
         String t = line.trim();
         if (DuctFilterSpecialKeys.isAnythingElseLine(t)) {
-            // After other filled lines, before empty rows (empties use 10_000).
-            return 1_000;
+            return 500;
+        }
+        if (t.startsWith("-")) {
+            return 0;
         }
         if (t.startsWith("#")) {
             return 100;
@@ -329,10 +331,16 @@ public final class DuctFilterLineReorder {
         if (t.startsWith("@")) {
             return 200;
         }
+        if (t.startsWith("&")) {
+            return 300;
+        }
+        if (t.startsWith("?")) {
+            return 400;
+        }
         ResourceLocation id = ResourceLocation.tryParse(t);
         if (id != null && BuiltInRegistries.ITEM.containsKey(id)) {
             return 0;
         }
-        return 500;
+        return 600;
     }
 }

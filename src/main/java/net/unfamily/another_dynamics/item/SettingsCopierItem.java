@@ -19,20 +19,23 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.unfamily.another_dynamics.duct.AbstractDuctBlock;
 import net.unfamily.another_dynamics.duct.DuctBlock;
+import net.unfamily.another_dynamics.duct.SettingsCopierFeedback;
 import net.unfamily.another_dynamics.duct.settings.DuctFaceSettingsSnapshot;
 import net.unfamily.another_dynamics.duct.settings.DuctFilterListSnapshot;
 import net.unfamily.another_dynamics.duct.settings.FilterListMaterialKind;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.inventory.SettingsCopierMenu;
-import net.unfamily.another_dynamics.registry.ModMenuTypes;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlock;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity;
+import net.unfamily.another_dynamics.machine.sequential.SettingsCopierSequentialSnapshot;
 
 import java.util.List;
 
 /**
  * Copies duct face <em>configuration</em> via GUI Copy; right-click (air or block) opens the configurator;
- * shift-right-click on a duct face pastes {@code all}/{@code whole} mode; shift-right-click on a Pipez pipe
- * copies the whole pipe one-way into the copier.
+ * shift-right-click on a duct face pastes {@code all}/{@code whole} mode; shift-right-click on a Sequential Buffer
+ * pastes {@code sequential} mode; shift-right-click on a Pipez pipe copies the whole pipe one-way into the copier.
  */
 public class SettingsCopierItem extends Item {
     private static final String TOOLTIP_ROOT = "item.another_dynamics.settings_copier.tooltip.";
@@ -75,6 +78,9 @@ public class SettingsCopierItem extends Item {
                     level, pos, player, stack)) {
                 return InteractionResult.sidedSuccess(level.isClientSide());
             }
+            if (level.getBlockState(pos).getBlock() instanceof SequentialBufferBlock) {
+                return attemptSequentialPaste(level, pos, player, stack);
+            }
             if (!(level.getBlockState(pos).getBlock() instanceof AbstractDuctBlock)) {
                 return InteractionResult.PASS;
             }
@@ -82,6 +88,7 @@ public class SettingsCopierItem extends Item {
                     new BlockHitResult(context.getClickLocation(), context.getClickedFace(), pos, false);
             return DuctBlock.attemptSettingsCopierPaste(level, pos, player, stack, hit).result();
         }
+
         if (level.isClientSide()) {
             return InteractionResult.SUCCESS;
         }
@@ -115,8 +122,15 @@ public class SettingsCopierItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         SettingsCopierStoreKind mode = SettingsCopierStoreKind.getMode(stack);
-        boolean hasData = DuctFaceSettingsSnapshot.hasStoredSettings(stack);
-        if (!hasData) {
+        boolean hasDuctData = DuctFaceSettingsSnapshot.hasStoredSettings(stack);
+        boolean hasSequentialData = SettingsCopierSequentialSnapshot.hasStoredSettings(stack);
+        if (mode == SettingsCopierStoreKind.SEQUENTIAL) {
+            if (!hasSequentialData) {
+                addTooltipLines(tooltip, TOOLTIP_ROOT + "sequential.empty.", 2);
+            } else {
+                addTooltipLines(tooltip, TOOLTIP_ROOT + "sequential.", 3);
+            }
+        } else if (!hasDuctData) {
             if (mode == SettingsCopierStoreKind.FILTER) {
                 addTooltipLines(tooltip, TOOLTIP_ROOT + "filter.", 3);
             } else {
@@ -129,6 +143,39 @@ public class SettingsCopierItem extends Item {
             addTooltipLines(tooltip, TOOLTIP_ROOT + "all.", 4);
         }
         tooltip.add(grayTooltipLine(TOOLTIP_ROOT + "use_gui"));
+    }
+
+    private static InteractionResult attemptSequentialPaste(
+            Level level, BlockPos pos, Player player, ItemStack usedStack) {
+        if (level.isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+        if (!(level.getBlockEntity(pos) instanceof SequentialBufferBlockEntity be)) {
+            SettingsCopierFeedback.notifyPasteFailed(player);
+            return InteractionResult.FAIL;
+        }
+        var copierOpt = SettingsCopierSequentialSnapshot.findCopierWithSequentialData(player, usedStack);
+        if (copierOpt.isEmpty()) {
+            if (player instanceof ServerPlayer sp) {
+                SettingsCopierFeedback.notifyWrongMode(sp);
+            }
+            return InteractionResult.FAIL;
+        }
+        ItemStack copier = copierOpt.get();
+        if (SettingsCopierStoreKind.getMode(copier) != SettingsCopierStoreKind.SEQUENTIAL) {
+            if (player instanceof ServerPlayer sp) {
+                SettingsCopierFeedback.notifyWrongMode(sp);
+            }
+            return InteractionResult.FAIL;
+        }
+        var data = SettingsCopierSequentialSnapshot.read(copier);
+        if (data.isEmpty()) {
+            SettingsCopierFeedback.notifyPasteFailed(player);
+            return InteractionResult.FAIL;
+        }
+        be.applySettings(data.get());
+        SettingsCopierFeedback.notifyPasted(player);
+        return InteractionResult.SUCCESS;
     }
 
     private static void addTooltipLines(List<Component> tooltip, String keyPrefix, int lineCount) {

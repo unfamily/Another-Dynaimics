@@ -26,6 +26,7 @@ import net.unfamily.another_dynamics.client.gui.DuctNodeScreen;
 import net.unfamily.another_dynamics.client.gui.SettingsCopierScreen;
 import net.unfamily.another_dynamics.client.project.ProjectDuctGeometryLoader;
 import net.unfamily.another_dynamics.client.transit.DuctTransitBlockEntityRenderer;
+import net.unfamily.another_dynamics.machine.sequential.SequentialBufferScreen;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 import net.unfamily.another_dynamics.registry.ModItems;
 import net.unfamily.another_dynamics.registry.ModMenuTypes;
@@ -49,6 +50,13 @@ public final class DuctClientSetup {
                                     net.minecraft.client.multiplayer.ClientLevel level,
                                     net.minecraft.world.entity.LivingEntity entity,
                                     int seed) -> SettingsCopierItemProperties.copierFilter(stack));
+                    ItemProperties.register(
+                            ModItems.SETTINGS_COPIER.get(),
+                            SettingsCopierItemProperties.COPIER_SEQUENTIAL,
+                            (ItemStack stack,
+                                    net.minecraft.client.multiplayer.ClientLevel level,
+                                    net.minecraft.world.entity.LivingEntity entity,
+                                    int seed) -> SettingsCopierItemProperties.copierSequential(stack));
                     ItemProperties.register(
                             ModItems.SETTINGS_COPIER.get(),
                             SettingsCopierItemProperties.COPIER_FILLED,
@@ -75,6 +83,7 @@ public final class DuctClientSetup {
     public static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
         event.register(ModMenuTypes.DUCT_NODE.get(), DuctNodeScreen::new);
         event.register(ModMenuTypes.SETTINGS_COPIER_HUB.get(), SettingsCopierScreen::new);
+        event.register(ModMenuTypes.SEQUENTIAL_BUFFER.get(), SequentialBufferScreen::new);
     }
 
     @SubscribeEvent
@@ -107,6 +116,14 @@ public final class DuctClientSetup {
         event.register(
                 ModelResourceLocation.standalone(
                         ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "item/settings_copier_filter_1")));
+        event.register(
+                ModelResourceLocation.standalone(
+                        ResourceLocation.fromNamespaceAndPath(
+                                AnotherDynamicsMod.MOD_ID, "item/settings_copier_sequential_0")));
+        event.register(
+                ModelResourceLocation.standalone(
+                        ResourceLocation.fromNamespaceAndPath(
+                                AnotherDynamicsMod.MOD_ID, "item/settings_copier_sequential_1")));
     }
 
     /**
