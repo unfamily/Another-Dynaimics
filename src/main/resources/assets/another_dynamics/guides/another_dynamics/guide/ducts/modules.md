@@ -24,3 +24,8 @@ item_ids:
 **Increment Modules** (tiers I–V) go in a duct face module slot. Higher tiers move more per tick / larger quantities. Only one increment module fits on a face at a time.
 
 What they boost depends on the duct kind (items, fluids, gas, heat, energy).
+
+## Chain (Catena)
+
+From **Module III** upward, modules raise **Chain**: how many extract/retrieve shipments a face schedules **in sequence** each rate tick (each step re-routes on its own). Default without support is **1** (UI locked until a duct or module raises the max). Quantity is still items/mB per shipment; Chain multiplies how many shipments fire together.
+

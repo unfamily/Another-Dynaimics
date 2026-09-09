@@ -322,6 +322,8 @@ public final class SettingsCopierVirtualSession {
         menuData.set(DuctMenuSync.PRIORITY_HI, (n.insertionPriority >> 16) & 0xFFFF);
         menuData.set(DuctMenuSync.AMOUNT_FIELD, n.extractBatch);
         menuData.set(DuctMenuSync.EXTRACT_BATCH_CAP, Integer.MAX_VALUE / 2);
+        menuData.set(DuctMenuSync.EXTRACT_SEQUENTIAL_STACK, n.extractSequentialStack);
+        menuData.set(DuctMenuSync.EXTRACT_SEQUENTIAL_STACK_CAP, DuctItemTransportSpec.HARD_SEQUENTIAL_STACK_CAP);
         menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
         menuData.set(DuctMenuSync.REDSTONE_MODE, lanes.redstoneMode);
         menuData.set(DuctMenuSync.ELIGIBILITY_MODE, n.eligibilityMode.ordinal());
@@ -701,12 +703,14 @@ public final class SettingsCopierVirtualSession {
             int transportKindOrdinal,
             int insertionPriority,
             int extractBatch,
+            int extractSequentialStack,
             int eligibilityModeOrdinal) {
         DuctTransportKind[] vals = DuctTransportKind.values();
         DuctTransportKind kind = vals[Mth.clamp(transportKindOrdinal, 0, vals.length - 1)];
         DuctFaceNode node = faceNodeForTransportKind(kind);
         node.insertionPriority = insertionPriority;
         node.extractBatch = Math.max(0, extractBatch);
+        node.extractSequentialStack = Math.max(0, extractSequentialStack);
         node.eligibilityMode = DuctFaceNode.EligibilityMode.fromOrdinal(eligibilityModeOrdinal);
         refreshMenuData();
     }

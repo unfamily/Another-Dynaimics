@@ -302,7 +302,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private static List<ItemStack> incomingPendingExcludingSelf(ServerLevel level, OutboundShipment s) {
-        return DuctIncomingIndex.snapshotExcluding(level, s.destDuct, s.destFace, s.incomingReservationId);
+        return DuctIncomingIndex.snapshotTowardSameNeighborExcluding(
+                level, s.destDuct, s.destFace, s.incomingReservationId);
     }
 
     /**
@@ -1096,6 +1097,20 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public int computeFluidExtractBatchSettingCap(Direction face) {
         return fluidTransportSpec().extractBatchSettingCapMb(getFluidExtractBatchModuleBonus(face));
     }
+    public int computeFluidExtractSequentialStackSettingCap(Direction face) {
+        return fluidTransportSpec().extractSequentialStackSettingCap(getFluidExtractSequentialStackModuleBonus(face));
+    }
+
+    private int getFluidExtractSequentialStackModuleBonus(Direction face) {
+        if (!DuctFeaturePolicy.isUsable(
+                ductDefinition().orElse(null),
+                DuctFeatureKeys.SPECIAL_MODULES,
+                faceHasAnyModule(face))) {
+            return 0;
+        }
+        return DuctModuleEffects.fluidExtractSequentialStackBonus(this, face, fluidTransportSpec());
+    }
+
 
     private int getFluidExtractBatchModuleBonus(Direction face) {
         return DuctModuleEffects.fluidExtractBatchBonusMb(this, face, fluidTransportSpec());
@@ -1103,6 +1118,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     public DuctOverflowBuffer getOverflowBuffer() {
         return overflowBuffer;
+    }
+
+    public int getFluidTransitShipmentCount() {
+        return fluidTransitShipments.size();
+    }
+
+    public int getGasTransitShipmentCount() {
+        return gasTransitShipments.size();
     }
 
     public SimpleContainerData getMenuData() {
@@ -1249,17 +1272,23 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
 
     private void registerOutboundInIncomingIndex(ServerLevel sl) {
         for (OutboundShipment s : outboundShipments) {
-            if (s.travelTicks >= 0 && !s.stack.isEmpty()) {
-                // No incoming reservation tracking.
+            if (s.travelTicks < 0 || s.stack.isEmpty()) {
+                continue;
             }
+            ItemStack reserved =
+                    s.registeredIncoming != null && !s.registeredIncoming.isEmpty()
+                            ? s.registeredIncoming
+                            : s.stack;
+            DuctIncomingIndex.register(sl, s.destDuct, s.destFace, s.incomingReservationId, reserved);
         }
     }
 
     private void unregisterOutboundFromIncomingIndex(ServerLevel sl) {
         for (OutboundShipment s : outboundShipments) {
-            if (s.travelTicks >= 0 && !s.stack.isEmpty()) {
-                // No incoming reservation tracking.
+            if (s.travelTicks < 0 || s.stack.isEmpty()) {
+                continue;
             }
+            DuctIncomingIndex.unregister(sl, s.destDuct, s.destFace, s.incomingReservationId);
         }
     }
 
@@ -1331,13 +1360,22 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     continue;
                 }
                 node.ticksUntilAction = rate - 1;
-                if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
-                    tickExtractionPullForFace(serverLevel, spec, dir, node);
-                } else if (lanes.nodeMode == NodeMode.RETRIEVING) {
-                    tickRetrieverPullForFace(serverLevel, spec, dir, node);
-                } else if (lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
-                    tickRetrieverPullForFace(serverLevel, spec, dir, node);
-                    tickExtractionPullForFace(serverLevel, spec, dir, node);
+                int sequentialStackSteps = DuctModuleEffects.effectiveItemExtractSequentialStack(this, dir, spec);
+                for (int stackI = 0; stackI < sequentialStackSteps; stackI++) {
+                    int before = outboundShipments.size();
+                    if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
+                        tickExtractionPullForFace(serverLevel, spec, dir, node);
+                    } else if (lanes.nodeMode == NodeMode.RETRIEVING) {
+                        tickRetrieverPullForFace(serverLevel, spec, dir, node);
+                    } else if (lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
+                        tickRetrieverPullForFace(serverLevel, spec, dir, node);
+                        tickExtractionPullForFace(serverLevel, spec, dir, node);
+                    } else {
+                        break;
+                    }
+                    if (outboundShipments.size() <= before) {
+                        break;
+                    }
                 }
             }
         }
@@ -2113,7 +2151,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         List<ItemStack> prior =
                 itemsAlreadyPulledFromSource
                         ? List.of()
-                        : DuctIncomingIndex.snapshot(level, s.destDuct, s.destFace);
+                        : DuctIncomingIndex.snapshotTowardSameNeighbor(level, s.destDuct, s.destFace);
         DuctItemTransportSpec srcSpec = srcBe.itemTransportSpec();
         int batchCap = tubeOperationBatchSize(srcSpec, srcBe, s.sourceFace);
         int insLimit = Math.min(planned, Math.min(capExt, batchCap));
@@ -2967,9 +3005,9 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
      * Whether {@code node_buffer.png} should render on this face (item / fluid / gas stalled shipments only).
      * Energy and heat use instant transfer and internal buffers — no stall overlay on the node model.
      *
-     * <p>Item stall is shown only when the duct-wide unsatisfiable task count reaches the cap
-     * ({@link #maxUnsatisfiableBlockedKinds()}), aligning the visual with the logistics gate.
-     * Fluid and gas stall shows on any buffered content (no kind-cap concept for those).
+     * <p>Item stall shows whenever this face holds outbound/inbound stall stacks, or the duct-wide overflow
+     * buffer is holding items (overflow gates pulls but is not face-local — show on storage faces so the
+     * jam is visible). Fluid and gas stall shows on any buffered content.
      * The guard uses {@link #faceShowsStorageNode} so the overlay remains visible even when
      * redstone disables transport on this face.</p>
      */
@@ -2979,17 +3017,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
         DuctFaceLanes lanes = getFaceLanes(face);
         if (isTransportKindEnabled(face, DuctTransportKind.ITEM) || lanes.stalledBuffer.getSlots() > 0) {
-            if (distinctUnsatisfiableBlockedKinds() >= maxUnsatisfiableBlockedKinds()) {
-                for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
-                    if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
-                        return true;
-                    }
+            for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
+                if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
+                    return true;
                 }
-                for (int i = 0; i < lanes.inboundStallBuffer.getSlots(); i++) {
-                    if (!lanes.inboundStallBuffer.getStackInSlot(i).isEmpty()) {
-                        return true;
-                    }
+            }
+            for (int i = 0; i < lanes.inboundStallBuffer.getSlots(); i++) {
+                if (!lanes.inboundStallBuffer.getStackInSlot(i).isEmpty()) {
+                    return true;
                 }
+            }
+            if (overflowBuffer.nonEmptyLineCount() > 0) {
+                return true;
             }
         }
         if (isTransportKindEnabled(face, DuctTransportKind.FLUID)) {
@@ -3698,13 +3737,32 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return;
         }
         overflowBuffer.tickTryDrainOne(level, this);
+        if (overflowBuffer.nonEmptyLineCount() > 0) {
+            tryRescheduleOverflowOntoNetwork(level);
+        }
+        if (overflowBuffer.nonEmptyLineCount() == 0) {
+            syncStallVisualIfNeeded();
+        }
     }
 
     /**
-     * Like {@link #insertIntoStorageFacesRespectingInboundRedstone} but never pushes into faces whose attached
-     * inventory supplies extraction/retrieve pulls — prevents refund overflow from duplicating source items.
+     * Like {@link #insertIntoStorageFacesRespectingInboundRedstone} but prefers non-extract faces first so planned
+     * (uncommitted) refunds do not bounce into a live extract chest. As a last resort, inserts into extract/retrieve
+     * source faces — overflow holds already-extracted stacks and must be able to return home or the duct jams forever
+     * when the only adjacent inventory is the extractor chest.
      */
     public ItemStack tryInsertOverflowRefund(ServerLevel level, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack remaining = insertOverflowIntoAdjacent(level, stack, false);
+        if (remaining.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        return insertOverflowIntoAdjacent(level, remaining, true);
+    }
+
+    private ItemStack insertOverflowIntoAdjacent(ServerLevel level, ItemStack stack, boolean extractSourceFacesOnly) {
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;
         }
@@ -3715,7 +3773,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 continue;
             }
             DuctFaceLanes lanes = getFaceLanes(dir);
-            if (faceIsItemExtractSource(lanes.nodeMode)) {
+            boolean extractSrc = faceIsItemExtractSource(lanes.nodeMode);
+            if (extractSourceFacesOnly != extractSrc) {
                 continue;
             }
             if (DuctTargetSelector.isNetworkInboundDeliveryMode(lanes.nodeMode)
@@ -3733,6 +3792,157 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
         }
         return remaining;
+    }
+
+    /**
+     * When local inventories cannot absorb overflow (typical: only adjacent chest is the extractor source),
+     * reschedule one overflow line onto the item network from an extract face — same path as stall drain.
+     */
+    private void tryRescheduleOverflowOntoNetwork(ServerLevel level) {
+        ItemStack head = overflowBuffer.peekFirstNonEmpty();
+        if (head == null || head.isEmpty()) {
+            return;
+        }
+        DuctItemTransportSpec spec = itemTransportSpec();
+        for (Direction face : Direction.values()) {
+            if ((getStorageMask() & (1 << face.ordinal())) == 0) {
+                continue;
+            }
+            DuctFaceLanes lanes = getFaceLanes(face);
+            if (!faceIsItemExtractSource(lanes.nodeMode)) {
+                continue;
+            }
+            if (!DuctRedstoneLogic.isFaceTransportActive(level, worldPosition, lanes.redstoneMode)) {
+                continue;
+            }
+            DuctFaceNode node = getFaceNode(face);
+            RoutingMode rm =
+                    lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION
+                            ? node.routingModeRetriever
+                            : lanes.nodeMode.isHybrid()
+                                    ? node.routingModeExtractor
+                                    : node.routingMode;
+            final int rrFrozen = node.roundRobinCursor;
+            boolean allowSelfFeed = lanes.nodeMode == NodeMode.EXTRACTION_FILTERING && node.selfFeed;
+            Direction forbidSelfDestFace = allowSelfFeed ? null : face;
+            List<DuctTargetSelector.ExtractionCandidate> candidates =
+                    DuctTargetSelector.listInboundDeliveryCandidatesWithoutProbe(
+                            level,
+                            worldPosition,
+                            face,
+                            rm,
+                            rrFrozen,
+                            node.channelLetter,
+                            true,
+                            allowSelfFeed,
+                            forbidSelfDestFace);
+            if (candidates.isEmpty()) {
+                continue;
+            }
+            for (int candIdx = 0; candIdx < candidates.size() && candIdx < EXTRACTION_ROUTE_RETRY_CAP; candIdx++) {
+                DuctTargetSelector.ExtractionCandidate cand = candidates.get(candIdx);
+                if (commitOverflowResend(
+                        level,
+                        spec,
+                        face,
+                        node,
+                        head,
+                        cand.ductPos(),
+                        cand.face(),
+                        rm,
+                        rrFrozen,
+                        candIdx)) {
+                    syncStallVisualIfNeeded();
+                    return;
+                }
+            }
+        }
+    }
+
+    private boolean commitOverflowResend(
+            ServerLevel level,
+            DuctItemTransportSpec spec,
+            Direction face,
+            DuctFaceNode node,
+            ItemStack overflowHead,
+            BlockPos dest,
+            Direction destFace,
+            RoutingMode rm,
+            int rrFrozen,
+            int rrOffset) {
+        if (overflowHead == null || overflowHead.isEmpty()) {
+            return false;
+        }
+        if (!(level.getBlockEntity(dest) instanceof DuctBlockEntity destBe)) {
+            return false;
+        }
+        if (DuctInsertProbeCache.isRejected(level, dest, destFace, overflowHead)) {
+            return false;
+        }
+        int plannedCount = Math.min(overflowHead.getCount(), tubeOperationBatchSizeRouting(spec, face));
+        int destCap =
+                maxSchedulableTowardFaceRoutingForStall(level, dest, destBe, destFace, overflowHead, plannedCount);
+        if (destCap <= 0) {
+            return false;
+        }
+        DuctDirectionalEndpoint destCounterparty =
+                DuctDirectionalEndpoint.connectionAtDuctFace(level, dest, destFace);
+        if (!passesItemFilters(
+                face,
+                overflowHead.copyWithCount(destCap),
+                level,
+                DuctFaceNode.FilterBank.EXTRACTOR,
+                destCounterparty)) {
+            return false;
+        }
+        NodeMode destMode = destBe.getFaceLanes(destFace).nodeMode;
+        if (destMode == NodeMode.FILTERING_INSERTION || destMode == NodeMode.EXTRACTION_FILTERING) {
+            if (!destBe.passesItemFilters(
+                    destFace,
+                    overflowHead.copyWithCount(destCap),
+                    level,
+                    DuctFaceNode.FilterBank.FILTER,
+                    DuctDirectionalEndpoint.connectionAtDuctFace(level, worldPosition, face))) {
+                return false;
+            }
+        }
+        List<BlockPos> path;
+        if (dest.equals(worldPosition)) {
+            path = List.of(worldPosition);
+        } else {
+            Optional<List<BlockPos>> p =
+                    DuctPathfinder.shortestItemPathForScheduling(level, worldPosition, dest, spec);
+            if (p.isEmpty()) {
+                return false;
+            }
+            path = p.get();
+        }
+        long edgeTicks = DuctModuleEffects.effectiveItemEdgeTravelTicks(this, face, spec);
+        long travel = DuctPathfinder.pathTravelTicks(path, edgeTicks);
+        int travelTicks = (int) Math.min(Math.max(0L, travel), Integer.MAX_VALUE);
+        ItemStack payload = overflowHead.copy();
+        payload.setCount(destCap);
+        OutboundShipment sh =
+                new OutboundShipment(payload, dest, destFace, travelTicks, worldPosition, face, node.channelLetter);
+        sh.stack = payload.copy();
+        sh.registeredIncoming = sh.stack.copy();
+        sh.sourceExtractCommitted = true;
+        sh.ductPath = OutboundShipment.copyPath(path);
+        sh.totalTravelTicks = travelTicks;
+        sh.edgeTicks = (int) Math.min(Integer.MAX_VALUE, edgeTicks);
+        sh.journeyStartGameTime = level.getGameTime();
+        sh.transitPhase = TransitPhase.FORWARD;
+        outboundShipments.add(sh);
+        DuctTransitDebugLog.scheduleExtract(
+                level, worldPosition, dest, destFace, payload.getCount(), destCap, payload);
+        DuctIncomingIndex.register(level, sh.destDuct, sh.destFace, sh.incomingReservationId, sh.stack);
+        overflowBuffer.shrinkFirstNonEmpty(destCap, this);
+        setChanged();
+        pushTransitSnapshotToClients(level);
+        if (rm == RoutingMode.ROUND_ROBIN) {
+            node.roundRobinCursor = rrFrozen + rrOffset + 1;
+        }
+        return true;
     }
 
     /** Attached inventories on these faces supply items to the network; refunds must stay in stall/overflow, not re-enter. */
@@ -3980,7 +4190,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             planned.setCount(plannedCount);
             int destCap = maxSchedulableTowardFace(level, dest, destBe, destFace, planned, plannedCount);
             if (destCap <= 0) {
-                if (!DuctIncomingIndex.snapshot(level, dest, destFace).isEmpty()) {
+                if (!DuctIncomingIndex.snapshotTowardSameNeighbor(level, dest, destFace).isEmpty()) {
                     if (cand.priority() > highestPendingFullPriority) {
                         highestPendingFullPriority = cand.priority();
                     }
@@ -4328,7 +4538,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             }
             ItemStack template = probe.copy();
             template.setCount(plannedCount);
-            List<ItemStack> prior = DuctIncomingIndex.snapshot(level, worldPosition, retrieverFace);
+            List<ItemStack> prior =
+                    DuctIncomingIndex.snapshotTowardSameNeighbor(level, worldPosition, retrieverFace);
             int capIn =
                     maxInsertableAfterPendingOnFaceRespectingAllowLimit(
                             level, worldPosition, retrieverFace, this, template, plannedCount, prior, true);
@@ -4681,7 +4892,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!DuctRedstoneLogic.isFaceTransportActive(level, destDuct, destBe.getFaceLanes(destFace).redstoneMode)) {
             return 0;
         }
-        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct, destFace);
+        List<ItemStack> prior = DuctIncomingIndex.snapshotTowardSameNeighbor(level, destDuct, destFace);
         ItemStack t = template.copy();
         t.setCount(want);
         if (DuctInsertProbeCache.isRejected(level, destDuct, destFace, template)) {
@@ -4808,6 +5019,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return itemTransportSpec().extractBatchSettingCap(getExtractBatchModuleBonus(face));
     }
 
+    public int computeExtractSequentialStackSettingCap(Direction face) {
+        return itemTransportSpec().extractSequentialStackSettingCap(getExtractSequentialStackModuleBonus(face));
+    }
+
     /** Per-face module column contribution to extract batch (item lane). */
     private int getExtractBatchModuleBonus(Direction face) {
         if (!DuctFeaturePolicy.isUsable(
@@ -4817,6 +5032,16 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             return 0;
         }
         return net.unfamily.another_dynamics.duct.module.DuctModuleEffects.itemExtractBatchBonus(this, face, itemTransportSpec());
+    }
+
+    private int getExtractSequentialStackModuleBonus(Direction face) {
+        if (!DuctFeaturePolicy.isUsable(
+                ductDefinition().orElse(null),
+                DuctFeatureKeys.SPECIAL_MODULES,
+                faceHasAnyModule(face))) {
+            return 0;
+        }
+        return DuctModuleEffects.itemExtractSequentialStackBonus(this, face, itemTransportSpec());
     }
 
     private boolean faceHasAnyModule(Direction face) {
@@ -4836,6 +5061,20 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     public int computeGasExtractBatchSettingCap(Direction face) {
         long cap = gasTransportSpec().extractBatchSettingCap(getGasExtractBatchModuleBonus(face));
         return (int) Math.min(cap, Integer.MAX_VALUE);
+    }
+
+    public int computeGasExtractSequentialStackSettingCap(Direction face) {
+        return gasTransportSpec().extractSequentialStackSettingCap(getGasExtractSequentialStackModuleBonus(face));
+    }
+
+    private int getGasExtractSequentialStackModuleBonus(Direction face) {
+        if (!DuctFeaturePolicy.isUsable(
+                ductDefinition().orElse(null),
+                DuctFeatureKeys.SPECIAL_MODULES,
+                faceHasAnyModule(face))) {
+            return 0;
+        }
+        return DuctModuleEffects.gasExtractSequentialStackBonus(this, face, gasTransportSpec());
     }
 
     private static String clampFilterLine(Optional<DuctDefinition> def, boolean hasModule, String line) {
@@ -5073,12 +5312,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (!hybrid) {
             if (itemOn) {
                 clampExtractAmount(getFaceNode(face), face);
+                clampExtractSequentialStack(getFaceNode(face), face);
             }
             if (fluidOn) {
                 clampFluidExtractAmount(getFluidFaceNode(face), face);
+                clampFluidExtractSequentialStack(getFluidFaceNode(face), face);
             }
             if (gasOn) {
                 clampGasExtractAmount(getGasFaceNode(face), face);
+                clampGasExtractSequentialStack(getGasFaceNode(face), face);
             }
             return;
         }
@@ -5094,14 +5336,26 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         if (itemNode != null) {
             applyExtractBatchAgainstCap(
                     itemNode, computeExtractBatchSettingCap(face), bothSidesMax || itemPinned);
+            applyExtractSequentialStackAgainstCap(
+                    itemNode,
+                    computeExtractSequentialStackSettingCap(face),
+                    bothSidesMax || itemNode.isExtractSequentialStackPinnedToCap());
         }
         if (fluidNode != null) {
             applyExtractBatchAgainstCap(
                     fluidNode, computeFluidExtractBatchSettingCap(face), bothSidesMax || fluidPinned);
+            applyExtractSequentialStackAgainstCap(
+                    fluidNode,
+                    computeFluidExtractSequentialStackSettingCap(face),
+                    bothSidesMax || fluidNode.isExtractSequentialStackPinnedToCap());
         }
         if (gasNode != null) {
             applyExtractBatchAgainstCap(
                     gasNode, computeGasExtractBatchSettingCap(face), bothSidesMax || gasPinned);
+            applyExtractSequentialStackAgainstCap(
+                    gasNode,
+                    computeGasExtractSequentialStackSettingCap(face),
+                    bothSidesMax || gasNode.isExtractSequentialStackPinnedToCap());
         }
     }
 
@@ -5167,6 +5421,15 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case GAS -> computeGasExtractBatchSettingCap(accessFace);
                     case ENERGY, HEAT -> 0;
                     case ITEM -> computeExtractBatchSettingCap(accessFace);
+                });
+        menuData.set(DuctMenuSync.EXTRACT_SEQUENTIAL_STACK, n.extractSequentialStack);
+        menuData.set(
+                DuctMenuSync.EXTRACT_SEQUENTIAL_STACK_CAP,
+                switch (menuActiveTransportKind()) {
+                    case FLUID -> computeFluidExtractSequentialStackSettingCap(accessFace);
+                    case GAS -> computeGasExtractSequentialStackSettingCap(accessFace);
+                    case ENERGY, HEAT -> 1;
+                    case ITEM -> computeExtractSequentialStackSettingCap(accessFace);
                 });
         menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
         menuData.set(DuctMenuSync.REDSTONE_MODE, faceLanes.redstoneMode);
@@ -6308,6 +6571,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             int transportKindOrdinal,
             int insertionPriority,
             int extractBatch,
+            int extractSequentialStack,
             int eligibilityModeOrdinal) {
         if (level == null || level.isClientSide) {
             return;
@@ -6318,6 +6582,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctFaceNode node = faceNodeForTransportKind(accessFace, kind);
         node.insertionPriority = insertionPriority;
         node.extractBatch = Math.max(0, extractBatch);
+        node.extractSequentialStack = Math.max(0, extractSequentialStack);
         node.eligibilityMode = DuctFaceNode.EligibilityMode.fromOrdinal(eligibilityModeOrdinal);
         int cap =
                 switch (kind) {
@@ -6326,15 +6591,26 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case ENERGY, HEAT -> 0;
                     case ITEM -> computeExtractBatchSettingCap(accessFace);
                 };
+        int sequentialStackCap =
+                switch (kind) {
+                    case FLUID -> computeFluidExtractSequentialStackSettingCap(accessFace);
+                    case GAS -> computeGasExtractSequentialStackSettingCap(accessFace);
+                    case ENERGY, HEAT -> 1;
+                    case ITEM -> computeExtractSequentialStackSettingCap(accessFace);
+                };
         // Explicit user set: pin to cap only when the player chose the cap itself, BEFORE the clamp below.
         // This prevents a stale pin flag from re-raising a value the player intentionally lowered.
         node.extractBatchPinnedToMax = cap > 0 && node.extractBatch >= cap;
+        node.extractSequentialStackPinnedToMax = sequentialStackCap > 0 && node.extractSequentialStack >= sequentialStackCap;
         if (kind == DuctTransportKind.FLUID) {
             clampFluidExtractAmount(node, accessFace);
+            clampFluidExtractSequentialStack(node, accessFace);
         } else if (kind == DuctTransportKind.GAS) {
             clampGasExtractAmount(node, accessFace);
-        } else {
+            clampGasExtractSequentialStack(node, accessFace);
+        } else if (kind == DuctTransportKind.ITEM) {
             clampExtractAmount(node, accessFace);
+            clampExtractSequentialStack(node, accessFace);
         }
         setChanged();
         invalidateRoutingEndpointCache();
@@ -6386,6 +6662,44 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             node.extractBatchPinnedToMax = cap > 0 && node.extractBatch >= cap;
         }
         node.lastExtractBatchSettingCapApplied = cap;
+    }
+
+    private void clampExtractSequentialStack(DuctFaceNode node, Direction face) {
+        applyExtractSequentialStackAgainstCap(node, computeExtractSequentialStackSettingCap(face));
+    }
+
+    private void clampFluidExtractSequentialStack(DuctFaceNode node, Direction face) {
+        applyExtractSequentialStackAgainstCap(node, computeFluidExtractSequentialStackSettingCap(face));
+    }
+
+    private void clampGasExtractSequentialStack(DuctFaceNode node, Direction face) {
+        applyExtractSequentialStackAgainstCap(node, computeGasExtractSequentialStackSettingCap(face));
+    }
+
+    private static void applyExtractSequentialStackAgainstCap(DuctFaceNode node, int cap) {
+        applyExtractSequentialStackAgainstCap(node, cap, true);
+    }
+
+    private static void applyExtractSequentialStackAgainstCap(DuctFaceNode node, int cap, boolean trackMaxOnCapIncrease) {
+        int prev = node.extractSequentialStack;
+        boolean wasAtPreviousMax =
+                node.lastExtractSequentialStackSettingCapApplied > 0
+                        && prev >= node.lastExtractSequentialStackSettingCapApplied;
+        boolean pinned = node.isExtractSequentialStackPinnedToCap() || wasAtPreviousMax;
+        if (trackMaxOnCapIncrease && pinned) {
+            node.extractSequentialStack = Math.max(1, cap);
+            node.extractSequentialStackPinnedToMax = true;
+        } else {
+            // Stored 0 means "use duct default"; keep 0 when cap is 1 so runtime uses sequentialStackDefault.
+            if (prev <= 0) {
+                node.extractSequentialStack = 0;
+                node.extractSequentialStackPinnedToMax = cap <= 1;
+            } else {
+                node.extractSequentialStack = Mth.clamp(prev, 1, Math.max(1, cap));
+                node.extractSequentialStackPinnedToMax = cap > 0 && node.extractSequentialStack >= cap;
+            }
+        }
+        node.lastExtractSequentialStackSettingCapApplied = cap;
     }
 
     private void enforcePipeSegmentBehavior() {

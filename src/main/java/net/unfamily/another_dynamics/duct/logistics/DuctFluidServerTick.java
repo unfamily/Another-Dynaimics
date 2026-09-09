@@ -71,13 +71,23 @@ public final class DuctFluidServerTick {
             }
             node.ticksUntilAction = rate - 1;
             NodeMode nm = lanes.nodeMode;
-            if (nm == NodeMode.RETRIEVING || nm == NodeMode.RETRIEVING_EXTRACTION) {
-                tryRetrievePull(level, be, dir, node, spec);
-            }
-            if (nm == NodeMode.EXTRACTION
-                    || nm == NodeMode.EXTRACTION_FILTERING
-                    || nm == NodeMode.RETRIEVING_EXTRACTION) {
-                tryExtractPush(level, be, dir, nm, node, spec);
+            int sequentialStackSteps = DuctModuleEffects.effectiveFluidExtractSequentialStack(be, dir, spec);
+            for (int stackI = 0; stackI < sequentialStackSteps; stackI++) {
+                int before = be.getFluidTransitShipmentCount();
+                boolean did = false;
+                if (nm == NodeMode.RETRIEVING || nm == NodeMode.RETRIEVING_EXTRACTION) {
+                    tryRetrievePull(level, be, dir, node, spec);
+                    did = true;
+                }
+                if (nm == NodeMode.EXTRACTION
+                        || nm == NodeMode.EXTRACTION_FILTERING
+                        || nm == NodeMode.RETRIEVING_EXTRACTION) {
+                    tryExtractPush(level, be, dir, nm, node, spec);
+                    did = true;
+                }
+                if (!did || be.getFluidTransitShipmentCount() <= before) {
+                    break;
+                }
             }
         }
     }

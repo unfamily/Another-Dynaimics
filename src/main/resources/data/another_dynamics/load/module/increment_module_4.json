@@ -8,16 +8,27 @@
         "set": 64
       },
       "filter": {
-        "allow": { "add": 100 },
-        "deny": { "add": 100 },
-        "allow_hybrid": { "add": 50 },
-        "deny_hybrid": { "add": 50 }
+        "allow": {
+          "add": 100
+        },
+        "deny": {
+          "add": 100
+        },
+        "allow_hybrid": {
+          "add": 50
+        },
+        "deny_hybrid": {
+          "add": 50
+        }
       },
       "speed": {
         "mult": 0.0
       },
       "rate": {
-        "mult": 0.05
+        "mult": 0.0333
+      },
+      "seq_stack": {
+        "set": 8
       }
     },
     {
@@ -26,16 +37,27 @@
         "set": 2147483647
       },
       "filter": {
-        "allow": { "add": 100 },
-        "deny": { "add": 100 },
-        "allow_hybrid": { "add": 50 },
-        "deny_hybrid": { "add": 50 }
+        "allow": {
+          "add": 100
+        },
+        "deny": {
+          "add": 100
+        },
+        "allow_hybrid": {
+          "add": 50
+        },
+        "deny_hybrid": {
+          "add": 50
+        }
       },
       "speed": {
         "mult": 0.0
       },
       "rate": {
-        "mult": 0.05
+        "mult": 0.0333
+      },
+      "seq_stack": {
+        "set": 8
       }
     },
     {
@@ -44,16 +66,27 @@
         "set": 2147483647
       },
       "filter": {
-        "allow": { "add": 100 },
-        "deny": { "add": 100 },
-        "allow_hybrid": { "add": 50 },
-        "deny_hybrid": { "add": 50 }
+        "allow": {
+          "add": 100
+        },
+        "deny": {
+          "add": 100
+        },
+        "allow_hybrid": {
+          "add": 50
+        },
+        "deny_hybrid": {
+          "add": 50
+        }
       },
       "speed": {
         "mult": 0.0
       },
       "rate": {
-        "mult": 0.05
+        "mult": 0.0333
+      },
+      "seq_stack": {
+        "set": 8
       }
     },
     {
@@ -62,7 +95,7 @@
         "set": 2147483647
       },
       "rate": {
-        "mult": 0.05
+        "mult": 0.0333
       }
     },
     {
@@ -71,7 +104,7 @@
         "set": 2147483647
       },
       "rate": {
-        "mult": 0.05
+        "mult": 0.0333
       }
     }
   ],
@@ -81,4 +114,3 @@
     "#another_dynamics:increment_modules"
   ]
 }
-

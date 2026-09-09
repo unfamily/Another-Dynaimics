@@ -26,12 +26,15 @@ public record ModuleDefinition(
         ItemQuantityModifiers itemQuantityModifiers,
         ItemQuantityModifiers itemRateModifiers,
         ItemQuantityModifiers itemSpeedModifiers,
+        ItemQuantityModifiers itemSequentialStackModifiers,
         ItemQuantityModifiers fluidQuantityModifiers,
         ItemQuantityModifiers fluidRateModifiers,
         ItemQuantityModifiers fluidSpeedModifiers,
+        ItemQuantityModifiers fluidSequentialStackModifiers,
         ItemQuantityModifiers gasQuantityModifiers,
         ItemQuantityModifiers gasRateModifiers,
         ItemQuantityModifiers gasSpeedModifiers,
+        ItemQuantityModifiers gasSequentialStackModifiers,
         /**
          * Forge-energy lane: {@code affects[].for=energy.*} — parsed for datapack/KubeJS; no default JSON in the mod.
          */
@@ -56,6 +59,9 @@ public record ModuleDefinition(
                 1,
                 List.of(),
                 1,
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
+                ItemQuantityModifiers.none(),
                 ItemQuantityModifiers.none(),
                 ItemQuantityModifiers.none(),
                 ItemQuantityModifiers.none(),

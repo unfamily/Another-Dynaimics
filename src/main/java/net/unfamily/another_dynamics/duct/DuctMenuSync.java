@@ -31,6 +31,13 @@ public final class DuctMenuSync {
      * by datapack {@code batch.max} when that value is non-negative.
      */
     public static final int EXTRACT_BATCH_CAP = 16;
+    /** {@link net.unfamily.another_dynamics.duct.DuctFaceNode#extractSequentialStack} for the active lane. */
+    public static final int EXTRACT_SEQUENTIAL_STACK = 30;
+    /**
+     * Max extract/retrieve sequential stacks the player may configure: {@code seq_stack.default + module bonuses}, then clamped by
+     * datapack {@code seq_stack.max} and the server hard cap.
+     */
+    public static final int EXTRACT_SEQUENTIAL_STACK_CAP = 31;
     /** 1 if {@link net.unfamily.another_dynamics.duct.DuctFaceNode#selfFeed} (only used by hybrid Extr/Filt). */
     public static final int SELF_FEED = 17;
     /** {@link net.unfamily.another_dynamics.duct.DuctFaceNode#eligibilityMode} ordinal. */
@@ -63,7 +70,7 @@ public final class DuctMenuSync {
     public static final int ENERGY_BUF_INPUT_CAP = 28;
     /** Effective max output buffer capacity (RF) for fill display. */
     public static final int ENERGY_BUF_OUTPUT_CAP = 29;
-    public static final int COUNT = 30;
+    public static final int COUNT = 32;
 
     /** FLAGS bit: routing row active ({@link net.unfamily.another_dynamics.duct.NodeMode#usesRouting()}). */
     public static final int FLAG_ROUTING_ACTIVE = 1;

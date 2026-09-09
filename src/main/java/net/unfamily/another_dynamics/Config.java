@@ -25,7 +25,7 @@ public final class Config {
     /** Wall-clock budget (ms) per server tick for convert/replace job pulses. */
     public static final ModConfigSpec.IntValue DUCT_JOB_TICK_BUDGET_MS;
 
-    public static final ModConfigSpec.IntValue SEQUENCE_LIST_COUNT;
+    public static final ModConfigSpec.IntValue SEQUENTIAL_TASKS;
     public static final ModConfigSpec.IntValue SEQUENCE_STEP_COUNT;
 
     static {
@@ -103,16 +103,18 @@ public final class Config {
                                         + "Keep low (e.g. 50) so giant networks cannot stall a server tick.")
                         .defineInRange("203_ductJobTickBudgetMs", 50, 1, Integer.MAX_VALUE);
 
-        // Sequence / machines — keys 300+
-        SEQUENCE_LIST_COUNT =
+        // Sequential Tasks / machines — keys 300+
+        SEQUENTIAL_TASKS =
                 BUILDER.comment(
-                                "Number of Sequence Lists on the Sequential Buffer (and Settings Copier "
+                                "Number of Sequential Tasks on the Sequential Buffer (and Settings Copier "
                                         + "Sequential Configure). Applies to newly opened GUIs / new block entities; "
-                                        + "existing machines resize on load.")
-                        .defineInRange("300_sequenceListCount", 10, 1, Integer.MAX_VALUE);
+                                        + "existing machines resize on load. "
+                                        + "JSON/NBT aliases: seq, seqs, seq_task, seq_tasks, sequential_task, "
+                                        + "sequential_tasks (canonical config key: 300_sequentialTasks).")
+                        .defineInRange("300_sequentialTasks", 10, 1, Integer.MAX_VALUE);
         SEQUENCE_STEP_COUNT =
                 BUILDER.comment(
-                                "Max Sequence Tasks (steps) per Sequence List on the Sequential Buffer "
+                                "Max steps per Sequential Task on the Sequential Buffer "
                                         + "(and Settings Copier Sequential Configure).")
                         .defineInRange("301_sequenceStepCount", 50, 1, Integer.MAX_VALUE);
         BUILDER.pop();
@@ -168,12 +170,12 @@ public final class Config {
         return ms * 1_000_000L;
     }
 
-    /** Sequence List count (at least 1). */
-    public static int sequenceListCount() {
-        return Math.max(1, SEQUENCE_LIST_COUNT.get());
+    /** Sequential Task count (at least 1). */
+    public static int sequentialTaskCount() {
+        return Math.max(1, SEQUENTIAL_TASKS.get());
     }
 
-    /** Sequence Task/step capacity per list (at least 1). */
+    /** Steps per Sequential Task (at least 1). */
     public static int sequenceStepCount() {
         return Math.max(1, SEQUENCE_STEP_COUNT.get());
     }

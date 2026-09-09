@@ -293,6 +293,42 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
         AnotherDynamicsMod.LOGGER.info("Loaded {} duct definition(s) from data/*/load (resource stacks)", out.size());
     }
 
+
+    private static final String[] SEQUENTIAL_STACK_OBJECT_KEYS = {
+        "seq_stack",
+        "seq_stacks",
+        "sequential_stack",
+        "sequential_stacks",
+        "seq",
+        "seqs",
+        "stack",
+        "stacks"
+    };
+
+    private static int[] parseSequentialStackDefaults(JsonObject to) {
+        int sequentialStackDefault = 1;
+        int sequentialStackMax = DuctItemTransportSpec.HARD_SEQUENTIAL_STACK_CAP;
+        JsonObject c = firstNamedObject(to, SEQUENTIAL_STACK_OBJECT_KEYS);
+        if (c != null) {
+            if (c.has("default")) {
+                sequentialStackDefault = c.get("default").getAsInt();
+            }
+            if (c.has("max")) {
+                sequentialStackMax = c.get("max").getAsInt();
+            }
+        }
+        return new int[] {Math.max(1, sequentialStackDefault), sequentialStackMax};
+    }
+
+    private static JsonObject firstNamedObject(JsonObject parent, String[] keys) {
+        for (String key : keys) {
+            if (parent.has(key) && parent.get(key).isJsonObject()) {
+                return parent.getAsJsonObject(key);
+            }
+        }
+        return null;
+    }
+
     private static DuctItemTransportSpec parseItemTransport(JsonObject to) {
         int batchDefault = 8;
         int batchMax = DuctItemTransportSpec.UNLIMITED_BATCH;
@@ -350,6 +386,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 denyHybrid = f.get("deny_hybrid").getAsInt();
             }
         }
+        int[] sequentialStacks = parseSequentialStackDefaults(to);
         return new DuctItemTransportSpec(
                 Math.max(0, batchDefault),
                 batchMax,
@@ -357,6 +394,8 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 Math.max(1, rateMin),
                 Math.max(0, speedDefault),
                 Math.max(0, speedMin),
+                sequentialStacks[0],
+                sequentialStacks[1],
                 Math.max(0, allow),
                 Math.max(0, deny),
                 Math.max(0, allowHybrid),
@@ -425,6 +464,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             // Legacy typo in early datapacks
             moveRadioactive = to.get("mode_radioactive").getAsBoolean();
         }
+        int[] sequentialStacks = parseSequentialStackDefaults(to);
         return new DuctGasTransportSpec(
                 batchDefault,
                 batchMax,
@@ -432,6 +472,8 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 rateMin,
                 speedDefault,
                 speedMin,
+                sequentialStacks[0],
+                sequentialStacks[1],
                 allowSlots,
                 denySlots,
                 allowHybrid,
@@ -553,6 +595,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 denyHybrid = f.get("deny_hybrid").getAsInt();
             }
         }
+        int[] sequentialStacks = parseSequentialStackDefaults(to);
         return new DuctFluidTransportSpec(
                 Math.max(0, batchDefault),
                 batchMax,
@@ -560,6 +603,8 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                 Math.max(1, rateMin),
                 Math.max(0, speedDefault),
                 Math.max(0, speedMin),
+                sequentialStacks[0],
+                sequentialStacks[1],
                 Math.max(0, allow),
                 Math.max(0, deny),
                 Math.max(0, allowHybrid),

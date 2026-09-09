@@ -30,6 +30,7 @@ public final class ModuleUpgradeTooltip {
     private static final String LINE_FILTER = "gui.another_dynamics.module.line.filter";
     private static final String LINE_RATE = "gui.another_dynamics.module.line.rate";
     private static final String LINE_QUANTITY = "gui.another_dynamics.module.line.quantity";
+    private static final String LINE_SEQUENTIAL_STACK = "gui.another_dynamics.module.line.sequential_stack";
     private static final String LINE_ENERGY = "gui.another_dynamics.module.line.energy";
     private static final String LINE_HEAT = "gui.another_dynamics.module.line.heat";
     private static final String SUFFIX_ITEM = "gui.another_dynamics.module.suffix.item";
@@ -63,6 +64,12 @@ public final class ModuleUpgradeTooltip {
         appendMergedSingle(out, LINE_SPEED, speed, ModuleUpgradeTooltip::formatSpeedLane);
         appendFilterAllowOnly(out, def);
         appendMergedSingle(out, LINE_RATE, rate, ModuleUpgradeTooltip::formatRateLane);
+        ItemQuantityModifiers[] sequentialStacks = {
+            def.itemSequentialStackModifiers(),
+            def.fluidSequentialStackModifiers(),
+            def.gasSequentialStackModifiers()
+        };
+        appendMergedSingle(out, LINE_SEQUENTIAL_STACK, sequentialStacks, ModuleUpgradeTooltip::formatQuantityLane);
         appendMergedSingle(out, LINE_ENERGY, energy, ModuleUpgradeTooltip::formatEnergyLane);
         if (MekanismHeatCompat.isHeatCapabilityAvailable()) {
             ItemQuantityModifiers[] heat = {def.heatQuantityModifiers()};
@@ -317,7 +324,7 @@ public final class ModuleUpgradeTooltip {
         return Math.max(1, (int) Math.round(baseTicks * mult));
     }
 
-    /** {@code mult < 1} → faster → show ×(1/mult) with up to two decimals when needed. */
+    /** {@code mult < 1} → faster → show ×(1/mult) with at most one decimal when needed. */
     private static String formatSpeedupFactor(double mult) {
         if (Math.abs(mult - 1.0) < EPS) {
             return null;
@@ -333,10 +340,10 @@ public final class ModuleUpgradeTooltip {
     }
 
     private static String formatMultPlain(double v) {
-        return formatTrimmedDecimal(v, 2);
+        return formatTrimmedDecimal(v, 1);
     }
 
-    /** Rounds to {@code maxFractionDigits}, then drops trailing zeros (3.003 → "3", 2.5 → "2.5"). */
+    /** Rounds to {@code maxFractionDigits}, then drops trailing zeros (30.03 → "30", 2.5 → "2.5"). */
     private static String formatTrimmedDecimal(double v, int maxFractionDigits) {
         double scale = Math.pow(10, maxFractionDigits);
         double rounded = Math.round(v * scale) / scale;

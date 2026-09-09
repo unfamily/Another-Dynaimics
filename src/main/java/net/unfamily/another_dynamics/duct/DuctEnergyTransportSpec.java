@@ -44,8 +44,12 @@ public record DuctEnergyTransportSpec(
         return Math.max(0L, transfer);
     }
 
+    /**
+     * Floors at {@code rate.min} (at least 1). Never remaps {@code 0}/negative to the datapack default —
+     * aggressive module {@code rate.mult} must land on the minimum interval, not reset to base rate.
+     */
     public int clampedRateTicks(int requested) {
-        int r = requested <= 0 ? rateDefaultTicks : requested;
-        return Math.max(rateMinTicks, r);
+        int min = Math.max(1, rateMinTicks);
+        return Math.max(min, requested);
     }
 }

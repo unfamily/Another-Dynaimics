@@ -46,20 +46,26 @@ public final class ModNetwork {
     public static final CustomPacketPayload.Type<DuctFieldPayload> DUCT_FIELD =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(AnotherDynamicsMod.MOD_ID, "duct_field"));
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, DuctFieldPayload> DUCT_FIELD_STREAM = StreamCodec.composite(
-            BlockPos.STREAM_CODEC,
-            DuctFieldPayload::pos,
-            ByteBufCodecs.VAR_INT,
-            DuctFieldPayload::faceOrdinal,
-            ByteBufCodecs.VAR_INT,
-            DuctFieldPayload::transportKindOrdinal,
-            ByteBufCodecs.INT,
-            DuctFieldPayload::insertionPriority,
-            ByteBufCodecs.INT,
-            DuctFieldPayload::extractBatch,
-            ByteBufCodecs.VAR_INT,
-            DuctFieldPayload::eligibilityModeOrdinal,
-            DuctFieldPayload::new);
+    public static final StreamCodec<RegistryFriendlyByteBuf, DuctFieldPayload> DUCT_FIELD_STREAM =
+            StreamCodec.of(
+                    (buf, payload) -> {
+                        BlockPos.STREAM_CODEC.encode(buf, payload.pos());
+                        ByteBufCodecs.VAR_INT.encode(buf, payload.faceOrdinal());
+                        ByteBufCodecs.VAR_INT.encode(buf, payload.transportKindOrdinal());
+                        ByteBufCodecs.INT.encode(buf, payload.insertionPriority());
+                        ByteBufCodecs.INT.encode(buf, payload.extractBatch());
+                        ByteBufCodecs.INT.encode(buf, payload.extractSequentialStack());
+                        ByteBufCodecs.VAR_INT.encode(buf, payload.eligibilityModeOrdinal());
+                    },
+                    buf ->
+                            new DuctFieldPayload(
+                                    BlockPos.STREAM_CODEC.decode(buf),
+                                    ByteBufCodecs.VAR_INT.decode(buf),
+                                    ByteBufCodecs.VAR_INT.decode(buf),
+                                    ByteBufCodecs.INT.decode(buf),
+                                    ByteBufCodecs.INT.decode(buf),
+                                    ByteBufCodecs.INT.decode(buf),
+                                    ByteBufCodecs.VAR_INT.decode(buf)));
 
     private ModNetwork() {}
 
@@ -74,6 +80,7 @@ public final class ModNetwork {
                             payload.transportKindOrdinal(),
                             payload.insertionPriority(),
                             payload.extractBatch(),
+                            payload.extractSequentialStack(),
                             payload.eligibilityModeOrdinal());
                     ((SettingsCopierMenu) player.containerMenu).broadcastChanges();
                     return;
@@ -94,6 +101,7 @@ public final class ModNetwork {
                         payload.transportKindOrdinal(),
                         payload.insertionPriority(),
                         payload.extractBatch(),
+                        payload.extractSequentialStack(),
                         payload.eligibilityModeOrdinal());
             });
         });
@@ -658,10 +666,17 @@ public final class ModNetwork {
             int transportKindOrdinal,
             int insertionPriority,
             int extractBatch,
+            int extractSequentialStack,
             int eligibilityModeOrdinal) {
         PacketDistributor.sendToServer(
                 new DuctFieldPayload(
-                        pos, face.ordinal(), transportKindOrdinal, insertionPriority, extractBatch, eligibilityModeOrdinal));
+                        pos,
+                        face.ordinal(),
+                        transportKindOrdinal,
+                        insertionPriority,
+                        extractBatch,
+                        extractSequentialStack,
+                        eligibilityModeOrdinal));
     }
 
     public static void sendFilterUpdate(
@@ -988,6 +1003,7 @@ public final class ModNetwork {
             int transportKindOrdinal,
             int insertionPriority,
             int extractBatch,
+            int extractSequentialStack,
             int eligibilityModeOrdinal)
             implements CustomPacketPayload {
         @Override

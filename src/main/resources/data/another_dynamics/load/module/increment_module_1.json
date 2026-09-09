@@ -8,13 +8,25 @@
         "set": 64
       },
       "filter": {
-        "allow": { "add": 12 },
-        "deny": { "add": 12 },
-        "allow_hybrid": { "add": 6 },
-        "deny_hybrid": { "add": 6 }
+        "allow": {
+          "add": 12
+        },
+        "deny": {
+          "add": 12
+        },
+        "allow_hybrid": {
+          "add": 6
+        },
+        "deny_hybrid": {
+          "add": 6
+        }
       },
-      "speed": { "mult": 0.8 },
-      "rate": { "mult": 0.5 }
+      "speed": {
+        "mult": 0.6667
+      },
+      "rate": {
+        "mult": 0.5
+      }
     },
     {
       "for": "fluid",
@@ -22,13 +34,25 @@
         "set": 64000
       },
       "filter": {
-        "allow": { "add": 12 },
-        "deny": { "add": 12 },
-        "allow_hybrid": { "add": 6 },
-        "deny_hybrid": { "add": 6 }
+        "allow": {
+          "add": 12
+        },
+        "deny": {
+          "add": 12
+        },
+        "allow_hybrid": {
+          "add": 6
+        },
+        "deny_hybrid": {
+          "add": 6
+        }
       },
-      "speed": { "mult": 0.8 },
-      "rate": { "mult": 0.5 }
+      "speed": {
+        "mult": 0.6667
+      },
+      "rate": {
+        "mult": 0.5
+      }
     },
     {
       "for": "gas",
@@ -36,13 +60,25 @@
         "set": 64000
       },
       "filter": {
-        "allow": { "add": 12 },
-        "deny": { "add": 12 },
-        "allow_hybrid": { "add": 6 },
-        "deny_hybrid": { "add": 6 }
+        "allow": {
+          "add": 12
+        },
+        "deny": {
+          "add": 12
+        },
+        "allow_hybrid": {
+          "add": 6
+        },
+        "deny_hybrid": {
+          "add": 6
+        }
       },
-      "speed": { "mult": 0.8 },
-      "rate": { "mult": 0.5 }
+      "speed": {
+        "mult": 0.6667
+      },
+      "rate": {
+        "mult": 0.5
+      }
     },
     {
       "for": "energy",
