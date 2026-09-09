@@ -156,6 +156,8 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     protected void init() {
         modeConfirmPending = false;
         virtualBackConfirmPending = false;
+        SequentialCopierVirtualUi.PersistedView keepSequential =
+                sequentialVirtualUi != null ? sequentialVirtualUi.capturePersistedView() : null;
         sequentialVirtualUi = null;
         if (menu.isHubLayer()) {
             layoutScreenCenter();
@@ -172,7 +174,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         if (menu.isSequentialVirtualLayer()) {
             layoutScreenCenter();
             sequentialVirtualUi = new SequentialCopierVirtualUi(this);
-            sequentialVirtualUi.init();
+            sequentialVirtualUi.init(keepSequential);
             cachedRootLayer = SettingsCopierMenu.ROOT_VIRTUAL;
             return;
         }
@@ -325,17 +327,28 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             renderBackground(graphics, mouseX, mouseY, partialTick);
             renderBg(graphics, partialTick, mouseX, mouseY);
             if (!sequentialVirtualUi.hidesPlayerSlots()) {
+                // slot.x/y are GUI-relative; vanilla renders them after translating by leftPos/topPos.
+                graphics.pose().pushPose();
+                graphics.pose().translate(this.leftPos, this.topPos, 0.0F);
                 for (Slot slot : menu.slots) {
                     if (slot.isActive() && slot.index >= SettingsCopierMenu.PLAYER_SLOT_START) {
                         renderSlot(graphics, slot);
                     }
                 }
+                graphics.pose().popPose();
             }
             for (Renderable renderable : renderables) {
                 renderable.render(graphics, mouseX, mouseY, partialTick);
             }
             sequentialVirtualUi.renderOverlay(graphics, mouseX, mouseY);
             renderTooltip(graphics, mouseX, mouseY);
+            ItemStack carried = this.menu.getCarried();
+            if (!carried.isEmpty()) {
+                int cx = mouseX - 8;
+                int cy = mouseY - 8;
+                graphics.renderItem(carried, cx, cy);
+                graphics.renderItemDecorations(this.font, carried, cx, cy);
+            }
             return;
         }
         super.render(graphics, mouseX, mouseY, partialTick);

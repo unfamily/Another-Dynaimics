@@ -114,8 +114,8 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     /** Client mirror of sequential virtual lists (from copier stack sync). */
     private final SequenceListData[] clientSequentialLists =
             new SequenceListData[SequentialBufferBlockEntity.sequenceListCount()];
-    private SequentialGateMode clientSequentialGate = SequentialGateMode.IGNORED;
-    private boolean clientSequentialStrictIntake = true;
+    private SequentialGateMode clientSequentialGate = SequentialGateMode.AUTO;
+    private boolean clientSequentialStrictIntake = false;
     private final UniversalDuctMenuFilterBuffers filterBuffers = new UniversalDuctMenuFilterBuffers();
     private final SimpleContainer importContainer = new SimpleContainer(2);
     /** Server: channel selected in import GUI (synced from client). */
@@ -438,8 +438,9 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         for (int i = 0; i < clientSequentialLists.length; i++) {
             clientSequentialLists[i] = new SequenceListData();
         }
-        clientSequentialGate = SequentialGateMode.IGNORED;
-        clientSequentialStrictIntake = true;
+        // Match SettingsCopierSequentialVirtualSession empty defaults (AUTO / non-strict).
+        clientSequentialGate = SequentialGateMode.AUTO;
+        clientSequentialStrictIntake = false;
         var data = SettingsCopierSequentialSnapshot.read(stack);
         if (data.isEmpty()) {
             return;
@@ -459,9 +460,11 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         }
         clientSequentialGate =
                 SequentialGateMode.fromOrdinal(
-                        tag.contains("Gate", net.minecraft.nbt.Tag.TAG_BYTE) ? tag.getByte("Gate") & 0xFF : 0);
+                        tag.contains("Gate", net.minecraft.nbt.Tag.TAG_BYTE)
+                                ? tag.getByte("Gate") & 0xFF
+                                : SequentialGateMode.AUTO.ordinal());
         clientSequentialStrictIntake =
-                !tag.contains("StrictIntake") || tag.getBoolean("StrictIntake");
+                tag.contains("StrictIntake") && tag.getBoolean("StrictIntake");
         net.minecraft.nbt.ListTag listTag =
                 tag.contains("Lists", net.minecraft.nbt.Tag.TAG_LIST)
                         ? tag.getList("Lists", net.minecraft.nbt.Tag.TAG_COMPOUND)

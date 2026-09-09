@@ -74,17 +74,18 @@ public class AnDynamicsGhostIngredientHandler<
             return;
         }
 
-        // Create and add the target
+        // Create and add the target (live area: submenu/init can move the ghost slot).
         Target<I> target = new Target<I>() {
             @Override
             public Rect2i getArea() {
-                return area;
+                Rect2i live = ghostTarget.getGhostTargetArea();
+                return live != null ? live : area;
             }
 
             @Override
             public void accept(I ingredientDropped) {
-                // Accept the dropped ingredient - call the consumer with validated ingredient
-                consumer.accept(validatedIngredient);
+                Object live = consumer.supportedTarget(ingredientDropped);
+                consumer.accept(live != null ? live : validatedIngredient);
             }
         };
 
