@@ -14,6 +14,9 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue DUCT_GLOBAL_STALL_DRAIN_GUARD;
     public static final ModConfigSpec.IntValue DUCT_STALL_SLOTS;
 
+    public static final ModConfigSpec.IntValue SEQUENCE_LIST_COUNT;
+    public static final ModConfigSpec.IntValue SEQUENCE_STEP_COUNT;
+
     static {
         BUILDER.comment("Developer diagnostics").push("dev");
         FILTER_SYNC_DEBUG =
@@ -59,6 +62,20 @@ public final class Config {
                                         + "saved buffer size until rebuilt.")
                         .defineInRange("101_ductStallSlots", 5, 1, 27);
         BUILDER.pop();
+
+        BUILDER.comment("Machine tuning").push("machines");
+        SEQUENCE_LIST_COUNT =
+                BUILDER.comment(
+                                "Number of Sequence Lists on the Sequential Buffer (and Settings Copier "
+                                        + "Sequential Configure). Applies to newly opened GUIs / new block entities; "
+                                        + "existing machines resize on load.")
+                        .defineInRange("200_sequenceListCount", 10, 1, Integer.MAX_VALUE);
+        SEQUENCE_STEP_COUNT =
+                BUILDER.comment(
+                                "Max Sequence Tasks (steps) per Sequence List on the Sequential Buffer "
+                                        + "(and Settings Copier Sequential Configure).")
+                        .defineInRange("201_sequenceStepCount", 50, 1, Integer.MAX_VALUE);
+        BUILDER.pop();
     }
 
     static final ModConfigSpec SPEC = BUILDER.build();
@@ -66,6 +83,16 @@ public final class Config {
     /** Effective stall slot count from config (clamped). */
     public static int ductStallSlots() {
         return DUCT_STALL_SLOTS.get();
+    }
+
+    /** Sequence List count (at least 1). */
+    public static int sequenceListCount() {
+        return Math.max(1, SEQUENCE_LIST_COUNT.get());
+    }
+
+    /** Sequence Task/step capacity per list (at least 1). */
+    public static int sequenceStepCount() {
+        return Math.max(1, SEQUENCE_STEP_COUNT.get());
     }
 
     /** Persist common config after programmatic {@link ModConfigSpec.ConfigValue#set} updates. */

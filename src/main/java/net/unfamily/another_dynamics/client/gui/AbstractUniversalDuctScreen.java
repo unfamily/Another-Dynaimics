@@ -158,7 +158,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         return false;
     }
 
-    /** Virtual ALL editor on the multi-transport hub (layer 0). */
+    /** Virtual ALL/WHOLE editor on the multi-transport hub (layer 0). */
     private boolean isSettingsCopierAllVirtualHub() {
         if (!menu.isSettingsCopierVirtualEditor() || minecraft == null || minecraft.player == null) {
             return false;
@@ -166,14 +166,15 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (!(menu instanceof SettingsCopierMenu copier) || !copier.isVirtualLayer()) {
             return false;
         }
-        if (copier.storeKind(minecraft.player) != SettingsCopierStoreKind.ALL) {
+        SettingsCopierStoreKind kind = copier.storeKind(minecraft.player);
+        if (kind != SettingsCopierStoreKind.ALL && kind != SettingsCopierStoreKind.WHOLE) {
             return false;
         }
         return menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1
                 && menu.getSyncData().get(DuctMenuSync.MENU_VIEW_LAYER) == 0;
     }
 
-    /** Virtual ALL with universal transport hub (layer 0 = root screen). */
+    /** Virtual ALL/WHOLE with universal transport hub (layer 0 = root screen). */
     private boolean isSettingsCopierAllVirtualMultiTransport() {
         if (!useSettingsCopierHubNavigation() || minecraft == null || minecraft.player == null) {
             return false;
@@ -181,7 +182,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (!(menu instanceof SettingsCopierMenu copier) || !copier.isVirtualLayer()) {
             return false;
         }
-        return copier.storeKind(minecraft.player) == SettingsCopierStoreKind.ALL
+        SettingsCopierStoreKind kind = copier.storeKind(minecraft.player);
+        return (kind == SettingsCopierStoreKind.ALL || kind == SettingsCopierStoreKind.WHOLE)
                 && menu.getSyncData().get(DuctMenuSync.TRANSPORT_KIND_COUNT) > 1;
     }
 

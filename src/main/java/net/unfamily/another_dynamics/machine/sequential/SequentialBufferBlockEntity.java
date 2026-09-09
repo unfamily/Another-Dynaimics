@@ -36,6 +36,7 @@ import net.neoforged.neoforge.transfer.item.ItemStacksResourceHandler;
 import net.neoforged.neoforge.transfer.item.ItemUtil;
 import net.neoforged.neoforge.transfer.transaction.Transaction;
 import net.neoforged.neoforge.transfer.transaction.TransactionContext;
+import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.DuctFilterMatcher;
 import net.unfamily.another_dynamics.duct.DuctFluidFilterMatcher;
 import net.unfamily.another_dynamics.duct.DuctNbtCodecs;
@@ -51,7 +52,11 @@ import org.jetbrains.annotations.Nullable;
  * Redstone gate + per-list output with anti-feedback while emitting.
  */
 public final class SequentialBufferBlockEntity extends BlockEntity implements MenuProvider {
-    public static final int SEQUENCE_LIST_COUNT = 10;
+    /** Sequence list count from config. */
+    public static int sequenceListCount() {
+        return Config.sequenceListCount();
+    }
+
     /** Assumed max stack when sizing item slots from step amounts (unknown item until insert). */
     private static final int ITEM_STACK_ASSUMED_MAX = 64;
     /** Ticks between finishing one step eject and starting the next. */
@@ -62,7 +67,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     public static final int MAX_INTER_SEQUENCE_DELAY = 18_000;
     private static final int PULSE_EMIT_TICKS = 4;
 
-    private final SequenceListData[] lists = new SequenceListData[SEQUENCE_LIST_COUNT];
+    private SequenceListData[] lists;
     /** Sized from enabled Sequence Lists ({@link #recomputeBufferSizes}). */
     private final SeqItemBuffer inputItems = new SeqItemBuffer(0);
     private final SeqItemBuffer outputItems = new SeqItemBuffer(0);
@@ -106,7 +111,8 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
 
     public SequentialBufferBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.SEQUENTIAL_BUFFER.get(), pos, state);
-        for (int i = 0; i < SEQUENCE_LIST_COUNT; i++) {
+        lists = new SequenceListData[sequenceListCount()];
+        for (int i = 0; i < lists.length; i++) {
             lists[i] = new SequenceListData();
         }
         initGasTanksIfNeeded();
@@ -126,7 +132,24 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     public SequenceListData list(int index) {
-        return lists[Math.floorMod(index, SEQUENCE_LIST_COUNT)];
+        ensureListsSize();
+        return lists[Math.floorMod(index, lists.length)];
+    }
+
+    private void ensureListsSize() {
+        int n = sequenceListCount();
+        if (lists != null && lists.length == n) {
+            return;
+        }
+        SequenceListData[] next = new SequenceListData[n];
+        for (int i = 0; i < n; i++) {
+            if (lists != null && i < lists.length && lists[i] != null) {
+                next[i] = lists[i];
+            } else {
+                next[i] = new SequenceListData();
+            }
+        }
+        lists = next;
     }
 
     public ItemStacksResourceHandler inputItems() {
@@ -342,7 +365,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         if (!isOutputEmpty()) {
             return;
         }
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData list = lists[li];
             if (!list.isEnabled() || !list.hasContent()) {
                 continue;
@@ -474,7 +497,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     private int indexOfList(SequenceListData list) {
-        for (int i = 0; i < SEQUENCE_LIST_COUNT; i++) {
+        for (int i = 0; i < sequenceListCount(); i++) {
             if (lists[i] == list) {
                 return i;
             }
@@ -483,7 +506,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     private boolean inputHasStep(int listIndex, int stepIndex) {
-        if (level == null || listIndex < 0 || listIndex >= SEQUENCE_LIST_COUNT) {
+        if (level == null || listIndex < 0 || listIndex >= sequenceListCount()) {
             return false;
         }
         SequenceListData list = lists[listIndex];
@@ -751,7 +774,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     private void tickOrderedEject(ServerLevel level, BlockPos pos) {
-        if (activeListIndex < 0 || activeListIndex >= SEQUENCE_LIST_COUNT) {
+        if (activeListIndex < 0 || activeListIndex >= sequenceListCount()) {
             finishEjectingSequence();
             return;
         }
@@ -979,7 +1002,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
 
     private int reservedItemAmount(int listIndex, int stepIndex, @Nullable ItemStack probe) {
         int reserved = 0;
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData other = lists[li];
             if (!other.isEnabled() || !other.hasContent()) {
                 continue;
@@ -1042,7 +1065,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
             return 0;
         }
         int reserved = 0;
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData other = lists[li];
             if (!other.isEnabled() || !other.hasContent()) {
                 continue;
@@ -1081,7 +1104,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
             return 0;
         }
         int reserved = 0;
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData other = lists[li];
             if (!other.isEnabled() || !other.hasContent()) {
                 continue;
@@ -1195,7 +1218,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     private boolean isItemWantedByAnyEnabledList(ItemStack stack, HolderLookup.Provider registries) {
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData list = lists[li];
             if (!list.isEnabled() || !list.hasContent()) {
                 continue;
@@ -1214,7 +1237,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     private boolean isFluidWantedByAnyEnabledList(FluidStack fluid) {
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData list = lists[li];
             if (!list.isEnabled() || !list.hasContent()) {
                 continue;
@@ -1236,7 +1259,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         if (!MekanismChemicalCompat.isLoaded() || inputGasTank == null) {
             return false;
         }
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData list = lists[li];
             if (!list.isEnabled() || !list.hasContent()) {
                 continue;
@@ -1279,7 +1302,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         int outputItemSlots = 0;
         int inputFluidMb = 0;
         int outputFluidMb = 0;
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData list = lists[li];
             if (!list.isEnabled() || !list.hasContent()) {
                 continue;
@@ -1487,7 +1510,8 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
                 Mth.clamp(tag.getIntOr("InterDelay", DEFAULT_INTER_SEQUENCE_DELAY), 0, MAX_INTER_SEQUENCE_DELAY);
         interSequenceCooldown = Math.max(0, tag.getIntOr("InterCool", 0));
         ListTag listTag = tag.getListOrEmpty("Lists");
-        for (int i = 0; i < SEQUENCE_LIST_COUNT; i++) {
+        ensureListsSize();
+        for (int i = 0; i < lists.length; i++) {
             lists[i] = new SequenceListData();
             if (i < listTag.size()) {
                 lists[i].load(listTag.getCompoundOrEmpty(i));
@@ -1575,7 +1599,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
 
     /** Snapshot of a single Sequence List (index preserved). */
     public CompoundTag captureListSettings(int listIndex) {
-        int idx = Math.floorMod(listIndex, SEQUENCE_LIST_COUNT);
+        int idx = Math.floorMod(listIndex, sequenceListCount());
         CompoundTag tag = new CompoundTag();
         tag.putByte(SettingsCopierSequentialSnapshot.KIND_TAG, (byte) 1); // single list
         tag.putInt("ListIndex", idx);
@@ -1587,9 +1611,10 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         if (tag == null || tag.isEmpty()) {
             return;
         }
+        ensureListsSize();
         byte kind = tag.getByteOr(SettingsCopierSequentialSnapshot.KIND_TAG, (byte) 0);
         if (kind == 1 && tag.contains("List")) {
-            int idx = Math.floorMod(tag.getIntOr("ListIndex", 0), SEQUENCE_LIST_COUNT);
+            int idx = Math.floorMod(tag.getIntOr("ListIndex", 0), lists.length);
             lists[idx] = new SequenceListData();
             lists[idx].load(tag.getCompoundOrEmpty("List"));
         } else {
@@ -1598,7 +1623,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
                             tag.getByteOr("Gate", (byte) SequentialGateMode.AUTO.ordinal()) & 0xFF);
             strictSequentialIntake = tag.getBooleanOr("StrictIntake", false);
             ListTag listTag = tag.getListOrEmpty("Lists");
-            for (int i = 0; i < SEQUENCE_LIST_COUNT; i++) {
+            for (int i = 0; i < lists.length; i++) {
                 lists[i] = new SequenceListData();
                 if (i < listTag.size()) {
                     lists[i].load(listTag.getCompoundOrEmpty(i));
@@ -1732,7 +1757,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         ItemStack probe = resource.toStack(1);
         var registries = level.registryAccess();
         int need = 0;
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData list = lists[li];
             if (!list.isEnabled() || !list.hasContent()) {
                 continue;
@@ -1781,7 +1806,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         }
         FluidStack probe = resource.toStack(1);
         int need = 0;
-        for (int li = 0; li < SEQUENCE_LIST_COUNT; li++) {
+        for (int li = 0; li < sequenceListCount(); li++) {
             SequenceListData list = lists[li];
             if (!list.isEnabled() || !list.hasContent()) {
                 continue;
@@ -1873,7 +1898,7 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
     }
 
     private boolean isExtractUnlocked(Object resource) {
-        if (activeListIndex < 0 || activeListIndex >= SEQUENCE_LIST_COUNT || level == null) {
+        if (activeListIndex < 0 || activeListIndex >= sequenceListCount() || level == null) {
             // Idle: allow extract of any leftover in output.
             return true;
         }

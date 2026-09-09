@@ -279,20 +279,7 @@ public final class SequentialCopierVirtualUi {
         exampleDataList.clear();
 
         Button close =
-                Button.builder(Component.literal("\u2715"), b -> {
-                            if (subView == SubView.VALID_KEYS) {
-                                closeValidKeys();
-                            } else if (subView == SubView.HUB) {
-                                host.requestSequentialVirtualLeave();
-                            } else if (subView == SubView.SEQUENCE_LISTS) {
-                                subView = SubView.HUB;
-                                rebuildUi();
-                            } else if (subView == SubView.STEP_EDIT) {
-                                closeStepEdit();
-                            } else {
-                                closeEditList();
-                            }
-                        })
+                Button.builder(Component.literal("\u2715"), b -> requestBackOrLeave())
                         .bounds(leftPos + CLOSE_X, topPos + CLOSE_Y, CLOSE_SIZE, CLOSE_SIZE)
                         .tooltip(
                                 Tooltip.create(
@@ -357,12 +344,17 @@ public final class SequentialCopierVirtualUi {
                         .build();
         host.addSequentialWidget(sequenceLists);
 
-        Button chromeEmpty =
-                Button.builder(Component.empty(), b -> {})
+        Button hubBack =
+                Button.builder(
+                                Component.translatable("gui.another_dynamics.settings_copier.back_to_hub"),
+                                b -> host.requestSequentialVirtualLeave())
                         .bounds(leftPos + CENTER_X + 2 * (ROW_BTN_W + ROW_GAP), y, ROW_BTN_W, BTN_H)
+                        .tooltip(
+                                Tooltip.create(
+                                        Component.translatable(
+                                                "gui.another_dynamics.settings_copier.back_to_hub")))
                         .build();
-        chromeEmpty.active = false;
-        host.addSequentialWidget(chromeEmpty);
+        host.addSequentialWidget(hubBack);
     }
 
     private void initSequenceLists() {
@@ -448,7 +440,7 @@ public final class SequentialCopierVirtualUi {
                                     Component.literal("✎"),
                                     b -> {
                                         int idx = hubScroll + row;
-                                        if (idx < 0 || idx >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+                                        if (idx < 0 || idx >= SequentialBufferBlockEntity.sequenceListCount()) {
                                             return;
                                         }
                                         openEditList(idx);
@@ -491,7 +483,7 @@ public final class SequentialCopierVirtualUi {
                             buttonSize,
                             v -> {
                                 int idx = stepScroll + row;
-                                if (idx < 0 || idx >= SequenceListData.MAX_STEPS) {
+                                if (idx < 0 || idx >= SequenceListData.maxSteps()) {
                                     return;
                                 }
                                 sendAction(
@@ -537,7 +529,7 @@ public final class SequentialCopierVirtualUi {
                                     Component.literal("\u270E"),
                                     b -> {
                                         int idx = stepScroll + row;
-                                        if (idx < 0 || idx >= SequenceListData.MAX_STEPS) {
+                                        if (idx < 0 || idx >= SequenceListData.maxSteps()) {
                                             return;
                                         }
                                         SequenceListData list = currentList();
@@ -900,7 +892,7 @@ public final class SequentialCopierVirtualUi {
     }
 
     private SequenceListData currentList() {
-        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.sequenceListCount()) {
             return null;
         }
         return listAt(editingListIndex);
@@ -908,7 +900,7 @@ public final class SequentialCopierVirtualUi {
 
     /** Always 50 fixed slots. */
     private int displayStepCount() {
-        return SequenceListData.MAX_STEPS;
+        return SequenceListData.maxSteps();
     }
 
     private void openStepEdit(int index, SequenceStepData step) {
@@ -1000,7 +992,7 @@ public final class SequentialCopierVirtualUi {
         }
         int amount = parseAmount();
         int stepIndex = editingStepIndex;
-        if (stepIndex < 0 || stepIndex >= SequenceListData.MAX_STEPS) {
+        if (stepIndex < 0 || stepIndex >= SequenceListData.maxSteps()) {
             return;
         }
         sendAction(
@@ -1571,7 +1563,7 @@ public final class SequentialCopierVirtualUi {
     }
 
     private void onListNameDraftChanged(String value) {
-        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.sequenceListCount()) {
             return;
         }
         SequenceListData list = listAt(editingListIndex);
@@ -1638,7 +1630,7 @@ public final class SequentialCopierVirtualUi {
         }
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = hubScroll + i;
-            boolean inRange = idx >= 0 && idx < SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT;
+            boolean inRange = idx >= 0 && idx < SequentialBufferBlockEntity.sequenceListCount();
             SequenceListData list = inRange ? listAt(idx) : null;
             boolean hasContent = list != null && list.hasContent();
             int base = i * 4;
@@ -1675,7 +1667,7 @@ public final class SequentialCopierVirtualUi {
         SequenceListData list = currentList();
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = stepScroll + i;
-            boolean inRange = idx >= 0 && idx < SequenceListData.MAX_STEPS;
+            boolean inRange = idx >= 0 && idx < SequenceListData.maxSteps();
             if (i < concatButtons.size()) {
                 FilterConcatChannelButton cb = concatButtons.get(i);
                 cb.visible = inRange;
@@ -1734,7 +1726,7 @@ public final class SequentialCopierVirtualUi {
     }
 
     private ItemStack listOutputIcon(int index) {
-        if (index < 0 || index >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (index < 0 || index >= SequentialBufferBlockEntity.sequenceListCount()) {
             return ItemStack.EMPTY;
         }
         return switch (listAt(index).outputMode()) {
@@ -1746,14 +1738,14 @@ public final class SequentialCopierVirtualUi {
     }
 
     private Identifier listOutputOverlay(int index) {
-        if (index < 0 || index >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (index < 0 || index >= SequentialBufferBlockEntity.sequenceListCount()) {
             return null;
         }
         return listAt(index).outputMode() == SequentialRedstoneMode.PULSE ? REDSTONE_GUI : null;
     }
 
     private int maxHubScroll() {
-        return Math.max(0, SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT - VISIBLE_ROWS);
+        return Math.max(0, SequentialBufferBlockEntity.sequenceListCount() - VISIBLE_ROWS);
     }
 
     private int maxStepScroll() {
@@ -1825,7 +1817,7 @@ public final class SequentialCopierVirtualUi {
     private void renderEntryRows(GuiGraphicsExtractor graphics) {
         int count =
                 subView == SubView.SEQUENCE_LISTS
-                        ? SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT
+                        ? SequentialBufferBlockEntity.sequenceListCount()
                         : displayStepCount();
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = (subView == SubView.SEQUENCE_LISTS ? hubScroll : stepScroll) + i;
@@ -2040,7 +2032,7 @@ public final class SequentialCopierVirtualUi {
         if (subView == SubView.SEQUENCE_LISTS) {
             for (int i = 0; i < VISIBLE_ROWS; i++) {
                 int idx = hubScroll + i;
-                if (idx >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+                if (idx >= SequentialBufferBlockEntity.sequenceListCount()) {
                     break;
                 }
                 Component label = listAt(idx).displayName(idx + 1);
@@ -2056,7 +2048,7 @@ public final class SequentialCopierVirtualUi {
             SequenceListData list = currentList();
             for (int i = 0; i < VISIBLE_ROWS; i++) {
                 int idx = stepScroll + i;
-                if (idx < 0 || idx >= SequenceListData.MAX_STEPS) {
+                if (idx < 0 || idx >= SequenceListData.maxSteps()) {
                     continue;
                 }
                 if (list == null || idx >= list.steps().size()) {
@@ -2468,7 +2460,18 @@ public final class SequentialCopierVirtualUi {
         if (amountBox != null && amountBox.isFocused()) {
             return amountBox.keyPressed(event);
         }
+        if (listNameBox != null && listNameBox.isFocused()) {
+            return listNameBox.keyPressed(event);
+        }
         return false;
+    }
+
+    /** X / Esc / inventory: one UI level up, or leave Configure for Settings Copier hub. */
+    public void requestBackOrLeave() {
+        if (handleBack()) {
+            return;
+        }
+        host.requestSequentialVirtualLeave();
     }
 
     public boolean charTyped(CharacterEvent event) {
