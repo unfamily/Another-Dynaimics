@@ -1206,9 +1206,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     protected void onAfterConnectionRefresh(boolean masksChanged) {
         if (level != null && !level.isClientSide()) {
             enforcePipeSegmentBehavior();
-            if (masksChanged && level instanceof ServerLevel serverLevel) {
-                DuctNetworkOpaquePropagation.onStructuralChange(serverLevel, worldPosition);
-            }
+            // Opaque paint is scheduled from structural place/break (and wrench), not from every neighbor refresh.
         }
     }
 
@@ -6521,6 +6519,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         refreshFromWorld();
         if (level instanceof ServerLevel serverLevel) {
             DuctNetworkCache.invalidate(serverLevel);
+            DuctNetworkOpaquePropagation.scheduleOpaqueRefresh(serverLevel, worldPosition);
             if (isStorageAttachmentFace(face)) {
                 onTransitDestStorageFaceDisconnected(serverLevel, worldPosition, face);
             }
@@ -6547,6 +6546,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         refreshFromWorld();
         if (level instanceof ServerLevel serverLevel) {
             DuctNetworkCache.invalidate(serverLevel);
+            DuctNetworkOpaquePropagation.scheduleOpaqueRefresh(serverLevel, worldPosition);
         }
         syncStallVisualIfNeeded();
         propagateNeighborRefreshAfterWrench(level, npos);

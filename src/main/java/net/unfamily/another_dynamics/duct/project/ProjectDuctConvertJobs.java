@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -30,9 +29,13 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.AbstractDuctBlock;
+import net.unfamily.another_dynamics.duct.DuctNetworkOpaquePropagation;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.logistics.DuctNetworkCache;
 import net.unfamily.another_dynamics.registry.ModItems;
@@ -100,6 +103,42 @@ public final class ProjectDuctConvertJobs {
         return converted;
     }
 
+    /**
+     * Drop all jobs with no item IO and no topology invalidate. Already-converted blocks stay as they are.
+     */
+    public static void cancelAll() {
+        JOBS.clear();
+    }
+
+    /** Drop jobs for one player (logout). No item IO / no invalidate. */
+    public static void cancelPlayer(UUID playerId) {
+        JOBS.keySet().removeIf(key -> key.playerId.equals(playerId));
+    }
+
+    /** Clears jobs for a dimension (e.g. on unload). No item IO. */
+    public static void clearDimension(ResourceKey<Level> dimension) {
+        JOBS.keySet().removeIf(key -> key.dimension.equals(dimension));
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            cancelPlayer(player.getUUID());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onServerStopping(ServerStoppingEvent event) {
+        cancelAll();
+    }
+
+    @SubscribeEvent
+    public static void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel() instanceof ServerLevel serverLevel) {
+            clearDimension(serverLevel.dimension());
+        }
+    }
+
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         if (JOBS.isEmpty()) {
@@ -116,9 +155,7 @@ public final class ProjectDuctConvertJobs {
             }
             ServerPlayer player = server.getPlayerList().getPlayer(job.playerId);
             if (player == null) {
-                if (job.needsTopologyInvalidate) {
-                    DuctNetworkCache.invalidate(level);
-                }
+                // Exit cancel: drop silently — do not invalidate (avoids exit spike).
                 finished.add(entry.getKey());
                 continue;
             }
@@ -163,20 +200,13 @@ public final class ProjectDuctConvertJobs {
         int converted = 0;
         DuctNetworkCache.pushBulkMutation();
         try {
-            BlockPos warm = job.pending.peek();
-            if (warm != null) {
-                level.getChunk(warm);
-            }
-            long lastChunkKey = Long.MIN_VALUE;
             while (converted < budget && !job.pending.isEmpty() && System.nanoTime() < deadline) {
                 BlockPos pos = job.pending.poll();
-                if (pos == null || !ProjectDuctNetwork.isProjectDuct(level.getBlockState(pos).getBlock())) {
+                if (pos == null || !level.isLoaded(pos)) {
                     continue;
                 }
-                long chunkKey = chunkKey(pos);
-                if (chunkKey != lastChunkKey) {
-                    level.getChunk(pos);
-                    lastChunkKey = chunkKey;
+                if (!ProjectDuctNetwork.isProjectDuct(level.getBlockState(pos).getBlock())) {
+                    continue;
                 }
                 if (!ProjectDuctConverter.convertOne(level, pos, job.logicalId)) {
                     continue;
@@ -207,6 +237,7 @@ public final class ProjectDuctConvertJobs {
                 ProjectDuctVisualRefresh.refreshAround(level, job.anchor);
                 level.playSound(null, job.anchor, SoundEvents.COPPER_PLACE, SoundSource.BLOCKS, 0.55f, 1.05f);
                 job.needsTopologyInvalidate = true;
+                DuctNetworkOpaquePropagation.scheduleOpaqueRefresh(level, job.anchor);
             }
         } finally {
             DuctNetworkCache.popBulkMutation();
@@ -225,11 +256,6 @@ public final class ProjectDuctConvertJobs {
                         .thenComparingInt(p -> SectionPos.blockToSectionCoord(p.getZ()))
                         .thenComparingLong(BlockPos::asLong));
         return ordered;
-    }
-
-    private static long chunkKey(BlockPos pos) {
-        return (((long) SectionPos.blockToSectionCoord(pos.getX())) << 32)
-                ^ (SectionPos.blockToSectionCoord(pos.getZ()) & 0xffffffffL);
     }
 
     private static void finishJob(Job job, ServerPlayer player, ServerLevel level) {
@@ -287,16 +313,6 @@ public final class ProjectDuctConvertJobs {
                 Component.literal(String.format(" %d/%d", job.convertedTotal, job.initialTargetCount))
                         .withStyle(ChatFormatting.GRAY));
         player.sendSystemMessage(message, true);
-    }
-
-    /** Clears jobs for a dimension (e.g. on unload). */
-    public static void clearDimension(ResourceKey<Level> dimension) {
-        Iterator<Map.Entry<JobKey, Job>> it = JOBS.entrySet().iterator();
-        while (it.hasNext()) {
-            if (it.next().getKey().dimension.equals(dimension)) {
-                it.remove();
-            }
-        }
     }
 
     private record JobKey(UUID playerId, ResourceKey<Level> dimension) {

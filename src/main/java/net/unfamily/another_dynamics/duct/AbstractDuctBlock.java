@@ -36,6 +36,7 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
+import net.unfamily.another_dynamics.duct.logistics.DuctNetworkCache;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 /**
@@ -172,19 +173,45 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     @Override
     public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
         super.onPlace(state, level, pos, oldState, movedByPiston);
-        refreshAt(level, pos);
-        notifySameNetworkNeighbors(level, pos);
-        refreshAdjacentProjectDuctVisuals(level, pos);
-        if (!level.isClientSide() && level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-            net.unfamily.another_dynamics.duct.DuctNetworkOpaquePropagation.onStructuralChange(serverLevel, pos);
+        if (!level.isClientSide() && level instanceof ServerLevel serverLevel) {
+            DuctNetworkCache.pushBulkMutation();
+            try {
+                refreshAt(level, pos);
+                notifySameNetworkNeighbors(level, pos);
+            } finally {
+                DuctNetworkCache.popBulkMutation();
+            }
+            DuctNetworkCache.invalidate(serverLevel);
+            DuctNetworkOpaquePropagation.scheduleOpaqueRefresh(serverLevel, pos);
+        } else {
+            refreshAt(level, pos);
+            notifySameNetworkNeighbors(level, pos);
         }
+        refreshAdjacentProjectDuctVisuals(level, pos);
     }
 
     @Override
     protected void affectNeighborsAfterRemoval(BlockState state, ServerLevel level, BlockPos pos, boolean movedByPiston) {
-        notifySameNetworkNeighbors(level, pos);
+        DuctNetworkCache.pushBulkMutation();
+        try {
+            notifySameNetworkNeighbors(level, pos);
+        } finally {
+            DuctNetworkCache.popBulkMutation();
+        }
+        DuctNetworkCache.invalidate(level);
+        scheduleOpaqueFromNeighbor(level, pos);
         refreshAdjacentProjectDuctVisuals(level, pos);
         super.affectNeighborsAfterRemoval(state, level, pos, movedByPiston);
+    }
+
+    private static void scheduleOpaqueFromNeighbor(ServerLevel level, BlockPos removed) {
+        for (Direction d : Direction.values()) {
+            BlockPos n = removed.relative(d);
+            if (level.getBlockState(n).getBlock() instanceof DuctConnectable) {
+                DuctNetworkOpaquePropagation.scheduleOpaqueRefresh(level, n);
+                return;
+            }
+        }
     }
 
     @Override

@@ -85,7 +85,7 @@ public final class Config {
                                 "Project Duct / mass-replace blocks processed per pulse while a job runs "
                                         + "(Shift+duct item). Pulse wall-clock scales 1:1 with this (~1 ms/block); "
                                         + "a batch of 64 never budgets more than ~64 ms.")
-                        .defineInRange("200_projectDuctConvertBatchSize", 16, 1, Integer.MAX_VALUE);
+                        .defineInRange("200_projectDuctConvertBatchSize", 64, 1, Integer.MAX_VALUE);
         PROJECT_DUCT_CONVERT_TICK_INTERVAL =
                 BUILDER.comment(
                                 "Server ticks between Project Duct / mass-replace pulses (after discovery / first "
@@ -98,10 +98,10 @@ public final class Config {
                         .defineInRange("202_projectDuctConvertMaxPerJob", 1024, 1, Integer.MAX_VALUE);
         DUCT_JOB_TICK_BUDGET_MS =
                 BUILDER.comment(
-                                "Wall-clock budget (ms) for discovery slices and as an optional CAP on convert/"
-                                        + "replace pulses. Convert pulse time is min(this, batchSize) ms — default "
-                                        + "should stay high so batch size alone decides how long a pulse may run.")
-                        .defineInRange("203_ductJobTickBudgetMs", Integer.MAX_VALUE, 1, Integer.MAX_VALUE);
+                                "Wall-clock budget CAP (ms) for duct job pulses and deferred opaque paint slices. "
+                                        + "Convert/replace/discovery pulse time is min(this, batchSize) ms. "
+                                        + "Keep low (e.g. 50) so giant networks cannot stall a server tick.")
+                        .defineInRange("203_ductJobTickBudgetMs", 50, 1, Integer.MAX_VALUE);
 
         // Sequence / machines — keys 300+
         SEQUENCE_LIST_COUNT =
@@ -157,9 +157,9 @@ public final class Config {
     }
 
     /**
-     * Pulse time for a convert/replace batch of {@code plannedBlocks}.
+     * Pulse time for a convert/replace/discovery batch of {@code plannedBlocks}.
      * Allots ~1 ms per block and never exceeds the batch count in ms (batch 64 → ≤ 64 ms).
-     * {@link #DUCT_JOB_TICK_BUDGET_MS} is an optional lower CAP for TPS (default unlimited).
+     * {@link #DUCT_JOB_TICK_BUDGET_MS} is an optional lower CAP for TPS (default 50).
      */
     public static long ductJobPulseBudgetNanos(int plannedBlocks) {
         long forBatchMs = Math.max(1L, plannedBlocks);
