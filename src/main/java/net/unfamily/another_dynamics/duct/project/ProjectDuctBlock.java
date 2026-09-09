@@ -177,6 +177,10 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
         if (level instanceof ServerLevel serverLevel) {
             DuctBlockEntity.onTransitEdgeBroken(serverLevel, pos, neighborPos);
         }
+        // Recompute CONNECTIONS after both sides' disconnect bits are set (neighborChanged can race mid-sync).
+        if (level instanceof Level world) {
+            ProjectDuctVisualRefresh.refreshAround(world, pos);
+        }
     }
 
     public static void tryReconnectFace(LevelAccessor level, BlockPos pos, Direction face) {
@@ -190,6 +194,11 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
         }
         level.setBlock(pos, state.setValue(DISCONNECTED, disconnectedMask(state) & ~bit), Block.UPDATE_ALL);
         syncWrenchDisconnectToNeighbor(level, pos, face, false);
+        // Must refresh after neighbor disconnect is cleared: CONNECTIONS is dropped while either side is
+        // disconnected, and definitive neighbors do not fire neighborChanged on BE-only clear.
+        if (level instanceof Level world) {
+            ProjectDuctVisualRefresh.refreshAround(world, pos);
+        }
     }
 
     private static void syncWrenchDisconnectToNeighbor(

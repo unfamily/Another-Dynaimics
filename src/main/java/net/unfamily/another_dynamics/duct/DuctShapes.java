@@ -23,18 +23,33 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  * Voxel hitboxes for duct connection geometry (shared by any transport kind: item, fluid, etc.).
  * Aligned with {@code simple_duct_default.json} / line {@code center} element (16×16×16 units).
  * Logic mirrors {@link net.unfamily.another_dynamics.client.DuctCompositeGeometry#appendForWorld}.
+ *
+ * <p>Entity collision uses a thinner cross-section than outline/selection ({@link #forMasks}): horizontal X/Z
+ * extents are narrower; vertical Y spans stay the same so standing / jumping on pipes feels unchanged.
  */
 public final class DuctShapes {
 
     /** Hit tests tolerate boundary floats from raycasts (shared faces with pipe arms). */
     private static final double HIT_EPS = 1.0e-4;
+
+    /** Outline / selection: matches baked model (6×6 pipe, 8×8 nodes). */
     private static final VoxelShape CENTER = box(5, 5, 5, 11, 11, 11);
     private static final VoxelShape LINE_BAR_Z = box(5, 5, 0, 11, 11, 16);
     private static final VoxelShape LINE_BAR_X = box(0, 5, 5, 16, 11, 11);
     private static final VoxelShape LINE_BAR_Y = box(5, 0, 5, 11, 16, 11);
 
+    /**
+     * Entity collision: 4×4 pipe core in X/Z (Y unchanged vs outline). Nodes 6×6 in the horizontal plane.
+     */
+    private static final VoxelShape COLLISION_CENTER = box(6, 5, 6, 10, 11, 10);
+    private static final VoxelShape COLLISION_LINE_BAR_Z = box(6, 5, 0, 10, 11, 16);
+    private static final VoxelShape COLLISION_LINE_BAR_X = box(0, 5, 6, 16, 11, 10);
+    private static final VoxelShape COLLISION_LINE_BAR_Y = box(6, 0, 6, 10, 16, 10);
+
     private static final Map<Direction, VoxelShape> CONNECTION_ARM = new EnumMap<>(Direction.class);
     private static final Map<Direction, VoxelShape> NODE = new EnumMap<>(Direction.class);
+    private static final Map<Direction, VoxelShape> COLLISION_CONNECTION_ARM = new EnumMap<>(Direction.class);
+    private static final Map<Direction, VoxelShape> COLLISION_NODE = new EnumMap<>(Direction.class);
 
     static {
         CONNECTION_ARM.put(Direction.UP, box(5, 11, 5, 11, 16, 11));
@@ -50,6 +65,20 @@ public final class DuctShapes {
         NODE.put(Direction.SOUTH, box(4, 4, 12, 12, 12, 16));
         NODE.put(Direction.EAST, box(12, 4, 4, 16, 12, 12));
         NODE.put(Direction.WEST, box(0, 4, 4, 4, 12, 12));
+
+        COLLISION_CONNECTION_ARM.put(Direction.UP, box(6, 11, 6, 10, 16, 10));
+        COLLISION_CONNECTION_ARM.put(Direction.DOWN, box(6, 0, 6, 10, 5, 10));
+        COLLISION_CONNECTION_ARM.put(Direction.NORTH, box(6, 5, 0, 10, 11, 5));
+        COLLISION_CONNECTION_ARM.put(Direction.SOUTH, box(6, 5, 11, 10, 11, 16));
+        COLLISION_CONNECTION_ARM.put(Direction.EAST, box(11, 5, 6, 16, 11, 10));
+        COLLISION_CONNECTION_ARM.put(Direction.WEST, box(0, 5, 6, 5, 11, 10));
+
+        COLLISION_NODE.put(Direction.UP, box(5, 12, 5, 11, 16, 11));
+        COLLISION_NODE.put(Direction.DOWN, box(5, 0, 5, 11, 4, 11));
+        COLLISION_NODE.put(Direction.NORTH, box(5, 4, 0, 11, 12, 4));
+        COLLISION_NODE.put(Direction.SOUTH, box(5, 4, 12, 11, 12, 16));
+        COLLISION_NODE.put(Direction.EAST, box(12, 4, 5, 16, 12, 11));
+        COLLISION_NODE.put(Direction.WEST, box(0, 4, 5, 4, 12, 11));
     }
 
     private DuctShapes() {}
@@ -74,29 +103,43 @@ public final class DuctShapes {
     }
 
     private static VoxelShape centerPlusArmsAndNodes(int pipeMask, int storageMask) {
-        VoxelShape s = CENTER;
+        return centerPlusArmsAndNodes(pipeMask, storageMask, CONNECTION_ARM, NODE, CENTER);
+    }
+
+    private static VoxelShape centerPlusArmsAndNodes(
+            int pipeMask,
+            int storageMask,
+            Map<Direction, VoxelShape> arms,
+            Map<Direction, VoxelShape> nodes,
+            VoxelShape center) {
+        VoxelShape s = center;
         for (Direction d : Direction.values()) {
             int bit = 1 << d.ordinal();
             if ((pipeMask & bit) != 0) {
-                s = or(s, CONNECTION_ARM.get(d));
+                s = or(s, arms.get(d));
             }
             if ((storageMask & bit) != 0) {
-                s = or(s, CONNECTION_ARM.get(d));
-                s = or(s, NODE.get(d));
+                s = or(s, arms.get(d));
+                s = or(s, nodes.get(d));
             }
         }
         return s;
     }
 
     private static VoxelShape lineShape(VoxelShape bar, int storageMask, DuctConnectionShape lineShape) {
+        return lineShape(bar, storageMask, lineShape, NODE);
+    }
+
+    private static VoxelShape lineShape(
+            VoxelShape bar, int storageMask, DuctConnectionShape lineShape, Map<Direction, VoxelShape> nodes) {
         VoxelShape s = bar;
         Direction na = lineShape.lineEndNegative();
         Direction pb = lineShape.lineEndPositive();
         if ((storageMask & (1 << na.ordinal())) != 0) {
-            s = or(s, NODE.get(na));
+            s = or(s, nodes.get(na));
         }
         if ((storageMask & (1 << pb.ordinal())) != 0) {
-            s = or(s, NODE.get(pb));
+            s = or(s, nodes.get(pb));
         }
         return s;
     }
@@ -105,14 +148,23 @@ public final class DuctShapes {
         return CENTER;
     }
 
-    /** Collision matches the physical pipe ({@link #forMasks}). */
+    /** Entity collision: thinner X/Z than outline; Y spans match {@link #forMasks}. */
     public static VoxelShape collisionForMasks(int pipeMask, int storageMask) {
-        return forMasks(pipeMask, storageMask);
+        DuctConnectionShape shape = DuctConnectionShape.classify(pipeMask, storageMask);
+        return switch (shape) {
+            case SINGLE -> COLLISION_CENTER;
+            case PARTIAL, MULTI ->
+                    centerPlusArmsAndNodes(
+                            pipeMask, storageMask, COLLISION_CONNECTION_ARM, COLLISION_NODE, COLLISION_CENTER);
+            case LINE_X -> lineShape(COLLISION_LINE_BAR_X, storageMask, shape, COLLISION_NODE);
+            case LINE_Y -> lineShape(COLLISION_LINE_BAR_Y, storageMask, shape, COLLISION_NODE);
+            case LINE_Z -> lineShape(COLLISION_LINE_BAR_Z, storageMask, shape, COLLISION_NODE);
+        };
     }
 
-    /** Collision matches the physical pipe core ({@link #coreOnly}). */
+    /** Entity collision for unconnected core (thinner X/Z). */
     public static VoxelShape collisionCoreOnly() {
-        return CENTER;
+        return COLLISION_CENTER;
     }
 
     /**
@@ -150,42 +202,6 @@ public final class DuctShapes {
             }
         }
         return Optional.of(pick);
-    }
-
-    /**
-     * Pipez-style look-ray against active storage {@link #NODE} voxels. Used when facade overlays replace the
-     * block interaction shape with a full cube so the official hit location no longer lands inside a node.
-     */
-    public static Optional<Direction> resolveStorageNodeFaceFromLook(
-            BlockGetter level,
-            BlockPos pos,
-            BlockState state,
-            Player player,
-            int pipeMask,
-            int storageMask) {
-        Vec3 start = player.getEyePosition(1.0F);
-        double reach = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE);
-        Vec3 end = start.add(player.getLookAngle().normalize().scale(reach));
-        Direction best = null;
-        double shortest = Double.MAX_VALUE;
-        List<Direction> active = new ArrayList<>(6);
-        forEachActiveStorageNode(pipeMask, storageMask, active::add);
-        for (Direction d : active) {
-            VoxelShape shape = NODE.get(d);
-            if (shape == null || shape.isEmpty()) {
-                continue;
-            }
-            BlockHitResult hit = level.clipWithInteractionOverride(start, end, pos, shape, state);
-            if (hit == null) {
-                continue;
-            }
-            double dist = hit.getLocation().distanceToSqr(start);
-            if (dist < shortest) {
-                shortest = dist;
-                best = d;
-            }
-        }
-        return Optional.ofNullable(best);
     }
 
     /**
@@ -295,6 +311,42 @@ public final class DuctShapes {
             }
         }
         return Optional.of(pick);
+    }
+
+    /**
+     * Pipez-style look-ray against active storage {@link #NODE} voxels. Used when facade overlays replace the
+     * block interaction shape with a full cube so the official hit location no longer lands inside a node.
+     */
+    public static Optional<Direction> resolveStorageNodeFaceFromLook(
+            BlockGetter level,
+            BlockPos pos,
+            BlockState state,
+            Player player,
+            int pipeMask,
+            int storageMask) {
+        Vec3 start = player.getEyePosition(1.0F);
+        double reach = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE);
+        Vec3 end = start.add(player.getLookAngle().normalize().scale(reach));
+        Direction best = null;
+        double shortest = Double.MAX_VALUE;
+        List<Direction> active = new ArrayList<>(6);
+        forEachActiveStorageNode(pipeMask, storageMask, active::add);
+        for (Direction d : active) {
+            VoxelShape shape = NODE.get(d);
+            if (shape == null || shape.isEmpty()) {
+                continue;
+            }
+            BlockHitResult hit = level.clipWithInteractionOverride(start, end, pos, shape, state);
+            if (hit == null) {
+                continue;
+            }
+            double dist = hit.getLocation().distanceToSqr(start);
+            if (dist < shortest) {
+                shortest = dist;
+                best = d;
+            }
+        }
+        return Optional.ofNullable(best);
     }
 
     private static boolean ductCoreBodyContains(int pipeMask, int storageMask, double lx, double ly, double lz) {

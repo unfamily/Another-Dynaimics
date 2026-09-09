@@ -39,6 +39,7 @@ import net.unfamily.another_dynamics.registry.ModBlocks;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 /**
  * Immutable baked quads for one composite duct template pair ({@code model_default} + {@code model_line}).
@@ -225,9 +226,27 @@ public final class DuctCompositeGeometry {
         }
         List<BakedQuad> out = new ArrayList<>(source.size());
         for (BakedQuad q : source) {
-            out.add(QuadTransforms.applyTransformation(q, transform));
+            BakedQuad processed = QuadTransforms.applyTransformation(q, transform);
+            // NeoForge's applyTransformation leaves direction unchanged (TODO in QuadTransforms).
+            // Shade uses direction: LINE_Y stacks keep Z-line face labels, so south stays UP-bright
+            // while other sides look wrongly dark vs PARTIAL end pipes.
+            Direction rotated = rotateCullDirection(transform, q.direction());
+            if (rotated != processed.direction()) {
+                MutableQuad m = new MutableQuad().setFrom(processed);
+                m.setDirection(rotated);
+                out.add(m.toBakedQuad());
+            } else {
+                out.add(processed);
+            }
         }
         return out;
+    }
+
+    /** Rotates a cull/shade face to match {@link QuadTransforms#applyTransformation}. */
+    private static Direction rotateCullDirection(Transformation transform, Direction direction) {
+        Vector3f normal = new Vector3f(direction.getStepX(), direction.getStepY(), direction.getStepZ());
+        transform.transformNormal(normal);
+        return Direction.getApproximateNearest(normal.x, normal.y, normal.z);
     }
 
     public static Transformation rotationForLineAxis(Direction.Axis axis) {

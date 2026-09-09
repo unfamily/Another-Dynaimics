@@ -2354,11 +2354,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         return extractorShowsInsertLimitEditors() && editModeRemoteNodeDraft != null;
     }
 
-    /** @deprecated use {@link #extractorShowsInsertLimitEditors()} / {@link #extractorInsertLimitInteractive()} */
-    private boolean extractorWithRemoteCapEditors() {
-        return extractorInsertLimitInteractive();
-    }
-
     private boolean dualLimitKeepCapEditors() {
         if (!showsAdvancedCapEditors()) {
             return false;

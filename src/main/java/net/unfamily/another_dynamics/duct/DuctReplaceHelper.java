@@ -191,17 +191,15 @@ public final class DuctReplaceHelper {
             InteractionHand hand) {
         DuctReplaceArm.clear(player);
         int maxJob = Config.projectDuctConvertMaxPerJob();
-        List<BlockPos> discovered = discoverCompatibleDefinitiveTargets(level, anchor, anchorBe, logicalId, maxJob + 1);
-        boolean moreBeyondJob = discovered.size() > maxJob;
-        List<BlockPos> targets = moreBeyondJob ? new ArrayList<>(discovered.subList(0, maxJob)) : discovered;
-        if (targets.isEmpty()) {
+        // Cheap candidate collect only (no isCompatible); compatibility is time-sliced in the job.
+        List<BlockPos> candidates = collectDefinitiveCandidates(level, anchor, anchorBe, logicalId, maxJob + 1);
+        if (candidates.isEmpty()) {
             actionBar(player, Component.translatable("another_dynamics.duct_replace.no_compatible_ducts"));
             return InteractionResult.CONSUME;
         }
-        int started =
-                DuctReplaceJobs.startAndRunFirstBatch(
-                        player, level, anchor, logicalId, targets, moreBeyondJob, hand);
-        return started > 0 || DuctReplaceJobs.hasActiveJob(player, level)
+        boolean started =
+                DuctReplaceJobs.startDiscovering(player, level, anchor, logicalId, candidates, maxJob, hand);
+        return started || DuctReplaceJobs.hasActiveJob(player, level)
                 ? InteractionResult.CONSUME
                 : InteractionResult.FAIL;
     }
@@ -243,7 +241,11 @@ public final class DuctReplaceHelper {
         return out;
     }
 
-    public static List<BlockPos> discoverCompatibleDefinitiveTargets(
+    /**
+     * Network members with a different logical id than {@code targetLogicalId} (no filter/module compatibility yet).
+     * Caps at {@code maxCollect} positions for the discovering job.
+     */
+    public static List<BlockPos> collectDefinitiveCandidates(
             ServerLevel level,
             BlockPos anchor,
             DuctBlockEntity anchorBe,
@@ -281,6 +283,27 @@ public final class DuctReplaceHelper {
                 continue;
             }
             if (be.getLogicalDuctId().equals(target)) {
+                continue;
+            }
+            out.add(pos.immutable());
+        }
+        return out;
+    }
+
+    /** Full sync discovery (compatibility included). Prefer {@link #collectDefinitiveCandidates} + job slices. */
+    public static List<BlockPos> discoverCompatibleDefinitiveTargets(
+            ServerLevel level,
+            BlockPos anchor,
+            DuctBlockEntity anchorBe,
+            String targetLogicalId,
+            int maxCollect) {
+        List<BlockPos> out = new ArrayList<>();
+        String target = DuctIds.normalize(targetLogicalId);
+        for (BlockPos pos : collectDefinitiveCandidates(level, anchor, anchorBe, targetLogicalId, maxCollect)) {
+            if (out.size() >= maxCollect) {
+                break;
+            }
+            if (!(level.getBlockEntity(pos) instanceof DuctBlockEntity be)) {
                 continue;
             }
             if (isCompatible(be, target).isPresent()) {
@@ -383,6 +406,12 @@ public final class DuctReplaceHelper {
      *
      * @param announceSuccess when true, shows the single-replace success toast (skipped for mass jobs / arm flow)
      */
+    /**
+     * Swap logical id + inventory exchange. Returns false if the duct is already the target type.
+     *
+     * @param announceSuccess when true, shows the single-replace success toast (skipped for mass jobs / arm flow)
+     * @param deferVisualSync when true, skips per-block {@code sendBlockUpdated}/sound (batch job syncs quietly)
+     */
     public static boolean performReplace(
             Player player,
             Level level,
@@ -392,6 +421,20 @@ public final class DuctReplaceHelper {
             String newLogicalId,
             InteractionHand hand,
             boolean announceSuccess) {
+        return performReplace(
+                player, level, pos, ductBE, currentLogicalId, newLogicalId, hand, announceSuccess, false);
+    }
+
+    public static boolean performReplace(
+            Player player,
+            Level level,
+            BlockPos pos,
+            DuctBlockEntity ductBE,
+            String currentLogicalId,
+            String newLogicalId,
+            InteractionHand hand,
+            boolean announceSuccess,
+            boolean deferVisualSync) {
         newLogicalId = DuctIds.normalize(newLogicalId);
         currentLogicalId = DuctIds.normalize(currentLogicalId);
         if (currentLogicalId.equals(newLogicalId)) {
@@ -401,26 +444,35 @@ public final class DuctReplaceHelper {
             return false;
         }
 
-        ItemStack oldDuctItem = new ItemStack(level.getBlockState(pos).getBlock().asItem());
-        oldDuctItem.set(ModDataComponents.DUCT_LOGICAL_ID.get(), currentLogicalId);
+        // Capture old item before changing logical id (survival give-back only).
+        ItemStack oldDuctItem = ItemStack.EMPTY;
+        if (!player.getAbilities().instabuild) {
+            oldDuctItem = new ItemStack(level.getBlockState(pos).getBlock().asItem());
+            oldDuctItem.set(ModDataComponents.DUCT_LOGICAL_ID.get(), currentLogicalId);
+        }
 
         ductBE.setLogicalDuctId(newLogicalId);
         ductBE.clampFaceFiltersToSpec();
 
         BlockState currentState = level.getBlockState(pos);
         level.blockEntityChanged(pos);
-        level.sendBlockUpdated(pos, currentState, currentState, 3);
+        if (!deferVisualSync) {
+            level.sendBlockUpdated(pos, currentState, currentState, 3);
+        }
 
         ItemStack handStack = player.getItemInHand(hand);
         if (!player.getAbilities().instabuild) {
             handStack.shrink(1);
+            if (!oldDuctItem.isEmpty()) {
+                if (!player.getInventory().add(oldDuctItem)) {
+                    Block.popResource(level, pos, oldDuctItem);
+                }
+            }
         }
 
-        if (!player.getInventory().add(oldDuctItem)) {
-            Block.popResource(level, pos, oldDuctItem);
+        if (!deferVisualSync) {
+            level.playSound(null, pos, SoundEvents.IRON_TRAPDOOR_CLOSE, SoundSource.BLOCKS, 0.5f, 1.2f);
         }
-
-        level.playSound(null, pos, SoundEvents.IRON_TRAPDOOR_CLOSE, SoundSource.BLOCKS, 0.5f, 1.2f);
 
         if (announceSuccess && player instanceof ServerPlayer sp) {
             actionBar(sp, Component.translatable("another_dynamics.duct_replace.success"));

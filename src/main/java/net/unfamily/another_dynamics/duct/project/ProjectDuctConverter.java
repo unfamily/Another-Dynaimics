@@ -103,7 +103,14 @@ public final class ProjectDuctConverter {
         final BlockState placedState = newState;
         final boolean[] placed = {false};
         CableFacadesCompat.runPreservingFacade(
-                level, pos, () -> placed[0] = level.setBlock(pos, placedState, Block.UPDATE_ALL));
+                level,
+                pos,
+                () ->
+                        placed[0] =
+                                level.setBlock(
+                                        pos,
+                                        placedState,
+                                        Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE));
         if (!placed[0]) {
             return false;
         }
@@ -116,7 +123,7 @@ public final class ProjectDuctConverter {
                 syncDisconnectToDefinitiveNeighbors(level, pos, disconnected);
             }
             duct.refreshFromWorld();
-            level.sendBlockUpdated(pos, placedState, placedState, Block.UPDATE_ALL);
+            // Client BE/packet notify is deferred to the convert batch (see ProjectDuctConvertJobs).
         }
         return true;
     }
