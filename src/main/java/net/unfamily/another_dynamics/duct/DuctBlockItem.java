@@ -57,19 +57,18 @@ public final class DuctBlockItem extends BlockItem {
                 BlockEntity entity = level.getBlockEntity(pos);
                 if (entity instanceof DuctBlockEntity ductBE) {
                     ItemStack stack = context.getItemInHand();
-                    if (DuctReplaceHelper.isSameDuctType(ductBE, stack)) {
-                        return super.useOn(context);
-                    }
-                    String newLogicalId = DuctReplaceHelper.logicalIdFromReplacementItem(stack);
-                    if (newLogicalId == null) {
-                        newLogicalId = defaultLogicalId;
-                    }
                     if (level.isClientSide()) {
                         return InteractionResult.SUCCESS;
                     }
                     ductBE.refreshFromWorld();
-                    return DuctReplaceHelper.tryReplace(
-                            context.getPlayer(), level, pos, ductBE, newLogicalId, context.getHand());
+                    InteractionResult replaceResult =
+                            DuctReplaceHelper.handleShiftReplace(
+                                    context.getPlayer(), level, pos, ductBE, stack, context.getHand());
+                    // Never place adjacent while Shift+duct on a duct — TRY_WITH_EMPTY_HAND would place.
+                    if (replaceResult == InteractionResult.TRY_WITH_EMPTY_HAND) {
+                        return InteractionResult.FAIL;
+                    }
+                    return replaceResult;
                 }
             } else if (state.getBlock() instanceof ProjectDuctBlock) {
                 if (level.isClientSide()) {

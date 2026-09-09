@@ -412,17 +412,10 @@ public class DuctBlock extends AbstractDuctBlock {
                 if (!DuctReplaceHelper.isDuctReplacementCandidate(stack)) {
                     return InteractionResult.TRY_WITH_EMPTY_HAND;
                 }
-                if (DuctReplaceHelper.isSameDuctType(duct, stack)) {
-                    return InteractionResult.TRY_WITH_EMPTY_HAND;
-                }
                 if (level.isClientSide()) {
                     return InteractionResult.SUCCESS;
                 }
-                String newLogicalId = DuctReplaceHelper.logicalIdFromReplacementItem(stack);
-                if (newLogicalId == null) {
-                    return InteractionResult.TRY_WITH_EMPTY_HAND;
-                }
-                return DuctReplaceHelper.tryReplace(player, level, pos, duct, newLogicalId, hand);
+                return DuctReplaceHelper.handleShiftReplace(player, level, pos, duct, stack, hand);
             }
             Optional<Direction> face = resolveInteractableStorageNodeFace(level, pos, hitResult, player, duct);
             if (face.isEmpty()) {

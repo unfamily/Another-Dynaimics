@@ -1,8 +1,18 @@
 package net.unfamily.another_dynamics.duct;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -13,12 +23,15 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.unfamily.another_dynamics.Config;
+import net.unfamily.another_dynamics.duct.logistics.DuctNetworkCache;
 import net.unfamily.another_dynamics.duct.module.DuctModuleEffects;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctConvertJobs;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctConverter;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctNetwork;
+import net.unfamily.another_dynamics.duct.project.ProjectDuctVisualAdjacency;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
-
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Optional;
+import net.unfamily.another_dynamics.registry.ModItems;
 
 /**
  * Handles Shift+right-click replacement of a placed duct with a compatible duct item from the player's hand.
@@ -31,9 +44,19 @@ import java.util.Optional;
  *   <li>For every face × lane (item/fluid/gas): every filter bank's current entry count must not exceed
  *       the new effective capacity (new transport spec + existing module bonuses).</li>
  * </ol>
+ *
+ * <p>Triple-Shift on the same block within {@link DuctReplaceArm#ARM_TICKS}: (1) single replace, (2) project
+ * ducts reachable via visual pipe links, (3) all compatible definitive ducts in the pipe component.
  */
 public final class DuctReplaceHelper {
     private DuctReplaceHelper() {}
+
+    public enum CompatFail {
+        UNKNOWN_TYPE,
+        INCOMPATIBLE_TYPES,
+        MODULE_SLOTS,
+        FILTER_SLOTS
+    }
 
     public static boolean isDuctReplacementCandidate(ItemStack stack) {
         if (stack.isEmpty()) {
@@ -70,6 +93,250 @@ public final class DuctReplaceHelper {
     }
 
     /**
+     * Shift+duct item on a definitive duct: single replace, or armed stage 2/3 mass actions.
+     * Same-type clicks are accepted while {@link DuctReplaceArm} matches so the triple-Shift chain works.
+     */
+    public static InteractionResult handleShiftReplace(
+            Player player,
+            Level level,
+            BlockPos pos,
+            DuctBlockEntity ductBE,
+            ItemStack stack,
+            InteractionHand hand) {
+        if (level.isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+        if (!(level instanceof ServerLevel serverLevel) || !(player instanceof ServerPlayer serverPlayer)) {
+            return InteractionResult.FAIL;
+        }
+        if (ProjectDuctConvertJobs.hasActiveJob(serverPlayer, serverLevel)
+                || DuctReplaceJobs.hasActiveJob(serverPlayer, serverLevel)) {
+            actionBar(serverPlayer, Component.translatable("another_dynamics.duct_replace.in_progress"));
+            return InteractionResult.CONSUME;
+        }
+
+        String newLogicalId = logicalIdFromReplacementItem(stack);
+        if (newLogicalId == null || newLogicalId.isEmpty()) {
+            return InteractionResult.TRY_WITH_EMPTY_HAND;
+        }
+        newLogicalId = DuctIds.normalize(newLogicalId);
+
+        DuctReplaceArm.Arm arm = DuctReplaceArm.matching(serverPlayer, serverLevel, pos, newLogicalId);
+        if (arm != null && arm.stage() == 1) {
+            return runStage2ProjectConvert(serverPlayer, serverLevel, pos, newLogicalId);
+        }
+        if (arm != null && arm.stage() == 2) {
+            return runStage3MassReplace(serverPlayer, serverLevel, pos, ductBE, newLogicalId, hand);
+        }
+
+        String currentLogicalId = ductBE.getLogicalDuctId();
+        // Already the target type: skip single-block replace; first Shift starts stage 2 (project), second does stage 3.
+        if (currentLogicalId.equals(newLogicalId)) {
+            return runStage2ProjectConvert(serverPlayer, serverLevel, pos, newLogicalId);
+        }
+
+        InteractionResult result = tryReplace(player, level, pos, ductBE, newLogicalId, hand);
+        if (result == InteractionResult.CONSUME) {
+            DuctReplaceArm.arm(serverPlayer, serverLevel, pos, newLogicalId, 1);
+            actionBar(serverPlayer, Component.translatable("another_dynamics.duct_replace.arm_project_hint"));
+        }
+        return result;
+    }
+
+    private static InteractionResult runStage2ProjectConvert(
+            ServerPlayer player, ServerLevel level, BlockPos anchor, String logicalId) {
+        int maxJob = Config.projectDuctConvertMaxPerJob();
+        List<BlockPos> discovered = discoverReachableProjectDucts(level, anchor, maxJob + 1);
+        boolean moreBeyondJob = discovered.size() > maxJob;
+        List<BlockPos> targets = moreBeyondJob ? discovered.subList(0, maxJob) : discovered;
+
+        if (targets.isEmpty()) {
+            actionBar(player, Component.translatable("another_dynamics.duct_replace.no_project_ducts"));
+            DuctReplaceArm.arm(player, level, anchor, logicalId, 2);
+            actionBar(player, Component.translatable("another_dynamics.duct_replace.arm_definitive_hint"));
+            return InteractionResult.CONSUME;
+        }
+
+        if (!player.isCreative()) {
+            ItemStack template = ModItems.createDuctStack(logicalId);
+            if (ProjectDuctConverter.countMatchingItems(player, template) <= 0) {
+                actionBar(player, Component.translatable(
+                                "another_dynamics.project_duct.convert.partial", 0, targets.size()));
+                return InteractionResult.FAIL;
+            }
+        }
+
+        ProjectDuctConvertJobs.startAndRunFirstBatch(
+                player, level, anchor, logicalId, targets, moreBeyondJob);
+        long jobSlack =
+                (long) Math.ceil((double) targets.size() / Math.max(1, Config.projectDuctConvertBatchSize()))
+                        * Config.projectDuctConvertTickInterval();
+        DuctReplaceArm.armUntil(
+                player,
+                level,
+                anchor,
+                logicalId,
+                2,
+                level.getGameTime() + DuctReplaceArm.ARM_TICKS + jobSlack);
+        actionBar(player, Component.translatable("another_dynamics.duct_replace.arm_definitive_hint"));
+        return InteractionResult.CONSUME;
+    }
+
+    private static InteractionResult runStage3MassReplace(
+            ServerPlayer player,
+            ServerLevel level,
+            BlockPos anchor,
+            DuctBlockEntity anchorBe,
+            String logicalId,
+            InteractionHand hand) {
+        DuctReplaceArm.clear(player);
+        int maxJob = Config.projectDuctConvertMaxPerJob();
+        List<BlockPos> discovered = discoverCompatibleDefinitiveTargets(level, anchor, anchorBe, logicalId, maxJob + 1);
+        boolean moreBeyondJob = discovered.size() > maxJob;
+        List<BlockPos> targets = moreBeyondJob ? new ArrayList<>(discovered.subList(0, maxJob)) : discovered;
+        if (targets.isEmpty()) {
+            actionBar(player, Component.translatable("another_dynamics.duct_replace.no_compatible_ducts"));
+            return InteractionResult.CONSUME;
+        }
+        int started =
+                DuctReplaceJobs.startAndRunFirstBatch(
+                        player, level, anchor, logicalId, targets, moreBeyondJob, hand);
+        return started > 0 || DuctReplaceJobs.hasActiveJob(player, level)
+                ? InteractionResult.CONSUME
+                : InteractionResult.FAIL;
+    }
+
+    /**
+     * Project ducts reachable from {@code start} walking visual pipe links through project and definitive ducts.
+     */
+    public static List<BlockPos> discoverReachableProjectDucts(Level level, BlockPos start, int maxCollect) {
+        List<BlockPos> out = new ArrayList<>();
+        if (level == null || start == null || maxCollect <= 0) {
+            return out;
+        }
+        Set<BlockPos> seen = new HashSet<>();
+        ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+        queue.add(start);
+        seen.add(start);
+        while (!queue.isEmpty() && out.size() < maxCollect) {
+            BlockPos current = queue.removeFirst();
+            for (Direction direction : Direction.values()) {
+                if (!ProjectDuctVisualAdjacency.isVisualPipeLink(level, current, direction)) {
+                    continue;
+                }
+                BlockPos neighbor = current.relative(direction);
+                if (!seen.add(neighbor)) {
+                    continue;
+                }
+                BlockState neighborState = level.getBlockState(neighbor);
+                if (ProjectDuctNetwork.isProjectDuct(neighborState.getBlock())) {
+                    out.add(neighbor.immutable());
+                    queue.addLast(neighbor);
+                    if (out.size() >= maxCollect) {
+                        break;
+                    }
+                } else if (neighborState.getBlock() instanceof DuctConnectable) {
+                    queue.addLast(neighbor);
+                }
+            }
+        }
+        return out;
+    }
+
+    public static List<BlockPos> discoverCompatibleDefinitiveTargets(
+            ServerLevel level,
+            BlockPos anchor,
+            DuctBlockEntity anchorBe,
+            String targetLogicalId,
+            int maxCollect) {
+        LinkedHashSet<BlockPos> union = new LinkedHashSet<>();
+        EnumSet<DuctNetworkType> nets = EnumSet.noneOf(DuctNetworkType.class);
+        anchorBe
+                .ductDefinition()
+                .map(DuctDefinition::enabledTransportKinds)
+                .orElse(EnumSet.of(DuctTransportKind.ITEM))
+                .forEach(
+                        kind -> {
+                            switch (kind) {
+                                case ITEM -> nets.add(DuctNetworkType.ITEM);
+                                case FLUID -> nets.add(DuctNetworkType.FLUID);
+                                case GAS -> nets.add(DuctNetworkType.GAS);
+                                case ENERGY -> nets.add(DuctNetworkType.ENERGY);
+                                case HEAT -> nets.add(DuctNetworkType.HEAT);
+                            }
+                        });
+        if (nets.isEmpty()) {
+            nets.add(DuctNetworkType.ITEM);
+        }
+        for (DuctNetworkType net : nets) {
+            union.addAll(DuctNetworkCache.connectedDucts(level, anchor, net));
+        }
+        List<BlockPos> out = new ArrayList<>();
+        String target = DuctIds.normalize(targetLogicalId);
+        for (BlockPos pos : union) {
+            if (out.size() >= maxCollect) {
+                break;
+            }
+            if (!(level.getBlockEntity(pos) instanceof DuctBlockEntity be)) {
+                continue;
+            }
+            if (be.getLogicalDuctId().equals(target)) {
+                continue;
+            }
+            if (isCompatible(be, target).isPresent()) {
+                continue;
+            }
+            out.add(pos.immutable());
+        }
+        return out;
+    }
+
+    /** Empty = compatible; otherwise the first failure reason. */
+    public static Optional<CompatFail> isCompatible(DuctBlockEntity ductBE, String newLogicalId) {
+        newLogicalId = DuctIds.normalize(newLogicalId);
+        if (newLogicalId == null || newLogicalId.isEmpty()) {
+            newLogicalId = DuctIds.DEFAULT_LOGICAL_ID;
+        }
+        Optional<DuctDefinition> newDefOpt = DuctDefinitionRegistry.getByLogicalId(newLogicalId);
+        if (newDefOpt.isEmpty()) {
+            return Optional.of(CompatFail.UNKNOWN_TYPE);
+        }
+        DuctDefinition newDef = newDefOpt.get();
+        Optional<DuctDefinition> currentDefOpt = ductBE.ductDefinition();
+        EnumSet<DuctTransportKind> newKinds = newDef.enabledTransportKinds();
+        EnumSet<DuctTransportKind> currentKinds =
+                currentDefOpt.map(DuctDefinition::enabledTransportKinds).orElse(EnumSet.of(DuctTransportKind.ITEM));
+        if (!newKinds.containsAll(currentKinds)) {
+            return Optional.of(CompatFail.INCOMPATIBLE_TYPES);
+        }
+        int newModuleSlotCount = newDef.moduleSlotCount();
+        for (Direction face : Direction.values()) {
+            DuctFaceLanes lanes = ductBE.getFaceLanes(face);
+            if (countUsedModuleSlots(lanes) > newModuleSlotCount) {
+                return Optional.of(CompatFail.MODULE_SLOTS);
+            }
+            DuctModuleEffects.FilterSlotBonuses bonuses = DuctModuleEffects.filterSlotBonuses(ductBE, face);
+            NodeMode nodeMode = lanes.nodeMode;
+            if (newKinds.contains(DuctTransportKind.ITEM)) {
+                if (!itemFiltersCompatible(lanes.item, newDef.itemTransportOrFallback(), nodeMode, bonuses)) {
+                    return Optional.of(CompatFail.FILTER_SLOTS);
+                }
+            }
+            if (newKinds.contains(DuctTransportKind.FLUID)) {
+                if (!fluidFiltersCompatible(lanes.fluid, newDef.fluidTransportOrFallback(), nodeMode, bonuses)) {
+                    return Optional.of(CompatFail.FILTER_SLOTS);
+                }
+            }
+            if (newKinds.contains(DuctTransportKind.GAS)) {
+                if (!gasFiltersCompatible(lanes.gas, newDef.gasTransportOrFallback(), nodeMode, bonuses)) {
+                    return Optional.of(CompatFail.FILTER_SLOTS);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Entry point called from {@link DuctBlock#useItemOn} on the server side only.
      *
      * @param player     the player performing the action
@@ -90,129 +357,85 @@ public final class DuctReplaceHelper {
 
         String currentLogicalId = ductBE.getLogicalDuctId();
 
-        // Normalize and validate the incoming logical id.
         newLogicalId = DuctIds.normalize(newLogicalId);
         if (newLogicalId == null || newLogicalId.isEmpty()) {
             newLogicalId = DuctIds.DEFAULT_LOGICAL_ID;
         }
 
-        // Same duct type: let vanilla place against this block (shift-click placement).
         if (currentLogicalId.equals(newLogicalId)) {
             return InteractionResult.TRY_WITH_EMPTY_HAND;
         }
 
-        Optional<DuctDefinition> newDefOpt = DuctDefinitionRegistry.getByLogicalId(newLogicalId);
-        if (newDefOpt.isEmpty()) {
-            actionBar(player, Component.translatable("another_dynamics.duct_replace.unknown_type"));
-            return InteractionResult.FAIL;
-        }
-        DuctDefinition newDef = newDefOpt.get();
-
-        Optional<DuctDefinition> currentDefOpt = ductBE.ductDefinition();
-
-        // --- Compatibility check 1: transport kinds ---
-        EnumSet<DuctTransportKind> newKinds = newDef.enabledTransportKinds();
-        EnumSet<DuctTransportKind> currentKinds = currentDefOpt
-                .map(DuctDefinition::enabledTransportKinds)
-                .orElse(EnumSet.of(DuctTransportKind.ITEM));
-
-        if (!newKinds.containsAll(currentKinds)) {
-            actionBar(player, Component.translatable("another_dynamics.duct_replace.incompatible_types"));
+        Optional<CompatFail> fail = isCompatible(ductBE, newLogicalId);
+        if (fail.isPresent()) {
+            actionBar(player, Component.translatable(failMessageKey(fail.get())));
             return InteractionResult.FAIL;
         }
 
-        // --- Compatibility check 2 & 3: per-face module slots and filter banks ---
-        int newModuleSlotCount = newDef.moduleSlotCount();
-        for (Direction face : Direction.values()) {
-            DuctFaceLanes lanes = ductBE.getFaceLanes(face);
+        if (!performReplace(player, level, pos, ductBE, currentLogicalId, newLogicalId, hand, true)) {
+            return InteractionResult.FAIL;
+        }
+        return InteractionResult.CONSUME;
+    }
 
-            // Check module slots
-            int usedModuleSlots = countUsedModuleSlots(lanes);
-            if (usedModuleSlots > newModuleSlotCount) {
-                actionBar(player, Component.translatable("another_dynamics.duct_replace.module_slots_lost"));
-                return InteractionResult.FAIL;
-            }
-
-            // Module bonuses stay identical since the installed modules don't change.
-            DuctModuleEffects.FilterSlotBonuses bonuses = DuctModuleEffects.filterSlotBonuses(ductBE, face);
-            NodeMode nodeMode = lanes.nodeMode;
-
-            // Check item lane filters
-            if (newKinds.contains(DuctTransportKind.ITEM)) {
-                DuctItemTransportSpec newItemSpec = newDef.itemTransportOrFallback();
-                if (!itemFiltersCompatible(lanes.item, newItemSpec, nodeMode, bonuses)) {
-                    actionBar(player, Component.translatable("another_dynamics.duct_replace.filter_slots_lost"));
-                    return InteractionResult.FAIL;
-                }
-            }
-
-            // Check fluid lane filters
-            if (newKinds.contains(DuctTransportKind.FLUID)) {
-                DuctFluidTransportSpec newFluidSpec = newDef.fluidTransportOrFallback();
-                if (!fluidFiltersCompatible(lanes.fluid, newFluidSpec, nodeMode, bonuses)) {
-                    actionBar(player, Component.translatable("another_dynamics.duct_replace.filter_slots_lost"));
-                    return InteractionResult.FAIL;
-                }
-            }
-
-            // Check gas lane filters
-            if (newKinds.contains(DuctTransportKind.GAS)) {
-                DuctGasTransportSpec newGasSpec = newDef.gasTransportOrFallback();
-                if (!gasFiltersCompatible(lanes.gas, newGasSpec, nodeMode, bonuses)) {
-                    actionBar(player, Component.translatable("another_dynamics.duct_replace.filter_slots_lost"));
-                    return InteractionResult.FAIL;
-                }
-            }
+    /**
+     * Swap logical id + inventory exchange. Returns false if the duct is already the target type.
+     *
+     * @param announceSuccess when true, shows the single-replace success toast (skipped for mass jobs / arm flow)
+     */
+    public static boolean performReplace(
+            Player player,
+            Level level,
+            BlockPos pos,
+            DuctBlockEntity ductBE,
+            String currentLogicalId,
+            String newLogicalId,
+            InteractionHand hand,
+            boolean announceSuccess) {
+        newLogicalId = DuctIds.normalize(newLogicalId);
+        currentLogicalId = DuctIds.normalize(currentLogicalId);
+        if (currentLogicalId.equals(newLogicalId)) {
+            return false;
+        }
+        if (isCompatible(ductBE, newLogicalId).isPresent()) {
+            return false;
         }
 
-        // --- All checks passed: perform the replacement ---
-
-        // Build the drop item for the old duct before changing the id.
         ItemStack oldDuctItem = new ItemStack(level.getBlockState(pos).getBlock().asItem());
         oldDuctItem.set(ModDataComponents.DUCT_LOGICAL_ID.get(), currentLogicalId);
 
-        // Swap the logical id (this also resizes module slot handlers and marks dirty).
         ductBE.setLogicalDuctId(newLogicalId);
-
-        // Clamp filter sizes to the new transport specs (may shrink lists that barely fit, but we
-        // already verified nothing is actually lost above).
         ductBE.clampFaceFiltersToSpec();
 
-        // Force an immediate sync packet to all clients watching this chunk so the new logical id
-        // and model data reach the client before the next chunk tick.
         BlockState currentState = level.getBlockState(pos);
         level.blockEntityChanged(pos);
         level.sendBlockUpdated(pos, currentState, currentState, 3);
 
-        // Consume one item from the player's hand.
         ItemStack handStack = player.getItemInHand(hand);
         if (!player.getAbilities().instabuild) {
             handStack.shrink(1);
         }
 
-        // Return the old duct to the player or drop it.
         if (!player.getInventory().add(oldDuctItem)) {
             Block.popResource(level, pos, oldDuctItem);
         }
 
-        // Play a placement sound as tactile feedback.
-        level.playSound(
-                null,
-                pos,
-                SoundEvents.IRON_TRAPDOOR_CLOSE,
-                SoundSource.BLOCKS,
-                0.5f,
-                1.2f);
+        level.playSound(null, pos, SoundEvents.IRON_TRAPDOOR_CLOSE, SoundSource.BLOCKS, 0.5f, 1.2f);
 
-        if (player instanceof ServerPlayer sp) {
-            sp.sendSystemMessage(
-                    Component.translatable("another_dynamics.duct_replace.success"), true);
+        if (announceSuccess && player instanceof ServerPlayer sp) {
+            actionBar(sp, Component.translatable("another_dynamics.duct_replace.success"));
         }
-
-        return InteractionResult.CONSUME;
+        return true;
     }
 
-    // --- Helpers ---
+    private static String failMessageKey(CompatFail fail) {
+        return switch (fail) {
+            case UNKNOWN_TYPE -> "another_dynamics.duct_replace.unknown_type";
+            case INCOMPATIBLE_TYPES -> "another_dynamics.duct_replace.incompatible_types";
+            case MODULE_SLOTS -> "another_dynamics.duct_replace.module_slots_lost";
+            case FILTER_SLOTS -> "another_dynamics.duct_replace.filter_slots_lost";
+        };
+    }
 
     private static int countUsedModuleSlots(DuctFaceLanes lanes) {
         var handler = lanes.moduleSlots;
@@ -225,10 +448,6 @@ public final class DuctReplaceHelper {
         return count;
     }
 
-    /**
-     * Returns true when the item lane's current filter entry counts all fit within the new spec's
-     * effective capacities (base + existing module bonuses).
-     */
     private static boolean itemFiltersCompatible(
             DuctFaceNode node,
             DuctItemTransportSpec newSpec,
@@ -265,14 +484,6 @@ public final class DuctReplaceHelper {
         return checkAllBanks(node, legacyA, legacyD, bankA, bankD);
     }
 
-    /**
-     * Checks that none of a node's filter lists exceed the given capacity thresholds.
-     *
-     * @param legacyA capacity for the legacy root allow list
-     * @param legacyD capacity for the legacy root deny list
-     * @param bankA   capacity for each multi-bank allow list (EXTRACTOR/RETRIEVER/FILTER)
-     * @param bankD   capacity for each multi-bank deny list
-     */
     private static boolean checkAllBanks(
             DuctFaceNode node, int legacyA, int legacyD, int bankA, int bankD) {
         return fitsIn(node.allowFilters, legacyA)
@@ -285,7 +496,6 @@ public final class DuctReplaceHelper {
                 && fitsIn(node.denyFiltersFilter, bankD);
     }
 
-    /** Returns true when the list's occupied entries (non-blank strings) fit within {@code capacity}. */
     private static boolean fitsIn(List<String> list, int capacity) {
         long nonEmpty = list.stream().filter(s -> s != null && !s.isBlank()).count();
         return nonEmpty <= capacity;

@@ -13,6 +13,8 @@ public final class Config {
 
     public static final ModConfigSpec.BooleanValue DUCT_GLOBAL_STALL_DRAIN_GUARD;
     public static final ModConfigSpec.IntValue DUCT_STALL_SLOTS;
+    /** Client BER view distance for in-duct transit ghosts. */
+    public static final ModConfigSpec.IntValue DUCT_TRANSIT_RENDER_DISTANCE;
 
     /** Batch size per convert pulse while a progressive Project Duct job runs. */
     public static final ModConfigSpec.IntValue PROJECT_DUCT_CONVERT_MAX_PER_ACTION;
@@ -69,6 +71,11 @@ public final class Config {
                                         + "busy threshold. Applies to newly created ducts; existing blocks keep their "
                                         + "saved buffer size until rebuilt.")
                         .defineInRange("101_ductStallSlots", 5, 1, 27);
+        DUCT_TRANSIT_RENDER_DISTANCE =
+                BUILDER.comment(
+                                "Client max view distance (blocks) for duct transit ghosts (items/fluids/gas). "
+                                        + "Effective distance is min(this, Minecraft render distance in blocks).")
+                        .defineInRange("102_ductTransitRenderDistance", 38, 16, 256);
 
         // Project Duct convert — keys 200–299 only
         PROJECT_DUCT_CONVERT_MAX_PER_ACTION =
@@ -107,6 +114,11 @@ public final class Config {
     /** Effective stall slot count from config (clamped). */
     public static int ductStallSlots() {
         return DUCT_STALL_SLOTS.get();
+    }
+
+    /** Configured transit BER max view distance in blocks (before client render-distance cap). */
+    public static int ductTransitRenderDistance() {
+        return DUCT_TRANSIT_RENDER_DISTANCE.get();
     }
 
     /** Conversions per pulse during a progressive Project Duct convert job (at least 1). */

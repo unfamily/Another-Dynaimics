@@ -204,7 +204,7 @@ public final class DuctEnergyServerTick {
             return;
         }
         BlockPos srcPos = sourceBe.getBlockPos();
-        var ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.ENERGY);
+        var ducts = DuctNetworkCache.storageAttachmentMembers(level, srcPos, DuctNetworkType.ENERGY);
         if (ducts.isEmpty()) {
             return;
         }
@@ -354,7 +354,8 @@ public final class DuctEnergyServerTick {
         }
         int budget = outFree > 0 ? Math.min(want, outFree) : want;
 
-        List<BlockPos> ducts = new ArrayList<>(DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.ENERGY));
+        List<BlockPos> ducts =
+                new ArrayList<>(DuctNetworkCache.storageAttachmentMembers(level, retrieverPos, DuctNetworkType.ENERGY));
         if (ducts.isEmpty()) {
             return;
         }

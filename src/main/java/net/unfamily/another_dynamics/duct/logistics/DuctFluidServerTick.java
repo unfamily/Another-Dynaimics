@@ -358,70 +358,46 @@ public final class DuctFluidServerTick {
             @Nullable Direction forbidSelfDonorFace,
             DuctFluidTransportSpec spec) {
         ArrayList<DuctTargetSelector.DonorCandidate> cands = new ArrayList<>();
-        for (BlockPos p : DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.FLUID)) {
+        List<DuctRoutingEndpointIndex.ScoredEndpoint> scored =
+                DuctRoutingEndpointIndex.listScoredDonors(
+                        level,
+                        retrieverPos,
+                        DuctNetworkType.FLUID,
+                        DuctTransportKind.FLUID,
+                        spec.edgeTravelTicks(),
+                        retrieverFluidChannel,
+                        forbidSelfDonorFace,
+                        allowSelfDonor,
+                        retrieverInventoryFace,
+                        false);
+        for (DuctRoutingEndpointIndex.ScoredEndpoint s : scored) {
+            DuctRoutingEndpointIndex.RoutingEndpoint ep = s.endpoint();
+            BlockPos p = ep.pos();
+            Direction d = ep.face();
             if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 continue;
             }
-            int sm = be.getStorageMask();
-            for (Direction d : Direction.values()) {
-                if ((sm & (1 << d.ordinal())) == 0) {
-                    continue;
-                }
-                if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
-                    continue;
-                }
-                if (!allowSelfDonor
-                        && DuctSameBlockRouting.skipSameBlockDonorFace(
-                                retrieverPos, retrieverInventoryFace, p, d)) {
-                    continue;
-                }
-                if (!be.isTransportKindEnabled(d, DuctTransportKind.FLUID)) {
-                    continue;
-                }
-                DuctFaceLanes donorLanes = be.getFaceLanes(d);
-                DuctFaceNode donorFluid = donorLanes.fluid;
-                if (!DuctRedstoneLogic.isFaceTransportActive(level, p, donorLanes.redstoneMode)) {
-                    continue;
-                }
-                NodeMode donorMode = donorLanes.nodeMode;
-                if (donorMode != NodeMode.NONE && donorMode != NodeMode.FILTERING_INSERTION) {
-                    continue;
-                }
-                if (!donorFluid.eligibilityMode.isRetrievable()) {
-                    continue;
-                }
-                if (!DuctChannelPolicy.sameChannel(donorFluid.channelLetter, retrieverFluidChannel)) {
-                    continue;
-                }
-                IFluidHandler srcCap =
-                        DuctFluidCapHelper.blockHandler(level, p.relative(d), d.getOpposite());
-                if (srcCap == null) {
-                    continue;
-                }
-                int probeMax = spec.clampedBatchMb(Math.max(spec.batchDefaultMb(), 1000));
-                FluidStack sample = DuctFluidCapHelper.drainProbe(srcCap, probeMax);
-                if (sample.isEmpty()) {
-                    continue;
-                }
-                if (donorMode == NodeMode.FILTERING_INSERTION
-                        && !DuctFluidFilterLogic.passesFluidFiltersForBank(
-                                donorFluid, DuctFaceNode.FilterBank.FILTER, sample, level)) {
-                    continue;
-                }
-                if (DuctFluidCapHelper.simulateFill(retrieverDestCap, sample) <= 0) {
-                    continue;
-                }
-                OptionalLong dist =
-                        p.equals(retrieverPos)
-                                ? OptionalLong.of(0L)
-                                : DuctNetworkCache.routingTravelTicks(
-                                        level, retrieverPos, p, spec.edgeTravelTicks(), DuctNetworkType.FLUID);
-                if (dist.isEmpty()) {
-                    continue;
-                }
-                cands.add(
-                        new DuctTargetSelector.DonorCandidate(p, d, donorFluid.insertionPriority, dist.getAsLong()));
+            DuctFaceLanes donorLanes = be.getFaceLanes(d);
+            DuctFaceNode donorFluid = donorLanes.fluid;
+            NodeMode donorMode = donorLanes.nodeMode;
+            IFluidHandler srcCap = DuctFluidCapHelper.blockHandler(level, p.relative(d), d.getOpposite());
+            if (srcCap == null) {
+                continue;
             }
+            int probeMax = spec.clampedBatchMb(Math.max(spec.batchDefaultMb(), 1000));
+            FluidStack sample = DuctFluidCapHelper.drainProbe(srcCap, probeMax);
+            if (sample.isEmpty()) {
+                continue;
+            }
+            if (donorMode == NodeMode.FILTERING_INSERTION
+                    && !DuctFluidFilterLogic.passesFluidFiltersForBank(
+                            donorFluid, DuctFaceNode.FilterBank.FILTER, sample, level)) {
+                continue;
+            }
+            if (DuctFluidCapHelper.simulateFill(retrieverDestCap, sample) <= 0) {
+                continue;
+            }
+            cands.add(new DuctTargetSelector.DonorCandidate(p, d, donorFluid.insertionPriority, s.distTicks()));
         }
         if (cands.isEmpty()) {
             return List.of();

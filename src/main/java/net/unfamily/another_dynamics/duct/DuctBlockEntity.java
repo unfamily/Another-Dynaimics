@@ -1265,11 +1265,28 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
+    /** Soft connection refresh stagger: geometry/attachments rely on neighborChanged; this catches rare soft caps. */
+    private static final int CONNECTION_REFRESH_STAGGER_TICKS = 40;
+    /** Idle pipes (no logistics work): rarer soft refresh; storage attachments stay on {@link #CONNECTION_REFRESH_STAGGER_TICKS}. */
+    private static final int CONNECTION_REFRESH_STAGGER_IDLE_TICKS = 100;
+
     public void serverTickPipe(ServerLevel serverLevel) {
         if (isRemoved()) {
             return;
         }
-        refreshFromWorld();
+        long staggerKey = serverLevel.getGameTime() + worldPosition.asLong();
+        boolean idlePipe = !hasAnyTickableLogisticsWork();
+        int refreshStagger = idlePipe ? CONNECTION_REFRESH_STAGGER_IDLE_TICKS : CONNECTION_REFRESH_STAGGER_TICKS;
+        if (staggerKey % refreshStagger == 0L) {
+            refreshFromWorld();
+        }
+        if (staggerKey % 600L == 0L) {
+            ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
+        }
+        // Pure pipe segments: skip logistics scaffolding every tick (refresh is staggered above).
+        if (idlePipe) {
+            return;
+        }
         // Opportunistically drain any stalled buffers back into their source handlers (items/fluids/gas).
         // This keeps ducts from staying visually/physically stalled when the attached storage becomes available again.
         drainFaceStallsToSource(serverLevel);
@@ -1331,9 +1348,31 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctGasServerTick.tick(this, serverLevel);
         DuctEnergyServerTick.tick(this, serverLevel);
         DuctHeatServerTick.tick(this, serverLevel);
-        if ((serverLevel.getGameTime() + worldPosition.asLong()) % 600L == 0L) {
-            ensureFaceLaneModuleSlotCapacitiesMatchDefinition();
+    }
+
+    /**
+     * True when this duct needs the full logistics tick path (storage faces, in-flight media, stalls, overflow).
+     * Pipe-only idle ducts return false so {@link #serverTickPipe} can early-out.
+     */
+    private boolean hasAnyTickableLogisticsWork() {
+        if (isStorageAttachmentNode()) {
+            return true;
         }
+        if (!outboundShipments.isEmpty()
+                || !fluidTransitShipments.isEmpty()
+                || !gasTransitShipments.isEmpty()
+                || !migratedStorageBacklog.isEmpty()) {
+            return true;
+        }
+        if (overflowBuffer.nonEmptyLineCount() > 0) {
+            return true;
+        }
+        for (Direction face : Direction.values()) {
+            if (faceHasBufferedContent(face)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void drainFaceStallsToSource(ServerLevel level) {
@@ -1516,9 +1555,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 sends++;
                 drained = true;
             }
-            if (sends > 0) {
-                nonItemStallDrainFaceCooldown[ord] = NON_ITEM_STALL_DRAIN_SCAN_INTERVAL;
-            }
+            // Throttle on every scan (success or no-progress), same as item stall drain.
+            nonItemStallDrainFaceCooldown[ord] = NON_ITEM_STALL_DRAIN_SCAN_INTERVAL;
         }
         if (drained) {
             syncStallVisualIfNeeded();

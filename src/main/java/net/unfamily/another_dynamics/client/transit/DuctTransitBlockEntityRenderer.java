@@ -6,6 +6,7 @@ import java.util.List;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -87,6 +88,15 @@ public final class DuctTransitBlockEntityRenderer
     }
 
     @Override
+    public boolean shouldRender(DuctBlockEntity tile, Vec3 cameraPos) {
+        BlockPos origin = tile.getBlockPos();
+        if (!DuctTransitRenderCulling.hasAnyVisuals(origin)) {
+            return false;
+        }
+        return DuctTransitRenderCulling.isWithinRenderDistance(origin, cameraPos);
+    }
+
+    @Override
     public void extractRenderState(
             DuctBlockEntity tile,
             TransitRenderState state,
@@ -105,6 +115,10 @@ public final class DuctTransitBlockEntityRenderer
         }
 
         BlockPos origin = tile.getBlockPos();
+        if (!DuctTransitRenderCulling.hasAnyVisuals(origin)) {
+            return;
+        }
+
         List<DuctTransitVisual> visuals = DuctTransitClientState.visualsAt(origin);
         List<DuctFluidTransitVisual> fluidVisuals = DuctFluidTransitClientState.visualsAt(origin);
         List<DuctGasTransitVisual> gasVisuals = DuctGasTransitClientState.visualsAt(origin);
@@ -112,6 +126,7 @@ public final class DuctTransitBlockEntityRenderer
             return;
         }
 
+        Camera camera = mc.gameRenderer.getMainCamera();
         float spinBase = (level.getGameTime() + partialTick) * 3.0f;
         int defaultOverlay = state.lightCoords != 0 ? OverlayTexture.NO_OVERLAY : OverlayTexture.NO_OVERLAY;
 
@@ -121,6 +136,9 @@ public final class DuctTransitBlockEntityRenderer
                 continue;
             }
             Vec3 world = v.positionAt(0f, level, partialTick);
+            if (!DuctTransitRenderCulling.isGhostVisible(world, camera, null)) {
+                continue;
+            }
             ItemEntry entry = new ItemEntry();
             entry.dx = world.x - origin.getX();
             entry.dy = world.y - origin.getY();
@@ -145,6 +163,9 @@ public final class DuctTransitBlockEntityRenderer
                 continue;
             }
             Vec3 world = fv.positionAt(0f, level, partialTick);
+            if (!DuctTransitRenderCulling.isGhostVisible(world, camera, null)) {
+                continue;
+            }
             BlockPos lightPos = BlockPos.containing(world);
             state.fluids.add(
                     new FluidEntry(
@@ -162,6 +183,9 @@ public final class DuctTransitBlockEntityRenderer
                 continue;
             }
             Vec3 world = gv.positionAt(0f, level, partialTick);
+            if (!DuctTransitRenderCulling.isGhostVisible(world, camera, null)) {
+                continue;
+            }
             BlockPos lightPos = BlockPos.containing(world);
             state.gases.add(
                     new GasEntry(
@@ -215,6 +239,6 @@ public final class DuctTransitBlockEntityRenderer
 
     @Override
     public int getViewDistance() {
-        return 256;
+        return (int) Math.ceil(DuctTransitRenderCulling.effectiveRenderDistance());
     }
 }

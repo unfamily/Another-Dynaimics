@@ -540,77 +540,65 @@ public final class DuctGasServerTick {
             DuctGasTransportSpec spec,
             Set<BlockPos> radioactiveGasSubnet) {
         ArrayList<DuctTargetSelector.DonorCandidate> cands = new ArrayList<>();
-        for (BlockPos p : DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.GAS)) {
+        List<DuctRoutingEndpointIndex.ScoredEndpoint> scored =
+                DuctRoutingEndpointIndex.listScoredDonors(
+                        level,
+                        retrieverPos,
+                        DuctNetworkType.GAS,
+                        DuctTransportKind.GAS,
+                        spec.edgeTravelTicks(),
+                        retrieverGasChannel,
+                        forbidSelfDonorFace,
+                        allowSelfDonor,
+                        retrieverInventoryFace,
+                        false);
+        for (DuctRoutingEndpointIndex.ScoredEndpoint s : scored) {
+            DuctRoutingEndpointIndex.RoutingEndpoint ep = s.endpoint();
+            BlockPos p = ep.pos();
+            Direction d = ep.face();
             if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
                 continue;
             }
-            int sm = be.getStorageMask();
-            for (Direction d : Direction.values()) {
-                if ((sm & (1 << d.ordinal())) == 0) {
-                    continue;
-                }
-                if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
-                    continue;
-                }
-                if (!allowSelfDonor
-                        && DuctSameBlockRouting.skipSameBlockDonorFace(
-                                retrieverPos, retrieverInventoryFace, p, d)) {
-                    continue;
-                }
-                if (!be.isTransportKindEnabled(d, DuctTransportKind.GAS)) {
-                    continue;
-                }
-                DuctFaceLanes donorLanes = be.getFaceLanes(d);
-                DuctFaceNode donorGas = donorLanes.gas;
-                if (!DuctRedstoneLogic.isFaceTransportActive(level, p, donorLanes.redstoneMode)) {
-                    continue;
-                }
-                NodeMode donorMode = donorLanes.nodeMode;
-                if (donorMode != NodeMode.NONE && donorMode != NodeMode.FILTERING_INSERTION) {
-                    continue;
-                }
-                if (!donorGas.eligibilityMode.isRetrievable()) {
-                    continue;
-                }
-                if (!DuctChannelPolicy.sameChannel(donorGas.channelLetter, retrieverGasChannel)) {
-                    continue;
-                }
-                Object srcH = MekanismChemicalCompat.getChemicalHandlerOnFace(level, p, d);
-                if (srcH == null) {
-                    continue;
-                }
-                long probeMax = spec.clampedBatch(Math.max(spec.batchDefault(), 1024L));
-                Object sample = MekanismChemicalCompat.drainProbe(srcH, probeMax);
-                if (MekanismChemicalCompat.isEmptyStack(sample)) {
-                    continue;
-                }
-                if (donorMode == NodeMode.FILTERING_INSERTION
-                        && !DuctGasFilterLogic.passesGasFiltersForBank(
-                                donorGas, DuctFaceNode.FilterBank.FILTER, sample, level)) {
-                    continue;
-                }
-                if (MekanismChemicalCompat.simulateInsert(retrieverDestHandler, sample) <= 0) {
-                    continue;
-                }
-                boolean radioactiveSample = MekanismChemicalCompat.isRadioactive(sample);
-                if (radioactiveSample && !radioactiveGasSubnet.contains(p)) {
-                    continue;
-                }
+            DuctFaceLanes donorLanes = be.getFaceLanes(d);
+            DuctFaceNode donorGas = donorLanes.gas;
+            NodeMode donorMode = donorLanes.nodeMode;
+            Object srcH = MekanismChemicalCompat.getChemicalHandlerOnFace(level, p, d);
+            if (srcH == null) {
+                continue;
+            }
+            long probeMax = spec.clampedBatch(Math.max(spec.batchDefault(), 1024L));
+            Object sample = MekanismChemicalCompat.drainProbe(srcH, probeMax);
+            if (MekanismChemicalCompat.isEmptyStack(sample)) {
+                continue;
+            }
+            if (donorMode == NodeMode.FILTERING_INSERTION
+                    && !DuctGasFilterLogic.passesGasFiltersForBank(
+                            donorGas, DuctFaceNode.FilterBank.FILTER, sample, level)) {
+                continue;
+            }
+            if (MekanismChemicalCompat.simulateInsert(retrieverDestHandler, sample) <= 0) {
+                continue;
+            }
+            boolean radioactiveSample = MekanismChemicalCompat.isRadioactive(sample);
+            if (radioactiveSample && !radioactiveGasSubnet.contains(p)) {
+                continue;
+            }
+            long distTicks = s.distTicks();
+            if (radioactiveSample && !p.equals(retrieverPos)) {
                 OptionalLong dist =
-                        p.equals(retrieverPos)
-                                ? OptionalLong.of(0L)
-                                : DuctNetworkCache.routingTravelTicks(
-                                        level,
-                                        retrieverPos,
-                                        p,
-                                        spec.edgeTravelTicks(),
-                                        DuctNetworkType.GAS,
-                                        radioactiveSample);
+                        DuctNetworkCache.routingTravelTicks(
+                                level,
+                                retrieverPos,
+                                p,
+                                spec.edgeTravelTicks(),
+                                DuctNetworkType.GAS,
+                                true);
                 if (dist.isEmpty()) {
                     continue;
                 }
-                cands.add(new DuctTargetSelector.DonorCandidate(p, d, donorGas.insertionPriority, dist.getAsLong()));
+                distTicks = dist.getAsLong();
             }
+            cands.add(new DuctTargetSelector.DonorCandidate(p, d, donorGas.insertionPriority, distTicks));
         }
         if (cands.isEmpty()) {
             return List.of();
