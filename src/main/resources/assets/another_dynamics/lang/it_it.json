@@ -436,7 +436,7 @@
   "gui.another_dynamics.sequential_buffer.enabled": "Attiva",
   "gui.another_dynamics.sequential_buffer.disabled": "Disattiva",
   "gui.another_dynamics.sequential_buffer.inactive_click_d": "Per attivarla clicca il tasto D.",
-  "gui.another_dynamics.sequential_buffer.enable_needs_tasks": "Imposta delle task alla sequenza per poterla attivare.",
+  "gui.another_dynamics.sequential_buffer.enable_needs_tasks": "Imposta delle task per poter attivare la lista.",
   "gui.another_dynamics.sequential_buffer.valid_keys": "Chiavi valide",
   "gui.another_dynamics.sequential_buffer.filter": "Filtro",
   "gui.another_dynamics.sequential_buffer.amount": "Quantità",
