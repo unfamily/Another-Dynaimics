@@ -5,7 +5,7 @@ import java.util.EnumSet;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -32,6 +32,7 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
+import net.unfamily.another_dynamics.duct.logistics.DuctNetworkCache;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 /**
@@ -164,21 +165,53 @@ public abstract class AbstractDuctBlock extends Block implements EntityBlock, Du
     @Override
     public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
         super.onPlace(state, level, pos, oldState, movedByPiston);
-        refreshAt(level, pos);
-        notifySameNetworkNeighbors(level, pos);
-        refreshAdjacentProjectDuctVisuals(level, pos);
-        if (!level.isClientSide() && level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-            net.unfamily.another_dynamics.duct.DuctNetworkOpaquePropagation.onStructuralChange(serverLevel, pos);
+        if (!level.isClientSide() && level instanceof ServerLevel serverLevel) {
+            // One topology invalidate for self+neighbors; opaque paint is deferred/time-sliced.
+            DuctNetworkCache.pushBulkMutation();
+            try {
+                refreshAt(level, pos);
+                notifySameNetworkNeighbors(level, pos);
+            } finally {
+                DuctNetworkCache.popBulkMutation();
+            }
+            DuctNetworkCache.invalidate(serverLevel);
+            DuctNetworkOpaquePropagation.scheduleOpaqueRefresh(serverLevel, pos);
+        } else {
+            refreshAt(level, pos);
+            notifySameNetworkNeighbors(level, pos);
         }
+        refreshAdjacentProjectDuctVisuals(level, pos);
     }
 
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
         if (!state.is(newState.getBlock())) {
-            notifySameNetworkNeighbors(level, pos);
+            if (!level.isClientSide() && level instanceof ServerLevel serverLevel) {
+                DuctNetworkCache.pushBulkMutation();
+                try {
+                    notifySameNetworkNeighbors(level, pos);
+                } finally {
+                    DuctNetworkCache.popBulkMutation();
+                }
+                DuctNetworkCache.invalidate(serverLevel);
+                scheduleOpaqueFromNeighbor(serverLevel, pos);
+            } else {
+                notifySameNetworkNeighbors(level, pos);
+            }
             refreshAdjacentProjectDuctVisuals(level, pos);
         }
         super.onRemove(state, level, pos, newState, movedByPiston);
+    }
+
+    /** Prefer a still-present neighbor as opaque BFS seed after this duct is removed. */
+    private static void scheduleOpaqueFromNeighbor(ServerLevel level, BlockPos removed) {
+        for (Direction d : Direction.values()) {
+            BlockPos n = removed.relative(d);
+            if (level.getBlockState(n).getBlock() instanceof DuctConnectable) {
+                DuctNetworkOpaquePropagation.scheduleOpaqueRefresh(level, n);
+                return;
+            }
+        }
     }
 
     @Override

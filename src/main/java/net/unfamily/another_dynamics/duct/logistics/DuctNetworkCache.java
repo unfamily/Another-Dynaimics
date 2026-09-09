@@ -267,6 +267,9 @@ public final class DuctNetworkCache {
     private static Set<BlockPos> discoverComponent(
             ServerLevel level, BlockPos start, DuctNetworkType network, boolean radioactiveGasSubgraph) {
         Set<BlockPos> out = new HashSet<>();
+        if (!level.isLoaded(start)) {
+            return out;
+        }
         ArrayDeque<BlockPos> queue = new ArrayDeque<>();
         queue.add(start);
         out.add(start);
@@ -274,6 +277,9 @@ public final class DuctNetworkCache {
             BlockPos p = queue.poll();
             for (BlockPos n : neighbors6(p)) {
                 if (out.contains(n)) {
+                    continue;
+                }
+                if (!level.isLoaded(n)) {
                     continue;
                 }
                 if (!isPipeEdge(level, p, n, network, radioactiveGasSubgraph)) {
