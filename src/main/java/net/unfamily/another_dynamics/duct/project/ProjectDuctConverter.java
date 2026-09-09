@@ -18,6 +18,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.AbstractDuctBlock;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
@@ -30,6 +31,8 @@ import net.unfamily.another_dynamics.registry.ModBlocks;
 import net.unfamily.another_dynamics.registry.ModItems;
 
 import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Converts a connected project-duct network into definitive ducts (one item per converted block).
@@ -64,10 +67,15 @@ public final class ProjectDuctConverter {
         }
 
         ItemStack template = ModItems.createDuctStack(logicalId);
-        List<BlockPos> targets = ProjectDuctNetwork.connectedOrdered(level, anchor);
-        int budget = player.isCreative() ? targets.size() : countMatchingItems(player, template);
+        int maxPerAction = Config.projectDuctConvertMaxPerAction();
+        List<BlockPos> discovered = ProjectDuctNetwork.connectedOrdered(level, anchor, maxPerAction + 1);
+        boolean moreRemain = discovered.size() > maxPerAction;
+        List<BlockPos> targets =
+                moreRemain ? discovered.subList(0, maxPerAction) : discovered;
+        int inventoryBudget = player.isCreative() ? targets.size() : countMatchingItems(player, template);
+        int budget = Math.min(inventoryBudget, targets.size());
         int converted = 0;
-        java.util.List<BlockPos> convertedPositions = new java.util.ArrayList<>();
+        java.util.List<BlockPos> convertedPositions = new java.util.ArrayList<>(budget);
         for (BlockPos pos : targets) {
             if (budget <= 0) {
                 break;
@@ -80,8 +88,8 @@ public final class ProjectDuctConverter {
                     if (!consumeOneMatching(player, template)) {
                         break;
                     }
-                    budget--;
                 }
+                budget--;
             }
         }
 
@@ -90,16 +98,27 @@ public final class ProjectDuctConverter {
         }
 
         DuctNetworkCache.invalidate(serverLevel);
+        Set<BlockPos> refreshDone = new HashSet<>();
+        EnumSet<DuctNetworkType> allNetworks = EnumSet.allOf(DuctNetworkType.class);
         for (BlockPos pos : convertedPositions) {
-            AbstractDuctBlock.refreshAdjacentDuctBlockEntities(
-                    serverLevel, pos, EnumSet.allOf(DuctNetworkType.class));
+            if (refreshDone.add(pos.immutable())) {
+                AbstractDuctBlock.refreshAdjacentDuctBlockEntities(serverLevel, pos, allNetworks);
+            }
         }
         ProjectDuctVisualRefresh.refreshAround(serverLevel, anchor);
 
         if (player instanceof ServerPlayer sp) {
-            if (converted < targets.size()) {
+            boolean hitActionCap = moreRemain && converted >= maxPerAction;
+            boolean shortOnItems = !player.isCreative() && converted < targets.size() && !moreRemain;
+            if (hitActionCap) {
                 sp.sendSystemMessage(
-                        Component.translatable("another_dynamics.project_duct.convert.partial", converted, targets.size()),
+                        Component.translatable(
+                                "another_dynamics.project_duct.convert.limit", converted, maxPerAction),
+                        true);
+            } else if (converted < targets.size() || shortOnItems) {
+                sp.sendSystemMessage(
+                        Component.translatable(
+                                "another_dynamics.project_duct.convert.partial", converted, targets.size()),
                         true);
             } else {
                 sp.sendSystemMessage(

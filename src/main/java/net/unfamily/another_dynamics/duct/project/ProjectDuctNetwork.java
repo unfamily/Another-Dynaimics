@@ -24,17 +24,29 @@ public final class ProjectDuctNetwork {
     }
 
     public static List<BlockPos> connectedOrdered(Level level, BlockPos start) {
+        return connectedOrdered(level, start, Integer.MAX_VALUE);
+    }
+
+    /**
+     * BFS from {@code start}. Stops after collecting {@code maxCollect} positions (inclusive) so huge
+     * networks do not freeze the server when only a batch will be converted.
+     */
+    public static List<BlockPos> connectedOrdered(Level level, BlockPos start, int maxCollect) {
         List<BlockPos> out = new ArrayList<>();
-        if (level == null || start == null || !isProjectDuct(level.getBlockState(start).getBlock())) {
+        if (level == null || start == null || maxCollect <= 0
+                || !isProjectDuct(level.getBlockState(start).getBlock())) {
             return out;
         }
         Set<BlockPos> seen = new HashSet<>();
         ArrayDeque<BlockPos> queue = new ArrayDeque<>();
         queue.add(start);
         seen.add(start);
-        while (!queue.isEmpty()) {
+        while (!queue.isEmpty() && out.size() < maxCollect) {
             BlockPos current = queue.removeFirst();
             out.add(current);
+            if (out.size() >= maxCollect) {
+                break;
+            }
             for (Direction direction : Direction.values()) {
                 BlockPos neighbor = current.relative(direction);
                 if (seen.contains(neighbor)) {

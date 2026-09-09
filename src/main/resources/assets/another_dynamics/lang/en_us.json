@@ -301,6 +301,7 @@
   "item.another_dynamics.project_duct.tooltip.summary": "Scaffold duct for mass placement; Shift+duct item converts the network.",
   "another_dynamics.project_duct.convert.success": "Converted %1$s project ducts",
   "another_dynamics.project_duct.convert.partial": "Converted %1$s of %2$s project ducts (not enough definitive ducts)",
+  "another_dynamics.project_duct.convert.limit": "Converted %1$s project ducts (max %2$s per action — click again)",
   "another_dynamics.project_duct.convert.unknown_type": "Unknown duct type",
   "duct.another_dynamics.item_duct": "Item Duct",
   "duct.another_dynamics.fluid_duct": "Fluid Duct",

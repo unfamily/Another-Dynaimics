@@ -13,6 +13,7 @@ public final class Config {
 
     public static final ModConfigSpec.BooleanValue DUCT_GLOBAL_STALL_DRAIN_GUARD;
     public static final ModConfigSpec.IntValue DUCT_STALL_SLOTS;
+    public static final ModConfigSpec.IntValue PROJECT_DUCT_CONVERT_MAX_PER_ACTION;
 
     public static final ModConfigSpec.IntValue SEQUENCE_LIST_COUNT;
     public static final ModConfigSpec.IntValue SEQUENCE_STEP_COUNT;
@@ -61,6 +62,11 @@ public final class Config {
                                         + "busy threshold. Applies to newly created ducts; existing blocks keep their "
                                         + "saved buffer size until rebuilt.")
                         .defineInRange("101_ductStallSlots", 5, 1, 27);
+        PROJECT_DUCT_CONVERT_MAX_PER_ACTION =
+                BUILDER.comment(
+                                "Max Project Duct blocks converted in one Shift+duct-item action. Large networks "
+                                        + "must be converted in batches (click again). Prevents server freezes.")
+                        .defineInRange("102_projectDuctConvertMaxPerAction", 64, 1, Integer.MAX_VALUE);
         BUILDER.pop();
 
         BUILDER.comment("Machine tuning").push("machines");
@@ -83,6 +89,11 @@ public final class Config {
     /** Effective stall slot count from config (clamped). */
     public static int ductStallSlots() {
         return DUCT_STALL_SLOTS.get();
+    }
+
+    /** Max Project Duct → definitive duct conversions per click (at least 1). */
+    public static int projectDuctConvertMaxPerAction() {
+        return Math.max(1, PROJECT_DUCT_CONVERT_MAX_PER_ACTION.get());
     }
 
     /** Sequence List count (at least 1). */
