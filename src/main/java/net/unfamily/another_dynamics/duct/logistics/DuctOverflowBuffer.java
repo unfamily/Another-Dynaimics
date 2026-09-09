@@ -58,6 +58,7 @@ public final class DuctOverflowBuffer {
             stacks.add(rest);
             duct.setChanged();
         }
+        duct.syncStallVisualIfNeeded();
     }
 
     private void mergeOrAppend(ItemStack rest, DuctBlockEntity duct) {

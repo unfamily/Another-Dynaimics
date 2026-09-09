@@ -15,7 +15,10 @@ public final class DuctItemInsertProbe {
     public static final int BULK_PROBE_BUDGET = 24;
     public static final int MATCH_SCAN_CAP = 16;
     public static final int EMPTY_SCAN_CAP = 8;
+    /** Cap for light {@link #canAcceptOne} walks (not used for capacity estimates). */
     public static final int SIMULATE_CALL_CIRCUIT_BREAKER = 64;
+    /** Hard ceiling on slot visits during a full-handler capacity estimate. */
+    public static final int ESTIMATE_SLOT_WALK_CAP = 4096;
 
     private DuctItemInsertProbe() {}
 
@@ -26,7 +29,7 @@ public final class DuctItemInsertProbe {
         if (probe.isEmpty() || h == null) {
             return false;
         }
-        ProbeCounter counter = new ProbeCounter();
+        ProbeCounter counter = new ProbeCounter(SIMULATE_CALL_CIRCUIT_BREAKER);
         ItemStack one = probe.copyWithCount(1);
         if (tryVirtualTail(h, one, counter)) {
             return true;
@@ -40,6 +43,8 @@ public final class DuctItemInsertProbe {
 
     /**
      * Simulated insert capacity up to {@code limit} on {@code h} without mutating it.
+     * Uses a single leftover-shrinking pass across slots ({@code simulate=true}); independent
+     * per-chunk restarts would over-report free space.
      */
     public static int estimateMaxInsertable(IItemHandler h, ItemStack template, int limit) {
         if (limit <= 0 || template.isEmpty() || h == null) {
@@ -48,10 +53,22 @@ public final class DuctItemInsertProbe {
         if (!canAcceptOne(h, template)) {
             return 0;
         }
-        if (h.getSlots() <= STANDARD_SLOT_THRESHOLD) {
-            return standardEstimateMaxInsertable(h, template, limit);
+        int budget = estimateCallBudget(h.getSlots());
+        ProbeCounter counter = new ProbeCounter(budget);
+        ItemStack leftover = insertDirect(h, template.copyWithCount(limit), true, counter);
+        int accepted = limit - leftover.getCount();
+        return Math.max(0, accepted);
+    }
+
+    private static int estimateCallBudget(int slots) {
+        if (slots <= 0) {
+            return 1;
         }
-        return bulkEstimateMaxInsertable(h, template, limit);
+        long budget = (long) slots + 1L;
+        if (budget > ESTIMATE_SLOT_WALK_CAP) {
+            return ESTIMATE_SLOT_WALK_CAP;
+        }
+        return (int) budget;
     }
 
     private static boolean tryVirtualTail(IItemHandler h, ItemStack one, ProbeCounter counter) {
@@ -93,89 +110,6 @@ public final class DuctItemInsertProbe {
         return false;
     }
 
-    private static int standardEstimateMaxInsertable(IItemHandler h, ItemStack template, int limit) {
-        int lo = 0;
-        int hi = limit;
-        while (lo < hi) {
-            int mid = (lo + hi + 1) / 2;
-            if (standardCanInsertCountByChunking(h, template, mid)) {
-                lo = mid;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return lo;
-    }
-
-    private static boolean standardCanInsertCountByChunking(IItemHandler h, ItemStack template, int totalCount) {
-        if (totalCount <= 0) {
-            return true;
-        }
-        ProbeCounter counter = new ProbeCounter();
-        int remaining = totalCount;
-        int chunkSize = Math.max(1, template.getMaxStackSize());
-        while (remaining > 0) {
-            if (counter.exceeded()) {
-                return false;
-            }
-            int n = Math.min(remaining, chunkSize);
-            ItemStack chunk = template.copyWithCount(n);
-            ItemStack left = simulateDirectInsert(h, chunk, counter);
-            if (!left.isEmpty()) {
-                return false;
-            }
-            remaining -= n;
-        }
-        return true;
-    }
-
-    private static int bulkEstimateMaxInsertable(IItemHandler h, ItemStack template, int limit) {
-        Integer slot = findFirstBulkAcceptingSlot(h, template);
-        if (slot == null) {
-            return 0;
-        }
-        ProbeCounter counter = new ProbeCounter();
-        int total = 0;
-        int chunkSize = Math.max(1, template.getMaxStackSize());
-        int remaining = limit;
-        while (remaining > 0 && total < limit) {
-            if (counter.exceeded() || counter.calls >= BULK_PROBE_BUDGET) {
-                break;
-            }
-            int n = Math.min(remaining, chunkSize);
-            ItemStack chunk = template.copyWithCount(n);
-            ItemStack left = trackedInsert(h, slot, chunk, true, counter);
-            int accepted = n - (left.isEmpty() ? 0 : left.getCount());
-            if (accepted <= 0) {
-                break;
-            }
-            total += accepted;
-            remaining -= accepted;
-            if (accepted < n) {
-                break;
-            }
-        }
-        return total;
-    }
-
-    private static Integer findFirstBulkAcceptingSlot(IItemHandler h, ItemStack template) {
-        ProbeCounter counter = new ProbeCounter();
-        ItemStack one = template.copyWithCount(1);
-        if (tryVirtualTail(h, one, counter)) {
-            return h.getSlots() - 1;
-        }
-        for (int slot : bulkCandidateSlots(h, template)) {
-            if (counter.exceeded() || counter.calls >= BULK_PROBE_BUDGET) {
-                return null;
-            }
-            ItemStack left = trackedInsert(h, slot, one.copy(), true, counter);
-            if (left.isEmpty()) {
-                return slot;
-            }
-        }
-        return null;
-    }
-
     private static List<Integer> bulkCandidateSlots(IItemHandler h, ItemStack template) {
         List<Integer> candidates = new ArrayList<>();
         int slots = h.getSlots();
@@ -209,13 +143,14 @@ public final class DuctItemInsertProbe {
         return candidates;
     }
 
-    private static ItemStack simulateDirectInsert(IItemHandler h, ItemStack stack, ProbeCounter counter) {
+    private static ItemStack insertDirect(
+            IItemHandler h, ItemStack stack, boolean simulate, ProbeCounter counter) {
         ItemStack remaining = stack.copy();
         for (int i = 0; i < h.getSlots() && !remaining.isEmpty(); i++) {
             if (counter.exceeded()) {
                 return remaining;
             }
-            remaining = trackedInsert(h, i, remaining, true, counter);
+            remaining = trackedInsert(h, i, remaining, simulate, counter);
         }
         return remaining;
     }
@@ -227,10 +162,15 @@ public final class DuctItemInsertProbe {
     }
 
     private static final class ProbeCounter {
+        final int maxCalls;
         int calls;
 
+        ProbeCounter(int maxCalls) {
+            this.maxCalls = Math.max(1, maxCalls);
+        }
+
         boolean exceeded() {
-            return calls >= SIMULATE_CALL_CIRCUIT_BREAKER;
+            return calls >= maxCalls;
         }
     }
 }

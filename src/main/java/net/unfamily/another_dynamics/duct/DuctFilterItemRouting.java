@@ -183,7 +183,7 @@ final class DuctFilterItemRouting {
                             null)) {
                         return true;
                     }
-                    if (!DuctIncomingIndex.snapshot(level, dest, destFace).isEmpty()) {
+                    if (!DuctIncomingIndex.snapshotTowardSameNeighbor(level, dest, destFace).isEmpty()) {
                         if (cand.priority() > highestPendingFullPriority) {
                             highestPendingFullPriority = cand.priority();
                         }
@@ -482,7 +482,7 @@ final class DuctFilterItemRouting {
         if (!DuctAllowLimitLogic.hasAnyPositiveAllowCapOnNonEmptyLine(uAllows, uCaps)) {
             return maxFromCapacity;
         }
-        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct, destFace);
+        List<ItemStack> prior = DuctIncomingIndex.snapshotTowardSameNeighbor(level, destDuct, destFace);
         int maxAdd =
                 DuctAllowLimitLogic.maxAdditionalInsertAcrossAllowLines(
                         raw, uAllows, uCaps, uConcat, template, prior, level.registryAccess());

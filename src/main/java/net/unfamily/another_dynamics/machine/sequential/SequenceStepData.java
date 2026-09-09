@@ -3,7 +3,7 @@ package net.unfamily.another_dynamics.machine.sequential;
 import net.minecraft.nbt.CompoundTag;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 
-/** One filter-like step inside a {@link SequenceListData}. */
+/** One filter-like step inside a {@link SequentialTaskData}. */
 public final class SequenceStepData {
     public enum Kind {
         ITEM,

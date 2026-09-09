@@ -8,13 +8,25 @@
         "set": 16
       },
       "filter": {
-        "allow": { "add": 6 },
-        "deny": { "add": 6 },
-        "allow_hybrid": { "add": 3 },
-        "deny_hybrid": { "add": 3 }
+        "allow": {
+          "add": 6
+        },
+        "deny": {
+          "add": 6
+        },
+        "allow_hybrid": {
+          "add": 3
+        },
+        "deny_hybrid": {
+          "add": 3
+        }
       },
-      "speed": { "mult": 0.9 },
-      "rate": { "mult": 0.75 }
+      "speed": {
+        "mult": 1.0
+      },
+      "rate": {
+        "mult": 0.8
+      }
     },
     {
       "for": "fluid",
@@ -22,13 +34,25 @@
         "set": 8000
       },
       "filter": {
-        "allow": { "add": 6 },
-        "deny": { "add": 6 },
-        "allow_hybrid": { "add": 3 },
-        "deny_hybrid": { "add": 3 }
+        "allow": {
+          "add": 6
+        },
+        "deny": {
+          "add": 6
+        },
+        "allow_hybrid": {
+          "add": 3
+        },
+        "deny_hybrid": {
+          "add": 3
+        }
       },
-      "speed": { "mult": 0.9 },
-      "rate": { "mult": 0.75 }
+      "speed": {
+        "mult": 1.0
+      },
+      "rate": {
+        "mult": 0.8
+      }
     },
     {
       "for": "gas",
@@ -36,13 +60,25 @@
         "set": 8000
       },
       "filter": {
-        "allow": { "add": 6 },
-        "deny": { "add": 6 },
-        "allow_hybrid": { "add": 3 },
-        "deny_hybrid": { "add": 3 }
+        "allow": {
+          "add": 6
+        },
+        "deny": {
+          "add": 6
+        },
+        "allow_hybrid": {
+          "add": 3
+        },
+        "deny_hybrid": {
+          "add": 3
+        }
       },
-      "speed": { "mult": 0.9 },
-      "rate": { "mult": 0.75 }
+      "speed": {
+        "mult": 1.0
+      },
+      "rate": {
+        "mult": 0.8
+      }
     },
     {
       "for": "energy",
@@ -50,7 +86,7 @@
         "mult": 2.5
       },
       "rate": {
-        "mult": 0.75
+        "mult": 0.8
       }
     },
     {
@@ -59,7 +95,7 @@
         "set": 400
       },
       "rate": {
-        "mult": 0.75
+        "mult": 0.8
       }
     }
   ],

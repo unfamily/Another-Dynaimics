@@ -184,6 +184,34 @@ public final class DuctModuleEffects {
         return Math.max(0L, afterMult - batchDefault);
     }
 
+    public static int itemExtractSequentialStackBonus(DuctBlockEntity duct, Direction face, DuctItemTransportSpec spec) {
+        return extractBatchBonusMbOrItems(duct, face, spec.sequentialStackDefault(), ModuleDefinition::itemSequentialStackModifiers);
+    }
+
+    public static int fluidExtractSequentialStackBonus(DuctBlockEntity duct, Direction face, DuctFluidTransportSpec spec) {
+        return extractBatchBonusMbOrItems(duct, face, spec.sequentialStackDefault(), ModuleDefinition::fluidSequentialStackModifiers);
+    }
+
+    public static int gasExtractSequentialStackBonus(DuctBlockEntity duct, Direction face, DuctGasTransportSpec spec) {
+        return extractBatchBonusMbOrItems(duct, face, spec.sequentialStackDefault(), ModuleDefinition::gasSequentialStackModifiers);
+    }
+
+    /** Shipments to attempt per rate fire (item lane). */
+    public static int effectiveItemExtractSequentialStack(DuctBlockEntity duct, Direction face, DuctItemTransportSpec spec) {
+        int cap = duct.computeExtractSequentialStackSettingCap(face);
+        return spec.clampedSequentialStack(duct.getFaceNode(face).extractSequentialStack, cap);
+    }
+
+    public static int effectiveFluidExtractSequentialStack(DuctBlockEntity duct, Direction face, DuctFluidTransportSpec spec) {
+        int cap = duct.computeFluidExtractSequentialStackSettingCap(face);
+        return spec.clampedSequentialStack(duct.getFluidFaceNode(face).extractSequentialStack, cap);
+    }
+
+    public static int effectiveGasExtractSequentialStack(DuctBlockEntity duct, Direction face, DuctGasTransportSpec spec) {
+        int cap = duct.computeGasExtractSequentialStackSettingCap(face);
+        return spec.clampedSequentialStack(duct.getGasFaceNode(face).extractSequentialStack, cap);
+    }
+
     private static int extractBatchBonusMbOrItems(
             DuctBlockEntity duct,
             Direction face,
@@ -353,12 +381,27 @@ public final class DuctModuleEffects {
 
     /** Action interval (extract/retrieve scheduling); uses {@code rate} module keys only. */
     private static int applyStackedActionRateToBase(ModuleDefinition.ItemQuantityModifiers m, int datapackDefault) {
-        return applyStackedQuantityToBase(m, datapackDefault);
+        // Never return 0: callers clamp to rate.min, but 0 used to be remapped to the datapack default.
+        return Math.max(1, applyStackedQuantityToBase(m, datapackDefault));
     }
 
     /** In-transit edge cost; uses {@code speed} module keys only. {@code mult: 0} means zero travel ticks. */
     private static int applyStackedEdgeTravelToBase(ModuleDefinition.ItemQuantityModifiers m, int datapackDefault) {
         return applyStackedQuantityToBase(m, datapackDefault);
+    }
+
+    /**
+     * Module-scaled edge travel: {@code speed.mult ≈ 0} stays instant (0); otherwise floor at datapack
+     * {@code speed.min} so aggressive mult cannot round to 0 and skip the min.
+     */
+    private static long clampStackedEdgeTravel(
+            ModuleDefinition.ItemQuantityModifiers agg, int baseTicks, int speedMin) {
+        if (agg.multProduct() <= 1.0e-9d) {
+            return 0L;
+        }
+        int stacked = applyStackedEdgeTravelToBase(agg, baseTicks);
+        int min = Math.max(0, speedMin);
+        return Math.max(min, stacked);
     }
 
     public static int effectiveItemActionRateTicks(DuctBlockEntity duct, Direction face, DuctItemTransportSpec spec) {
@@ -449,7 +492,7 @@ public final class DuctModuleEffects {
         }
         ModuleDefinition.ItemQuantityModifiers agg = aggregateTimingLike(duct, face, ModuleDefinition::itemSpeedModifiers);
         int baseTicks = spec.effectiveSpeed(spec.speedDefault());
-        return Math.max(0L, applyStackedEdgeTravelToBase(agg, baseTicks));
+        return clampStackedEdgeTravel(agg, baseTicks, spec.speedMin());
     }
 
     public static int effectiveFluidActionRateTicks(DuctBlockEntity duct, Direction face, DuctFluidTransportSpec spec) {
@@ -467,7 +510,7 @@ public final class DuctModuleEffects {
         }
         ModuleDefinition.ItemQuantityModifiers agg = aggregateTimingLike(duct, face, ModuleDefinition::fluidSpeedModifiers);
         int baseTicks = spec.effectiveSpeed(spec.speedDefault());
-        return Math.max(0L, applyStackedEdgeTravelToBase(agg, baseTicks));
+        return clampStackedEdgeTravel(agg, baseTicks, spec.speedMin());
     }
 
     public static int effectiveGasActionRateTicks(DuctBlockEntity duct, Direction face, DuctGasTransportSpec spec) {
@@ -485,7 +528,7 @@ public final class DuctModuleEffects {
         }
         ModuleDefinition.ItemQuantityModifiers agg = aggregateTimingLike(duct, face, ModuleDefinition::gasSpeedModifiers);
         int baseTicks = spec.effectiveSpeed(spec.speedDefault());
-        return Math.max(0L, applyStackedEdgeTravelToBase(agg, baseTicks));
+        return clampStackedEdgeTravel(agg, baseTicks, spec.speedMin());
     }
 
     /** Ticks between energy logistics actions; increment {@code energy.rate} modules do not apply. */
@@ -522,11 +565,11 @@ public final class DuctModuleEffects {
     public static int effectiveEnergyExtractPerAction(DuctBlockEntity duct, Direction face, DuctEnergyTransportSpec spec) {
         int baseExtract = (int) Math.min(spec.clampedExtract(), Integer.MAX_VALUE);
         if (!ductEnergyOrHeatModuleEffectsEnabled(duct)) {
-            return baseExtract;
+            return Math.max(1, baseExtract);
         }
         ModuleDefinition.ItemQuantityModifiers agg =
                 aggregateTimingLikeAllFaces(duct, ModuleDefinition::energyQuantityModifiers);
-        return applyStackedQuantityToBase(agg, baseExtract);
+        return Math.max(1, applyStackedQuantityToBase(agg, baseExtract));
     }
 
     /** Ticks between heat logistics actions; increment {@code heat.rate} modules do not apply. */

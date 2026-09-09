@@ -34,7 +34,7 @@ import net.unfamily.another_dynamics.machine.sequential.SettingsCopierSequential
 import net.unfamily.another_dynamics.machine.sequential.SettingsCopierSequentialSnapshot;
 import net.unfamily.another_dynamics.machine.sequential.SequentialGateMode;
 import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity;
-import net.unfamily.another_dynamics.machine.sequential.SequenceListData;
+import net.unfamily.another_dynamics.machine.sequential.SequentialTaskData;
 import net.minecraft.nbt.CompoundTag;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.minecraft.world.SimpleContainer;
@@ -112,8 +112,8 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     private @Nullable SettingsCopierVirtualSession virtualSession;
     private @Nullable SettingsCopierSequentialVirtualSession sequentialVirtual;
     /** Client mirror of sequential virtual lists (from copier stack sync). */
-    private final SequenceListData[] clientSequentialLists =
-            new SequenceListData[SequentialBufferBlockEntity.sequenceListCount()];
+    private final SequentialTaskData[] clientSequentialLists =
+            new SequentialTaskData[SequentialBufferBlockEntity.sequentialTaskCount()];
     private SequentialGateMode clientSequentialGate = SequentialGateMode.AUTO;
     private boolean clientSequentialStrictIntake = false;
     private final UniversalDuctMenuFilterBuffers filterBuffers = new UniversalDuctMenuFilterBuffers();
@@ -208,7 +208,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
                         ? openingBandSlotFromSync
                         : resolveOpeningCopierMenuSlot(playerInventory, hand, playerInventory.player);
         for (int i = 0; i < clientSequentialLists.length; i++) {
-            clientSequentialLists[i] = new SequenceListData();
+            clientSequentialLists[i] = new SequentialTaskData();
         }
         initClientSyncDefaults(playerInventory);
         this.importContainer =
@@ -425,13 +425,13 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         return clientSequentialStrictIntake;
     }
 
-    public SequenceListData sequentialList(int index) {
+    public SequentialTaskData sequentialList(int index) {
         if (sequentialVirtual != null) {
             return sequentialVirtual.list(index);
         }
         int i = Math.floorMod(index, clientSequentialLists.length);
         if (clientSequentialLists[i] == null) {
-            clientSequentialLists[i] = new SequenceListData();
+            clientSequentialLists[i] = new SequentialTaskData();
         }
         return clientSequentialLists[i];
     }
@@ -439,7 +439,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     /** Client: rebuild sequential mirror from the copier stack NBT. */
     public void loadClientSequentialFromStack(ItemStack stack) {
         for (int i = 0; i < clientSequentialLists.length; i++) {
-            clientSequentialLists[i] = new SequenceListData();
+            clientSequentialLists[i] = new SequentialTaskData();
         }
         // Match SettingsCopierSequentialVirtualSession empty defaults (AUTO / non-strict).
         clientSequentialGate = SequentialGateMode.AUTO;
@@ -459,7 +459,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
                 SequentialGateMode.fromOrdinal(
                         tag.getByteOr("Gate", (byte) SequentialGateMode.AUTO.ordinal()) & 0xFF);
         clientSequentialStrictIntake = tag.getBooleanOr("StrictIntake", false);
-        net.minecraft.nbt.ListTag listTag = tag.getListOrEmpty("Lists");
+        net.minecraft.nbt.ListTag listTag = SequentialTaskData.readTasksListTag(tag);
         for (int i = 0; i < clientSequentialLists.length; i++) {
             if (i < listTag.size()) {
                 clientSequentialLists[i].load(listTag.getCompoundOrEmpty(i));

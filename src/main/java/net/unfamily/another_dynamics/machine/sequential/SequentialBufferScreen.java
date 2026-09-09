@@ -164,7 +164,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
 
     private enum SubView {
         HUB,
-        SEQUENCE_LISTS,
+        SEQUENTIAL_TASKS,
         EDIT_LIST,
         STEP_EDIT,
         VALID_KEYS
@@ -325,7 +325,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
 
         switch (subView) {
             case HUB -> initHub();
-            case SEQUENCE_LISTS -> initSequenceLists();
+            case SEQUENTIAL_TASKS -> initSequentialTasks();
             case EDIT_LIST -> initEditList();
             case STEP_EDIT -> initStepEdit();
             case VALID_KEYS -> initValidKeys();
@@ -433,7 +433,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                 Button.builder(
                                 Component.translatable("gui.another_dynamics.sequential_buffer.sequence_lists"),
                                 b -> {
-                                    subView = SubView.SEQUENCE_LISTS;
+                                    subView = SubView.SEQUENTIAL_TASKS;
                                     rebuildUi();
                                 })
                         .bounds(leftPos + CENTER_X + ROW_BTN_W + ROW_GAP, y, ROW_BTN_W, BTN_H)
@@ -450,7 +450,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         initHubInterDelayControls();
     }
 
-    private void initSequenceLists() {
+    private void initSequentialTasks() {
         initRightColumn();
         addScrollControls(0);
 
@@ -504,7 +504,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                                     Component.empty(),
                                     b -> {
                                         int idx = hubScroll + row;
-                                        SequenceListData list = be().list(idx);
+                                        SequentialTaskData list = be().list(idx);
                                         if (!list.hasContent()) {
                                             return;
                                         }
@@ -533,7 +533,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                                     Component.literal("✎"),
                                     b -> {
                                         int idx = hubScroll + row;
-                                        if (idx < 0 || idx >= SequentialBufferBlockEntity.sequenceListCount()) {
+                                        if (idx < 0 || idx >= SequentialBufferBlockEntity.sequentialTaskCount()) {
                                             return;
                                         }
                                         openEditList(idx);
@@ -688,7 +688,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                             buttonSize,
                             v -> {
                                 int idx = stepScroll + row;
-                                if (idx < 0 || idx >= SequenceListData.maxSteps()) {
+                                if (idx < 0 || idx >= SequentialTaskData.maxSteps()) {
                                     return;
                                 }
                                 sendAction(
@@ -709,7 +709,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                                     Component.literal("C"),
                                     b -> {
                                         int idx = stepScroll + row;
-                                        SequenceListData list = currentList();
+                                        SequentialTaskData list = currentList();
                                         if (list == null || idx < 0 || idx >= list.steps().size()) {
                                             return;
                                         }
@@ -734,10 +734,10 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                                     Component.literal("\u270E"),
                                     b -> {
                                         int idx = stepScroll + row;
-                                        if (idx < 0 || idx >= SequenceListData.maxSteps()) {
+                                        if (idx < 0 || idx >= SequentialTaskData.maxSteps()) {
                                             return;
                                         }
-                                        SequenceListData list = currentList();
+                                        SequentialTaskData list = currentList();
                                         SequenceStepData step = null;
                                         if (list != null && idx < list.steps().size()) {
                                             SequenceStepData at = list.steps().get(idx);
@@ -1092,13 +1092,13 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     private void closeEditList() {
         editingListIndex = -1;
         editingStepIndex = -1;
-        subView = SubView.SEQUENCE_LISTS;
+        subView = SubView.SEQUENTIAL_TASKS;
         sendAction(new SequentialBufferActionPayload(SequentialBufferActionPayload.ACTION_CLOSE_EDIT));
         rebuildUi();
     }
 
-    private SequenceListData currentList() {
-        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.sequenceListCount()) {
+    private SequentialTaskData currentList() {
+        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.sequentialTaskCount()) {
             return null;
         }
         return be().list(editingListIndex);
@@ -1106,12 +1106,12 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
 
     /** Always 50 fixed slots. */
     private int displayStepCount() {
-        return SequenceListData.maxSteps();
+        return SequentialTaskData.maxSteps();
     }
 
     private void openStepEdit(int index, SequenceStepData step) {
         editingStepIndex = index;
-        SequenceListData list = currentList();
+        SequentialTaskData list = currentList();
         draftConcatOrdinal = list == null || index < 0 ? 0 : list.concatAt(index);
         if (step == null || step.isEmpty()) {
             draftKind = SequenceStepData.Kind.ITEM;
@@ -1195,13 +1195,13 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         if (filter.equalsIgnoreCase("&anything_else") || filter.equalsIgnoreCase("anything_else")) {
             return;
         }
-        SequenceListData list = currentList();
+        SequentialTaskData list = currentList();
         if (list == null) {
             return;
         }
         int amount = parseAmount();
         int stepIndex = editingStepIndex;
-        if (stepIndex < 0 || stepIndex >= SequenceListData.maxSteps()) {
+        if (stepIndex < 0 || stepIndex >= SequentialTaskData.maxSteps()) {
             return;
         }
         sendAction(
@@ -1745,7 +1745,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private void initListTitleEditBox() {
-        SequenceListData list = currentList();
+        SequentialTaskData list = currentList();
         String current = list == null ? "" : list.customName();
         int boxW = 180;
         int boxH = 12;
@@ -1759,7 +1759,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                         boxW,
                         boxH,
                         Component.translatable("gui.another_dynamics.sequential_buffer.list_name"));
-        listNameBox.setMaxLength(SequenceListData.MAX_NAME_LENGTH);
+        listNameBox.setMaxLength(SequentialTaskData.MAX_NAME_LENGTH);
         listNameBox.setBordered(true);
         listNameBox.setTextColor(0xFFFFFFFF);
         listNameBox.setHint(
@@ -1772,14 +1772,14 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private void onListNameDraftChanged(String value) {
-        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.sequenceListCount()) {
+        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.sequentialTaskCount()) {
             return;
         }
-        SequenceListData list = be().list(editingListIndex);
+        SequentialTaskData list = be().list(editingListIndex);
         String applied = value == null ? "" : value;
         String normalized = applied.isBlank() ? "" : applied.trim();
-        if (normalized.length() > SequenceListData.MAX_NAME_LENGTH) {
-            normalized = normalized.substring(0, SequenceListData.MAX_NAME_LENGTH);
+        if (normalized.length() > SequentialTaskData.MAX_NAME_LENGTH) {
+            normalized = normalized.substring(0, SequentialTaskData.MAX_NAME_LENGTH);
         }
         if (normalized.equals(list.customName())) {
             return;
@@ -1800,7 +1800,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         if (listNameBox == null || listNameBox.isFocused()) {
             return;
         }
-        SequenceListData list = currentList();
+        SequentialTaskData list = currentList();
         if (list == null) {
             return;
         }
@@ -1929,13 +1929,13 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private void refreshHubRowState() {
-        if (subView != SubView.SEQUENCE_LISTS || dynamicButtons.size() < VISIBLE_ROWS * 4) {
+        if (subView != SubView.SEQUENTIAL_TASKS || dynamicButtons.size() < VISIBLE_ROWS * 4) {
             return;
         }
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = hubScroll + i;
-            boolean inRange = idx >= 0 && idx < SequentialBufferBlockEntity.sequenceListCount();
-            SequenceListData list = inRange ? be().list(idx) : null;
+            boolean inRange = idx >= 0 && idx < SequentialBufferBlockEntity.sequentialTaskCount();
+            SequentialTaskData list = inRange ? be().list(idx) : null;
             boolean hasContent = list != null && list.hasContent();
             int base = i * 4;
             Button output = dynamicButtons.get(base);
@@ -1951,12 +1951,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
             enable.setMessage(
                     Component.literal(on ? "E" : "D")
                             .withStyle(Style.EMPTY.withBold(true).withColor(on ? ChatFormatting.GREEN : ChatFormatting.RED)));
-            enable.setTooltip(
-                    Tooltip.create(
-                            Component.translatable(
-                                    on
-                                            ? "gui.another_dynamics.sequential_buffer.enabled"
-                                            : "gui.another_dynamics.sequential_buffer.disabled")));
+            enable.setTooltip(enableToggleTooltip(on, hasContent));
             if (output instanceof ItemIconButton icon) {
                 icon.setTooltip(listOutputTooltip(list.outputMode()));
             }
@@ -1964,14 +1959,67 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         updateScrollButtonVisibility(0);
     }
 
+    private static Tooltip enableToggleTooltip(boolean enabled, boolean hasContent) {
+        Component primary =
+                Component.translatable(
+                        enabled
+                                ? "gui.another_dynamics.sequential_buffer.enabled"
+                                : "gui.another_dynamics.sequential_buffer.disabled");
+        if (hasContent) {
+            return Tooltip.create(primary);
+        }
+        return Tooltip.create(
+                primary
+                        .copy()
+                        .append("\n")
+                        .append(
+                                Component.translatable(
+                                                "gui.another_dynamics.sequential_buffer.enable_needs_tasks")
+                                        .withStyle(ChatFormatting.GRAY)));
+    }
+
+    /** Right-side controls: redstone + E/D + clear + edit (see {@code initSequentialTasks}). */
+    private static final int HUB_ROW_BUTTON_ZONE_W =
+            BUTTON_MARGIN + REDSTONE_SIZE + 3 * ROW_BTN + 3 * ADJACENT_BTN_GAP;
+
+    private @Nullable Component inactiveSequenceListHoverTooltip(int mouseX, int mouseY) {
+        if (subView != SubView.SEQUENTIAL_TASKS) {
+            return null;
+        }
+        for (GuiEventListener child : children()) {
+            if (child.isMouseOver(mouseX, mouseY)) {
+                return null;
+            }
+        }
+        int labelW = ENTRY_WIDTH - HUB_ROW_BUTTON_ZONE_W;
+        for (int i = 0; i < VISIBLE_ROWS; i++) {
+            int idx = hubScroll + i;
+            if (idx < 0 || idx >= SequentialBufferBlockEntity.sequentialTaskCount()) {
+                break;
+            }
+            SequentialTaskData list = be().list(idx);
+            if (list.isEnabled()) {
+                continue;
+            }
+            int x = leftPos + ENTRY_X;
+            int y = topPos + FIRST_Y + i * ENTRY_HEIGHT;
+            // Label/icon only — never over the action-button strip (avoids stacked tooltips).
+            if (mouseX >= x && mouseX < x + labelW && mouseY >= y && mouseY < y + ENTRY_HEIGHT) {
+                return Component.translatable(
+                        "gui.another_dynamics.sequential_buffer.inactive_click_d");
+            }
+        }
+        return null;
+    }
+
     private void refreshEditListRowState() {
         if (subView != SubView.EDIT_LIST) {
             return;
         }
-        SequenceListData list = currentList();
+        SequentialTaskData list = currentList();
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = stepScroll + i;
-            boolean inRange = idx >= 0 && idx < SequenceListData.maxSteps();
+            boolean inRange = idx >= 0 && idx < SequentialTaskData.maxSteps();
             if (i < concatButtons.size()) {
                 FilterConcatChannelButton cb = concatButtons.get(i);
                 cb.visible = inRange;
@@ -2030,7 +2078,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private ItemStack listOutputIcon(int index) {
-        if (index < 0 || index >= SequentialBufferBlockEntity.sequenceListCount()) {
+        if (index < 0 || index >= SequentialBufferBlockEntity.sequentialTaskCount()) {
             return ItemStack.EMPTY;
         }
         return switch (be().list(index).outputMode()) {
@@ -2042,14 +2090,14 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private Identifier listOutputOverlay(int index) {
-        if (index < 0 || index >= SequentialBufferBlockEntity.sequenceListCount()) {
+        if (index < 0 || index >= SequentialBufferBlockEntity.sequentialTaskCount()) {
             return null;
         }
         return be().list(index).outputMode() == SequentialRedstoneMode.PULSE ? REDSTONE_GUI : null;
     }
 
     private int maxHubScroll() {
-        return Math.max(0, SequentialBufferBlockEntity.sequenceListCount() - VISIBLE_ROWS);
+        return Math.max(0, SequentialBufferBlockEntity.sequentialTaskCount() - VISIBLE_ROWS);
     }
 
     private int maxStepScroll() {
@@ -2110,16 +2158,16 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                 TEXTURE_HEIGHT);
 
         if (subView == SubView.HUB
-                || subView == SubView.SEQUENCE_LISTS
+                || subView == SubView.SEQUENTIAL_TASKS
                 || subView == SubView.EDIT_LIST) {
             SettingsCopierClient.blitSlotFrame(
                     graphics,
                     leftPos + SequentialBufferMenu.SEQ_COPY_BG_X,
                     topPos + SequentialBufferMenu.SEQ_COPY_BG_Y);
         }
-        if (subView == SubView.SEQUENCE_LISTS || subView == SubView.EDIT_LIST) {
+        if (subView == SubView.SEQUENTIAL_TASKS || subView == SubView.EDIT_LIST) {
             renderEntryRows(graphics);
-            renderListScrollbar(graphics, subView == SubView.SEQUENCE_LISTS ? 0 : 1);
+            renderListScrollbar(graphics, subView == SubView.SEQUENTIAL_TASKS ? 0 : 1);
         } else if (subView == SubView.STEP_EDIT) {
             renderGhostSlot(graphics);
         } else if (subView == SubView.VALID_KEYS) {
@@ -2129,11 +2177,11 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
 
     private void renderEntryRows(GuiGraphicsExtractor graphics) {
         int count =
-                subView == SubView.SEQUENCE_LISTS
-                        ? SequentialBufferBlockEntity.sequenceListCount()
+                subView == SubView.SEQUENTIAL_TASKS
+                        ? SequentialBufferBlockEntity.sequentialTaskCount()
                         : displayStepCount();
         for (int i = 0; i < VISIBLE_ROWS; i++) {
-            int idx = (subView == SubView.SEQUENCE_LISTS ? hubScroll : stepScroll) + i;
+            int idx = (subView == SubView.SEQUENTIAL_TASKS ? hubScroll : stepScroll) + i;
             if (idx < 0 || idx >= count) {
                 continue;
             }
@@ -2151,6 +2199,12 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                     ENTRY_WIDTH,
                     ENTRY_HEIGHT);
 
+            boolean inactive =
+                    subView == SubView.SEQUENTIAL_TASKS && !be().list(idx).isEnabled();
+            if (inactive) {
+                graphics.fill(x, y, x + ENTRY_WIDTH, y + ENTRY_HEIGHT, 0x99000000);
+            }
+
             // Match duct filter rows: icon slot inset 3px from entry top-left.
             int slotX = x + 3;
             int slotY = y + 3;
@@ -2165,10 +2219,10 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                     18,
                     18,
                     18);
-            if (subView == SubView.SEQUENCE_LISTS) {
+            if (subView == SubView.SEQUENTIAL_TASKS) {
                 renderHubPreviewIcon(graphics, slotX, slotY, be().list(idx));
             } else {
-                SequenceListData list = currentList();
+                SequentialTaskData list = currentList();
                 SequenceStepData step = null;
                 if (list != null && idx < list.steps().size()) {
                     step = list.steps().get(idx);
@@ -2195,7 +2249,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
      * HUB: cycle through non-empty steps that resolve a display preview, timed like duct tag icons.
      */
     private void renderHubPreviewIcon(
-            GuiGraphicsExtractor graphics, int slotX, int slotY, SequenceListData list) {
+            GuiGraphicsExtractor graphics, int slotX, int slotY, SequentialTaskData list) {
         if (list == null) {
             return;
         }
@@ -2331,13 +2385,13 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     @Override
     protected void extractLabels(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         if (subView == SubView.HUB
-                || subView == SubView.SEQUENCE_LISTS
+                || subView == SubView.SEQUENTIAL_TASKS
                 || subView == SubView.VALID_KEYS) {
             Component title =
                     switch (subView) {
                         case HUB -> Component.translatable(
                                 "gui.another_dynamics.sequential_buffer.title");
-                        case SEQUENCE_LISTS -> Component.translatable(
+                        case SEQUENTIAL_TASKS -> Component.translatable(
                                 "gui.another_dynamics.sequential_buffer.list_of_sequences");
                         case VALID_KEYS -> Component.translatable(
                                 "gui.another_dynamics.sequential_buffer.valid_keys");
@@ -2348,21 +2402,38 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         }
         // EDIT_LIST / STEP_EDIT: title is the listNameBox EditBox.
 
-        if (subView == SubView.SEQUENCE_LISTS) {
+        if (subView == SubView.SEQUENTIAL_TASKS) {
             for (int i = 0; i < VISIBLE_ROWS; i++) {
                 int idx = hubScroll + i;
-                if (idx >= SequentialBufferBlockEntity.sequenceListCount()) {
+                if (idx >= SequentialBufferBlockEntity.sequentialTaskCount()) {
                     break;
                 }
-                Component label = be().list(idx).displayName(idx + 1);
-                int y = FIRST_Y + i * ENTRY_HEIGHT + (ENTRY_HEIGHT - font.lineHeight) / 2;
-                // After SINGLE_SLOT at entry+(3,3): slot + 18 + 6 gap (same as duct filter rows).
-                String text = label.getString();
+                SequentialTaskData list = be().list(idx);
+                Component label = list.displayName(idx + 1);
+                boolean inactive = !list.isEnabled();
+                int textX = ENTRY_X + 3 + 18 + 6;
                 int maxW = ENTRY_WIDTH - (3 + 18 + 6) - 62;
+                String text = label.getString();
                 if (font.width(text) > maxW) {
                     text = font.plainSubstrByWidth(text, maxW - font.width("...")) + "...";
                 }
-                graphics.text(font, text, ENTRY_X + 3 + 18 + 6, y, 0xFF404040, false);
+                if (inactive) {
+                    int nameY = FIRST_Y + i * ENTRY_HEIGHT + 3;
+                    graphics.text(font, text, textX, nameY, 0xFFFFFFFF, false);
+                    Component warn =
+                            Component.translatable(
+                                    "gui.another_dynamics.sequential_buffer.inactive_warning");
+                    String warnText = warn.getString();
+                    if (font.width(warnText) > maxW) {
+                        warnText =
+                                font.plainSubstrByWidth(warnText, maxW - font.width("...")) + "...";
+                    }
+                    int warnY = nameY + font.lineHeight + 1;
+                    graphics.text(font, warnText, textX, warnY, 0xFFFF5555, false);
+                } else {
+                    int y = FIRST_Y + i * ENTRY_HEIGHT + (ENTRY_HEIGHT - font.lineHeight) / 2;
+                    graphics.text(font, text, textX, y, 0xFF404040, false);
+                }
             }
         } else if (subView == SubView.HUB) {
             if (delayMinutesBox != null) {
@@ -2380,10 +2451,10 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                 }
             }
         } else if (subView == SubView.EDIT_LIST) {
-            SequenceListData list = currentList();
+            SequentialTaskData list = currentList();
             for (int i = 0; i < VISIBLE_ROWS; i++) {
                 int idx = stepScroll + i;
-                if (idx < 0 || idx >= SequenceListData.maxSteps()) {
+                if (idx < 0 || idx >= SequentialTaskData.maxSteps()) {
                     continue;
                 }
                 if (list == null || idx >= list.steps().size()) {
@@ -2674,6 +2745,10 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     @Override
     protected void extractTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         super.extractTooltip(graphics, mouseX, mouseY);
+        Component inactiveTip = inactiveSequenceListHoverTooltip(mouseX, mouseY);
+        if (inactiveTip != null) {
+            graphics.setTooltipForNextFrame(this.font, inactiveTip, mouseX, mouseY);
+        }
         if (hoveredSlot != null && hoveredSlot.index == SequentialBufferMenu.COPY_SLOT_INDEX) {
             ItemStack copier = hoveredSlot.getItem();
             if (!copier.isEmpty()) {
@@ -2765,7 +2840,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private boolean tryBeginScrollDrag(double mouseX, double mouseY) {
-        if (subView == SubView.SEQUENCE_LISTS && maxHubScroll() > 0 && hitScrollTrack(mouseX, mouseY, 0)) {
+        if (subView == SubView.SEQUENTIAL_TASKS && maxHubScroll() > 0 && hitScrollTrack(mouseX, mouseY, 0)) {
             draggingScroll = true;
             dragScrollKind = 0;
             applyScrollFromMouse(mouseY, 0);
@@ -2852,7 +2927,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
             updateScrollButtonVisibility(2);
             return true;
         }
-        if (subView == SubView.SEQUENCE_LISTS && maxHubScroll() > 0) {
+        if (subView == SubView.SEQUENTIAL_TASKS && maxHubScroll() > 0) {
             hubScroll = Mth.clamp(hubScroll + (deltaY < 0 ? 1 : -1), 0, maxHubScroll());
             refreshHubRowState();
             return true;
@@ -2905,7 +2980,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
             closeEditList();
             return;
         }
-        if (subView == SubView.SEQUENCE_LISTS) {
+        if (subView == SubView.SEQUENTIAL_TASKS) {
             subView = SubView.HUB;
             rebuildUi();
             return;

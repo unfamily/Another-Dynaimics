@@ -143,7 +143,7 @@ public final class DuctTransitDebugLog {
         if (!Config.DUCT_TRANSIT_DEBUG.get()) {
             return;
         }
-        List<ItemStack> prior = DuctIncomingIndex.snapshot(level, destDuct, destFace);
+        List<ItemStack> prior = DuctIncomingIndex.snapshotTowardSameNeighbor(level, destDuct, destFace);
         int pendingSame = countSameItemCount(prior, stack);
         int seqNeed = sequentialRemainingItemNeed(level, destDuct, destFace, stack);
         LOG.info(

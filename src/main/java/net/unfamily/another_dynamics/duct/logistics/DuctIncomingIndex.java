@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ConcurrentHashMap;
@@ -53,6 +54,8 @@ public final class DuctIncomingIndex {
                                 new IncomingKey(destDuct, destFace.ordinal()),
                                 p -> Collections.synchronizedList(new ArrayList<>()));
         synchronized (list) {
+            // Replace same id to avoid duplicates after sync / keepDestReservation / onLoad restore.
+            list.removeIf(r -> r != null && r.id() == reservationId);
             list.add(new Reservation(reservationId, stack.copy()));
         }
     }
@@ -117,8 +120,105 @@ public final class DuctIncomingIndex {
     }
 
     /**
-     * Reduces reserved amounts matching {@code template} by up to {@code count} (FIFO). Used when inbound-stalled
-     * items finally insert into the destination inventory.
+     * Snapshot of all reservations whose dest face points at the same neighbor inventory as
+     * {@code destDuct}/{@code destFace}. Prevents two ducts on one chest/Sequential from ignoring each other's
+     * in-flight amounts.
+     */
+    public static List<ItemStack> snapshotTowardSameNeighbor(
+            ServerLevel level, BlockPos destDuct, Direction destFace) {
+        return snapshotTowardSameNeighborExcluding(level, destDuct, destFace, -1L);
+    }
+
+    public static List<ItemStack> snapshotTowardSameNeighborExcluding(
+            ServerLevel level, BlockPos destDuct, Direction destFace, long excludeReservationId) {
+        if (destFace == null) {
+            destFace = Direction.NORTH;
+        }
+        BlockPos inventoryPos = destDuct.relative(destFace);
+        Map<IncomingKey, List<Reservation>> dim = BY_DIMENSION.get(level.dimension());
+        if (dim == null || dim.isEmpty()) {
+            return List.of();
+        }
+        List<ItemStack> out = new ArrayList<>();
+        for (Map.Entry<IncomingKey, List<Reservation>> e : dim.entrySet()) {
+            IncomingKey key = e.getKey();
+            if (key == null) {
+                continue;
+            }
+            Direction face = Direction.from3DDataValue(key.faceOrdinal());
+            if (!key.ductPos().relative(face).equals(inventoryPos)) {
+                continue;
+            }
+            List<Reservation> list = e.getValue();
+            if (list == null || list.isEmpty()) {
+                continue;
+            }
+            synchronized (list) {
+                for (Reservation r : list) {
+                    if (r == null || r.stack() == null || r.stack().isEmpty()) {
+                        continue;
+                    }
+                    if (excludeReservationId >= 0L && r.id() == excludeReservationId) {
+                        continue;
+                    }
+                    out.add(r.stack().copy());
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Reduces the reservation with {@code reservationId} by up to {@code count}. Preferred when the caller knows
+     * which shipment/stall entry was just inserted.
+     */
+    public static void consumeReservation(
+            ServerLevel level, BlockPos destDuct, Direction destFace, long reservationId, int count) {
+        if (count <= 0 || reservationId < 0L) {
+            return;
+        }
+        if (destFace == null) {
+            destFace = Direction.NORTH;
+        }
+        Map<IncomingKey, List<Reservation>> dim = BY_DIMENSION.get(level.dimension());
+        if (dim == null) {
+            return;
+        }
+        IncomingKey key = new IncomingKey(destDuct, destFace.ordinal());
+        List<Reservation> list = dim.get(key);
+        if (list == null || list.isEmpty()) {
+            return;
+        }
+        synchronized (list) {
+            for (ListIterator<Reservation> it = list.listIterator(); it.hasNext(); ) {
+                Reservation r = it.next();
+                if (r == null || r.id() != reservationId) {
+                    continue;
+                }
+                if (r.stack() == null || r.stack().isEmpty()) {
+                    it.remove();
+                    break;
+                }
+                int have = r.stack().getCount();
+                if (have <= count) {
+                    it.remove();
+                } else {
+                    ItemStack shrunk = r.stack().copy();
+                    shrunk.setCount(have - count);
+                    it.set(new Reservation(reservationId, shrunk));
+                }
+                break;
+            }
+            if (list.isEmpty()) {
+                dim.remove(key);
+            }
+        }
+    }
+
+    /**
+     * Reduces reserved amounts matching {@code template} by up to {@code count} (LIFO). Used when inbound-stalled
+     * items finally insert into the destination inventory. Newest-first avoids eating older in-flight
+     * reservations that {@code keepDestReservation} re-appended after (FIFO did that and under-counted pending).
      */
     public static void consumeMatching(
             ServerLevel level, BlockPos destDuct, Direction destFace, ItemStack template, int count) {
@@ -139,8 +239,8 @@ public final class DuctIncomingIndex {
         }
         synchronized (list) {
             int left = count;
-            for (Iterator<Reservation> it = list.iterator(); it.hasNext() && left > 0; ) {
-                Reservation r = it.next();
+            for (ListIterator<Reservation> it = list.listIterator(list.size()); it.hasPrevious() && left > 0; ) {
+                Reservation r = it.previous();
                 if (r == null || r.stack() == null || r.stack().isEmpty()) {
                     it.remove();
                     continue;
@@ -155,12 +255,8 @@ public final class DuctIncomingIndex {
                 } else {
                     ItemStack shrunk = r.stack().copy();
                     shrunk.setCount(have - left);
-                    // replace in-place: records are immutable, remove+add
-                    long id = r.id();
-                    it.remove();
-                    list.add(new Reservation(id, shrunk));
+                    it.set(new Reservation(r.id(), shrunk));
                     left = 0;
-                    break;
                 }
             }
             if (list.isEmpty()) {

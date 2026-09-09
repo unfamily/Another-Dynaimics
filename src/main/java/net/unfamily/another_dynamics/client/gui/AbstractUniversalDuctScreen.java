@@ -415,6 +415,8 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     /** Width of "Advanced filtering" button beside the filter edit line (allow list edit mode). */
     private static final int ADVANCED_FILTER_BUTTON_WIDTH = 64;
 
+    private static final int AMOUNT_SEQUENTIAL_STACK_BLOCK_GAP = 10;
+
     /** Gui-local X of {@link #routingPriorityBox} left edge (for label centering). Set in {@link #init}. */
     private int amountEditBoxGuiLeft;
     /** Gui-local X of {@link #advCapEditBox} left edge (for Limit/Keep label centering). Set in {@link #layoutAdvancedCapBlock}. */
@@ -488,6 +490,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private Button amountApplyButton;
     private Button amountMaxButton;
     private Button amountDiscardButton;
+    private Button sequentialStackMinusButton;
+    private Button sequentialStackPlusButton;
+    private EditBox sequentialStackEditBox;
+    private Button sequentialStackClearButton;
+    private Button sequentialStackApplyButton;
+    private Button sequentialStackMaxButton;
+    private Button sequentialStackDiscardButton;
     private ChannelLetterButton channelButton;
     private Button settingsCopierSaveButton;
     private Button settingsCopierLoadButton;
@@ -528,6 +537,10 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     /** Main GUI priority/batch: unsent local edits until Apply (or Enter); discard reverts draft (tooltip Cancel). */
     private boolean amountFieldsDirty;
     private boolean syncingAmountBoxFromServer;
+    private boolean sequentialStackFieldsDirty;
+    private boolean syncingSequentialStackBoxFromServer;
+    private int sequentialStackEditBoxGuiLeft;
+    private int lastTrackedExtractSequentialStackCap = -1;
     /** Packed {@link #amountBlockLayoutKey}: relayout amount row when mode or hybrid sub-panel changes (M button / steps). */
     private int amountBlockLayoutCache = -1;
     /** Relayout advanced cap block when eligibility/bank changes (Both vs Only affects geometry). */
@@ -996,6 +1009,42 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             )
             .build();
         addRenderableWidget(amountDiscardButton);
+
+        sequentialStackMinusButton = Button.builder(Component.literal("-"), b -> adjustSequentialStackField(-1))
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .build();
+        addRenderableWidget(sequentialStackMinusButton);
+        sequentialStackEditBox = new EditBox(this.font, 0, 0, AMOUNT_EDIT_W, BTN_H, Component.empty());
+        sequentialStackEditBox.setMaxLength(3);
+        sequentialStackEditBox.setResponder(s -> {
+            if (!syncingSequentialStackBoxFromServer) {
+                sequentialStackFieldsDirty = true;
+            }
+        });
+        syncingSequentialStackBoxFromServer = true;
+        sequentialStackEditBox.setValue("1");
+        syncingSequentialStackBoxFromServer = false;
+        addRenderableWidget(sequentialStackEditBox);
+        sequentialStackPlusButton = Button.builder(Component.literal("+"), b -> adjustSequentialStackField(1))
+            .bounds(0, 0, AMOUNT_STEPPER_W, BTN_H)
+            .build();
+        addRenderableWidget(sequentialStackPlusButton);
+        sequentialStackClearButton = Button.builder(Component.literal("1"), b -> sequentialStackQuickSetField())
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(sequentialStackClearButton);
+        sequentialStackApplyButton = Button.builder(Component.literal("A"), b -> sequentialStackApplyField())
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(sequentialStackApplyButton);
+        sequentialStackMaxButton = Button.builder(Component.literal("M"), b -> sequentialStackMaxField())
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(sequentialStackMaxButton);
+        sequentialStackDiscardButton = Button.builder(Component.literal("\u2715"), b -> sequentialStackDiscardDraft())
+            .bounds(0, 0, AMOUNT_ACTION_BTN, BTN_H)
+            .build();
+        addRenderableWidget(sequentialStackDiscardButton);
 
         layoutAmountBlock();
 
@@ -2851,7 +2900,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             menu.getSyncData().get(DuctMenuSync.NODE_MODE)
         );
         boolean priorityField = amountFieldEditsPriority();
-        boolean showMax = nm.usesExtractBatchField() && !priorityField;
+        boolean showBatch = nm.usesExtractBatchField() && !priorityField;
+        boolean showMax = showBatch;
+        boolean showSequentialStack = showBatch;
 
         int numericRowW =
             AMOUNT_STEPPER_W +
@@ -2860,11 +2911,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             AMOUNT_INNER_GAP +
             AMOUNT_STEPPER_W;
         int actionRowW = amountActionRowWidth(showMax);
-
+        int sequentialStackActionRowW = amountActionRowWidth(true);
         int blockW = Math.max(numericRowW, actionRowW);
-        int blockGuiX = (TEXTURE_WIDTH - blockW) / 2;
-        int numericGuiX = blockGuiX + (blockW - numericRowW) / 2;
+        int sequentialStackBlockW = Math.max(numericRowW, sequentialStackActionRowW);
+        int totalW = showSequentialStack ? blockW + AMOUNT_SEQUENTIAL_STACK_BLOCK_GAP + sequentialStackBlockW : blockW;
+        int pairGuiX = (TEXTURE_WIDTH - totalW) / 2;
 
+        int numericGuiX = pairGuiX + (blockW - numericRowW) / 2;
         int amX = this.leftPos + numericGuiX;
         int amY = this.topPos + AMOUNT_ROW_Y;
         routingMinusButton.setPosition(amX, amY);
@@ -2883,7 +2936,6 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         routingPlusButton.setWidth(AMOUNT_STEPPER_W);
         routingPlusButton.setHeight(BTN_H);
 
-        // Center 0 / A / (M) / ✕ under the edit field (same rule as advanced cap editors).
         int actY = amY + BTN_H + AMOUNT_ROWS_GAP;
         int ax = boxX + (AMOUNT_EDIT_W - actionRowW) / 2;
         positionAmountActionButton(amountClearButton, ax, actY);
@@ -2895,6 +2947,33 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             ax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
         }
         positionAmountActionButton(amountDiscardButton, ax, actY);
+
+        if (sequentialStackMinusButton != null) {
+            int sequentialStackGuiX = pairGuiX + blockW + AMOUNT_SEQUENTIAL_STACK_BLOCK_GAP;
+            int sequentialStackNumericGuiX = sequentialStackGuiX + (sequentialStackBlockW - numericRowW) / 2;
+            int cmX = this.leftPos + sequentialStackNumericGuiX;
+            sequentialStackMinusButton.setPosition(cmX, amY);
+            sequentialStackMinusButton.setWidth(AMOUNT_STEPPER_W);
+            sequentialStackMinusButton.setHeight(BTN_H);
+            int cBoxX = cmX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+            sequentialStackEditBoxGuiLeft =
+                sequentialStackNumericGuiX + AMOUNT_STEPPER_W + AMOUNT_INNER_GAP;
+            sequentialStackEditBox.setPosition(cBoxX, amY);
+            sequentialStackEditBox.setWidth(AMOUNT_EDIT_W);
+            sequentialStackEditBox.setHeight(BTN_H);
+            int cPlusX = cBoxX + AMOUNT_EDIT_W + AMOUNT_INNER_GAP;
+            sequentialStackPlusButton.setPosition(cPlusX, amY);
+            sequentialStackPlusButton.setWidth(AMOUNT_STEPPER_W);
+            sequentialStackPlusButton.setHeight(BTN_H);
+            int cax = cBoxX + (AMOUNT_EDIT_W - sequentialStackActionRowW) / 2;
+            positionAmountActionButton(sequentialStackClearButton, cax, actY);
+            cax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+            positionAmountActionButton(sequentialStackApplyButton, cax, actY);
+            cax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+            positionAmountActionButton(sequentialStackMaxButton, cax, actY);
+            cax += AMOUNT_ACTION_BTN + AMOUNT_BTN_GAP;
+            positionAmountActionButton(sequentialStackDiscardButton, cax, actY);
+        }
     }
 
     /** Centered Limit/Keep editor (same geometry as {@link #layoutAmountBlock}). */
@@ -3468,11 +3547,22 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         NodeMode amountNodeMode = NodeMode.fromOrdinal(
             menu.getSyncData().get(DuctMenuSync.NODE_MODE)
         );
-        amountMaxButton.visible =
+        boolean showBatchAmount =
             showAmountBlock &&
             amountNodeMode.usesExtractBatchField() &&
             !amountFieldEditsPriority();
+        amountMaxButton.visible = showBatchAmount;
         amountDiscardButton.visible = showAmountBlock;
+        boolean showSequentialStack = showBatchAmount;
+        if (sequentialStackMinusButton != null) {
+            sequentialStackMinusButton.visible = showSequentialStack;
+            sequentialStackPlusButton.visible = showSequentialStack;
+            sequentialStackEditBox.visible = showSequentialStack;
+            sequentialStackClearButton.visible = showSequentialStack;
+            sequentialStackApplyButton.visible = showSequentialStack;
+            sequentialStackMaxButton.visible = showSequentialStack;
+            sequentialStackDiscardButton.visible = showSequentialStack;
+        }
 
         boolean showAdvCapBlock = showsAdvancedCapEditors();
         advCapMinusButton.visible = showAdvCapBlock;
@@ -6522,42 +6612,105 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         }
 
         boolean amountIsPriority = amountFieldEditsPriority();
-        routingPriorityBox.setTooltip(
-            Tooltip.create(
-                Component.translatable(
-                    amountIsPriority
-                        ? "gui.another_dynamics.duct_node.amount.field.tooltip.priority"
-                        : "gui.another_dynamics.duct_node.amount.field.tooltip.batch"
-                )
-            )
-        );
+        boolean qtyLocked = quantityFieldLocked();
+        routingPriorityBox.setTooltip(amountFieldTooltip(amountIsPriority));
         routingMinusButton.setTooltip(
-            Tooltip.create(
-                Component.translatable(
-                    amountIsPriority
-                        ? "gui.another_dynamics.duct_node.amount.minus.tooltip.priority"
-                        : "gui.another_dynamics.duct_node.amount.minus.tooltip.batch"
-                )
+            withOptionalLockedPrefix(
+                qtyLocked,
+                "gui.another_dynamics.duct_node.amount.locked.quantity",
+                amountIsPriority
+                    ? "gui.another_dynamics.duct_node.amount.minus.tooltip.priority"
+                    : "gui.another_dynamics.duct_node.amount.minus.tooltip.batch"
             )
         );
         routingPlusButton.setTooltip(
-            Tooltip.create(
-                Component.translatable(
-                    amountIsPriority
-                        ? "gui.another_dynamics.duct_node.amount.plus.tooltip.priority"
-                        : "gui.another_dynamics.duct_node.amount.plus.tooltip.batch"
-                )
+            withOptionalLockedPrefix(
+                qtyLocked,
+                "gui.another_dynamics.duct_node.amount.locked.quantity",
+                amountIsPriority
+                    ? "gui.another_dynamics.duct_node.amount.plus.tooltip.priority"
+                    : "gui.another_dynamics.duct_node.amount.plus.tooltip.batch"
             )
         );
         if (amountClearButton != null) {
             amountClearButton.setMessage(
                 Component.literal(amountIsPriority ? "0" : "1"));
             amountClearButton.setTooltip(
-                Tooltip.create(
-                    Component.translatable(
-                        amountIsPriority
-                            ? "gui.another_dynamics.duct_node.amount.set_to_zero.tooltip.priority"
-                            : "gui.another_dynamics.duct_node.amount.set_to_one.tooltip")));
+                withOptionalLockedPrefix(
+                    qtyLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.quantity",
+                    amountIsPriority
+                        ? "gui.another_dynamics.duct_node.amount.set_to_zero.tooltip.priority"
+                        : "gui.another_dynamics.duct_node.amount.set_to_one.tooltip"
+                )
+            );
+            amountApplyButton.setTooltip(
+                withOptionalLockedPrefix(
+                    qtyLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.quantity",
+                    "gui.another_dynamics.duct_node.filters.apply"
+                )
+            );
+            amountMaxButton.setTooltip(
+                withOptionalLockedPrefix(
+                    qtyLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.quantity",
+                    "gui.another_dynamics.duct_node.amount.set_to_max.tooltip"
+                )
+            );
+            amountDiscardButton.setTooltip(
+                withOptionalLockedPrefix(
+                    qtyLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.quantity",
+                    "gui.another_dynamics.duct_node.amount.undo.tooltip"
+                )
+            );
+        }
+        if (sequentialStackEditBox != null && sequentialStackEditBox.visible) {
+            boolean sequentialStackLocked = sequentialStackFieldLocked();
+            sequentialStackEditBox.setTooltip(sequentialStackFieldTooltip());
+            sequentialStackMinusButton.setTooltip(
+                withOptionalLockedPrefix(
+                    sequentialStackLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.sequential_stack",
+                    "gui.another_dynamics.duct_node.amount.minus.tooltip.sequential_stack"
+                )
+            );
+            sequentialStackPlusButton.setTooltip(
+                withOptionalLockedPrefix(
+                    sequentialStackLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.sequential_stack",
+                    "gui.another_dynamics.duct_node.amount.plus.tooltip.sequential_stack"
+                )
+            );
+            sequentialStackClearButton.setTooltip(
+                withOptionalLockedPrefix(
+                    sequentialStackLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.sequential_stack",
+                    "gui.another_dynamics.duct_node.amount.set_to_one.tooltip"
+                )
+            );
+            sequentialStackApplyButton.setTooltip(
+                withOptionalLockedPrefix(
+                    sequentialStackLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.sequential_stack",
+                    "gui.another_dynamics.duct_node.filters.apply"
+                )
+            );
+            sequentialStackMaxButton.setTooltip(
+                withOptionalLockedPrefix(
+                    sequentialStackLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.sequential_stack",
+                    "gui.another_dynamics.duct_node.amount.set_to_max.tooltip"
+                )
+            );
+            sequentialStackDiscardButton.setTooltip(
+                withOptionalLockedPrefix(
+                    sequentialStackLocked,
+                    "gui.another_dynamics.duct_node.amount.locked.sequential_stack",
+                    "gui.another_dynamics.duct_node.amount.undo.tooltip"
+                )
+            );
         }
 
         redstoneModeStub = menu.getSyncData().get(DuctMenuSync.REDSTONE_MODE);
@@ -6726,6 +6879,34 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             routingPriorityBox.setValue(Integer.toString(v));
             syncingAmountBoxFromServer = false;
         }
+        if (sequentialStackEditBox != null && sequentialStackEditBox.visible) {
+            int sequentialStackCapNow = syncedExtractSequentialStackCap();
+            if (
+                lastTrackedExtractSequentialStackCap >= 0 &&
+                sequentialStackCapNow < lastTrackedExtractSequentialStackCap &&
+                sequentialStackFieldsDirty
+            ) {
+                int parsed = parsePriorityOr(sequentialStackEditBox.getValue(), Math.max(1, syncedExtractSequentialStack()));
+                if (parsed > sequentialStackCapNow) {
+                    syncingSequentialStackBoxFromServer = true;
+                    sequentialStackEditBox.setValue(Integer.toString(Mth.clamp(parsed, 1, sequentialStackCapNow)));
+                    syncingSequentialStackBoxFromServer = false;
+                }
+            }
+            lastTrackedExtractSequentialStackCap = sequentialStackCapNow;
+            if (!sequentialStackEditBox.isFocused() && !sequentialStackFieldsDirty) {
+                int cv = syncedExtractSequentialStack();
+                if (cv <= 0) {
+                    cv = 1;
+                }
+                syncingSequentialStackBoxFromServer = true;
+                sequentialStackEditBox.setValue(Integer.toString(cv));
+                syncingSequentialStackBoxFromServer = false;
+            }
+        } else {
+            lastTrackedExtractSequentialStackCap = -1;
+        }
+        updateAmountAndSequentialStackLockState();
 
         filterScrollOffset = Mth.clamp(
             filterScrollOffset,
@@ -6853,6 +7034,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         pushAmountFields(
             insertionPriority,
             extractBatch,
+            draftOrSyncedExtractSequentialStack(),
             menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
         );
     }
@@ -6862,14 +7044,141 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         int extractBatch,
         int eligibilityModeOrdinal
     ) {
+        pushAmountFields(
+            insertionPriority,
+            extractBatch,
+            draftOrSyncedExtractSequentialStack(),
+            eligibilityModeOrdinal
+        );
+    }
+
+    private void pushAmountFields(
+        int insertionPriority,
+        int extractBatch,
+        int extractSequentialStack,
+        int eligibilityModeOrdinal
+    ) {
         ModNetwork.sendFieldUpdate(
             menuSyncedPos(),
             menuSyncedFace(),
             menu.getSyncData().get(DuctMenuSync.ACTIVE_TRANSPORT_KIND),
             insertionPriority,
             extractBatch,
+            extractSequentialStack,
             eligibilityModeOrdinal
         );
+    }
+
+    private int syncedExtractSequentialStack() {
+        return menu.getSyncData().get(DuctMenuSync.EXTRACT_SEQUENTIAL_STACK);
+    }
+
+    private int syncedExtractSequentialStackCap() {
+        return Math.max(1, menu.getSyncData().get(DuctMenuSync.EXTRACT_SEQUENTIAL_STACK_CAP));
+    }
+
+    private int draftOrSyncedExtractSequentialStack() {
+        if (sequentialStackEditBox != null && (sequentialStackFieldsDirty || sequentialStackEditBox.isFocused())) {
+            return Mth.clamp(
+                parsePriorityOr(sequentialStackEditBox.getValue(), Math.max(1, syncedExtractSequentialStack())),
+                1,
+                syncedExtractSequentialStackCap()
+            );
+        }
+        int v = syncedExtractSequentialStack();
+        return v <= 0 ? 1 : v;
+    }
+
+    private boolean quantityFieldLocked() {
+        return (
+            !amountFieldEditsPriority() &&
+            menu.getSyncData().get(DuctMenuSync.NODE_MODE) >= 0 &&
+            NodeMode.fromOrdinal(menu.getSyncData().get(DuctMenuSync.NODE_MODE))
+                .usesExtractBatchField() &&
+            syncedExtractBatchCap() <= 1
+        );
+    }
+
+    private boolean sequentialStackFieldLocked() {
+        return sequentialStackEditBox != null && sequentialStackEditBox.visible && syncedExtractSequentialStackCap() <= 1;
+    }
+
+    private Tooltip lockedThenHelpTooltip(String lockedKey, String helpKey) {
+        return Tooltip.create(
+            Component.translatable(lockedKey)
+                .withStyle(ChatFormatting.RED)
+                .append(Component.literal("\n"))
+                .append(Component.translatable(helpKey).withStyle(ChatFormatting.GRAY))
+        );
+    }
+
+    private Tooltip amountFieldTooltip(boolean priority) {
+        // Label above the field already shows the name; tooltip always explains what it does.
+        String help =
+            priority
+                ? "gui.another_dynamics.duct_node.amount.field.help.priority"
+                : "gui.another_dynamics.duct_node.amount.field.help.batch";
+        if (!priority && quantityFieldLocked()) {
+            return lockedThenHelpTooltip(
+                "gui.another_dynamics.duct_node.amount.locked.quantity", help);
+        }
+        return Tooltip.create(Component.translatable(help));
+    }
+
+    private Tooltip sequentialStackFieldTooltip() {
+        String help = "gui.another_dynamics.duct_node.amount.field.help.sequential_stack";
+        if (sequentialStackFieldLocked()) {
+            return lockedThenHelpTooltip(
+                "gui.another_dynamics.duct_node.amount.locked.sequential_stack", help);
+        }
+        return Tooltip.create(Component.translatable(help));
+    }
+
+    private Tooltip withOptionalLockedPrefix(boolean locked, String lockedKey, String tipKey) {
+        if (locked) {
+            return lockedThenHelpTooltip(lockedKey, tipKey);
+        }
+        return Tooltip.create(Component.translatable(tipKey));
+    }
+
+    private void updateAmountAndSequentialStackLockState() {
+        boolean qtyLocked = quantityFieldLocked();
+        if (routingPriorityBox != null && routingPriorityBox.visible) {
+            boolean editable = !qtyLocked && (!amountFieldEditsPriority() || true);
+            if (qtyLocked) {
+                routingPriorityBox.setEditable(false);
+                routingPriorityBox.setFocused(false);
+                routingPriorityBox.setTextColor(0x808080);
+            } else {
+                routingPriorityBox.setEditable(true);
+                routingPriorityBox.setTextColor(FILTER_ENTRY_EDIT_TEXT_COLOR);
+            }
+        }
+        if (routingMinusButton != null) {
+            routingMinusButton.active = routingMinusButton.visible && !qtyLocked;
+            routingPlusButton.active = routingPlusButton.visible && !qtyLocked;
+            amountClearButton.active = amountClearButton.visible && !qtyLocked;
+            amountApplyButton.active = amountApplyButton.visible && !qtyLocked;
+            amountMaxButton.active = amountMaxButton.visible && !qtyLocked;
+            amountDiscardButton.active = amountDiscardButton.visible && !qtyLocked;
+        }
+        boolean sequentialStackLocked = sequentialStackFieldLocked();
+        if (sequentialStackEditBox != null && sequentialStackEditBox.visible) {
+            if (sequentialStackLocked) {
+                sequentialStackEditBox.setEditable(false);
+                sequentialStackEditBox.setFocused(false);
+                sequentialStackEditBox.setTextColor(0x808080);
+            } else {
+                sequentialStackEditBox.setEditable(true);
+                sequentialStackEditBox.setTextColor(FILTER_ENTRY_EDIT_TEXT_COLOR);
+            }
+            sequentialStackMinusButton.active = !sequentialStackLocked;
+            sequentialStackPlusButton.active = !sequentialStackLocked;
+            sequentialStackClearButton.active = !sequentialStackLocked;
+            sequentialStackApplyButton.active = !sequentialStackLocked;
+            sequentialStackMaxButton.active = !sequentialStackLocked;
+            sequentialStackDiscardButton.active = !sequentialStackLocked;
+        }
     }
 
     private int stepForPriorityAdjust() {
@@ -6908,6 +7217,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     }
 
     private void adjustAmountField(int sign) {
+        if (!amountFieldEditsPriority() && quantityFieldLocked()) {
+            return;
+        }
         playClickSound();
         int priSynced = syncedInsertionPriority();
         int batchSynced = syncedExtractBatch();
@@ -7004,6 +7316,91 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private void amountDiscardDraft() {
         playClickSound();
         revertAmountDraft(true);
+    }
+
+    private void adjustSequentialStackField(int sign) {
+        if (syncedExtractSequentialStackCap() <= 1) {
+            return;
+        }
+        playClickSound();
+        int base = parsePriorityOr(sequentialStackEditBox.getValue(), Math.max(1, syncedExtractSequentialStack()));
+        int sequentialStacks = Mth.clamp(base + sign * stepForBatchAdjust(), 1, syncedExtractSequentialStackCap());
+        syncingSequentialStackBoxFromServer = true;
+        sequentialStackEditBox.setValue(Integer.toString(sequentialStacks));
+        syncingSequentialStackBoxFromServer = false;
+        sequentialStackFieldsDirty = true;
+    }
+
+    private void commitSequentialStackFromEditBox() {
+        int sequentialStacks = Mth.clamp(
+            parsePriorityOr(sequentialStackEditBox.getValue(), Math.max(1, syncedExtractSequentialStack())),
+            1,
+            syncedExtractSequentialStackCap()
+        );
+        pushAmountFields(
+            syncedInsertionPriority(),
+            amountFieldEditsPriority()
+                ? syncedExtractBatch()
+                : parsePriorityOr(routingPriorityBox.getValue(), syncedExtractBatch()),
+            sequentialStacks,
+            menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
+        );
+        syncingSequentialStackBoxFromServer = true;
+        sequentialStackEditBox.setValue(Integer.toString(sequentialStacks));
+        syncingSequentialStackBoxFromServer = false;
+        sequentialStackFieldsDirty = false;
+    }
+
+    private void sequentialStackQuickSetField() {
+        if (syncedExtractSequentialStackCap() <= 1) {
+            return;
+        }
+        playClickSound();
+        syncingSequentialStackBoxFromServer = true;
+        sequentialStackEditBox.setValue("1");
+        syncingSequentialStackBoxFromServer = false;
+        sequentialStackFieldsDirty = true;
+    }
+
+    private void sequentialStackApplyField() {
+        playClickSound();
+        commitSequentialStackFromEditBox();
+    }
+
+    private void sequentialStackMaxField() {
+        int cap = syncedExtractSequentialStackCap();
+        if (cap <= 1) {
+            return;
+        }
+        playClickSound();
+        syncingSequentialStackBoxFromServer = true;
+        sequentialStackEditBox.setValue(Integer.toString(cap));
+        syncingSequentialStackBoxFromServer = false;
+        pushAmountFields(
+            syncedInsertionPriority(),
+            amountFieldEditsPriority()
+                ? syncedExtractBatch()
+                : parsePriorityOr(routingPriorityBox.getValue(), syncedExtractBatch()),
+            cap,
+            menu.getSyncData().get(DuctMenuSync.ELIGIBILITY_MODE)
+        );
+        sequentialStackFieldsDirty = false;
+    }
+
+    private void revertSequentialStackDraft(boolean defocus) {
+        int v = Math.max(1, syncedExtractSequentialStack() <= 0 ? 1 : syncedExtractSequentialStack());
+        syncingSequentialStackBoxFromServer = true;
+        sequentialStackEditBox.setValue(Integer.toString(v));
+        syncingSequentialStackBoxFromServer = false;
+        sequentialStackFieldsDirty = false;
+        if (defocus) {
+            sequentialStackEditBox.setFocused(false);
+        }
+    }
+
+    private void sequentialStackDiscardDraft() {
+        playClickSound();
+        revertSequentialStackDraft(true);
     }
 
     private static int parsePriority(String s) {
@@ -7390,6 +7787,13 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             return true;
         }
         if (
+            sequentialStackEditBox != null &&
+            sequentialStackEditBox.visible &&
+            sequentialStackEditBox.isMouseOver(mouseX, mouseY)
+        ) {
+            return true;
+        }
+        if (
             editModeTextBox != null &&
             editModeTextBox.visible &&
             editModeTextBox.isMouseOver(mouseX, mouseY)
@@ -7417,6 +7821,9 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
     private void unfocusAllTextFields() {
         if (routingPriorityBox != null) {
             routingPriorityBox.setFocused(false);
+        }
+        if (sequentialStackEditBox != null) {
+            sequentialStackEditBox.setFocused(false);
         }
         if (editModeTextBox != null) {
             editModeTextBox.setFocused(false);
@@ -7469,6 +7876,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
                 mouseY,
                 button,
                 routingPriorityBox,
+                sequentialStackEditBox,
                 editModeTextBox,
                 advCapEditBox,
                 advCap2EditBox,
@@ -7718,6 +8126,14 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             keyCode == InputConstants.KEY_RETURN
         ) {
             commitFieldFromEditBox();
+            return true;
+        }
+        if (
+            sequentialStackEditBox != null &&
+            sequentialStackEditBox.isFocused() &&
+            keyCode == InputConstants.KEY_RETURN
+        ) {
+            commitSequentialStackFromEditBox();
             return true;
         }
 

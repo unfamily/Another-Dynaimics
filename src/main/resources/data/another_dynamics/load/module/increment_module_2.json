@@ -8,16 +8,27 @@
         "set": 64
       },
       "filter": {
-        "allow": { "add": 100 },
-        "deny": { "add": 100 },
-        "allow_hybrid": { "add": 50 },
-        "deny_hybrid": { "add": 50 }
+        "allow": {
+          "add": 100
+        },
+        "deny": {
+          "add": 100
+        },
+        "allow_hybrid": {
+          "add": 50
+        },
+        "deny_hybrid": {
+          "add": 50
+        }
       },
       "speed": {
         "mult": 0.333
       },
       "rate": {
         "mult": 0.333
+      },
+      "seq_stack": {
+        "set": 2
       }
     },
     {
@@ -26,16 +37,27 @@
         "set": 64000
       },
       "filter": {
-        "allow": { "add": 100 },
-        "deny": { "add": 100 },
-        "allow_hybrid": { "add": 50 },
-        "deny_hybrid": { "add": 50 }
+        "allow": {
+          "add": 100
+        },
+        "deny": {
+          "add": 100
+        },
+        "allow_hybrid": {
+          "add": 50
+        },
+        "deny_hybrid": {
+          "add": 50
+        }
       },
       "speed": {
         "mult": 0.333
       },
       "rate": {
         "mult": 0.333
+      },
+      "seq_stack": {
+        "set": 2
       }
     },
     {
@@ -44,16 +66,27 @@
         "set": 64000
       },
       "filter": {
-        "allow": { "add": 100 },
-        "deny": { "add": 100 },
-        "allow_hybrid": { "add": 50 },
-        "deny_hybrid": { "add": 50 }
+        "allow": {
+          "add": 100
+        },
+        "deny": {
+          "add": 100
+        },
+        "allow_hybrid": {
+          "add": 50
+        },
+        "deny_hybrid": {
+          "add": 50
+        }
       },
       "speed": {
         "mult": 0.333
       },
       "rate": {
         "mult": 0.333
+      },
+      "seq_stack": {
+        "set": 2
       }
     },
     {

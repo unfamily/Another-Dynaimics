@@ -12,6 +12,10 @@ public record DuctItemTransportSpec(
         int rateMinTicks,
         int speedDefault,
         int speedMin,
+        /** Shipments scheduled per rate fire (datapack {@code seq_stack.default}). */
+        int sequentialStackDefault,
+        /** Cap for face sequential-stack setting; negative = only default + modules (clamped by server hard cap). */
+        int sequentialStackMax,
         /** Max allow-pattern entries per bank for non-hybrid modes and for legacy root filter lists. */
         int filterAllowSlots,
         int filterDenySlots,
@@ -20,9 +24,11 @@ public record DuctItemTransportSpec(
         int filterDenyHybridSlots
 ) {
     public static final int UNLIMITED_BATCH = Integer.MAX_VALUE;
+    /** Absolute ceiling for sequential-stack steps per rate fire (server + GUI). */
+    public static final int HARD_SEQUENTIAL_STACK_CAP = 16;
 
     public static DuctItemTransportSpec fallback() {
-        return new DuctItemTransportSpec(8, UNLIMITED_BATCH, 10, 1, 20, 0, 3, 3, 3, 3);
+        return new DuctItemTransportSpec(8, UNLIMITED_BATCH, 10, 1, 20, 0, 1, HARD_SEQUENTIAL_STACK_CAP, 3, 3, 3, 3);
     }
 
     /**
@@ -52,8 +58,34 @@ public record DuctItemTransportSpec(
         return Math.max(1, Math.min(batchMax, base));
     }
 
+    /**
+     * Floors at {@code rate.min} (at least 1). Never remaps {@code 0}/negative to the datapack default —
+     * aggressive module {@code rate.mult} must land on the minimum interval, not reset to base rate.
+     */
     public int clampedRateTicks(int requested) {
-        int r = requested <= 0 ? rateDefaultTicks : requested;
-        return Math.max(rateMinTicks, r);
+        int min = Math.max(1, rateMinTicks);
+        return Math.max(min, requested);
+    }
+
+    /**
+     * Max sequential stacks the player may configure: {@code sequentialStackDefault + moduleBonus}, limited by datapack {@code seq_stack.max}
+     * when non-negative, then by {@link #HARD_SEQUENTIAL_STACK_CAP}.
+     */
+    public int extractSequentialStackSettingCap(int moduleBonus) {
+        int base = sequentialStackDefault + moduleBonus;
+        int capped;
+        if (sequentialStackMax < 0) {
+            capped = Math.max(1, base);
+        } else {
+            capped = Math.max(1, Math.min(sequentialStackMax, base));
+        }
+        return Math.min(HARD_SEQUENTIAL_STACK_CAP, capped);
+    }
+
+    /** Floors at 1 and ceilings at the setting cap / hard cap. */
+    public int clampedSequentialStack(int requested, int settingCap) {
+        int cap = Math.max(1, Math.min(HARD_SEQUENTIAL_STACK_CAP, settingCap));
+        int v = requested <= 0 ? sequentialStackDefault : requested;
+        return Math.max(1, Math.min(cap, v));
     }
 }

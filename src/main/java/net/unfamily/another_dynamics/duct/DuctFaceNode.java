@@ -101,6 +101,9 @@ public final class DuctFaceNode {
      * setting cap when modules or mode changes raise the cap.
      */
     public boolean extractBatchPinnedToMax;
+    public int extractSequentialStack;
+    public int lastExtractSequentialStackSettingCapApplied;
+    public boolean extractSequentialStackPinnedToMax;
     public int channelLetter = 1;
     public int roundRobinCursor;
     /** Retriever: next donor inventory slot index to probe (round-robin across slots). */
@@ -249,6 +252,9 @@ public final class DuctFaceNode {
         extractBatch = 0;
         lastExtractBatchSettingCapApplied = 0;
         extractBatchPinnedToMax = false;
+        extractSequentialStack = 0;
+        lastExtractSequentialStackSettingCapApplied = 0;
+        extractSequentialStackPinnedToMax = false;
         roundRobinCursor = 0;
         retrieverPullSlotCursor = 0;
         selfFeed = false;
@@ -265,6 +271,10 @@ public final class DuctFaceNode {
         return extractBatchPinnedToMax;
     }
 
+    public boolean isExtractSequentialStackPinnedToCap() {
+        return extractSequentialStackPinnedToMax;
+    }
+
     private void loadExtractBatchPinnedFromTag(CompoundTag tag) {
         if (tag.contains("ExtractBatchPinned")) {
             extractBatchPinnedToMax = tag.getBooleanOr("ExtractBatchPinned", false);
@@ -273,6 +283,32 @@ public final class DuctFaceNode {
                     lastExtractBatchSettingCapApplied > 0
                             && extractBatch >= lastExtractBatchSettingCapApplied;
         }
+    }
+
+    private void loadExtractSequentialStackPinnedFromTag(CompoundTag tag) {
+        if (tag.contains("SequentialStackPinned")) {
+            extractSequentialStackPinnedToMax = tag.getBooleanOr("SequentialStackPinned", false);
+        } else if (tag.contains("ExtractChainPinned")) {
+            extractSequentialStackPinnedToMax = tag.getBooleanOr("ExtractChainPinned", false);
+        } else {
+            extractSequentialStackPinnedToMax =
+                    lastExtractSequentialStackSettingCapApplied > 0
+                            && extractSequentialStack >= lastExtractSequentialStackSettingCapApplied;
+        }
+    }
+
+    private static int readSequentialStackInt(CompoundTag tag, String modern, String legacy) {
+        if (tag.contains(modern)) {
+            return tag.getIntOr(modern, 0);
+        }
+        if (tag.contains(legacy)) {
+            return tag.getIntOr(legacy, 0);
+        }
+        return 0;
+    }
+
+    private static boolean hasSequentialStackInt(CompoundTag tag, String modern, String legacy) {
+        return tag.contains(modern) || tag.contains(legacy);
     }
 
     /** Settings copier: lane configuration without {@code NodeGui} or per-tick cursors. */
@@ -284,6 +320,9 @@ public final class DuctFaceNode {
         tag.putInt("ExtractBatch", extractBatch);
         tag.putInt("ExtractBatchCapMemo", lastExtractBatchSettingCapApplied);
         tag.putBoolean("ExtractBatchPinned", extractBatchPinnedToMax);
+        tag.putInt("SequentialStack", extractSequentialStack);
+        tag.putInt("SequentialStackCapMemo", lastExtractSequentialStackSettingCapApplied);
+        tag.putBoolean("SequentialStackPinned", extractSequentialStackPinnedToMax);
         tag.putByte("Channel", (byte) channelLetter);
         tag.putBoolean("SelfFeed", selfFeed);
         tag.putByte("EligMode", (byte) eligibilityMode.ordinal());
@@ -303,6 +342,7 @@ public final class DuctFaceNode {
                         : routingMode;
         insertionPriority = 0;
         extractBatch = 0;
+        extractSequentialStack = 0;
         if (tag.contains("InsertionPriority")) {
             insertionPriority = tag.getIntOr("InsertionPriority", 0);
         } else if (tag.contains("InsPriority")) {
@@ -314,6 +354,17 @@ public final class DuctFaceNode {
         lastExtractBatchSettingCapApplied =
                 tag.contains("ExtractBatchCapMemo") ? tag.getIntOr("ExtractBatchCapMemo", 0) : 0;
         loadExtractBatchPinnedFromTag(tag);
+        if (hasSequentialStackInt(tag, "SequentialStack", "ExtractChain")) {
+            extractSequentialStack = readSequentialStackInt(tag, "SequentialStack", "ExtractChain");
+        }
+        if (tag.contains("SequentialStackCapMemo")) {
+            lastExtractSequentialStackSettingCapApplied = tag.getIntOr("SequentialStackCapMemo", 0);
+        } else if (tag.contains("ExtractChainCapMemo")) {
+            lastExtractSequentialStackSettingCapApplied = tag.getIntOr("ExtractChainCapMemo", 0);
+        } else {
+            lastExtractSequentialStackSettingCapApplied = 0;
+        }
+        loadExtractSequentialStackPinnedFromTag(tag);
         channelLetter = tag.contains("Channel") ? tag.getByteOr("Channel", (byte) 0) & 0xFF : 1;
         selfFeed = tag.contains("SelfFeed") && tag.getBooleanOr("SelfFeed", false);
         eligibilityMode =
@@ -332,6 +383,9 @@ public final class DuctFaceNode {
         tag.putInt("ExtractBatch", extractBatch);
         tag.putInt("ExtractBatchCapMemo", lastExtractBatchSettingCapApplied);
         tag.putBoolean("ExtractBatchPinned", extractBatchPinnedToMax);
+        tag.putInt("SequentialStack", extractSequentialStack);
+        tag.putInt("SequentialStackCapMemo", lastExtractSequentialStackSettingCapApplied);
+        tag.putBoolean("SequentialStackPinned", extractSequentialStackPinnedToMax);
         tag.putByte("Channel", (byte) channelLetter);
         tag.putInt("RrCursor", roundRobinCursor);
         tag.putInt("RtrPullSlot", retrieverPullSlotCursor);
@@ -354,6 +408,7 @@ public final class DuctFaceNode {
                         : routingMode;
         insertionPriority = 0;
         extractBatch = 0;
+        extractSequentialStack = 0;
         if (tag.contains("InsertionPriority")) {
             insertionPriority = tag.getIntOr("InsertionPriority", 0);
         } else if (tag.contains("InsPriority")) {
@@ -365,6 +420,17 @@ public final class DuctFaceNode {
         lastExtractBatchSettingCapApplied =
                 tag.contains("ExtractBatchCapMemo") ? tag.getIntOr("ExtractBatchCapMemo", 0) : 0;
         loadExtractBatchPinnedFromTag(tag);
+        if (hasSequentialStackInt(tag, "SequentialStack", "ExtractChain")) {
+            extractSequentialStack = readSequentialStackInt(tag, "SequentialStack", "ExtractChain");
+        }
+        if (tag.contains("SequentialStackCapMemo")) {
+            lastExtractSequentialStackSettingCapApplied = tag.getIntOr("SequentialStackCapMemo", 0);
+        } else if (tag.contains("ExtractChainCapMemo")) {
+            lastExtractSequentialStackSettingCapApplied = tag.getIntOr("ExtractChainCapMemo", 0);
+        } else {
+            lastExtractSequentialStackSettingCapApplied = 0;
+        }
+        loadExtractSequentialStackPinnedFromTag(tag);
         channelLetter = tag.contains("Channel") ? tag.getByteOr("Channel", (byte) 0) & 0xFF : 1;
         roundRobinCursor = tag.getIntOr("RrCursor", 0);
         retrieverPullSlotCursor = tag.contains("RtrPullSlot") ? tag.getIntOr("RtrPullSlot", 0) : 0;
@@ -400,6 +466,17 @@ public final class DuctFaceNode {
         lastExtractBatchSettingCapApplied =
                 root.contains("ExtractBatchCapMemo") ? root.getIntOr("ExtractBatchCapMemo", 0) : 0;
         loadExtractBatchPinnedFromTag(root);
+        if (hasSequentialStackInt(root, "SequentialStack", "ExtractChain")) {
+            extractSequentialStack = readSequentialStackInt(root, "SequentialStack", "ExtractChain");
+        }
+        if (root.contains("SequentialStackCapMemo")) {
+            lastExtractSequentialStackSettingCapApplied = root.getIntOr("SequentialStackCapMemo", 0);
+        } else if (root.contains("ExtractChainCapMemo")) {
+            lastExtractSequentialStackSettingCapApplied = root.getIntOr("ExtractChainCapMemo", 0);
+        } else {
+            lastExtractSequentialStackSettingCapApplied = 0;
+        }
+        loadExtractSequentialStackPinnedFromTag(root);
         if (!root.contains("InsertionPriority")
                 && !root.contains("InsPriority")
                 && !root.contains("ExtractBatch")

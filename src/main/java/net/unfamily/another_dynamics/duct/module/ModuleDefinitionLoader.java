@@ -55,12 +55,15 @@ public final class ModuleDefinitionLoader {
             ModuleDefinition.ItemQuantityModifiers iq = parseQuantityFor(o, "item");
             ModuleDefinition.ItemQuantityModifiers ir = parseKeyedQuantityFor(o, "item", "rate");
             ModuleDefinition.ItemQuantityModifiers is = parseKeyedQuantityFor(o, "item", "speed");
+            ModuleDefinition.ItemQuantityModifiers ic = parseSequentialStackQuantityFor(o, "item");
             ModuleDefinition.ItemQuantityModifiers fq = parseQuantityFor(o, "fluid");
             ModuleDefinition.ItemQuantityModifiers fr = parseKeyedQuantityFor(o, "fluid", "rate");
             ModuleDefinition.ItemQuantityModifiers fs = parseKeyedQuantityFor(o, "fluid", "speed");
+            ModuleDefinition.ItemQuantityModifiers fc = parseSequentialStackQuantityFor(o, "fluid");
             ModuleDefinition.ItemQuantityModifiers gq = parseQuantityFor(o, "gas");
             ModuleDefinition.ItemQuantityModifiers gr = parseKeyedQuantityFor(o, "gas", "rate");
             ModuleDefinition.ItemQuantityModifiers gs = parseKeyedQuantityFor(o, "gas", "speed");
+            ModuleDefinition.ItemQuantityModifiers gc = parseSequentialStackQuantityFor(o, "gas");
             ModuleDefinition.ItemQuantityModifiers eq = parseQuantityFor(o, "energy");
             ModuleDefinition.ItemQuantityModifiers er = parseKeyedQuantityFor(o, "energy", "rate");
             ModuleDefinition.ItemQuantityModifiers es = parseKeyedQuantityFor(o, "energy", "speed");
@@ -80,12 +83,15 @@ public final class ModuleDefinitionLoader {
                     iq,
                     ir,
                     is,
+                    ic,
                     fq,
                     fr,
                     fs,
+                    fc,
                     gq,
                     gr,
                     gs,
+                    gc,
                     eq,
                     er,
                     es,
@@ -292,6 +298,28 @@ public final class ModuleDefinitionLoader {
             return affectForItem.getAsJsonObject("batch");
         }
         return null;
+    }
+
+    private static final String[] SEQUENTIAL_STACK_KEYS = {
+        "seq_stack",
+        "seq_stacks",
+        "sequential_stack",
+        "sequential_stacks",
+        "seq",
+        "seqs",
+        "stack",
+        "stacks"
+    };
+
+    private static ModuleDefinition.ItemQuantityModifiers parseSequentialStackQuantityFor(
+            JsonObject root, String transportFor) {
+        for (String key : SEQUENTIAL_STACK_KEYS) {
+            ModuleDefinition.ItemQuantityModifiers mod = parseKeyedQuantityFor(root, transportFor, key);
+            if (mod.hasSet() || mod.addSum() != 0 || mod.multProduct() != 1.0) {
+                return mod;
+            }
+        }
+        return ModuleDefinition.ItemQuantityModifiers.none();
     }
 
     private static ModuleDefinition.ItemQuantityModifiers parseKeyedQuantityFor(

@@ -25,6 +25,10 @@
         "allow": 4,
         "deny_hybrid": 2,
         "allow_hybrid": 2
+      },
+      "seq_stack": {
+        "default": 1,
+        "max": 16
       }
     }
   ],

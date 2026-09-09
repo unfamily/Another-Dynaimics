@@ -21,14 +21,14 @@ public final class SettingsCopierSequentialVirtualSession {
     private final InteractionHand hand;
     private SequentialGateMode gate = SequentialGateMode.AUTO;
     private boolean strictSequentialIntake = false;
-    private final SequenceListData[] lists = new SequenceListData[SequentialBufferBlockEntity.sequenceListCount()];
+    private final SequentialTaskData[] lists = new SequentialTaskData[SequentialBufferBlockEntity.sequentialTaskCount()];
     private int editingListIndex = -1;
 
     public SettingsCopierSequentialVirtualSession(ServerPlayer player, InteractionHand hand, ItemStack copier) {
         this.player = player;
         this.hand = hand;
         for (int i = 0; i < lists.length; i++) {
-            lists[i] = new SequenceListData();
+            lists[i] = new SequentialTaskData();
         }
         loadFromCopier(copier);
     }
@@ -57,7 +57,7 @@ public final class SettingsCopierSequentialVirtualSession {
         this.strictSequentialIntake = !this.strictSequentialIntake;
     }
 
-    public SequenceListData list(int index) {
+    public SequentialTaskData list(int index) {
         return lists[Math.floorMod(index, lists.length)];
     }
 
@@ -79,7 +79,7 @@ public final class SettingsCopierSequentialVirtualSession {
             gate = SequentialGateMode.AUTO;
             strictSequentialIntake = false;
             for (int i = 0; i < lists.length; i++) {
-                lists[i] = new SequenceListData();
+                lists[i] = new SequentialTaskData();
             }
             editingListIndex = -1;
             return;
@@ -101,10 +101,10 @@ public final class SettingsCopierSequentialVirtualSession {
         tag.putByte("Gate", (byte) gate.ordinal());
         tag.putBoolean("StrictIntake", strictSequentialIntake);
         ListTag listTag = new ListTag();
-        for (SequenceListData list : lists) {
+        for (SequentialTaskData list : lists) {
             listTag.add(list.save());
         }
-        tag.put("Lists", listTag);
+        SequentialTaskData.writeTasksListTag(tag, listTag);
         return tag;
     }
 
@@ -116,9 +116,9 @@ public final class SettingsCopierSequentialVirtualSession {
         if (kind == 1 && tag.contains("List")) {
             int idx = Math.floorMod(tag.getIntOr("ListIndex", 0), lists.length);
             for (int i = 0; i < lists.length; i++) {
-                lists[i] = new SequenceListData();
+                lists[i] = new SequentialTaskData();
             }
-            lists[idx] = new SequenceListData();
+            lists[idx] = new SequentialTaskData();
             lists[idx].load(tag.getCompoundOrEmpty("List"));
             gate = SequentialGateMode.AUTO;
             strictSequentialIntake = false;
@@ -127,9 +127,9 @@ public final class SettingsCopierSequentialVirtualSession {
                     SequentialGateMode.fromOrdinal(
                             tag.getByteOr("Gate", (byte) SequentialGateMode.AUTO.ordinal()) & 0xFF);
             strictSequentialIntake = tag.getBooleanOr("StrictIntake", false);
-            ListTag listTag = tag.getListOrEmpty("Lists");
+            ListTag listTag = SequentialTaskData.readTasksListTag(tag);
             for (int i = 0; i < lists.length; i++) {
-                lists[i] = new SequenceListData();
+                lists[i] = new SequentialTaskData();
                 if (i < listTag.size()) {
                     lists[i].load(listTag.getCompoundOrEmpty(i));
                 }
@@ -190,7 +190,7 @@ public final class SettingsCopierSequentialVirtualSession {
                         yield true;
                     }
                     case SequentialBufferActionPayload.ACTION_TOGGLE_ENABLE -> {
-                        SequenceListData list = list(listIndex);
+                        SequentialTaskData list = list(listIndex);
                         if (!list.hasContent()) {
                             list.setEnabled(false);
                         } else {
@@ -203,12 +203,12 @@ public final class SettingsCopierSequentialVirtualSession {
                         yield true;
                     }
                     case SequentialBufferActionPayload.ACTION_CYCLE_LIST_OUTPUT -> {
-                        SequenceListData list = list(listIndex);
+                        SequentialTaskData list = list(listIndex);
                         list.setOutputMode(list.outputMode().next());
                         yield true;
                     }
                     case SequentialBufferActionPayload.ACTION_CYCLE_LIST_OUTPUT_PREV -> {
-                        SequenceListData list = list(listIndex);
+                        SequentialTaskData list = list(listIndex);
                         list.setOutputMode(list.outputMode().previous());
                         yield true;
                     }
@@ -232,7 +232,7 @@ public final class SettingsCopierSequentialVirtualSession {
                     case SequentialBufferActionPayload.ACTION_CLEAR_STEP ->
                             clearStepContent(listIndex, payload.stepIndex());
                     case SequentialBufferActionPayload.ACTION_SET_AMOUNT -> {
-                        SequenceListData list = list(listIndex);
+                        SequentialTaskData list = list(listIndex);
                         int step = payload.stepIndex();
                         if (step < 0 || step >= list.steps().size()) {
                             yield false;
@@ -241,9 +241,9 @@ public final class SettingsCopierSequentialVirtualSession {
                         yield true;
                     }
                     case SequentialBufferActionPayload.ACTION_SET_CONCAT -> {
-                        SequenceListData list = list(listIndex);
+                        SequentialTaskData list = list(listIndex);
                         int step = payload.stepIndex();
-                        if (step < 0 || step >= SequenceListData.maxSteps()) {
+                        if (step < 0 || step >= SequentialTaskData.maxSteps()) {
                             yield false;
                         }
                         list.ensureStepSlot(step);
@@ -252,9 +252,9 @@ public final class SettingsCopierSequentialVirtualSession {
                         yield true;
                     }
                     case SequentialBufferActionPayload.ACTION_CYCLE_CONCAT -> {
-                        SequenceListData list = list(listIndex);
+                        SequentialTaskData list = list(listIndex);
                         int step = payload.stepIndex();
-                        if (step < 0 || step >= SequenceListData.maxSteps()) {
+                        if (step < 0 || step >= SequentialTaskData.maxSteps()) {
                             yield false;
                         }
                         list.ensureStepSlot(step);
@@ -263,9 +263,9 @@ public final class SettingsCopierSequentialVirtualSession {
                         yield true;
                     }
                     case SequentialBufferActionPayload.ACTION_CYCLE_CONCAT_PREV -> {
-                        SequenceListData list = list(listIndex);
+                        SequentialTaskData list = list(listIndex);
                         int step = payload.stepIndex();
-                        if (step < 0 || step >= SequenceListData.maxSteps()) {
+                        if (step < 0 || step >= SequentialTaskData.maxSteps()) {
                             yield false;
                         }
                         list.ensureStepSlot(step);
@@ -290,7 +290,7 @@ public final class SettingsCopierSequentialVirtualSession {
     }
 
     private boolean clearStepContent(int listIndex, int stepIndex) {
-        SequenceListData list = list(listIndex);
+        SequentialTaskData list = list(listIndex);
         if (stepIndex < 0 || stepIndex >= list.steps().size()) {
             return false;
         }
@@ -306,7 +306,7 @@ public final class SettingsCopierSequentialVirtualSession {
     }
 
     private boolean addOrUpdateStep(int listIndex, int stepIndex, SequentialBufferActionPayload payload) {
-        SequenceListData list = list(listIndex);
+        SequentialTaskData list = list(listIndex);
         String filter = FilterLineTextUtil.normalizeForCommit(payload.filter());
         if (filter.isEmpty()) {
             return false;
@@ -318,7 +318,7 @@ public final class SettingsCopierSequentialVirtualSession {
         int amount = Math.max(1, payload.amount());
         int concat = Math.clamp(payload.concatOrdinal(), 0, FilterConcatChannel.MAX_LETTER);
         if (stepIndex < 0) {
-            if (list.steps().size() >= SequenceListData.maxSteps()) {
+            if (list.steps().size() >= SequentialTaskData.maxSteps()) {
                 return false;
             }
             SequenceStepData step = new SequenceStepData();
@@ -329,7 +329,7 @@ public final class SettingsCopierSequentialVirtualSession {
             list.syncConcatSize();
             list.setConcatAt(list.steps().size() - 1, concat);
         } else {
-            if (stepIndex >= SequenceListData.maxSteps()) {
+            if (stepIndex >= SequentialTaskData.maxSteps()) {
                 return false;
             }
             list.ensureStepSlot(stepIndex);

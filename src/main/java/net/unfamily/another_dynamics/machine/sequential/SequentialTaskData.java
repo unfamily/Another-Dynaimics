@@ -14,13 +14,50 @@ import net.minecraft.resources.Identifier;
 import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.FilterConcatChannel;
 
-/** One of the 10 hub Sequence Lists. */
-public final class SequenceListData {
-    /** Max steps/tasks per list from config. */
+/** One hub Sequential Task. */
+public final class SequentialTaskData {
+    /** Canonical NBT list key when writing tasks. */
+    public static final String NBT_TASKS_KEY = "Tasks";
+    /** Accepted NBT/JSON aliases for the tasks list (plus legacy Stacks/Lists/seq_stack*). */
+    private static final String[] NBT_TASKS_ALIASES = {
+        NBT_TASKS_KEY,
+        "sequential_tasks",
+        "sequential_task",
+        "seq_tasks",
+        "seq_task",
+        "seqs",
+        "seq",
+        "Stacks",
+        "sequential_stacks",
+        "sequential_stack",
+        "seq_stacks",
+        "seq_stack",
+        "Lists"
+    };
+
+    /** Max steps per Sequential Task from config. */
     public static int maxSteps() {
         return Config.sequenceStepCount();
     }
     public static final int MAX_NAME_LENGTH = 32;
+
+    /** Reads the tasks list from NBT, accepting {@link #NBT_TASKS_ALIASES}. */
+    public static ListTag readTasksListTag(CompoundTag tag) {
+        if (tag == null) {
+            return new ListTag();
+        }
+        for (String key : NBT_TASKS_ALIASES) {
+            if (tag.contains(key)) {
+                return tag.getListOrEmpty(key);
+            }
+        }
+        return new ListTag();
+    }
+
+    /** Writes tasks under the canonical {@link #NBT_TASKS_KEY}. */
+    public static void writeTasksListTag(CompoundTag tag, ListTag tasks) {
+        tag.put(NBT_TASKS_KEY, tasks);
+    }
 
     private boolean enabled;
     private SequentialRedstoneMode outputMode = SequentialRedstoneMode.DISABLED;
@@ -213,8 +250,8 @@ public final class SequenceListData {
         enabled = tag.getBooleanOr("Enabled", false) && hasContent();
     }
 
-    public SequenceListData copy() {
-        SequenceListData copy = new SequenceListData();
+    public SequentialTaskData copy() {
+        SequentialTaskData copy = new SequentialTaskData();
         copy.enabled = this.enabled;
         copy.outputMode = this.outputMode;
         copy.customName = this.customName;
