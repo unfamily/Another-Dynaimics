@@ -150,31 +150,31 @@ public final class SequentialBufferMenu extends AbstractContainerMenu {
         if (id == BTN_CLOSE_EDIT) {
             return handleAction(player, new SequentialBufferActionPayload(SequentialBufferActionPayload.ACTION_CLOSE_EDIT));
         }
-        if (id >= BTN_TOGGLE_ENABLE_BASE && id < BTN_TOGGLE_ENABLE_BASE + SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (id >= BTN_TOGGLE_ENABLE_BASE && id < BTN_TOGGLE_ENABLE_BASE + SequentialBufferBlockEntity.sequenceListCount()) {
             return handleAction(
                     player,
                     new SequentialBufferActionPayload(
                             SequentialBufferActionPayload.ACTION_TOGGLE_ENABLE, id - BTN_TOGGLE_ENABLE_BASE));
         }
-        if (id >= BTN_CLEAR_LIST_BASE && id < BTN_CLEAR_LIST_BASE + SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (id >= BTN_CLEAR_LIST_BASE && id < BTN_CLEAR_LIST_BASE + SequentialBufferBlockEntity.sequenceListCount()) {
             return handleAction(
                     player,
                     new SequentialBufferActionPayload(
                             SequentialBufferActionPayload.ACTION_CLEAR_LIST, id - BTN_CLEAR_LIST_BASE));
         }
-        if (id >= BTN_CYCLE_OUTPUT_BASE && id < BTN_CYCLE_OUTPUT_BASE + SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (id >= BTN_CYCLE_OUTPUT_BASE && id < BTN_CYCLE_OUTPUT_BASE + SequentialBufferBlockEntity.sequenceListCount()) {
             return handleAction(
                     player,
                     new SequentialBufferActionPayload(
                             SequentialBufferActionPayload.ACTION_CYCLE_LIST_OUTPUT, id - BTN_CYCLE_OUTPUT_BASE));
         }
-        if (id >= BTN_OPEN_EDIT_BASE && id < BTN_OPEN_EDIT_BASE + SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (id >= BTN_OPEN_EDIT_BASE && id < BTN_OPEN_EDIT_BASE + SequentialBufferBlockEntity.sequenceListCount()) {
             return handleAction(
                     player,
                     new SequentialBufferActionPayload(
                             SequentialBufferActionPayload.ACTION_OPEN_EDIT, id - BTN_OPEN_EDIT_BASE));
         }
-        if (id >= BTN_REMOVE_STEP_BASE && id < BTN_REMOVE_STEP_BASE + SequenceListData.MAX_STEPS) {
+        if (id >= BTN_REMOVE_STEP_BASE && id < BTN_REMOVE_STEP_BASE + SequenceListData.maxSteps()) {
             int edit = blockEntity.editingListIndex();
             if (edit < 0) {
                 return false;
@@ -192,7 +192,7 @@ public final class SequentialBufferMenu extends AbstractContainerMenu {
         if (player.level().isClientSide() || blockEntity.isRemoved()) {
             return false;
         }
-        int listIndex = Mth.clamp(payload.listIndex(), 0, SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT - 1);
+        int listIndex = Mth.clamp(payload.listIndex(), 0, SequentialBufferBlockEntity.sequenceListCount() - 1);
         return switch (payload.action()) {
             case SequentialBufferActionPayload.ACTION_DUMP -> {
                 blockEntity.dumpInput(player, player.level(), blockEntity.getBlockPos());
@@ -284,7 +284,7 @@ public final class SequentialBufferMenu extends AbstractContainerMenu {
             case SequentialBufferActionPayload.ACTION_SET_CONCAT -> {
                 SequenceListData list = blockEntity.list(listIndex);
                 int step = payload.stepIndex();
-                if (step < 0 || step >= SequenceListData.MAX_STEPS) {
+                if (step < 0 || step >= SequenceListData.maxSteps()) {
                     yield false;
                 }
                 // Empty fixed slots still store concat; pad then compact trailing empties.
@@ -297,7 +297,7 @@ public final class SequentialBufferMenu extends AbstractContainerMenu {
             case SequentialBufferActionPayload.ACTION_CYCLE_CONCAT -> {
                 SequenceListData list = blockEntity.list(listIndex);
                 int step = payload.stepIndex();
-                if (step < 0 || step >= SequenceListData.MAX_STEPS) {
+                if (step < 0 || step >= SequenceListData.maxSteps()) {
                     yield false;
                 }
                 list.ensureStepSlot(step);
@@ -309,7 +309,7 @@ public final class SequentialBufferMenu extends AbstractContainerMenu {
             case SequentialBufferActionPayload.ACTION_CYCLE_CONCAT_PREV -> {
                 SequenceListData list = blockEntity.list(listIndex);
                 int step = payload.stepIndex();
-                if (step < 0 || step >= SequenceListData.MAX_STEPS) {
+                if (step < 0 || step >= SequenceListData.maxSteps()) {
                     yield false;
                 }
                 list.ensureStepSlot(step);
@@ -458,7 +458,7 @@ public final class SequentialBufferMenu extends AbstractContainerMenu {
         int amount = Math.max(1, payload.amount());
         int concat = Math.clamp(payload.concatOrdinal(), 0, FilterConcatChannel.MAX_LETTER);
         if (stepIndex < 0) {
-            if (list.steps().size() >= SequenceListData.MAX_STEPS) {
+            if (list.steps().size() >= SequenceListData.maxSteps()) {
                 return false;
             }
             SequenceStepData step = new SequenceStepData();
@@ -469,7 +469,7 @@ public final class SequentialBufferMenu extends AbstractContainerMenu {
             list.syncConcatSize();
             list.setConcatAt(list.steps().size() - 1, concat);
         } else {
-            if (stepIndex >= SequenceListData.MAX_STEPS) {
+            if (stepIndex >= SequenceListData.maxSteps()) {
                 return false;
             }
             list.ensureStepSlot(stepIndex);

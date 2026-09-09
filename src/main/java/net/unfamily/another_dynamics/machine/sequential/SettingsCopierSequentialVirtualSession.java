@@ -21,7 +21,7 @@ public final class SettingsCopierSequentialVirtualSession {
     private final InteractionHand hand;
     private SequentialGateMode gate = SequentialGateMode.AUTO;
     private boolean strictSequentialIntake = false;
-    private final SequenceListData[] lists = new SequenceListData[SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT];
+    private final SequenceListData[] lists = new SequenceListData[SequentialBufferBlockEntity.sequenceListCount()];
     private int editingListIndex = -1;
 
     public SettingsCopierSequentialVirtualSession(ServerPlayer player, InteractionHand hand, ItemStack copier) {
@@ -150,7 +150,7 @@ public final class SettingsCopierSequentialVirtualSession {
 
     /**
      * Push an in-memory mirror to the client UI without writing the held item.
-     * Authoritative persist happens when the Settings Copier container fully closes.
+     * Authoritative persist happens on leave-hub or full Settings Copier GUI close.
      */
     public void syncClientMirror() {
         ItemStack mirror = getCopierStack().copy();
@@ -254,7 +254,7 @@ public final class SettingsCopierSequentialVirtualSession {
                     case SequentialBufferActionPayload.ACTION_SET_CONCAT -> {
                         SequenceListData list = list(listIndex);
                         int step = payload.stepIndex();
-                        if (step < 0 || step >= SequenceListData.MAX_STEPS) {
+                        if (step < 0 || step >= SequenceListData.maxSteps()) {
                             yield false;
                         }
                         list.ensureStepSlot(step);
@@ -265,7 +265,7 @@ public final class SettingsCopierSequentialVirtualSession {
                     case SequentialBufferActionPayload.ACTION_CYCLE_CONCAT -> {
                         SequenceListData list = list(listIndex);
                         int step = payload.stepIndex();
-                        if (step < 0 || step >= SequenceListData.MAX_STEPS) {
+                        if (step < 0 || step >= SequenceListData.maxSteps()) {
                             yield false;
                         }
                         list.ensureStepSlot(step);
@@ -276,7 +276,7 @@ public final class SettingsCopierSequentialVirtualSession {
                     case SequentialBufferActionPayload.ACTION_CYCLE_CONCAT_PREV -> {
                         SequenceListData list = list(listIndex);
                         int step = payload.stepIndex();
-                        if (step < 0 || step >= SequenceListData.MAX_STEPS) {
+                        if (step < 0 || step >= SequenceListData.maxSteps()) {
                             yield false;
                         }
                         list.ensureStepSlot(step);
@@ -329,7 +329,7 @@ public final class SettingsCopierSequentialVirtualSession {
         int amount = Math.max(1, payload.amount());
         int concat = Math.clamp(payload.concatOrdinal(), 0, FilterConcatChannel.MAX_LETTER);
         if (stepIndex < 0) {
-            if (list.steps().size() >= SequenceListData.MAX_STEPS) {
+            if (list.steps().size() >= SequenceListData.maxSteps()) {
                 return false;
             }
             SequenceStepData step = new SequenceStepData();
@@ -340,7 +340,7 @@ public final class SettingsCopierSequentialVirtualSession {
             list.syncConcatSize();
             list.setConcatAt(list.steps().size() - 1, concat);
         } else {
-            if (stepIndex >= SequenceListData.MAX_STEPS) {
+            if (stepIndex >= SequenceListData.maxSteps()) {
                 return false;
             }
             list.ensureStepSlot(stepIndex);

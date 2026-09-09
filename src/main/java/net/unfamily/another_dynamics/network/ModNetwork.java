@@ -434,6 +434,7 @@ public final class ModNetwork {
                                 }
                             }
                             case SettingsCopierHubActionPayload.ACTION_MODE_TOGGLE -> {
+                                copier.discardVirtualEditors();
                                 SettingsCopierStoreKind current = SettingsCopierStoreKind.getMode(stack);
                                 SettingsCopierStoreKind next =
                                         switch (current) {

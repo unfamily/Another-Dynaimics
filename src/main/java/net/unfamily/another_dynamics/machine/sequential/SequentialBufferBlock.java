@@ -5,8 +5,11 @@ import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -24,7 +27,10 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.neoforge.capabilities.Capabilities;
+import net.unfamily.another_dynamics.duct.SettingsCopierFeedback;
+import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
+import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.registry.ModBlockEntities;
 
 import org.jetbrains.annotations.Nullable;
@@ -94,6 +100,45 @@ public final class SequentialBufferBlock extends Block implements EntityBlock {
     @Override
     protected BlockState mirror(BlockState state, Mirror mirror) {
         return state.rotate(mirror.getRotation(state.getValue(FACING)));
+    }
+
+    /**
+     * Shift+Settings Copier (SEQUENTIAL): paste machine settings without opening the GUI.
+     */
+    @Override
+    protected ItemInteractionResult useItemOn(
+            ItemStack stack,
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Player player,
+            InteractionHand hand,
+            BlockHitResult hitResult) {
+        if (!player.isShiftKeyDown() || !(stack.getItem() instanceof SettingsCopierItem)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (!(level.getBlockEntity(pos) instanceof SequentialBufferBlockEntity be)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (level.isClientSide()) {
+            return ItemInteractionResult.SUCCESS;
+        }
+        if (!(player instanceof ServerPlayer serverPlayer)) {
+            return ItemInteractionResult.CONSUME;
+        }
+        if (SettingsCopierStoreKind.getMode(stack) != SettingsCopierStoreKind.SEQUENTIAL) {
+            SettingsCopierFeedback.notifyWrongMode(serverPlayer);
+            return ItemInteractionResult.CONSUME;
+        }
+        var data = SettingsCopierSequentialSnapshot.read(stack);
+        if (data.isEmpty()) {
+            SettingsCopierFeedback.notifyPasteFailed(serverPlayer);
+            return ItemInteractionResult.CONSUME;
+        }
+        be.applySettings(data.get());
+        be.ejectOrphanedInput(serverPlayer);
+        SettingsCopierFeedback.notifyPasted(serverPlayer);
+        return ItemInteractionResult.CONSUME;
     }
 
     @Override

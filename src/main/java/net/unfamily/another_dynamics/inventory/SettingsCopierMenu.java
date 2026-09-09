@@ -113,7 +113,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
     private @Nullable SettingsCopierSequentialVirtualSession sequentialVirtual;
     /** Client mirror of sequential virtual lists (from copier stack sync). */
     private final SequenceListData[] clientSequentialLists =
-            new SequenceListData[SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT];
+            new SequenceListData[SequentialBufferBlockEntity.sequenceListCount()];
     private SequentialGateMode clientSequentialGate = SequentialGateMode.IGNORED;
     private boolean clientSequentialStrictIntake = true;
     private final UniversalDuctMenuFilterBuffers filterBuffers = new UniversalDuctMenuFilterBuffers();
@@ -329,14 +329,20 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         return player.getItemInHand(hand);
     }
 
-    /** Client: apply authoritative copier stack after hub actions (mode, rename). */
+    /** Client: apply authoritative copier stack after hub actions (mode, rename) or virtual mirror sync. */
     public void applyClientCopierStack(Player player, ItemStack stack) {
-        if (player.level().isClientSide()) {
-            player.setItemInHand(hand, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
-            clearClientFilterListMaterialKindOverride();
-            if (isSequentialVirtualLayer() || SettingsCopierStoreKind.getMode(stack) == SettingsCopierStoreKind.SEQUENTIAL) {
-                loadClientSequentialFromStack(stack);
-            }
+        if (!player.level().isClientSide()) {
+            return;
+        }
+        if (isSequentialVirtualLayer()) {
+            // Draft mirror only — held item is committed on leave-hub / full close.
+            loadClientSequentialFromStack(stack);
+            return;
+        }
+        player.setItemInHand(hand, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
+        clearClientFilterListMaterialKindOverride();
+        if (SettingsCopierStoreKind.getMode(stack) == SettingsCopierStoreKind.SEQUENTIAL) {
+            loadClientSequentialFromStack(stack);
         }
     }
 
@@ -348,6 +354,13 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             return virtualSession.storeKind();
         }
         return SettingsCopierStoreKind.getMode(player.getItemInHand(hand));
+    }
+
+    /** Discard in-memory Configure drafts without writing them to the held item. */
+    public void discardVirtualEditors() {
+        sequentialVirtual = null;
+        virtualSession = null;
+        clientFilterMaterialKindOrdinal = -1;
     }
 
     /** Server: open virtual universal duct editor inside this menu. */
@@ -382,7 +395,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
         SettingsCopierStoreKind.setMode(copier, SettingsCopierStoreKind.SEQUENTIAL);
         virtualSession = null;
         sequentialVirtual = new SettingsCopierSequentialVirtualSession(player, hand, copier);
-        sequentialVirtual.persistAndSync();
+        sequentialVirtual.syncClientMirror();
         rootLayer.set(0, ROOT_VIRTUAL);
         broadcastChanges();
     }
@@ -485,12 +498,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             return;
         }
         if (sequentialVirtual != null) {
-            ItemStack copier = sequentialVirtual.getCopierStack();
-            if (!copier.isEmpty()) {
-                sequentialVirtual.persistToCopier(copier);
-                player.setItemInHand(hand, copier);
-                ModNetwork.sendSettingsCopierStackSync(player, copier);
-            }
+            sequentialVirtual.persistAndSync();
             sequentialVirtual = null;
             rootLayer.set(0, ROOT_HUB);
             broadcastChanges();
@@ -888,12 +896,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             return;
         }
         if (sequentialVirtual != null) {
-            ItemStack copier = sequentialVirtual.getCopierStack();
-            if (!copier.isEmpty()) {
-                sequentialVirtual.persistToCopier(copier);
-                sp.setItemInHand(hand, copier);
-                ModNetwork.sendSettingsCopierStackSync(sp, copier);
-            }
+            sequentialVirtual.persistAndSync();
             sequentialVirtual = null;
             return;
         }
@@ -906,6 +909,7 @@ public final class SettingsCopierMenu extends AbstractContainerMenu implements U
             sp.setItemInHand(hand, copier);
             ModNetwork.sendSettingsCopierStackSync(sp, copier);
         }
+        virtualSession = null;
     }
 
     /** Returns import-slot items to the player inventory, or drops them at the player's feet. */

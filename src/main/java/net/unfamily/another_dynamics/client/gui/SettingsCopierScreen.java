@@ -111,10 +111,6 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
 
     void requestSequentialVirtualLeave() {
         playClickSound();
-        if (!virtualBackConfirmPending) {
-            virtualBackConfirmPending = true;
-            return;
-        }
         virtualBackConfirmPending = false;
         ModNetwork.sendSettingsCopierReturnToHub();
     }
@@ -227,25 +223,11 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             return;
         }
         if (menu.isSequentialVirtualLayer()) {
-            if (virtualBackConfirmPending) {
-                playClickSound();
-                cancelVirtualBackConfirm();
-                return;
-            }
             if (sequentialVirtualUi != null && sequentialVirtualUi.handleBack()) {
+                playClickSound();
                 return;
             }
-            playClickSound();
-            if (!virtualBackConfirmPending) {
-                virtualBackConfirmPending = true;
-            } else {
-                ModNetwork.sendSettingsCopierReturnToHub();
-            }
-            return;
-        }
-        if (menu.isVirtualLayer() && virtualBackConfirmPending) {
-            playClickSound();
-            cancelVirtualBackConfirm();
+            requestSequentialVirtualLeave();
             return;
         }
         if (menu.isVirtualLayer() && isMainChromeSubView()) {
@@ -603,14 +585,13 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
             if (sequentialVirtualUi.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
-            if (virtualBackConfirmPending && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
-                cancelVirtualBackConfirm();
-                return true;
-            }
-        }
-        if (menu.isVirtualLayer() && virtualBackConfirmPending) {
-            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
-                cancelVirtualBackConfirm();
+            boolean esc = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+            boolean inv =
+                    minecraft != null
+                            && minecraft.options.keyInventory != null
+                            && minecraft.options.keyInventory.matches(keyCode, scanCode);
+            if (esc || inv) {
+                handleCloseOrBack();
                 return true;
             }
         }

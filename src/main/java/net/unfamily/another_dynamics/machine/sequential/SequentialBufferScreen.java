@@ -529,7 +529,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                                     Component.literal("✎"),
                                     b -> {
                                         int idx = hubScroll + row;
-                                        if (idx < 0 || idx >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+                                        if (idx < 0 || idx >= SequentialBufferBlockEntity.sequenceListCount()) {
                                             return;
                                         }
                                         openEditList(idx);
@@ -684,7 +684,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                             buttonSize,
                             v -> {
                                 int idx = stepScroll + row;
-                                if (idx < 0 || idx >= SequenceListData.MAX_STEPS) {
+                                if (idx < 0 || idx >= SequenceListData.maxSteps()) {
                                     return;
                                 }
                                 sendAction(
@@ -730,7 +730,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
                                     Component.literal("\u270E"),
                                     b -> {
                                         int idx = stepScroll + row;
-                                        if (idx < 0 || idx >= SequenceListData.MAX_STEPS) {
+                                        if (idx < 0 || idx >= SequenceListData.maxSteps()) {
                                             return;
                                         }
                                         SequenceListData list = currentList();
@@ -1094,7 +1094,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private SequenceListData currentList() {
-        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.sequenceListCount()) {
             return null;
         }
         return be().list(editingListIndex);
@@ -1102,7 +1102,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
 
     /** Always 50 fixed slots. */
     private int displayStepCount() {
-        return SequenceListData.MAX_STEPS;
+        return SequenceListData.maxSteps();
     }
 
     private void openStepEdit(int index, SequenceStepData step) {
@@ -1194,7 +1194,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         }
         int amount = parseAmount();
         int stepIndex = editingStepIndex;
-        if (stepIndex < 0 || stepIndex >= SequenceListData.MAX_STEPS) {
+        if (stepIndex < 0 || stepIndex >= SequenceListData.maxSteps()) {
             return;
         }
         sendAction(
@@ -1775,7 +1775,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private void onListNameDraftChanged(String value) {
-        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (editingListIndex < 0 || editingListIndex >= SequentialBufferBlockEntity.sequenceListCount()) {
             return;
         }
         SequenceListData list = be().list(editingListIndex);
@@ -1937,7 +1937,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         }
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = hubScroll + i;
-            boolean inRange = idx >= 0 && idx < SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT;
+            boolean inRange = idx >= 0 && idx < SequentialBufferBlockEntity.sequenceListCount();
             SequenceListData list = inRange ? be().list(idx) : null;
             boolean hasContent = list != null && list.hasContent();
             int base = i * 4;
@@ -1974,7 +1974,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         SequenceListData list = currentList();
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = stepScroll + i;
-            boolean inRange = idx >= 0 && idx < SequenceListData.MAX_STEPS;
+            boolean inRange = idx >= 0 && idx < SequenceListData.maxSteps();
             if (i < concatButtons.size()) {
                 FilterConcatChannelButton cb = concatButtons.get(i);
                 cb.visible = inRange;
@@ -2033,7 +2033,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private ItemStack listOutputIcon(int index) {
-        if (index < 0 || index >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (index < 0 || index >= SequentialBufferBlockEntity.sequenceListCount()) {
             return ItemStack.EMPTY;
         }
         return switch (be().list(index).outputMode()) {
@@ -2045,14 +2045,14 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     }
 
     private ResourceLocation listOutputOverlay(int index) {
-        if (index < 0 || index >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+        if (index < 0 || index >= SequentialBufferBlockEntity.sequenceListCount()) {
             return null;
         }
         return be().list(index).outputMode() == SequentialRedstoneMode.PULSE ? REDSTONE_GUI : null;
     }
 
     private int maxHubScroll() {
-        return Math.max(0, SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT - VISIBLE_ROWS);
+        return Math.max(0, SequentialBufferBlockEntity.sequenceListCount() - VISIBLE_ROWS);
     }
 
     private int maxStepScroll() {
@@ -2132,7 +2132,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
     private void renderEntryRows(GuiGraphics graphics) {
         int count =
                 subView == SubView.SEQUENCE_LISTS
-                        ? SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT
+                        ? SequentialBufferBlockEntity.sequenceListCount()
                         : displayStepCount();
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = (subView == SubView.SEQUENCE_LISTS ? hubScroll : stepScroll) + i;
@@ -2349,7 +2349,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
         if (subView == SubView.SEQUENCE_LISTS) {
             for (int i = 0; i < VISIBLE_ROWS; i++) {
                 int idx = hubScroll + i;
-                if (idx >= SequentialBufferBlockEntity.SEQUENCE_LIST_COUNT) {
+                if (idx >= SequentialBufferBlockEntity.sequenceListCount()) {
                     break;
                 }
                 Component label = be().list(idx).displayName(idx + 1);
@@ -2381,7 +2381,7 @@ public final class SequentialBufferScreen extends AbstractContainerScreen<Sequen
             SequenceListData list = currentList();
             for (int i = 0; i < VISIBLE_ROWS; i++) {
                 int idx = stepScroll + i;
-                if (idx < 0 || idx >= SequenceListData.MAX_STEPS) {
+                if (idx < 0 || idx >= SequenceListData.maxSteps()) {
                     continue;
                 }
                 if (list == null || idx >= list.steps().size()) {

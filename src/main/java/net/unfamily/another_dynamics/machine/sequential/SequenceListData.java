@@ -12,11 +12,15 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.unfamily.another_dynamics.Config;
 import net.unfamily.another_dynamics.duct.FilterConcatChannel;
 
-/** One of the 10 hub Sequence Lists. */
+/** One hub Sequence List. */
 public final class SequenceListData {
-    public static final int MAX_STEPS = 50;
+    /** Max steps/tasks per list from config. */
+    public static int maxSteps() {
+        return Config.sequenceStepCount();
+    }
     public static final int MAX_NAME_LENGTH = 32;
 
     private boolean enabled;
@@ -100,16 +104,16 @@ public final class SequenceListData {
     }
 
     public void syncConcatSize() {
-        // Slot grid is always MAX_STEPS; keep concat channels aligned to capacity.
-        FilterConcatChannel.syncToLineSize(concatChannels, MAX_STEPS);
+        // Slot grid is always maxSteps(); keep concat channels aligned to capacity.
+        FilterConcatChannel.syncToLineSize(concatChannels, maxSteps());
     }
 
     /**
-     * Ensures steps list can address {@code index} (pads with empty steps) up to {@link #MAX_STEPS}.
+     * Ensures steps list can address {@code index} (pads with empty steps) up to {@link #maxSteps()}.
      * Used when setting concat on an empty slot or editing a vacant index.
      */
     public void ensureStepSlot(int index) {
-        if (index < 0 || index >= MAX_STEPS) {
+        if (index < 0 || index >= maxSteps()) {
             return;
         }
         while (steps.size() <= index) {
@@ -118,7 +122,7 @@ public final class SequenceListData {
         syncConcatSize();
     }
 
-    /** Trim trailing empty steps (no filter) after edits; keep concat synced to MAX_STEPS. */
+    /** Trim trailing empty steps (no filter) after edits; keep concat synced to maxSteps(). */
     public void compactTrailingEmptySteps() {
         while (!steps.isEmpty()) {
             SequenceStepData last = steps.get(steps.size() - 1);
@@ -126,7 +130,7 @@ public final class SequenceListData {
                 break;
             }
             steps.remove(steps.size() - 1);
-            // Keep concat channel at that index for the fixed 50-slot grid; do not shrink concat below MAX_STEPS.
+            // Keep concat channel at that index for the fixed 50-slot grid; do not shrink concat below maxSteps().
         }
         syncConcatSize();
         if (!hasContent()) {
@@ -197,7 +201,7 @@ public final class SequenceListData {
                         tag.contains("OutMode", Tag.TAG_BYTE) ? tag.getByte("OutMode") & 0xFF : 0);
         ListTag list =
                 tag.contains("Steps", Tag.TAG_LIST) ? tag.getList("Steps", Tag.TAG_COMPOUND) : new ListTag();
-        for (int i = 0; i < list.size() && i < MAX_STEPS; i++) {
+        for (int i = 0; i < list.size() && i < maxSteps(); i++) {
             CompoundTag stepTag = list.getCompound(i);
             SequenceStepData step = new SequenceStepData();
             step.load(stepTag);
@@ -206,7 +210,7 @@ public final class SequenceListData {
         readConcatInto(
                 concatChannels,
                 tag.contains("Concat", Tag.TAG_BYTE_ARRAY) ? tag.getByteArray("Concat") : null,
-                MAX_STEPS);
+                maxSteps());
         enabled = tag.contains("Enabled") && tag.getBoolean("Enabled") && hasContent();
     }
 
