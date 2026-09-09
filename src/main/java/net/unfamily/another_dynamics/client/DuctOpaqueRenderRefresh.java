@@ -16,7 +16,7 @@ import net.unfamily.another_dynamics.registry.ModAttachments;
  * that freezes the client on large networks). Player {@code All} mode still needs one world mesh rebuild because
  * every duct changes without a BE packet.
  */
-@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
+@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, value = Dist.CLIENT)
 public final class DuctOpaqueRenderRefresh {
     private static boolean lastOpaque = false;
     /** Last known player "All opaque" flag; safe for chunk rebuild threads. */

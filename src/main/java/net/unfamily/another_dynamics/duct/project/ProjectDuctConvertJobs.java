@@ -2,6 +2,7 @@ package net.unfamily.another_dynamics.duct.project;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -14,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceKey;
@@ -25,6 +27,8 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.unfamily.another_dynamics.Config;
@@ -71,7 +75,7 @@ public final class ProjectDuctConvertJobs {
             return 0;
         }
         Queue<BlockPos> pending = new ArrayDeque<>(targets.size());
-        for (BlockPos pos : targets) {
+        for (BlockPos pos : orderByChunkLocality(targets)) {
             pending.add(pos.immutable());
         }
         Job job =
@@ -112,6 +116,9 @@ public final class ProjectDuctConvertJobs {
             }
             ServerPlayer player = server.getPlayerList().getPlayer(job.playerId);
             if (player == null) {
+                if (job.needsTopologyInvalidate) {
+                    DuctNetworkCache.invalidate(level);
+                }
                 finished.add(entry.getKey());
                 continue;
             }
@@ -151,14 +158,25 @@ public final class ProjectDuctConvertJobs {
             }
         }
 
-        List<BlockPos> convertedPositions = new ArrayList<>(budget);
+        long deadline = System.nanoTime() + Config.ductJobTickBudgetNanos();
+        List<BlockPos> convertedPositions = new ArrayList<>(Math.min(budget, 16));
         int converted = 0;
         DuctNetworkCache.pushBulkMutation();
         try {
-            while (converted < budget && !job.pending.isEmpty()) {
+            BlockPos warm = job.pending.peek();
+            if (warm != null) {
+                level.getChunk(warm);
+            }
+            long lastChunkKey = Long.MIN_VALUE;
+            while (converted < budget && !job.pending.isEmpty() && System.nanoTime() < deadline) {
                 BlockPos pos = job.pending.poll();
                 if (pos == null || !ProjectDuctNetwork.isProjectDuct(level.getBlockState(pos).getBlock())) {
                     continue;
+                }
+                long chunkKey = chunkKey(pos);
+                if (chunkKey != lastChunkKey) {
+                    level.getChunk(pos);
+                    lastChunkKey = chunkKey;
                 }
                 if (!ProjectDuctConverter.convertOne(level, pos, job.logicalId)) {
                     continue;
@@ -180,23 +198,44 @@ public final class ProjectDuctConvertJobs {
                 Set<BlockPos> refreshDone = new HashSet<>();
                 EnumSet<DuctNetworkType> allNetworks = EnumSet.allOf(DuctNetworkType.class);
                 for (BlockPos pos : convertedPositions) {
+                    BlockState state = level.getBlockState(pos);
+                    level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS);
                     if (refreshDone.add(pos.immutable())) {
                         AbstractDuctBlock.refreshAdjacentDuctBlockEntities(level, pos, allNetworks);
                     }
                 }
                 ProjectDuctVisualRefresh.refreshAround(level, job.anchor);
                 level.playSound(null, job.anchor, SoundEvents.COPPER_PLACE, SoundSource.BLOCKS, 0.55f, 1.05f);
+                job.needsTopologyInvalidate = true;
             }
         } finally {
             DuctNetworkCache.popBulkMutation();
         }
-        if (converted > 0) {
-            DuctNetworkCache.invalidate(level);
-        }
+        // Topology invalidate deferred to finishJob (one rebuild instead of per-batch spikes).
         return converted;
     }
 
+    /**
+     * Process chunk-local first (cx, cz) so consecutive converts hit the same loaded chunk.
+     */
+    private static List<BlockPos> orderByChunkLocality(List<BlockPos> targets) {
+        List<BlockPos> ordered = new ArrayList<>(targets);
+        ordered.sort(
+                Comparator.comparingInt((BlockPos p) -> SectionPos.blockToSectionCoord(p.getX()))
+                        .thenComparingInt(p -> SectionPos.blockToSectionCoord(p.getZ()))
+                        .thenComparingLong(BlockPos::asLong));
+        return ordered;
+    }
+
+    private static long chunkKey(BlockPos pos) {
+        return (((long) SectionPos.blockToSectionCoord(pos.getX())) << 32)
+                ^ (SectionPos.blockToSectionCoord(pos.getZ()) & 0xffffffffL);
+    }
+
     private static void finishJob(Job job, ServerPlayer player, ServerLevel level) {
+        if (job.needsTopologyInvalidate) {
+            DuctNetworkCache.invalidate(level);
+        }
         if (job.convertedTotal <= 0) {
             return;
         }
@@ -277,6 +316,7 @@ public final class ProjectDuctConvertJobs {
         final boolean moreBeyondJob;
         int convertedTotal;
         boolean shortOnItems;
+        boolean needsTopologyInvalidate;
         /** Ticks remaining before the next convert pulse (0 = run this tick). */
         int cooldownTicks;
 

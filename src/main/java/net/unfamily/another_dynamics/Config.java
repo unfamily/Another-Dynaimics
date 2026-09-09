@@ -22,6 +22,8 @@ public final class Config {
     public static final ModConfigSpec.IntValue PROJECT_DUCT_CONVERT_TICK_INTERVAL;
     /** Max Project Duct blocks converted by one Shift+duct job. */
     public static final ModConfigSpec.IntValue PROJECT_DUCT_CONVERT_MAX_PER_JOB;
+    /** Wall-clock budget (ms) per server tick for convert/replace job pulses. */
+    public static final ModConfigSpec.IntValue DUCT_JOB_TICK_BUDGET_MS;
 
     public static final ModConfigSpec.IntValue SEQUENCE_LIST_COUNT;
     public static final ModConfigSpec.IntValue SEQUENCE_STEP_COUNT;
@@ -80,19 +82,24 @@ public final class Config {
         // Project Duct convert — keys 200–299 only
         PROJECT_DUCT_CONVERT_MAX_PER_ACTION =
                 BUILDER.comment(
-                                "Project Duct → definitive duct blocks converted per pulse while a convert job "
-                                        + "runs (Shift+duct item).")
-                        .defineInRange("200_projectDuctConvertBatchSize", 64, 1, Integer.MAX_VALUE);
+                                "Project Duct / mass-replace blocks processed per pulse while a job runs "
+                                        + "(Shift+duct item). Cap only; wall-clock budget may stop earlier.")
+                        .defineInRange("200_projectDuctConvertBatchSize", 16, 1, Integer.MAX_VALUE);
         PROJECT_DUCT_CONVERT_TICK_INTERVAL =
                 BUILDER.comment(
-                                "Server ticks between Project Duct convert pulses (after the first immediate batch). "
-                                        + "10 ≈ twice per second. 1 = every tick.")
-                        .defineInRange("201_projectDuctConvertTickInterval", 10, 1, 200);
+                                "Server ticks between Project Duct / mass-replace pulses (after discovery / first "
+                                        + "deferred pulse). 5 ≈ four times per second. 1 = every tick.")
+                        .defineInRange("201_projectDuctConvertTickInterval", 5, 1, 200);
         PROJECT_DUCT_CONVERT_MAX_PER_JOB =
                 BUILDER.comment(
-                                "Max Project Duct blocks converted by one Shift+duct job (spread across pulses). "
-                                        + "Click again if the network is larger.")
+                                "Max Project Duct / mass-replace blocks handled by one Shift+duct job "
+                                        + "(spread across pulses). Click again if the network is larger.")
                         .defineInRange("202_projectDuctConvertMaxPerJob", 1024, 1, Integer.MAX_VALUE);
+        DUCT_JOB_TICK_BUDGET_MS =
+                BUILDER.comment(
+                                "Max milliseconds of wall-clock work per server tick for duct convert/replace "
+                                        + "job pulses (discovery + batch). Keeps TPS smooth on large networks.")
+                        .defineInRange("203_ductJobTickBudgetMs", 2, 1, 50);
 
         // Sequence / machines — keys 300+
         SEQUENCE_LIST_COUNT =
@@ -140,6 +147,11 @@ public final class Config {
     /** Max conversions for one Shift+duct job (at least batch size). */
     public static int projectDuctConvertMaxPerJob() {
         return Math.max(projectDuctConvertBatchSize(), PROJECT_DUCT_CONVERT_MAX_PER_JOB.get());
+    }
+
+    /** Wall-clock budget in nanoseconds for one convert/replace job pulse. */
+    public static long ductJobTickBudgetNanos() {
+        return Math.max(1L, DUCT_JOB_TICK_BUDGET_MS.get()) * 1_000_000L;
     }
 
     /** Sequence List count (at least 1). */

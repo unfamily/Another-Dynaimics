@@ -1,6 +1,5 @@
 package net.unfamily.another_dynamics.duct;
 
-import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
@@ -13,15 +12,12 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
-import net.unfamily.another_dynamics.client.DuctItemRenderer;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctConverter;
 import net.unfamily.another_dynamics.item.ModItemTooltips;
 import net.unfamily.another_dynamics.registry.ModDataComponents;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Single physical item representing multiple logical duct types (via {@link ModDataComponents#DUCT_LOGICAL_ID}).
@@ -41,27 +37,6 @@ public final class DuctBlockItem extends BlockItem {
                 defaultLogicalId != null && !defaultLogicalId.isEmpty()
                         ? DuctIds.normalize(defaultLogicalId)
                         : DuctIds.DEFAULT_LOGICAL_ID;
-    }
-
-    /**
-     * Routes item rendering through {@link DuctItemRenderer} (a custom
-     * {@link BlockEntityWithoutLevelRenderer}) so that the texture is driven by
-     * {@link ModDataComponents#DUCT_LOGICAL_ID} rather than a static baked model.
-     * This is the same mechanism used by GeckoLib's {@code GeoItemRenderer}.
-     */
-    @Override
-    public void initializeClient(Consumer<IClientItemExtensions> consumer) {
-        consumer.accept(new IClientItemExtensions() {
-            private DuctItemRenderer renderer;
-
-            @Override
-            public BlockEntityWithoutLevelRenderer getCustomRenderer() {
-                if (this.renderer == null) {
-                    this.renderer = new DuctItemRenderer();
-                }
-                return this.renderer;
-            }
-        });
     }
 
     public String getDefaultLogicalId() {

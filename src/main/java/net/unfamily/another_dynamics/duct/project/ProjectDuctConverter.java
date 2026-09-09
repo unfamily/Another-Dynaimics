@@ -87,6 +87,9 @@ public final class ProjectDuctConverter {
                 : ItemInteractionResult.FAIL;
     }
 
+    /** Quiet place: sync clients without neighbor shape storm (Iska-style locality). */
+    private static final int QUIET_CONVERT_FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE;
+
     static boolean convertOne(ServerLevel level, BlockPos pos, String logicalId) {
         BlockState oldState = level.getBlockState(pos);
         if (!ProjectDuctNetwork.isProjectDuct(oldState.getBlock())) {
@@ -103,7 +106,7 @@ public final class ProjectDuctConverter {
         final BlockState placedState = newState;
         final boolean[] placed = {false};
         CableFacadesCompat.runPreservingFacade(
-                level, pos, () -> placed[0] = level.setBlock(pos, placedState, Block.UPDATE_ALL));
+                level, pos, () -> placed[0] = level.setBlock(pos, placedState, QUIET_CONVERT_FLAGS));
         if (!placed[0]) {
             return false;
         }
@@ -116,7 +119,7 @@ public final class ProjectDuctConverter {
                 syncDisconnectToDefinitiveNeighbors(level, pos, disconnected);
             }
             duct.refreshFromWorld();
-            level.sendBlockUpdated(pos, placedState, placedState, Block.UPDATE_ALL);
+            // Client BE/packet notify is deferred to the convert batch (see ProjectDuctConvertJobs).
         }
         return true;
     }

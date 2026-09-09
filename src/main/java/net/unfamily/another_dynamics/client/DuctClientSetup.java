@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.client.renderer.item.ItemProperties;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.world.item.ItemStack;
@@ -18,6 +19,8 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
+import net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierItemProperties;
@@ -34,9 +37,31 @@ import net.unfamily.another_dynamics.registry.ModMenuTypes;
 /**
  * Registers composite duct geometry ({@link DuctGeometryLoader}) and ensures template models are loaded for baking.
  */
-@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, value = Dist.CLIENT)
 public final class DuctClientSetup {
     private DuctClientSetup() {}
+
+    @SubscribeEvent
+    public static void registerClientExtensions(RegisterClientExtensionsEvent event) {
+        IClientItemExtensions ductItemExtensions =
+                new IClientItemExtensions() {
+                    private DuctItemRenderer renderer;
+
+                    @Override
+                    public BlockEntityWithoutLevelRenderer getCustomRenderer() {
+                        if (this.renderer == null) {
+                            this.renderer = new DuctItemRenderer();
+                        }
+                        return this.renderer;
+                    }
+                };
+        event.registerItem(ductItemExtensions, ModItems.DUCT.get());
+        event.registerItem(ductItemExtensions, ModItems.FLUID_DUCT.get());
+        event.registerItem(ductItemExtensions, ModItems.ITEM_FLUID_DUCT.get());
+        if (ModItems.GAS_DUCT != null) {
+            event.registerItem(ductItemExtensions, ModItems.GAS_DUCT.get());
+        }
+    }
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {

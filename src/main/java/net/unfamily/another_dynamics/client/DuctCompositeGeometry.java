@@ -34,6 +34,7 @@ import net.unfamily.another_dynamics.registry.ModBlocks;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 /**
  * Immutable baked quads for one composite duct template pair ({@code model_default} + {@code model_line}).
@@ -235,9 +236,32 @@ public final class DuctCompositeGeometry {
         IQuadTransformer transformer = QuadTransformers.applying(transform);
         List<BakedQuad> out = new ArrayList<>(source.size());
         for (BakedQuad q : source) {
-            out.add(transformer.process(q));
+            BakedQuad processed = transformer.process(q);
+            // QuadTransformers only moves vertices/normals; shade still uses BakedQuad.getDirection().
+            // Without updating it, LINE_Y (vertical stacks) keeps the line model's Z-axis face labels —
+            // south-facing geometry stays tagged UP (bright) while other sides look wrongly dark.
+            Direction rotated = rotateCullDirection(transform, q.getDirection());
+            if (rotated != processed.getDirection()) {
+                out.add(
+                        new BakedQuad(
+                                processed.getVertices(),
+                                processed.getTintIndex(),
+                                rotated,
+                                processed.getSprite(),
+                                processed.isShade(),
+                                processed.hasAmbientOcclusion()));
+            } else {
+                out.add(processed);
+            }
         }
         return out;
+    }
+
+    /** Rotates a cull/shade face to match {@link QuadTransformers#applying(Transformation)}. */
+    private static Direction rotateCullDirection(Transformation transform, Direction direction) {
+        Vector3f normal = new Vector3f(direction.getStepX(), direction.getStepY(), direction.getStepZ());
+        transform.transformNormal(normal);
+        return Direction.getNearest(normal.x, normal.y, normal.z);
     }
 
     public static Transformation rotationForLineAxis(Direction.Axis axis) {

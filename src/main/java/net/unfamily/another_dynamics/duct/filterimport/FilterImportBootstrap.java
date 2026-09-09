@@ -6,7 +6,7 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.filterimport.external.ExternalUpgradeFilterImportSource;
 
-@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = AnotherDynamicsMod.MOD_ID)
 public final class FilterImportBootstrap {
     private FilterImportBootstrap() {}
 

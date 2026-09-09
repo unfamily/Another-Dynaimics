@@ -2811,7 +2811,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 lanes.stalledFluids[i] = left.copy();
                 return FluidStack.EMPTY;
             }
-            if (cur.isFluidEqual(left) && cur.getAmount() < Integer.MAX_VALUE) {
+            if (FluidStack.isSameFluidSameComponents(cur, left) && cur.getAmount() < Integer.MAX_VALUE) {
                 int canAdd = Integer.MAX_VALUE - cur.getAmount();
                 int add = Math.min(canAdd, left.getAmount());
                 if (add > 0) {
