@@ -98,6 +98,16 @@ public final class ModItems {
                                     "item.another_dynamics.sequential_buffer.tooltip.summary"),
                     UnaryOperator.identity());
 
+    public static final DeferredItem<SummaryTooltipBlockItem> MACHINE_CONNECTOR =
+            ITEMS.registerItem(
+                    "machine_connector",
+                    props ->
+                            new SummaryTooltipBlockItem(
+                                    ModBlocks.MACHINE_CONNECTOR.get(),
+                                    props,
+                                    "item.another_dynamics.machine_connector.tooltip.summary"),
+                    UnaryOperator.identity());
+
     /** Only registered when Mekanism is present. */
     public static final DeferredItem<DuctBlockItem> GAS_DUCT =
             MEKANISM_LOADED && ModBlocks.GAS_DUCT != null

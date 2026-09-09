@@ -4808,7 +4808,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
         if (raw == null) {
             return "";
         }
-        return FilterLineTextUtil.stripWrappingQuotes(raw.trim());
+        return FilterLineTextUtil.normalizeForCommit(raw);
     }
 
     private void applyEditModeAndClose() {

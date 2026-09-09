@@ -15,6 +15,7 @@ import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.FilterConcatChannel;
+import net.unfamily.another_dynamics.duct.FilterLineTextUtil;
 import net.unfamily.another_dynamics.duct.SettingsCopierFeedback;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
@@ -441,7 +442,7 @@ public final class SequentialBufferMenu extends AbstractContainerMenu {
     private boolean addOrUpdateStep(
             Player player, int listIndex, int stepIndex, SequentialBufferActionPayload payload) {
         SequenceListData list = blockEntity.list(listIndex);
-        String filter = payload.filter() == null ? "" : payload.filter().trim();
+        String filter = FilterLineTextUtil.normalizeForCommit(payload.filter());
         if (filter.isEmpty()) {
             return false;
         }

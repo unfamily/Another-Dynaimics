@@ -143,6 +143,7 @@ public final class AnotherDynamicsMod {
                 (be, side) ->
                         ((net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity) be)
                                 .fluidCapability(side));
+        net.unfamily.another_dynamics.machine.connector.MachineConnectorCapabilities.register(event);
     }
 
 }

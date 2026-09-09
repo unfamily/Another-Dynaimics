@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "another_dynamics:machine_connector",
+  "pattern": [
+    "ABA",
+    "BCB",
+    "ABA"
+  ],
+  "key": {
+    "A": "#c:ingots/iron",
+    "B": "#c:ingots/copper",
+    "C": "another_dynamics:resonanting_conductor"
+  },
+  "result": {
+    "id": "another_dynamics:machine_connector",
+    "count": 4
+  }
+}

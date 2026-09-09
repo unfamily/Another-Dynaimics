@@ -38,6 +38,7 @@ import net.neoforged.neoforge.fluids.FluidUtil;
 import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.client.SettingsCopierClient;
 import net.unfamily.another_dynamics.duct.DuctGuiLayout;
+import net.unfamily.another_dynamics.duct.FilterLineTextUtil;
 import net.unfamily.another_dynamics.integration.jei.ghost.IAnDynamicsGhostTarget;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.inventory.DuctNodeMenu;
@@ -1051,7 +1052,10 @@ public final class SequentialCopierVirtualUi {
         if (editingListIndex < 0 || filterBox == null || amountBox == null) {
             return;
         }
-        String filter = filterBox.getValue() == null ? "" : filterBox.getValue().trim();
+        String filter = FilterLineTextUtil.normalizeForCommit(filterBox.getValue());
+        if (!filter.equals(filterBox.getValue() == null ? "" : filterBox.getValue())) {
+            filterBox.setValue(filter);
+        }
         if (filter.isEmpty()) {
             return;
         }

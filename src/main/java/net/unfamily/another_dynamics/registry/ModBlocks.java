@@ -15,6 +15,7 @@ import net.unfamily.another_dynamics.duct.GasDuctBlock;
 import net.unfamily.another_dynamics.duct.HybridItemFluidDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
+import net.unfamily.another_dynamics.machine.connector.MachineConnectorBlock;
 import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlock;
 
 /**
@@ -52,6 +53,15 @@ public final class ModBlocks {
             BLOCKS.registerBlock(
                     "sequential_buffer",
                     SequentialBufferBlock::new,
+                    p -> p.mapColor(MapColor.COLOR_GRAY)
+                            .strength(1.5f, 6.0f)
+                            .sound(SoundType.METAL)
+                            .requiresCorrectToolForDrops());
+
+    public static final DeferredBlock<Block> MACHINE_CONNECTOR =
+            BLOCKS.registerBlock(
+                    "machine_connector",
+                    MachineConnectorBlock::new,
                     p -> p.mapColor(MapColor.COLOR_GRAY)
                             .strength(1.5f, 6.0f)
                             .sound(SoundType.METAL)
