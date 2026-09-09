@@ -232,7 +232,7 @@ public final class ProjectDuctConvertJobs {
                         ? 1.0f
                         : Math.min(1.0f, (float) job.convertedTotal / (float) job.initialTargetCount);
         int filledBlocks = Math.round(percentage * LOADING_BAR_LENGTH);
-        ChatFormatting fillColor = percentage >= 1.0f ? ChatFormatting.GREEN : ChatFormatting.GOLD;
+        ChatFormatting fillColor = percentage >= 1.0f ? ChatFormatting.GREEN : ChatFormatting.RED;
 
         MutableComponent message = Component.empty();
         String percentText = String.format(" %.0f%% ", percentage * 100.0f);
