@@ -70,6 +70,7 @@ public final class AnotherDynamicsMod {
         NeoForge.EVENT_BUS.addListener(AnotherDynamicsMod::onAddReloadListeners);
         NeoForge.EVENT_BUS.register(RemoteNodeSelectorEvents.class);
         NeoForge.EVENT_BUS.register(DuctJumpAssistEvents.class);
+        NeoForge.EVENT_BUS.register(net.unfamily.another_dynamics.duct.project.ProjectDuctConvertJobs.class);
 
         if (FMLEnvironment.getDist() == Dist.CLIENT) {
             GuideMeRegistration.register();

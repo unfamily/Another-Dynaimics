@@ -20,18 +20,30 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.Config;
 
 /**
- * Optional Cable Facades integration: runtime API whitelist + one-shot seed of their common config.
+ * Optional Cable Facades integration: runtime API whitelist + one-shot seed/repair of their common config.
  * Soft-loaded via reflection so Cable Facades is never a hard dependency.
+ *
+ * <p>Only the main duct and project duct are allowlisted — never {@code another_dynamics:*} (that would
+ * include Sequential Buffer and other machines).
  */
 public final class CableFacadesCompat {
     public static final String MOD_ID = "cable_facades";
-    public static final String ALLOW_PATTERN = "another_dynamics:*";
+
+    /** Definitive / pipe duct block id. */
+    public static final String DUCT_BLOCK_ID = "another_dynamics:duct";
+    /** Project (scaffold) duct block id. */
+    public static final String PROJECT_DUCT_BLOCK_ID = "another_dynamics:project_duct";
+
+    /** Legacy wildcard that incorrectly matched every mod block (e.g. Sequential Buffer). */
+    private static final String LEGACY_WILDCARD = "another_dynamics:*";
+
+    private static final String[] ALLOWED_BLOCK_IDS = {DUCT_BLOCK_ID, PROJECT_DUCT_BLOCK_ID};
 
     private CableFacadesCompat() {}
 
     /**
-     * Cable Facades drops covers when the supporting block is replaced. Project→duct conversion must
-     * snapshot and re-apply facade data, and temporarily disable consume-drops so items are not spilled.
+     * Cable Facades drops covers when the block type changes ({@code onRemove}). Project→duct conversion
+     * must snapshot and re-apply facade data, and temporarily disable consume-drops so items are not spilled.
      */
     public static void runPreservingFacade(ServerLevel level, BlockPos pos, Runnable action) {
         if (!ModList.get().isLoaded(MOD_ID)) {
@@ -125,15 +137,18 @@ public final class CableFacadesCompat {
     private static void bootstrap() {
         registerViaApi();
         if (Config.CABLE_FACADES_CONFIG_SEED.get()) {
-            boolean seeded = seedCableFacadesConfig();
+            boolean changed = seedCableFacadesConfig();
             Config.CABLE_FACADES_CONFIG_SEED.set(false);
             Config.saveCommon();
-            if (seeded) {
+            if (changed) {
                 AnotherDynamicsMod.LOGGER.info(
-                        "Seeded Cable Facades blocks whitelist with {} (one-shot flag cleared)", ALLOW_PATTERN);
+                        "Cable Facades blocks whitelist updated to {} + {} (legacy {} removed if present; one-shot cleared)",
+                        DUCT_BLOCK_ID,
+                        PROJECT_DUCT_BLOCK_ID,
+                        LEGACY_WILDCARD);
             } else {
                 AnotherDynamicsMod.LOGGER.debug(
-                        "Cable Facades config seed skipped or already present; one-shot flag cleared");
+                        "Cable Facades config seed: whitelist already correct; one-shot flag cleared");
             }
         }
     }
@@ -149,10 +164,10 @@ public final class CableFacadesCompat {
                         try {
                             Method registerAllowed =
                                     api.getClass().getMethod("registerAllowedBlocks", String[].class);
-                            registerAllowed.invoke(api, (Object) new String[] {ALLOW_PATTERN});
+                            registerAllowed.invoke(api, (Object) ALLOWED_BLOCK_IDS);
                             Method registerHidden =
                                     api.getClass().getMethod("registerHiddenBlocks", String[].class);
-                            registerHidden.invoke(api, (Object) new String[] {ALLOW_PATTERN});
+                            registerHidden.invoke(api, (Object) ALLOWED_BLOCK_IDS);
                         } catch (ReflectiveOperationException e) {
                             AnotherDynamicsMod.LOGGER.error(
                                     "Cable Facades API registerAllowedBlocks/Hidden failed", e);
@@ -164,8 +179,8 @@ public final class CableFacadesCompat {
     }
 
     /**
-     * Appends {@link #ALLOW_PATTERN} to Cable Facades {@code blocks} list when missing and saves their common
-     * config.
+     * Ensures Cable Facades {@code blocks} list has exactly the duct + project duct ids (adds missing,
+     * removes legacy {@code another_dynamics:*} wildcard).
      *
      * @return true if the list was mutated
      */
@@ -184,14 +199,25 @@ public final class CableFacadesCompat {
             if (!(raw instanceof List<?> current)) {
                 return false;
             }
-            List<String> next = new ArrayList<>(current.size() + 1);
+            List<String> next = new ArrayList<>(current.size() + 2);
+            boolean changed = false;
             for (Object entry : current) {
-                next.add(String.valueOf(entry));
+                String value = String.valueOf(entry);
+                if (LEGACY_WILDCARD.equals(value)) {
+                    changed = true;
+                    continue;
+                }
+                next.add(value);
             }
-            if (next.contains(ALLOW_PATTERN)) {
+            for (String id : ALLOWED_BLOCK_IDS) {
+                if (!next.contains(id)) {
+                    next.add(id);
+                    changed = true;
+                }
+            }
+            if (!changed) {
                 return false;
             }
-            next.add(ALLOW_PATTERN);
             set.invoke(configValue, next);
             saveForeignSpec(cfConfig);
             return true;

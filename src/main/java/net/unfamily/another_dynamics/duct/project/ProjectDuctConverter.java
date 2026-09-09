@@ -7,8 +7,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -19,23 +17,17 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.unfamily.another_dynamics.Config;
-import net.unfamily.another_dynamics.duct.AbstractDuctBlock;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctIds;
-import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctReplaceHelper;
-import net.unfamily.another_dynamics.duct.logistics.DuctNetworkCache;
 import net.unfamily.another_dynamics.integration.cablefacades.CableFacadesCompat;
 import net.unfamily.another_dynamics.registry.ModBlocks;
 import net.unfamily.another_dynamics.registry.ModItems;
 
-import java.util.EnumSet;
-import java.util.HashSet;
-import java.util.Set;
-
 /**
  * Converts a connected project-duct network into definitive ducts (one item per converted block).
+ * Large networks run as progressive jobs via {@link ProjectDuctConvertJobs}.
  */
 public final class ProjectDuctConverter {
     private ProjectDuctConverter() {}
@@ -45,97 +37,64 @@ public final class ProjectDuctConverter {
         if (level.isClientSide()) {
             return InteractionResult.SUCCESS;
         }
-        if (!(level instanceof ServerLevel serverLevel)) {
+        if (!(level instanceof ServerLevel serverLevel) || !(player instanceof ServerPlayer serverPlayer)) {
             return InteractionResult.FAIL;
         }
         if (!ProjectDuctNetwork.isProjectDuct(level.getBlockState(anchor).getBlock())) {
             return InteractionResult.TRY_WITH_EMPTY_HAND;
         }
+        if (ProjectDuctConvertJobs.hasActiveJob(serverPlayer, serverLevel)) {
+            serverPlayer.sendSystemMessage(
+                    Component.translatable("another_dynamics.project_duct.convert.in_progress"), true);
+            return InteractionResult.CONSUME;
+        }
+
         String logicalId = DuctReplaceHelper.logicalIdFromReplacementItem(heldStack);
         if (logicalId == null || logicalId.isEmpty()) {
             logicalId = DuctIds.DEFAULT_LOGICAL_ID;
         }
         logicalId = DuctIds.normalize(logicalId);
         if (DuctDefinitionRegistry.getByLogicalId(logicalId).isEmpty()) {
-            if (player instanceof ServerPlayer sp) {
-                sp.sendSystemMessage(
-                        Component.translatable("another_dynamics.project_duct.convert.unknown_type"), true);
-            } else {
-                player.sendSystemMessage(Component.translatable("another_dynamics.project_duct.convert.unknown_type"));
-            }
+            serverPlayer.sendSystemMessage(
+                    Component.translatable("another_dynamics.project_duct.convert.unknown_type"), true);
             return InteractionResult.FAIL;
         }
 
-        ItemStack template = ModItems.createDuctStack(logicalId);
-        int maxPerAction = Config.projectDuctConvertMaxPerAction();
-        List<BlockPos> discovered = ProjectDuctNetwork.connectedOrdered(level, anchor, maxPerAction + 1);
-        boolean moreRemain = discovered.size() > maxPerAction;
-        List<BlockPos> targets =
-                moreRemain ? discovered.subList(0, maxPerAction) : discovered;
-        int inventoryBudget = player.isCreative() ? targets.size() : countMatchingItems(player, template);
-        int budget = Math.min(inventoryBudget, targets.size());
-        int converted = 0;
-        java.util.List<BlockPos> convertedPositions = new java.util.ArrayList<>(budget);
-        for (BlockPos pos : targets) {
-            if (budget <= 0) {
-                break;
-            }
-            if (convertOne(serverLevel, pos, logicalId)) {
-                converted++;
-                convertedPositions.add(pos);
-                returnProjectDuctToPlayer(player, serverLevel, pos);
-                if (!player.isCreative()) {
-                    if (!consumeOneMatching(player, template)) {
-                        break;
-                    }
-                }
-                budget--;
-            }
-        }
-
-        if (converted == 0) {
+        int maxJob = Config.projectDuctConvertMaxPerJob();
+        List<BlockPos> discovered = ProjectDuctNetwork.connectedOrdered(level, anchor, maxJob + 1);
+        boolean moreBeyondJob = discovered.size() > maxJob;
+        List<BlockPos> targets = moreBeyondJob ? discovered.subList(0, maxJob) : discovered;
+        if (targets.isEmpty()) {
             return InteractionResult.FAIL;
         }
 
-        DuctNetworkCache.invalidate(serverLevel);
-        Set<BlockPos> refreshDone = new HashSet<>();
-        EnumSet<DuctNetworkType> allNetworks = EnumSet.allOf(DuctNetworkType.class);
-        for (BlockPos pos : convertedPositions) {
-            if (refreshDone.add(pos.immutable())) {
-                AbstractDuctBlock.refreshAdjacentDuctBlockEntities(serverLevel, pos, allNetworks);
+        if (!player.isCreative()) {
+            ItemStack template = ModItems.createDuctStack(logicalId);
+            if (ProjectDuctConverter.countMatchingItems(player, template) <= 0) {
+                serverPlayer.sendSystemMessage(
+                        Component.translatable(
+                                "another_dynamics.project_duct.convert.partial", 0, targets.size()),
+                        true);
+                return InteractionResult.FAIL;
             }
         }
-        ProjectDuctVisualRefresh.refreshAround(serverLevel, anchor);
 
-        if (player instanceof ServerPlayer sp) {
-            boolean hitActionCap = moreRemain && converted >= maxPerAction;
-            boolean shortOnItems = !player.isCreative() && converted < targets.size() && !moreRemain;
-            if (hitActionCap) {
-                sp.sendSystemMessage(
-                        Component.translatable(
-                                "another_dynamics.project_duct.convert.limit", converted, maxPerAction),
-                        true);
-            } else if (converted < targets.size() || shortOnItems) {
-                sp.sendSystemMessage(
-                        Component.translatable(
-                                "another_dynamics.project_duct.convert.partial", converted, targets.size()),
-                        true);
-            } else {
-                sp.sendSystemMessage(
-                        Component.translatable("another_dynamics.project_duct.convert.success", converted), true);
-            }
-        }
-        serverLevel.playSound(null, anchor, SoundEvents.COPPER_PLACE, SoundSource.BLOCKS, 0.8f, 1.0f);
-        return InteractionResult.CONSUME;
+        int converted =
+                ProjectDuctConvertJobs.startAndRunFirstBatch(
+                        serverPlayer, serverLevel, anchor, logicalId, targets, moreBeyondJob);
+        return converted > 0 || ProjectDuctConvertJobs.hasActiveJob(serverPlayer, serverLevel)
+                ? InteractionResult.CONSUME
+                : InteractionResult.FAIL;
     }
 
-    private static boolean convertOne(ServerLevel level, BlockPos pos, String logicalId) {
+    static boolean convertOne(ServerLevel level, BlockPos pos, String logicalId) {
         BlockState oldState = level.getBlockState(pos);
         if (!ProjectDuctNetwork.isProjectDuct(oldState.getBlock())) {
             return false;
         }
         boolean waterlogged =
-                oldState.hasProperty(BlockStateProperties.WATERLOGGED) && oldState.getValue(BlockStateProperties.WATERLOGGED);
+                oldState.hasProperty(BlockStateProperties.WATERLOGGED)
+                        && oldState.getValue(BlockStateProperties.WATERLOGGED);
 
         BlockState newState = ModBlocks.DUCT.get().defaultBlockState();
         if (waterlogged) {
@@ -144,9 +103,7 @@ public final class ProjectDuctConverter {
         final BlockState placedState = newState;
         final boolean[] placed = {false};
         CableFacadesCompat.runPreservingFacade(
-                level,
-                pos,
-                () -> placed[0] = level.setBlock(pos, placedState, Block.UPDATE_ALL));
+                level, pos, () -> placed[0] = level.setBlock(pos, placedState, Block.UPDATE_ALL));
         if (!placed[0]) {
             return false;
         }
@@ -164,8 +121,8 @@ public final class ProjectDuctConverter {
         return true;
     }
 
-    /** Mirrors opposite disconnect bits onto definitive duct neighbors (project neighbors keep BlockState until converted). */
-    private static void syncDisconnectToDefinitiveNeighbors(ServerLevel level, BlockPos pos, int disconnected) {
+    private static void syncDisconnectToDefinitiveNeighbors(
+            ServerLevel level, BlockPos pos, int disconnected) {
         for (Direction dir : Direction.values()) {
             int bit = 1 << dir.ordinal();
             if ((disconnected & bit) == 0) {
@@ -184,14 +141,15 @@ public final class ProjectDuctConverter {
         }
     }
 
-    private static void returnProjectDuctToPlayer(Player player, ServerLevel level, BlockPos pos) {
+    /** Survival only: return a Project Duct item for the converted block. */
+    static void returnProjectDuctToPlayer(Player player, ServerLevel level, BlockPos pos) {
         ItemStack projectDuct = new ItemStack(ModItems.PROJECT_DUCT.get());
         if (!player.getInventory().add(projectDuct)) {
             Block.popResource(level, pos, projectDuct);
         }
     }
 
-    private static int countMatchingItems(Player player, ItemStack template) {
+    static int countMatchingItems(Player player, ItemStack template) {
         int total = 0;
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
@@ -202,7 +160,7 @@ public final class ProjectDuctConverter {
         return total;
     }
 
-    private static boolean consumeOneMatching(Player player, ItemStack template) {
+    static boolean consumeOneMatching(Player player, ItemStack template) {
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (stack.isEmpty() || !ItemStack.isSameItemSameComponents(stack, template)) {

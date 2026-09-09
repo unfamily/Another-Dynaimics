@@ -11,28 +11,38 @@ import net.minecraft.world.level.block.state.BlockState;
  * Keeps project-duct node-preview rendering in sync when neighbors change without expanding block states.
  */
 public final class ProjectDuctVisualRefresh {
+    private static final ThreadLocal<Boolean> REFRESHING = ThreadLocal.withInitial(() -> false);
+
     private ProjectDuctVisualRefresh() {}
 
     /** Updates pipe masks and requests a client model refresh when node-preview geometry changes. */
     public static void refreshAround(LevelAccessor level, BlockPos origin) {
-        ProjectDuctBlock.updateConnectionsAround(level, origin);
-        if (!(level instanceof Level world)) {
+        if (Boolean.TRUE.equals(REFRESHING.get())) {
             return;
         }
-        java.util.HashSet<BlockPos> positions = new java.util.HashSet<>();
-        positions.add(origin);
-        for (Direction direction : Direction.values()) {
-            positions.add(origin.relative(direction));
-        }
-        for (BlockPos pos : positions) {
-            BlockState state = world.getBlockState(pos);
-            if (!(state.getBlock() instanceof ProjectDuctBlock)) {
-                continue;
+        REFRESHING.set(true);
+        try {
+            ProjectDuctBlock.updateConnectionsAround(level, origin);
+            if (!(level instanceof Level world)) {
+                return;
             }
-            int nodePreview = ProjectDuctBlock.effectiveNodePreviewMask(world, pos, state);
-            if (ProjectDuctNodePreviewTracker.noteChanged(pos, nodePreview)) {
-                world.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS);
+            java.util.HashSet<BlockPos> positions = new java.util.HashSet<>();
+            positions.add(origin);
+            for (Direction direction : Direction.values()) {
+                positions.add(origin.relative(direction));
             }
+            for (BlockPos pos : positions) {
+                BlockState state = world.getBlockState(pos);
+                if (!(state.getBlock() instanceof ProjectDuctBlock)) {
+                    continue;
+                }
+                int nodePreview = ProjectDuctBlock.effectiveNodePreviewMask(world, pos, state);
+                if (ProjectDuctNodePreviewTracker.noteChanged(pos, nodePreview)) {
+                    world.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS);
+                }
+            }
+        } finally {
+            REFRESHING.set(false);
         }
     }
 }
