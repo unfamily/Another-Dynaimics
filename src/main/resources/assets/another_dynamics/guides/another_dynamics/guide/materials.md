@@ -17,8 +17,6 @@ item_ids:
   <ItemIcon id="another_dynamics:ender_accellerant" />
 </ItemGrid>
 
-Shared materials used across the mod:
-
-- **Resonanting Conductor** — conductive piece for ducts and modules.
-- **Netherite Nugget** — compact netherite for high-tier parts.
-- **Ender Accelerant** — ender-based catalyst for advanced components.
+- **Resonanting Conductor**
+- **Netherite Nugget**
+- **Ender Accelerant**

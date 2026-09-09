@@ -7,7 +7,19 @@ public final class FilterLineTextUtil {
     private FilterLineTextUtil() {}
 
     /**
-     * Removes repeated wrapping {@code '} and {@code "} at the start and end only.
+     * Trim whitespace and strip wrapping quotes/apostrophes for EditBox commit.
+     *
+     * <p>Order: trim → strip wrapping {@code '}, {@code "}, {@code `} (repeated) → trim again.
+     */
+    public static String normalizeForCommit(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return "";
+        }
+        return stripWrappingQuotes(raw.trim()).trim();
+    }
+
+    /**
+     * Removes repeated wrapping {@code '}, {@code "}, and {@code `} at the start and end only.
      * Inner quotes (e.g. NBT substrings) are preserved.
      */
     public static String stripWrappingQuotes(String raw) {
@@ -29,6 +41,6 @@ public final class FilterLineTextUtil {
     }
 
     private static boolean isWrappingQuote(char c) {
-        return c == '\'' || c == '"';
+        return c == '\'' || c == '"' || c == '`';
     }
 }

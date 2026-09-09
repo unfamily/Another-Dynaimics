@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=north": { "model": "another_dynamics:block/machine_connector" },
+    "facing=south": { "model": "another_dynamics:block/machine_connector", "y": 180 },
+    "facing=west":  { "model": "another_dynamics:block/machine_connector", "y": 270 },
+    "facing=east":  { "model": "another_dynamics:block/machine_connector", "y": 90 },
+    "facing=up":    { "model": "another_dynamics:block/machine_connector", "x": -90 },
+    "facing=down":  { "model": "another_dynamics:block/machine_connector", "x": 90 }
+  }
+}

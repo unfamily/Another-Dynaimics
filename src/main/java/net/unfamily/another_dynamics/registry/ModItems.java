@@ -78,6 +78,15 @@ public final class ModItems {
                                     new Item.Properties(),
                                     "item.another_dynamics.sequential_buffer.tooltip.summary"));
 
+    public static final DeferredItem<SummaryTooltipBlockItem> MACHINE_CONNECTOR =
+            ITEMS.register(
+                    "machine_connector",
+                    () ->
+                            new SummaryTooltipBlockItem(
+                                    ModBlocks.MACHINE_CONNECTOR.get(),
+                                    new Item.Properties(),
+                                    "item.another_dynamics.machine_connector.tooltip.summary"));
+
     public static final DeferredItem<DuctModuleItem> INC_MODULE_0 = registerModule("inc_module_0");
     public static final DeferredItem<DuctModuleItem> INC_MODULE_1 = registerModule("inc_module_1");
     public static final DeferredItem<DuctModuleItem> INC_MODULE_2 = registerModule("inc_module_2");

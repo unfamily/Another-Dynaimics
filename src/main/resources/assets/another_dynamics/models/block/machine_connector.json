@@ -1,0 +1,9 @@
+{
+  "parent": "another_dynamics:block/sequential_buffer",
+  "textures": {
+    "particle": "another_dynamics:block/machine_connector_front",
+    "front": "another_dynamics:block/machine_connector_front",
+    "back": "another_dynamics:block/machine_connector_back",
+    "side": "another_dynamics:block/machine_connector_side"
+  }
+}

@@ -414,6 +414,8 @@
   "gui.another_dynamics.gas_filter_text.anything_else.detail.3": "Good as default dest/cap after specials.",
   "block.another_dynamics.sequential_buffer": "Sequential Buffer",
   "item.another_dynamics.sequential_buffer": "Sequential Buffer",
+  "block.another_dynamics.machine_connector": "Machine Connector",
+  "item.another_dynamics.machine_connector": "Machine Connector",
   "gui.another_dynamics.sequential_buffer.title": "Sequential Buffer",
   "gui.another_dynamics.sequential_buffer.list_of_sequences": "List of sequences",
   "gui.another_dynamics.sequential_buffer.sequence_lists": "Sequence Lists",
@@ -509,5 +511,6 @@
   "item.another_dynamics.duct.tooltip.transports": "Transports: %s",
   "item.another_dynamics.project_duct.tooltip.summary": "Scaffold duct for mass placement; Shift+duct item converts the network.",
   "item.another_dynamics.remote_node_selector.tooltip.summary": "Binds a remote extract/retrieve destination.",
-  "item.another_dynamics.sequential_buffer.tooltip.summary": "Collects listed amounts in order, then releases the batch."
+  "item.another_dynamics.sequential_buffer.tooltip.summary": "Collects listed amounts in order, then releases the batch.",
+  "item.another_dynamics.machine_connector.tooltip.summary": "Extends a machine's inventory and capability faces outward."
 }

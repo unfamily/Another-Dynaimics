@@ -8,6 +8,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.another_dynamics.duct.FilterConcatChannel;
+import net.unfamily.another_dynamics.duct.FilterLineTextUtil;
 import net.unfamily.another_dynamics.duct.settings.SettingsCopierStoreKind;
 import net.unfamily.another_dynamics.item.SettingsCopierItem;
 import net.unfamily.another_dynamics.network.ModNetwork;
@@ -318,7 +319,7 @@ public final class SettingsCopierSequentialVirtualSession {
 
     private boolean addOrUpdateStep(int listIndex, int stepIndex, SequentialBufferActionPayload payload) {
         SequenceListData list = list(listIndex);
-        String filter = payload.filter() == null ? "" : payload.filter().trim();
+        String filter = FilterLineTextUtil.normalizeForCommit(payload.filter());
         if (filter.isEmpty()) {
             return false;
         }

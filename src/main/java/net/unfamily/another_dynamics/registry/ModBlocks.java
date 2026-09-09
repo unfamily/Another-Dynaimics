@@ -13,6 +13,7 @@ import net.unfamily.another_dynamics.duct.FluidDuctBlock;
 import net.unfamily.another_dynamics.duct.GasDuctBlock;
 import net.unfamily.another_dynamics.duct.HybridItemFluidDuctBlock;
 import net.unfamily.another_dynamics.duct.project.ProjectDuctBlock;
+import net.unfamily.another_dynamics.machine.connector.MachineConnectorBlock;
 import net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlock;
 
 public final class ModBlocks {
@@ -47,6 +48,17 @@ public final class ModBlocks {
                     "sequential_buffer",
                     () ->
                             new SequentialBufferBlock(
+                                    BlockBehaviour.Properties.of()
+                                            .mapColor(MapColor.COLOR_GRAY)
+                                            .strength(1.5f, 6.0f)
+                                            .sound(SoundType.METAL)
+                                            .requiresCorrectToolForDrops()));
+
+    public static final DeferredBlock<Block> MACHINE_CONNECTOR =
+            BLOCKS.register(
+                    "machine_connector",
+                    () ->
+                            new MachineConnectorBlock(
                                     BlockBehaviour.Properties.of()
                                             .mapColor(MapColor.COLOR_GRAY)
                                             .strength(1.5f, 6.0f)

@@ -135,15 +135,7 @@ public final class AdDebugCommands {
                 source.getEntity() != null ? source.getEntity().getUUID() : new UUID(0L, 0L);
         JOBS.put(dim, new DeleteJob(requester, dim, pending, members.size()));
         source.sendSuccess(
-                () ->
-                        Component.literal(
-                                "[ad_debug] Removing "
-                                        + members.size()
-                                        + " ducts (~"
-                                        + ((members.size() + DELETE_BATCH - 1) / DELETE_BATCH)
-                                        + " ticks at "
-                                        + DELETE_BATCH
-                                        + "/tick)"),
+                () -> Component.literal("[ad_debug] Removing " + members.size() + " ducts"),
                 true);
         return members.size();
     }
