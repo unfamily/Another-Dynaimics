@@ -51,6 +51,9 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
     public static final IntegerProperty DISCONNECTED = IntegerProperty.create("disconnected", 0, 63);
     public static final BooleanProperty WATERLOGGED = BlockStateProperties.WATERLOGGED;
 
+    /** True while {@link #updateConnectionsAround} is applying CONNECTIONS via setBlock. */
+    private static final ThreadLocal<Boolean> UPDATING_CONNECTIONS = ThreadLocal.withInitial(() -> false);
+
     public ProjectDuctBlock(Properties properties) {
         super(properties);
         registerDefaultState(
@@ -213,11 +216,9 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
         }
     }
 
-    @Override
-    public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
-        super.onPlace(state, level, pos, oldState, movedByPiston);
-        ProjectDuctVisualRefresh.refreshAround(level, pos);
-    }
+    // onPlace intentionally does not call refreshAround: updateConnectionsAround uses
+    // setBlock(CONNECTIONS), which re-enters onPlace and StackOverflows on large networks.
+    // Placement uses getStateForPlacement; neighbors refresh via neighborChanged / onRemove.
 
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
@@ -323,20 +324,29 @@ public final class ProjectDuctBlock extends Block implements SimpleWaterloggedBl
 
     /** Refreshes pipe connection masks on this position and touching project ducts. */
     public static void updateConnectionsAround(LevelAccessor level, BlockPos origin) {
-        java.util.HashSet<BlockPos> positions = new java.util.HashSet<>();
-        positions.add(origin);
-        for (Direction direction : Direction.values()) {
-            positions.add(origin.relative(direction));
+        if (Boolean.TRUE.equals(UPDATING_CONNECTIONS.get())) {
+            return;
         }
-        for (BlockPos pos : positions) {
-            BlockState state = level.getBlockState(pos);
-            if (!(state.getBlock() instanceof ProjectDuctBlock)) {
-                continue;
+        UPDATING_CONNECTIONS.set(true);
+        try {
+            java.util.HashSet<BlockPos> positions = new java.util.HashSet<>();
+            positions.add(origin);
+            for (Direction direction : Direction.values()) {
+                positions.add(origin.relative(direction));
             }
-            int pipe = computeConnectionMask(level, pos);
-            if (state.getValue(CONNECTIONS) != pipe) {
-                level.setBlock(pos, state.setValue(CONNECTIONS, pipe), Block.UPDATE_CLIENTS);
+            for (BlockPos pos : positions) {
+                BlockState state = level.getBlockState(pos);
+                if (!(state.getBlock() instanceof ProjectDuctBlock)) {
+                    continue;
+                }
+                int pipe = computeConnectionMask(level, pos);
+                if (state.getValue(CONNECTIONS) != pipe) {
+                    // Clients only — never UPDATE_NEIGHBORS (would cascade neighborChanged → refresh).
+                    level.setBlock(pos, state.setValue(CONNECTIONS, pipe), Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+                }
             }
+        } finally {
+            UPDATING_CONNECTIONS.set(false);
         }
     }
 }
