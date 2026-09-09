@@ -4,6 +4,7 @@ import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
@@ -77,20 +78,18 @@ public final class DuctBlockItem extends BlockItem {
                 BlockEntity entity = level.getBlockEntity(pos);
                 if (entity instanceof DuctBlockEntity ductBE) {
                     ItemStack stack = context.getItemInHand();
-                    if (DuctReplaceHelper.isSameDuctType(ductBE, stack)) {
-                        return super.useOn(context);
-                    }
-                    String newLogicalId = DuctReplaceHelper.logicalIdFromReplacementItem(stack);
-                    if (newLogicalId == null) {
-                        newLogicalId = defaultLogicalId;
-                    }
                     if (level.isClientSide()) {
                         return InteractionResult.SUCCESS;
                     }
                     ductBE.refreshFromWorld();
-                    return DuctReplaceHelper.tryReplace(
-                                    context.getPlayer(), level, pos, ductBE, newLogicalId, context.getHand())
-                            .result();
+                    ItemInteractionResult replaceResult =
+                            DuctReplaceHelper.handleShiftReplace(
+                                    context.getPlayer(), level, pos, ductBE, stack, context.getHand());
+                    // Never place adjacent while Shift+duct on a duct — PASS would call BlockItem placement.
+                    if (replaceResult == ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
+                        return InteractionResult.FAIL;
+                    }
+                    return replaceResult.result();
                 }
             } else if (state.getBlock() instanceof ProjectDuctBlock) {
                 if (level.isClientSide()) {

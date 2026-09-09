@@ -25,8 +25,32 @@ import net.unfamily.another_dynamics.duct.DuctNetworkType;
 public final class DuctNetworkCache {
     private static final Map<ServerLevel, LevelCache> BY_LEVEL = new WeakHashMap<>();
     private static final ThreadLocal<Boolean> SELF_HEAL_ACTIVE = ThreadLocal.withInitial(() -> false);
+    /**
+     * Depth of nested bulk mutations. While &gt; 0, {@link #invalidate} is a no-op.
+     * Caller must {@link #invalidate(ServerLevel)} after {@link #popBulkMutation()} when topology changed.
+     */
+    private static final ThreadLocal<Integer> BULK_MUTATION_DEPTH = ThreadLocal.withInitial(() -> 0);
 
     private DuctNetworkCache() {}
+
+    /** Begin suppressing topology invalidates (nestable). Pair with {@link #popBulkMutation()}. */
+    public static void pushBulkMutation() {
+        BULK_MUTATION_DEPTH.set(BULK_MUTATION_DEPTH.get() + 1);
+    }
+
+    /** End one suppress level opened by {@link #pushBulkMutation()}. */
+    public static void popBulkMutation() {
+        int depth = BULK_MUTATION_DEPTH.get();
+        if (depth <= 1) {
+            BULK_MUTATION_DEPTH.remove();
+        } else {
+            BULK_MUTATION_DEPTH.set(depth - 1);
+        }
+    }
+
+    private static boolean isBulkMutationActive() {
+        return BULK_MUTATION_DEPTH.get() > 0;
+    }
 
     /** Stable component identity for endpoint-index caching; {@code 0} when not on a network. */
     public static long componentId(ServerLevel level, BlockPos start, DuctNetworkType network) {
@@ -42,6 +66,9 @@ public final class DuctNetworkCache {
 
     /** Invalidate all network types on this level. */
     public static void invalidate(ServerLevel level) {
+        if (isBulkMutationActive()) {
+            return;
+        }
         LevelCache cache = BY_LEVEL.get(level);
         int gen = cache != null ? peekTopologyGeneration(cache) : 0;
         int components = cache != null ? cache.approxComponentCount() : 0;
@@ -54,6 +81,9 @@ public final class DuctNetworkCache {
 
     /** Invalidate one network type (and radioactive gas subgraph when {@code GAS}). */
     public static void invalidate(ServerLevel level, DuctNetworkType network) {
+        if (isBulkMutationActive()) {
+            return;
+        }
         LevelCache cache = BY_LEVEL.get(level);
         int gen = cache != null ? peekTopologyGeneration(cache) : 0;
         int components = cache != null ? cache.approxComponentCount() : 0;
@@ -73,6 +103,25 @@ public final class DuctNetworkCache {
     public static Set<BlockPos> connectedRadioactiveGasDucts(ServerLevel level, BlockPos start) {
         NetworkComponent comp = componentContaining(level, start, DuctNetworkType.GAS, true);
         return comp != null ? comp.members : Set.of();
+    }
+
+    /**
+     * Duct positions in the component that currently have at least one storage-attachment face
+     * ({@code storageMask != 0}). Lazily derived from {@link #connectedDucts} and cached on the component until
+     * topology invalidate.
+     */
+    public static Set<BlockPos> storageAttachmentMembers(
+            ServerLevel level, BlockPos start, DuctNetworkType network) {
+        return storageAttachmentMembers(level, start, network, false);
+    }
+
+    public static Set<BlockPos> storageAttachmentMembers(
+            ServerLevel level, BlockPos start, DuctNetworkType network, boolean radioactiveGasSubgraph) {
+        NetworkComponent comp = componentContaining(level, start, network, radioactiveGasSubgraph);
+        if (comp == null) {
+            return Set.of();
+        }
+        return comp.ensureStorageAttachmentMembers(level);
     }
 
     public static OptionalLong hopDistance(ServerLevel level, BlockPos from, BlockPos to, DuctNetworkType network) {
@@ -419,6 +468,9 @@ public final class DuctNetworkCache {
         final boolean radioactiveGasSubgraph;
         final Set<BlockPos> members;
         final int topologyGeneration;
+        /** Lazily filled; null until first {@link #ensureStorageAttachmentMembers}. */
+        @org.jetbrains.annotations.Nullable
+        private volatile Set<BlockPos> storageAttachmentMembers;
 
         NetworkComponent(
                 long componentId,
@@ -431,6 +483,27 @@ public final class DuctNetworkCache {
             this.topologyGeneration = topologyGeneration;
             this.network = network;
             this.radioactiveGasSubgraph = radioactiveGasSubgraph;
+        }
+
+        Set<BlockPos> ensureStorageAttachmentMembers(ServerLevel level) {
+            Set<BlockPos> cached = storageAttachmentMembers;
+            if (cached != null) {
+                return cached;
+            }
+            synchronized (this) {
+                if (storageAttachmentMembers != null) {
+                    return storageAttachmentMembers;
+                }
+                Set<BlockPos> storage = new HashSet<>();
+                for (BlockPos pos : members) {
+                    if (level.getBlockEntity(pos) instanceof net.unfamily.another_dynamics.duct.DuctBlockEntity be
+                            && be.getStorageMask() != 0) {
+                        storage.add(pos);
+                    }
+                }
+                storageAttachmentMembers = Set.copyOf(storage);
+                return storageAttachmentMembers;
+            }
         }
     }
 

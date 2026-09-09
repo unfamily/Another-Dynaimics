@@ -149,7 +149,7 @@ public final class ProjectDuctConverter {
         }
     }
 
-    static int countMatchingItems(Player player, ItemStack template) {
+    public static int countMatchingItems(Player player, ItemStack template) {
         int total = 0;
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
@@ -160,7 +160,7 @@ public final class ProjectDuctConverter {
         return total;
     }
 
-    static boolean consumeOneMatching(Player player, ItemStack template) {
+    public static boolean consumeOneMatching(Player player, ItemStack template) {
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (stack.isEmpty() || !ItemStack.isSameItemSameComponents(stack, template)) {

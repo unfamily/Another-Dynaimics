@@ -13,7 +13,7 @@ import net.minecraft.world.level.Level;
  * retriever/extraction loops do not repeat expensive bulk handler scans every action tick.
  */
 public final class DuctInsertProbeCache {
-    private static final int REJECT_TTL_TICKS = 2;
+    private static final int REJECT_TTL_TICKS = 8;
     private static final int ACCEPT_TTL_TICKS = 2;
 
     private record RejectKey(BlockPos ductPos, Direction face, int itemKey) {}

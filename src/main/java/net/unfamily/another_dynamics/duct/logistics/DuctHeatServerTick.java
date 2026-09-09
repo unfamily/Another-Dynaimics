@@ -113,7 +113,7 @@ public final class DuctHeatServerTick {
             return;
         }
 
-        java.util.Set<BlockPos> ducts = DuctNetworkCache.connectedDucts(level, srcPos, DuctNetworkType.HEAT);
+        java.util.Set<BlockPos> ducts = DuctNetworkCache.storageAttachmentMembers(level, srcPos, DuctNetworkType.HEAT);
         if (ducts.isEmpty()) {
             return;
         }
@@ -246,7 +246,8 @@ public final class DuctHeatServerTick {
         }
         double tDest0 = MekanismHeatCompat.getTotalTemperature(dest);
 
-        List<BlockPos> ducts = new ArrayList<>(DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.HEAT));
+        List<BlockPos> ducts =
+                new ArrayList<>(DuctNetworkCache.storageAttachmentMembers(level, retrieverPos, DuctNetworkType.HEAT));
         if (ducts.isEmpty()) {
             return;
         }

@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -28,8 +29,18 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
     private static final float GHOST_Y_OFFSET = -0.14f;
     private static final float FLUID_Y_OFFSET = 0.0f;
     private static final float GHOST_SCALE = 0.78f;
+    private static final double GHOST_AABB_HALF = 0.4;
 
     public DuctTransitBlockEntityRenderer(BlockEntityRendererProvider.Context ctx) {}
+
+    @Override
+    public boolean shouldRender(DuctBlockEntity tile, Vec3 cameraPos) {
+        BlockPos origin = tile.getBlockPos();
+        if (!DuctTransitRenderCulling.hasAnyVisuals(origin)) {
+            return false;
+        }
+        return DuctTransitRenderCulling.isWithinRenderDistance(origin, cameraPos);
+    }
 
     @Override
     public void render(
@@ -55,6 +66,7 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
         if (visuals.isEmpty() && fluidVisuals.isEmpty() && gasVisuals.isEmpty()) {
             return;
         }
+        Camera camera = mc.gameRenderer.getMainCamera();
         int overlay = packedOverlay != 0 ? packedOverlay : OverlayTexture.NO_OVERLAY;
         for (DuctTransitVisual v : visuals) {
             ItemStack stack = v.stack;
@@ -62,6 +74,9 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
                 continue;
             }
             Vec3 world = v.positionAt(0f, level, partialTick);
+            if (!DuctTransitRenderCulling.isGhostVisible(world, camera, null)) {
+                continue;
+            }
             poseStack.pushPose();
             poseStack.translate(world.x - origin.getX(), world.y - origin.getY(), world.z - origin.getZ());
             poseStack.translate(0.0f, GHOST_Y_OFFSET, 0.0f);
@@ -83,6 +98,9 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
                 continue;
             }
             Vec3 world = fv.positionAt(0f, level, partialTick);
+            if (!DuctTransitRenderCulling.isGhostVisible(world, camera, null)) {
+                continue;
+            }
             poseStack.pushPose();
             poseStack.translate(world.x - origin.getX(), world.y - origin.getY(), world.z - origin.getZ());
             poseStack.translate(0.0f, FLUID_Y_OFFSET, 0.0f);
@@ -99,6 +117,9 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
                 continue;
             }
             Vec3 world = gv.positionAt(0f, level, partialTick);
+            if (!DuctTransitRenderCulling.isGhostVisible(world, camera, null)) {
+                continue;
+            }
             poseStack.pushPose();
             poseStack.translate(world.x - origin.getX(), world.y - origin.getY(), world.z - origin.getZ());
             poseStack.translate(0.0f, FLUID_Y_OFFSET, 0.0f);
@@ -117,45 +138,44 @@ public final class DuctTransitBlockEntityRenderer implements BlockEntityRenderer
 
     @Override
     public AABB getRenderBoundingBox(DuctBlockEntity blockEntity) {
-        List<DuctTransitVisual> visuals = DuctTransitClientState.visualsAt(blockEntity.getBlockPos());
-        List<DuctFluidTransitVisual> fluidVisuals = DuctFluidTransitClientState.visualsAt(blockEntity.getBlockPos());
-        List<DuctGasTransitVisual> gasVisuals = DuctGasTransitClientState.visualsAt(blockEntity.getBlockPos());
+        BlockPos origin = blockEntity.getBlockPos();
+        Level level = blockEntity.getLevel();
+        List<DuctTransitVisual> visuals = DuctTransitClientState.visualsAt(origin);
+        List<DuctFluidTransitVisual> fluidVisuals = DuctFluidTransitClientState.visualsAt(origin);
+        List<DuctGasTransitVisual> gasVisuals = DuctGasTransitClientState.visualsAt(origin);
         if (visuals.isEmpty() && fluidVisuals.isEmpty() && gasVisuals.isEmpty()) {
             return BlockEntityRenderer.super.getRenderBoundingBox(blockEntity);
         }
-        AABB box = new AABB(blockEntity.getBlockPos());
-        for (DuctTransitVisual v : visuals) {
-            if (v.ductPath.isEmpty()) {
-                box = box.minmax(new AABB(v.ownerDuct));
-            } else {
-                for (BlockPos p : v.ductPath) {
-                    box = box.minmax(new AABB(p));
-                }
+        AABB box = new AABB(origin);
+        if (level != null) {
+            for (DuctTransitVisual v : visuals) {
+                box = expandAroundGhost(box, v.positionAt(0f, level, 0f));
             }
-        }
-        for (DuctFluidTransitVisual v : fluidVisuals) {
-            if (v.ductPath.isEmpty()) {
-                box = box.minmax(new AABB(v.ownerDuct));
-            } else {
-                for (BlockPos p : v.ductPath) {
-                    box = box.minmax(new AABB(p));
-                }
+            for (DuctFluidTransitVisual v : fluidVisuals) {
+                box = expandAroundGhost(box, v.positionAt(0f, level, 0f));
             }
-        }
-        for (DuctGasTransitVisual v : gasVisuals) {
-            if (v.ductPath.isEmpty()) {
-                box = box.minmax(new AABB(v.ownerDuct));
-            } else {
-                for (BlockPos p : v.ductPath) {
-                    box = box.minmax(new AABB(p));
-                }
+            for (DuctGasTransitVisual v : gasVisuals) {
+                box = expandAroundGhost(box, v.positionAt(0f, level, 0f));
             }
+        } else {
+            box = box.minmax(new AABB(origin));
         }
-        return box.inflate(1.0);
+        return box.inflate(0.5);
+    }
+
+    private static AABB expandAroundGhost(AABB box, Vec3 world) {
+        return box.minmax(
+                new AABB(
+                        world.x - GHOST_AABB_HALF,
+                        world.y - GHOST_AABB_HALF,
+                        world.z - GHOST_AABB_HALF,
+                        world.x + GHOST_AABB_HALF,
+                        world.y + GHOST_AABB_HALF,
+                        world.z + GHOST_AABB_HALF));
     }
 
     @Override
     public int getViewDistance() {
-        return 256;
+        return (int) Math.ceil(DuctTransitRenderCulling.effectiveRenderDistance());
     }
 }

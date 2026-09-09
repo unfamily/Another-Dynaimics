@@ -4,20 +4,15 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalLong;
-import java.util.Set;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
-import net.unfamily.another_dynamics.duct.DuctChannelPolicy;
 import net.unfamily.another_dynamics.duct.DuctDefinitionRegistry;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctNetworkType;
 import net.unfamily.another_dynamics.duct.DuctBlockEntity;
-import net.unfamily.another_dynamics.duct.DuctFaceNode;
-import net.unfamily.another_dynamics.duct.DuctRedstoneLogic;
 import net.unfamily.another_dynamics.duct.NodeMode;
 import net.unfamily.another_dynamics.duct.DuctTransportKind;
 import net.unfamily.another_dynamics.duct.RoutingMode;
@@ -63,56 +58,27 @@ public final class DuctTargetSelector {
                 level.getBlockEntity(extractorPos) instanceof DuctBlockEntity extractorDuct
                         ? extractorDuct.itemTransportSpec()
                         : DuctDefinitionRegistry.itemDuctTransportSpec();
-        Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, extractorPos, DuctNetworkType.ITEM);
+        List<DuctRoutingEndpointIndex.ScoredEndpoint> scored =
+                DuctRoutingEndpointIndex.listScoredExtractDestinations(
+                        level,
+                        extractorPos,
+                        DuctNetworkType.ITEM,
+                        DuctTransportKind.ITEM,
+                        DuctPathfinder.edgeTravelTicks(spec),
+                        extractorFaceChannel,
+                        false,
+                        allowSelfDestination,
+                        forbidSelfDestFace,
+                        allowSelfFeed,
+                        sourceFace,
+                        false);
         List<ExtractionCandidate> cands = new ArrayList<>();
-        for (BlockPos p : net) {
-            if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
+        for (DuctRoutingEndpointIndex.ScoredEndpoint s : scored) {
+            DuctRoutingEndpointIndex.RoutingEndpoint ep = s.endpoint();
+            if (!DuctCapHelper.canInsertIntoFace(level, ep.pos(), ep.face(), probe)) {
                 continue;
             }
-            int sm = be.getStorageMask();
-            for (Direction d : Direction.values()) {
-                if ((sm & (1 << d.ordinal())) == 0) {
-                    continue;
-                }
-                if (p.equals(extractorPos) && forbidSelfDestFace != null && d == forbidSelfDestFace) {
-                    continue;
-                }
-                if (DuctSameBlockRouting.skipSameBlockDestFace(
-                        extractorPos, sourceFace, p, d, allowSelfFeed)) {
-                    continue;
-                }
-                if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {
-                    continue;
-                }
-                DuctFaceNode node = be.getFaceNode(d);
-                if (!DuctRedstoneLogic.isFaceTransportActive(level, p, be.getFaceLanes(d).redstoneMode)) {
-                    continue;
-                }
-                NodeMode m = be.getFaceLanes(d).nodeMode;
-                if (m != NodeMode.NONE
-                        && m != NodeMode.FILTERING_INSERTION
-                        && m != NodeMode.EXTRACTION_FILTERING) {
-                    continue;
-                }
-                if (!node.eligibilityMode.isInsertable()) {
-                    continue;
-                }
-                if (!DuctChannelPolicy.sameChannel(node.channelLetter, extractorFaceChannel)) {
-                    continue;
-                }
-                if (!DuctCapHelper.canInsertIntoFace(level, p, d, probe)) {
-                    continue;
-                }
-                OptionalLong dist =
-                        p.equals(extractorPos)
-                                ? OptionalLong.of(0L)
-                                : DuctNetworkCache.routingTravelTicks(
-                                        level, extractorPos, p, DuctPathfinder.edgeTravelTicks(spec), DuctNetworkType.ITEM);
-                if (dist.isEmpty()) {
-                    continue;
-                }
-                cands.add(new ExtractionCandidate(p, d, node.insertionPriority, dist.getAsLong()));
-            }
+            cands.add(new ExtractionCandidate(ep.pos(), ep.face(), ep.insertionPriority(), s.distTicks()));
         }
         if (cands.isEmpty()) {
             return Optional.empty();
@@ -316,56 +282,15 @@ public final class DuctTargetSelector {
             return Optional.empty();
         }
         DuctItemTransportSpec spec = retrieverBe.itemTransportSpec();
-        Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
-        List<DonorCandidate> cands = new ArrayList<>();
-        for (BlockPos p : net) {
-            if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
-                continue;
-            }
-            int sm = be.getStorageMask();
-            for (Direction d : Direction.values()) {
-                if ((sm & (1 << d.ordinal())) == 0) {
-                    continue;
-                }
-                if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
-                    continue;
-                }
-                if (!allowSelfDonor
-                        && DuctSameBlockRouting.skipSameBlockDonorFace(
-                                retrieverPos, retrieverInventoryFace, p, d)) {
-                    continue;
-                }
-                if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {
-                    continue;
-                }
-                DuctFaceNode node = be.getFaceNode(d);
-                if (!DuctRedstoneLogic.isFaceTransportActive(level, p, be.getFaceLanes(d).redstoneMode)) {
-                    continue;
-                }
-                NodeMode donorMode = be.getFaceLanes(d).nodeMode;
-                if (donorMode != NodeMode.NONE && donorMode != NodeMode.FILTERING_INSERTION) {
-                    continue;
-                }
-                if (!node.eligibilityMode.isRetrievable()) {
-                    continue;
-                }
-                if (!DuctChannelPolicy.sameChannel(node.channelLetter, retrieverFaceChannel)) {
-                    continue;
-                }
-                if (!DuctCapHelper.donorMaySupplyRetriever(level, p, d, be)) {
-                    continue;
-                }
-                OptionalLong dist =
-                        p.equals(retrieverPos)
-                                ? OptionalLong.of(0L)
-                                : DuctNetworkCache.routingTravelTicks(
-                                        level, retrieverPos, p, DuctPathfinder.edgeTravelTicks(spec), DuctNetworkType.ITEM);
-                if (dist.isEmpty()) {
-                    continue;
-                }
-                cands.add(new DonorCandidate(p, d, node.insertionPriority, dist.getAsLong()));
-            }
-        }
+        List<DonorCandidate> cands =
+                collectItemDonorCandidates(
+                        level,
+                        retrieverPos,
+                        retrieverInventoryFace,
+                        retrieverFaceChannel,
+                        allowSelfDonor,
+                        forbidSelfDonorFace,
+                        spec);
         if (cands.isEmpty()) {
             return Optional.empty();
         }
@@ -402,56 +327,15 @@ public final class DuctTargetSelector {
             return List.of();
         }
         DuctItemTransportSpec spec = retrieverBe.itemTransportSpec();
-        Set<BlockPos> net = DuctNetworkCache.connectedDucts(level, retrieverPos, DuctNetworkType.ITEM);
-        List<DonorCandidate> cands = new ArrayList<>();
-        for (BlockPos p : net) {
-            if (!(level.getBlockEntity(p) instanceof DuctBlockEntity be)) {
-                continue;
-            }
-            int sm = be.getStorageMask();
-            for (Direction d : Direction.values()) {
-                if ((sm & (1 << d.ordinal())) == 0) {
-                    continue;
-                }
-                if (p.equals(retrieverPos) && forbidSelfDonorFace != null && d == forbidSelfDonorFace) {
-                    continue;
-                }
-                if (!allowSelfDonor
-                        && DuctSameBlockRouting.skipSameBlockDonorFace(
-                                retrieverPos, retrieverInventoryFace, p, d)) {
-                    continue;
-                }
-                if (!be.isTransportKindEnabled(d, DuctTransportKind.ITEM)) {
-                    continue;
-                }
-                DuctFaceNode node = be.getFaceNode(d);
-                if (!DuctRedstoneLogic.isFaceTransportActive(level, p, be.getFaceLanes(d).redstoneMode)) {
-                    continue;
-                }
-                NodeMode donorMode = be.getFaceLanes(d).nodeMode;
-                if (donorMode != NodeMode.NONE && donorMode != NodeMode.FILTERING_INSERTION) {
-                    continue;
-                }
-                if (!node.eligibilityMode.isRetrievable()) {
-                    continue;
-                }
-                if (!DuctChannelPolicy.sameChannel(node.channelLetter, retrieverFaceChannel)) {
-                    continue;
-                }
-                if (!DuctCapHelper.donorMaySupplyRetriever(level, p, d, be)) {
-                    continue;
-                }
-                OptionalLong dist =
-                        p.equals(retrieverPos)
-                                ? OptionalLong.of(0L)
-                                : DuctNetworkCache.routingTravelTicks(
-                                        level, retrieverPos, p, DuctPathfinder.edgeTravelTicks(spec), DuctNetworkType.ITEM);
-                if (dist.isEmpty()) {
-                    continue;
-                }
-                cands.add(new DonorCandidate(p, d, node.insertionPriority, dist.getAsLong()));
-            }
-        }
+        List<DonorCandidate> cands =
+                collectItemDonorCandidates(
+                        level,
+                        retrieverPos,
+                        retrieverInventoryFace,
+                        retrieverFaceChannel,
+                        allowSelfDonor,
+                        forbidSelfDonorFace,
+                        spec);
         if (cands.isEmpty()) {
             return List.of();
         }
@@ -470,6 +354,40 @@ public final class DuctTargetSelector {
             out.addAll(tier);
         }
         return out;
+    }
+
+    private static List<DonorCandidate> collectItemDonorCandidates(
+            ServerLevel level,
+            BlockPos retrieverPos,
+            Direction retrieverInventoryFace,
+            int retrieverFaceChannel,
+            boolean allowSelfDonor,
+            @Nullable Direction forbidSelfDonorFace,
+            DuctItemTransportSpec spec) {
+        List<DuctRoutingEndpointIndex.ScoredEndpoint> scored =
+                DuctRoutingEndpointIndex.listScoredDonors(
+                        level,
+                        retrieverPos,
+                        DuctNetworkType.ITEM,
+                        DuctTransportKind.ITEM,
+                        DuctPathfinder.edgeTravelTicks(spec),
+                        retrieverFaceChannel,
+                        forbidSelfDonorFace,
+                        allowSelfDonor,
+                        retrieverInventoryFace,
+                        false);
+        List<DonorCandidate> cands = new ArrayList<>();
+        for (DuctRoutingEndpointIndex.ScoredEndpoint s : scored) {
+            DuctRoutingEndpointIndex.RoutingEndpoint ep = s.endpoint();
+            if (!(level.getBlockEntity(ep.pos()) instanceof DuctBlockEntity be)) {
+                continue;
+            }
+            if (!DuctCapHelper.donorMaySupplyRetriever(level, ep.pos(), ep.face(), be)) {
+                continue;
+            }
+            cands.add(new DonorCandidate(ep.pos(), ep.face(), ep.insertionPriority(), s.distTicks()));
+        }
+        return cands;
     }
 
     public static Optional<RetrieverRouting> selectRetrievingDonorPath(
