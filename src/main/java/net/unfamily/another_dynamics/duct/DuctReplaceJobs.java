@@ -211,7 +211,7 @@ public final class DuctReplaceJobs {
             }
         }
 
-        long deadline = System.nanoTime() + Config.ductJobTickBudgetNanos();
+        long deadline = System.nanoTime() + Config.ductJobPulseBudgetNanos(budget);
         List<BlockPos> replacedPositions = new ArrayList<>(Math.min(budget, 16));
         int replaced = 0;
         BlockPos warm = job.pending.peek();

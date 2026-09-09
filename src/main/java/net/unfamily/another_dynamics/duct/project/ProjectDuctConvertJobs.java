@@ -158,7 +158,7 @@ public final class ProjectDuctConvertJobs {
             }
         }
 
-        long deadline = System.nanoTime() + Config.ductJobTickBudgetNanos();
+        long deadline = System.nanoTime() + Config.ductJobPulseBudgetNanos(budget);
         List<BlockPos> convertedPositions = new ArrayList<>(Math.min(budget, 16));
         int converted = 0;
         DuctNetworkCache.pushBulkMutation();

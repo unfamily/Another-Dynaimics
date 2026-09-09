@@ -159,6 +159,8 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
     protected void init() {
         modeConfirmPending = false;
         virtualBackConfirmPending = false;
+        SequentialCopierVirtualUi.PersistedView keepSequential =
+                sequentialVirtualUi != null ? sequentialVirtualUi.capturePersistedView() : null;
         sequentialVirtualUi = null;
         if (menu.isHubLayer()) {
             layoutScreenCenter();
@@ -175,7 +177,7 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         if (menu.isSequentialVirtualLayer()) {
             layoutScreenCenter();
             sequentialVirtualUi = new SequentialCopierVirtualUi(this);
-            sequentialVirtualUi.init();
+            sequentialVirtualUi.init(keepSequential);
             cachedRootLayer = SettingsCopierMenu.ROOT_VIRTUAL;
             return;
         }
@@ -318,11 +320,20 @@ public final class SettingsCopierScreen extends AbstractUniversalDuctScreen<Sett
         if (menu.isSequentialVirtualLayer() && sequentialVirtualUi != null) {
             if (sequentialVirtualUi.hidesPlayerSlots()) {
                 hoveredSlot = null;
+                for (Renderable renderable : renderables) {
+                    renderable.extractRenderState(graphics, mouseX, mouseY, partialTick);
+                }
+                sequentialVirtualUi.extractOverlay(graphics, mouseX, mouseY);
+                // Still draw the cursor stack (vanilla extractContents is skipped when slots are hidden).
+                extractCarriedItem(graphics, mouseX, mouseY);
+                return;
             }
-            for (Renderable renderable : renderables) {
-                renderable.extractRenderState(graphics, mouseX, mouseY, partialTick);
-            }
+            // Slots are GUI-relative; extractContents translates by leftPos/topPos like vanilla.
+            extractContents(graphics, mouseX, mouseY, partialTick);
             sequentialVirtualUi.extractOverlay(graphics, mouseX, mouseY);
+            extractCarriedItem(graphics, mouseX, mouseY);
+            extractSnapbackItem(graphics);
+            extractTooltip(graphics, mouseX, mouseY);
             return;
         }
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);

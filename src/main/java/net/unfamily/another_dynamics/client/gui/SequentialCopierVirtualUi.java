@@ -132,13 +132,35 @@ public final class SequentialCopierVirtualUi {
     /** Edit-list step preview / tag-member icon cycle period. */
     private static final long LIST_ICON_CYCLE_MS = 2000L;
 
-    private enum SubView {
+    enum SubView {
         HUB,
         SEQUENCE_LISTS,
         EDIT_LIST,
         STEP_EDIT,
         VALID_KEYS
     }
+
+    /**
+     * Survives {@link SettingsCopierScreen#init()} re-entry (JEI recipe book / resize) so the submenu and step draft
+     * are not reset to hub.
+     */
+    public record PersistedView(
+            SubView subView,
+            SubView editListBeforeHelp,
+            int hubScroll,
+            int stepScroll,
+            int helpScroll,
+            int editingListIndex,
+            int editingStepIndex,
+            SequenceStepData.Kind draftKind,
+            int draftConcatOrdinal,
+            String draftFilterText,
+            String draftAmountText,
+            ItemStack ghostStack,
+            FluidStack ghostFluid,
+            @Nullable Object ghostGas,
+            List<String> filterVariants,
+            int filterVariantIndex) {}
 
     private static final class ExampleData {
         final String example;
@@ -216,14 +238,64 @@ public final class SequentialCopierVirtualUi {
         this.menu = host.getMenu();
     }
 
+    public PersistedView capturePersistedView() {
+        return new PersistedView(
+                subView,
+                editListBeforeHelp,
+                hubScroll,
+                stepScroll,
+                helpScroll,
+                editingListIndex,
+                editingStepIndex,
+                draftKind,
+                draftConcatOrdinal,
+                draftFilterText,
+                draftAmountText,
+                ghostStack.copy(),
+                ghostFluid.copy(),
+                ghostGas,
+                List.copyOf(filterVariants),
+                filterVariantIndex);
+    }
+
+    private void applyPersistedView(PersistedView view) {
+        this.subView = view.subView();
+        this.editListBeforeHelp = view.editListBeforeHelp();
+        this.hubScroll = view.hubScroll();
+        this.stepScroll = view.stepScroll();
+        this.helpScroll = view.helpScroll();
+        this.editingListIndex = view.editingListIndex();
+        this.editingStepIndex = view.editingStepIndex();
+        this.draftKind = view.draftKind();
+        this.draftConcatOrdinal = view.draftConcatOrdinal();
+        this.draftFilterText = view.draftFilterText() != null ? view.draftFilterText() : "";
+        this.draftAmountText = view.draftAmountText() != null ? view.draftAmountText() : "1";
+        this.ghostStack = view.ghostStack() != null ? view.ghostStack().copy() : ItemStack.EMPTY;
+        this.ghostFluid = view.ghostFluid() != null ? view.ghostFluid().copy() : FluidStack.EMPTY;
+        this.ghostGas = view.ghostGas();
+        this.filterVariants.clear();
+        if (view.filterVariants() != null) {
+            this.filterVariants.addAll(view.filterVariants());
+        }
+        this.filterVariantIndex = view.filterVariantIndex();
+    }
+
     public void init() {
+        init(null);
+    }
+
+    public void init(@Nullable PersistedView restore) {
         this.minecraft = host.sequentialUiMinecraft();
         this.font = host.sequentialUiFont();
         this.leftPos = host.getGuiLeft();
         this.topPos = host.getGuiTop();
         this.imageWidth = TEXTURE_WIDTH;
         this.imageHeight = TEXTURE_HEIGHT;
-        menu.loadClientSequentialFromStack(menu.copierStack(minecraft.player));
+        // Do not reload from the held item: the session mirror is pushed via syncClientMirror.
+        // Reloading here overwrote drafts with stale held NBT (and JEI re-init lost in-progress edits).
+        if (restore != null) {
+            applyPersistedView(restore);
+        }
         rebuildUi();
     }
 
