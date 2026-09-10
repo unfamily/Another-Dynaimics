@@ -25,7 +25,7 @@ item_ids:
 
 What they boost depends on the duct kind (items, fluids, gas, heat, energy).
 
-## Chain (Catena)
+## Sequential Stacks
 
-From **Module III** upward, modules raise **Chain**: how many extract/retrieve shipments a face schedules **in sequence** each rate tick (each step re-routes on its own). Default without support is **1** (UI locked until a duct or module raises the max). Quantity is still items/mB per shipment; Chain multiplies how many shipments fire together.
+From **Module III** upward, modules raise **Sequential Stacks**: how many extract/retrieve shipments a face schedules **in sequence** each rate tick (each step re-routes on its own). Default without support is **1** (UI locked until a duct or module raises the max). Quantity is still items/mB per shipment; Sequential Stacks multiplies how many shipments fire together.
 

@@ -10,7 +10,11 @@
       "dec": "forge_energy",
       "ray_color": "#e30b28",
       "extract": 1000,
-      "transfer": 2147483647
+      "transfer": 2147483647,
+      "rate": {
+        "default": 1,
+        "min": 1
+      }
     }
   ],
   "connect_with_compatbile": true,

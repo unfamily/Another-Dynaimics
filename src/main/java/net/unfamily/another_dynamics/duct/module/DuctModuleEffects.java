@@ -594,18 +594,4 @@ public final class DuctModuleEffects {
         return Math.max(0.0, v);
     }
 
-    /**
-     * Spacing between sequential-stack pulls within one burst (action-countdown ticks).
-     * {@code max(effectiveRateTicks, datapack rate.default)} so aggressive {@code rate.mult} cannot collapse
-     * spacing to 1 tick; never returns 0 when both inputs are 0 (malformed duct → 2).
-     */
-    public static int sequentialStackRateStaggerTicks(int effectiveRateTicks, int rateDefaultTicks) {
-        long rate = Math.max(0L, effectiveRateTicks);
-        long def = Math.max(0L, rateDefaultTicks);
-        long x = Math.max(rate, def);
-        if (x <= 0L) {
-            return 2;
-        }
-        return x >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) x;
-    }
 }

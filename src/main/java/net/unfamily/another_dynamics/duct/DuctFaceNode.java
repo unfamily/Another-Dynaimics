@@ -102,7 +102,8 @@ public final class DuctFaceNode {
      */
     public boolean extractBatchPinnedToMax;
     /**
-     * Extract/retrieve: shipments scheduled per rate fire (0 = use duct {@code seq_stack.default}).
+     * Extract/retrieve: shipments scheduled per rate fire ({@code 0} / unset is materialized to duct
+     * {@code seq_stack.default} on clamp).
      */
     public int extractSequentialStack;
     /** Last sequential-stack setting cap applied; used for ceiling-ride when modules raise the max. */

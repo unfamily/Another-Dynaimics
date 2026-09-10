@@ -1358,25 +1358,28 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     node.ticksUntilAction--;
                     continue;
                 }
-                boolean continuingBurst = node.remainingSequentialStacks > 0;
-                if (!continuingBurst && !DuctActionScheduling.isStaggerSlot(serverLevel, worldPosition, dir, rate)) {
+                if (!DuctActionScheduling.isStaggerSlot(serverLevel, worldPosition, dir, rate)) {
                     continue;
                 }
+                node.ticksUntilAction = rate - 1;
+                node.remainingSequentialStacks = 0;
                 int sequentialStackSteps = DuctModuleEffects.effectiveItemExtractSequentialStack(this, dir, spec);
-                int before = outboundShipments.size();
-                if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
-                    tickExtractionPullForFace(serverLevel, spec, dir, node);
-                } else if (lanes.nodeMode == NodeMode.RETRIEVING) {
-                    tickRetrieverPullForFace(serverLevel, spec, dir, node);
-                } else if (lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
-                    tickRetrieverPullForFace(serverLevel, spec, dir, node);
-                    tickExtractionPullForFace(serverLevel, spec, dir, node);
+                for (int stackI = 0; stackI < sequentialStackSteps; stackI++) {
+                    int before = outboundShipments.size();
+                    if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
+                        tickExtractionPullForFace(serverLevel, spec, dir, node);
+                    } else if (lanes.nodeMode == NodeMode.RETRIEVING) {
+                        tickRetrieverPullForFace(serverLevel, spec, dir, node);
+                    } else if (lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
+                        tickRetrieverPullForFace(serverLevel, spec, dir, node);
+                        tickExtractionPullForFace(serverLevel, spec, dir, node);
+                    } else {
+                        break;
+                    }
+                    if (outboundShipments.size() <= before) {
+                        break;
+                    }
                 }
-                boolean pulled = outboundShipments.size() > before;
-                int rateStagger =
-                        DuctModuleEffects.sequentialStackRateStaggerTicks(rate, spec.rateDefaultTicks());
-                node.scheduleAfterSequentialStackPull(
-                        pulled, continuingBurst, sequentialStackSteps, rate, rateStagger);
             }
         }
 
@@ -5366,6 +5369,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             applyExtractSequentialStackAgainstCap(
                     itemNode,
                     computeExtractSequentialStackSettingCap(face),
+                    itemTransportSpec().sequentialStackDefault(),
                     bothSidesMax || itemNode.isExtractSequentialStackPinnedToCap());
         }
         if (fluidNode != null) {
@@ -5374,6 +5378,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             applyExtractSequentialStackAgainstCap(
                     fluidNode,
                     computeFluidExtractSequentialStackSettingCap(face),
+                    fluidTransportSpec().sequentialStackDefault(),
                     bothSidesMax || fluidNode.isExtractSequentialStackPinnedToCap());
         }
         if (gasNode != null) {
@@ -5382,6 +5387,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
             applyExtractSequentialStackAgainstCap(
                     gasNode,
                     computeGasExtractSequentialStackSettingCap(face),
+                    gasTransportSpec().sequentialStackDefault(),
                     bothSidesMax || gasNode.isExtractSequentialStackPinnedToCap());
         }
     }
@@ -6692,39 +6698,57 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void clampExtractSequentialStack(DuctFaceNode node, Direction face) {
-        applyExtractSequentialStackAgainstCap(node, computeExtractSequentialStackSettingCap(face));
+        applyExtractSequentialStackAgainstCap(
+                node,
+                computeExtractSequentialStackSettingCap(face),
+                itemTransportSpec().sequentialStackDefault());
     }
 
     private void clampFluidExtractSequentialStack(DuctFaceNode node, Direction face) {
-        applyExtractSequentialStackAgainstCap(node, computeFluidExtractSequentialStackSettingCap(face));
+        applyExtractSequentialStackAgainstCap(
+                node,
+                computeFluidExtractSequentialStackSettingCap(face),
+                fluidTransportSpec().sequentialStackDefault());
     }
 
     private void clampGasExtractSequentialStack(DuctFaceNode node, Direction face) {
-        applyExtractSequentialStackAgainstCap(node, computeGasExtractSequentialStackSettingCap(face));
+        applyExtractSequentialStackAgainstCap(
+                node,
+                computeGasExtractSequentialStackSettingCap(face),
+                gasTransportSpec().sequentialStackDefault());
     }
 
-    private static void applyExtractSequentialStackAgainstCap(DuctFaceNode node, int cap) {
-        applyExtractSequentialStackAgainstCap(node, cap, true);
+    private static void applyExtractSequentialStackAgainstCap(
+            DuctFaceNode node, int cap, int sequentialStackDefault) {
+        applyExtractSequentialStackAgainstCap(node, cap, sequentialStackDefault, true);
     }
 
-    private static void applyExtractSequentialStackAgainstCap(DuctFaceNode node, int cap, boolean trackMaxOnCapIncrease) {
+    /**
+     * Clamps {@link DuctFaceNode#extractSequentialStack} to {@code cap}. Legacy unset ({@code 0}) is
+     * materialized to the duct {@code seq_stack.default}. Values still at that default (or at the previous
+     * setting cap) follow module cap increases immediately — same ceiling-ride idea as extract batch.
+     */
+    private static void applyExtractSequentialStackAgainstCap(
+            DuctFaceNode node, int cap, int sequentialStackDefault, boolean trackMaxOnCapIncrease) {
+        int def = Math.max(1, sequentialStackDefault);
         int prev = node.extractSequentialStack;
-        boolean wasAtPreviousMax =
-                node.lastExtractSequentialStackSettingCapApplied > 0
-                        && prev >= node.lastExtractSequentialStackSettingCapApplied;
-        boolean pinned = node.isExtractSequentialStackPinnedToCap() || wasAtPreviousMax;
-        if (trackMaxOnCapIncrease && pinned) {
+        if (prev <= 0) {
+            prev = def;
+        }
+        int lastCap = node.lastExtractSequentialStackSettingCapApplied;
+        boolean wasAtPreviousMax = lastCap > 0 && prev >= lastCap;
+        // Still on duct default and never customized above the default floor (incl. legacy missing NBT).
+        boolean atDefaultFloor = prev == def && (lastCap <= 0 || lastCap <= def);
+        boolean shouldRaiseToCap =
+                wasAtPreviousMax
+                        || atDefaultFloor
+                        || (trackMaxOnCapIncrease && node.isExtractSequentialStackPinnedToCap());
+        if (shouldRaiseToCap) {
             node.extractSequentialStack = Math.max(1, cap);
             node.extractSequentialStackPinnedToMax = true;
         } else {
-            // Stored 0 means "use duct default"; keep 0 when cap is 1 so runtime uses sequentialStackDefault.
-            if (prev <= 0) {
-                node.extractSequentialStack = 0;
-                node.extractSequentialStackPinnedToMax = cap <= 1;
-            } else {
-                node.extractSequentialStack = Mth.clamp(prev, 1, Math.max(1, cap));
-                node.extractSequentialStackPinnedToMax = cap > 0 && node.extractSequentialStack >= cap;
-            }
+            node.extractSequentialStack = Mth.clamp(prev, 1, Math.max(1, cap));
+            node.extractSequentialStackPinnedToMax = cap > 0 && node.extractSequentialStack >= cap;
         }
         node.lastExtractSequentialStackSettingCapApplied = cap;
     }
