@@ -70,29 +70,30 @@ public final class DuctFluidServerTick {
                 continue;
             }
             int rate = DuctModuleEffects.effectiveFluidActionRateTicks(be, dir, spec);
-            boolean continuingBurst = node.remainingSequentialStacks > 0;
-            if (!continuingBurst && !DuctActionScheduling.isStaggerSlot(level, be.getBlockPos(), dir, rate)) {
+            if (!DuctActionScheduling.isStaggerSlot(level, be.getBlockPos(), dir, rate)) {
                 continue;
             }
+            node.ticksUntilAction = rate - 1;
+            node.remainingSequentialStacks = 0;
             NodeMode nm = lanes.nodeMode;
             int sequentialStackSteps = DuctModuleEffects.effectiveFluidExtractSequentialStack(be, dir, spec);
-            int before = be.getFluidTransitShipmentCount();
-            boolean did = false;
-            if (nm == NodeMode.RETRIEVING || nm == NodeMode.RETRIEVING_EXTRACTION) {
-                tryRetrievePull(level, be, dir, node, spec);
-                did = true;
+            for (int stackI = 0; stackI < sequentialStackSteps; stackI++) {
+                int before = be.getFluidTransitShipmentCount();
+                boolean did = false;
+                if (nm == NodeMode.RETRIEVING || nm == NodeMode.RETRIEVING_EXTRACTION) {
+                    tryRetrievePull(level, be, dir, node, spec);
+                    did = true;
+                }
+                if (nm == NodeMode.EXTRACTION
+                        || nm == NodeMode.EXTRACTION_FILTERING
+                        || nm == NodeMode.RETRIEVING_EXTRACTION) {
+                    tryExtractPush(level, be, dir, nm, node, spec);
+                    did = true;
+                }
+                if (!did || be.getFluidTransitShipmentCount() <= before) {
+                    break;
+                }
             }
-            if (nm == NodeMode.EXTRACTION
-                    || nm == NodeMode.EXTRACTION_FILTERING
-                    || nm == NodeMode.RETRIEVING_EXTRACTION) {
-                tryExtractPush(level, be, dir, nm, node, spec);
-                did = true;
-            }
-            boolean pulled = did && be.getFluidTransitShipmentCount() > before;
-            int rateStagger =
-                    DuctModuleEffects.sequentialStackRateStaggerTicks(rate, spec.rateDefaultTicks());
-            node.scheduleAfterSequentialStackPull(
-                    pulled, continuingBurst, sequentialStackSteps, rate, rateStagger);
         }
     }
 

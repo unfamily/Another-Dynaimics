@@ -33,7 +33,7 @@ public record DuctEnergyTransportSpec(
          */
         float rayAlpha) {
     public static DuctEnergyTransportSpec fallback() {
-        return new DuctEnergyTransportSpec(1000, Integer.MAX_VALUE, 10, 10, "#e30b28", 0.85f);
+        return new DuctEnergyTransportSpec(1000, Integer.MAX_VALUE, 1, 1, "#e30b28", 0.85f);
     }
 
     public long clampedExtract() {

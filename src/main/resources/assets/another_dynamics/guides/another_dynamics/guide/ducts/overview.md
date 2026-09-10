@@ -35,6 +35,8 @@ Nodes can wait for redstone before working. **Opaque** options hide duct visuals
 
 The node GUI has module slots, allow/deny lists, and **Valid Keys** help. More detail: [Filters](filters.md), [Modules](modules.md).
 
+Item, fluid, and gas faces also expose **Sequential Stacks**: how many extract/retrieve shipments to schedule per rate tick (default **1**; ducts and modules can raise the cap). See [Modules](modules.md#sequential-stacks).
+
 ## Compatibility
 
 - **FTB Ultimine** — mass-breaks only; selects ducts of the **same logical type** on the **same connected network**. Project Duct scaffolds use the same rule on their Project Duct network. Ultimine does **not** mass-place.
