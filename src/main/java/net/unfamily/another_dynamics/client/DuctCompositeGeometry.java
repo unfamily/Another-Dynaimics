@@ -590,6 +590,13 @@ public final class DuctCompositeGeometry {
      * UV orientation (min/max) as a normalized mapping.
      */
     static @Nullable BakedQuad buildFullSpriteOverlay(BakedQuad q, TextureAtlasSprite sprite) {
+        return buildFullSpriteOverlay(q, sprite, 0xFFFFFFFF);
+    }
+
+    /**
+     * @param argb vertex color (ARGB). Soft stall overlay uses a fixed lower alpha; full uses opaque white.
+     */
+    static @Nullable BakedQuad buildFullSpriteOverlay(BakedQuad q, TextureAtlasSprite sprite, int argb) {
         if (sprite == null) {
             return null;
         }
@@ -599,6 +606,7 @@ public final class DuctCompositeGeometry {
         }
         int stride = IQuadTransformer.STRIDE;
         int uv0 = IQuadTransformer.UV0;
+        int color = IQuadTransformer.COLOR;
         float uMin = Float.POSITIVE_INFINITY;
         float uMax = Float.NEGATIVE_INFINITY;
         float vMin = Float.POSITIVE_INFINITY;
@@ -633,6 +641,9 @@ public final class DuctCompositeGeometry {
             float mv = sv0 + (sv1 - sv0) * nv01;
             nv[base + uv0] = Float.floatToRawIntBits(mu);
             nv[base + uv0 + 1] = Float.floatToRawIntBits(mv);
+            if (nv.length > base + color) {
+                nv[base + color] = argb;
+            }
         }
         // Match node icon overlays: no tint, no shading, so the sprite renders consistently.
         return new BakedQuad(nv, -1, q.getDirection(), sprite, false);

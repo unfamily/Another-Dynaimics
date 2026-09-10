@@ -374,8 +374,14 @@ public final class DuctCapHelper {
             return 0;
         }
         IItemHandler h = getHandlerOnFace(level, ductPos, face);
-        int cap = maxInsertableOnHandler(h, template, limit);
-        return clampPhysicalCapForSequentialNeighbor(level, ductPos, face, template, cap);
+        if (h == null) {
+            return 0;
+        }
+        SequentialBufferBlockEntity seq = sequentialNeighbor(level, ductPos, face);
+        if (seq != null) {
+            return maxInsertableTowardSequentialBuffer(h, seq, template, limit, 0);
+        }
+        return maxInsertableOnHandler(h, template, limit);
     }
 
     public static int maxInsertableOnHandler(IItemHandler h, ItemStack template, int limit) {
@@ -399,31 +405,49 @@ public final class DuctCapHelper {
         if (h == null) {
             return 0;
         }
+        int pendingSame = countSameItemCount(priorPending, template);
+        SequentialBufferBlockEntity seq = sequentialNeighbor(level, ductPos, face);
+        if (seq != null) {
+            // Room = live step need minus in-flight same-item reservations — do not schedule past need.
+            return maxInsertableTowardSequentialBuffer(h, seq, template, limit, pendingSame);
+        }
         // Probe at least pending+want: capping the probe at {@code limit} alone makes any in-flight batch of size
         // {@code limit} report destCap=0 even when the chest still has room (serializes to one task at a time).
-        int pendingSame = countSameItemCount(priorPending, template);
         long probeLimitLong = (long) pendingSame + (long) limit;
         int probeLimit = probeLimitLong >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) probeLimitLong;
         int physicalCap = DuctItemInsertProbe.estimateMaxInsertable(h, template, probeLimit);
-        // Sequential filtered insert caps by remainingItemNeed on the live buffer only. Clamp to need before
-        // subtracting pending.
-        physicalCap = clampPhysicalCapForSequentialNeighbor(level, ductPos, face, template, physicalCap);
         return Math.max(0, Math.min(limit, physicalCap - pendingSame));
     }
 
+    @Nullable
+    private static SequentialBufferBlockEntity sequentialNeighbor(Level level, BlockPos ductPos, Direction face) {
+        if (face == null || level == null || ductPos == null) {
+            return null;
+        }
+        if (level.getBlockEntity(ductPos.relative(face)) instanceof SequentialBufferBlockEntity seq) {
+            return seq;
+        }
+        return null;
+    }
+
     /**
-     * Caps probed insert capacity when the face neighbor is a Sequential Buffer. Simulate-only probes ignore
-     * need accumulation and would otherwise schedule more than the step still requires.
+     * Schedulable count toward a Sequential Buffer: {@code min(limit, max(0, need - pendingSame), probed)}.
+     * Probes only up to remaining room so multi-slot simulate cannot invent capacity beyond the step need.
      */
-    private static int clampPhysicalCapForSequentialNeighbor(
-            Level level, BlockPos ductPos, Direction face, ItemStack template, int physicalCap) {
-        if (physicalCap <= 0 || face == null || template.isEmpty()) {
-            return physicalCap;
+    private static int maxInsertableTowardSequentialBuffer(
+            IItemHandler h,
+            SequentialBufferBlockEntity seq,
+            ItemStack template,
+            int limit,
+            int pendingSame) {
+        int need = seq.debugRemainingItemNeed(template);
+        int room = Math.max(0, need - Math.max(0, pendingSame));
+        if (room <= 0 || limit <= 0) {
+            return 0;
         }
-        if (!(level.getBlockEntity(ductPos.relative(face)) instanceof SequentialBufferBlockEntity seq)) {
-            return physicalCap;
-        }
-        return Math.min(physicalCap, seq.debugRemainingItemNeed(template));
+        int want = Math.min(limit, room);
+        int physicalCap = DuctItemInsertProbe.estimateMaxInsertable(h, template, want);
+        return Math.max(0, Math.min(want, physicalCap));
     }
 
     public static ItemStack insertIntoStorageFaces(Level level, BlockPos ductPos, DuctBlockEntity duct, ItemStack stack) {

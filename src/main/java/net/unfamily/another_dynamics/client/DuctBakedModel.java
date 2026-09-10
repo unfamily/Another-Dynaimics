@@ -345,10 +345,17 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
         // Render it on both overlay and base passes to ensure visibility.
         if ((includeOverlays || includeBase) && modelData != null && Boolean.TRUE.equals(modelData.get(DuctModelProperties.HAS_STALL))) {
             Integer stallMask = modelData.get(DuctModelProperties.STALL_MASK);
+            Integer softStallMask = modelData.get(DuctModelProperties.SOFT_STALL_MASK);
             int effectiveStall = stallMask != null ? stallMask : 0;
+            int effectiveSoft = softStallMask != null ? softStallMask : 0;
             // Never draw buffer overlay on faces without a live storage node (disabled / disconnected / latched-only).
             effectiveStall &= sm;
-            appendStallOverlayOnNodes(built, effectiveGeometry, effectiveStall);
+            effectiveSoft &= sm & ~effectiveStall;
+            appendStallOverlayOnNodes(built, effectiveGeometry, effectiveStall, 0xFFFFFFFF);
+            // Soft alpha needs the translucent overlay pass (cutout would discard blending).
+            if (includeOverlays) {
+                appendStallOverlayOnNodes(built, effectiveGeometry, effectiveSoft, 0x80FFFFFF);
+            }
         }
         if (side != null) {
             // Unculled geometry: emit only on the general (side == null) pass.
@@ -357,7 +364,7 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
         return built;
     }
 
-    private void appendStallOverlayOnNodes(List<BakedQuad> out, DuctCompositeGeometry geo, int faceMask) {
+    private void appendStallOverlayOnNodes(List<BakedQuad> out, DuctCompositeGeometry geo, int faceMask, int argb) {
         // Render node_buffer.png on the same node faces as nodes.png overlays.
         TextureAtlasSprite sprite = nodeBufferSprite;
         if (sprite == null) {
@@ -373,7 +380,7 @@ public final class DuctBakedModel extends BakedModelWrapper<BakedModel> {
                 if (qDir == face || qDir == face.getOpposite()) {
                     continue;
                 }
-                BakedQuad overlay = DuctCompositeGeometry.buildFullSpriteOverlay(q, sprite);
+                BakedQuad overlay = DuctCompositeGeometry.buildFullSpriteOverlay(q, sprite, argb);
                 if (overlay != null) {
                     out.add(overlay);
                 }

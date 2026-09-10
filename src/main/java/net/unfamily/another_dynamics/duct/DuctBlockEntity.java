@@ -389,6 +389,8 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     private int clientPackedNodeIcons = defaultPackedNodeIcons();
     /** Client-only cached stall mask from server (bit per face). */
     private int clientStallMask = 0;
+    /** Client-only cached soft stall mask from server (bit per face; early warning). */
+    private int clientSoftStallMask = 0;
     /** Server: network opaque for all players on this duct block. */
     private boolean networkOpaqueRendering;
     /** Client copy from update packet. */
@@ -1356,27 +1358,25 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     node.ticksUntilAction--;
                     continue;
                 }
-                if (!DuctActionScheduling.isStaggerSlot(serverLevel, worldPosition, dir, rate)) {
+                boolean continuingBurst = node.remainingSequentialStacks > 0;
+                if (!continuingBurst && !DuctActionScheduling.isStaggerSlot(serverLevel, worldPosition, dir, rate)) {
                     continue;
                 }
-                node.ticksUntilAction = rate - 1;
                 int sequentialStackSteps = DuctModuleEffects.effectiveItemExtractSequentialStack(this, dir, spec);
-                for (int stackI = 0; stackI < sequentialStackSteps; stackI++) {
-                    int before = outboundShipments.size();
-                    if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
-                        tickExtractionPullForFace(serverLevel, spec, dir, node);
-                    } else if (lanes.nodeMode == NodeMode.RETRIEVING) {
-                        tickRetrieverPullForFace(serverLevel, spec, dir, node);
-                    } else if (lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
-                        tickRetrieverPullForFace(serverLevel, spec, dir, node);
-                        tickExtractionPullForFace(serverLevel, spec, dir, node);
-                    } else {
-                        break;
-                    }
-                    if (outboundShipments.size() <= before) {
-                        break;
-                    }
+                int before = outboundShipments.size();
+                if (lanes.nodeMode == NodeMode.EXTRACTION || lanes.nodeMode == NodeMode.EXTRACTION_FILTERING) {
+                    tickExtractionPullForFace(serverLevel, spec, dir, node);
+                } else if (lanes.nodeMode == NodeMode.RETRIEVING) {
+                    tickRetrieverPullForFace(serverLevel, spec, dir, node);
+                } else if (lanes.nodeMode == NodeMode.RETRIEVING_EXTRACTION) {
+                    tickRetrieverPullForFace(serverLevel, spec, dir, node);
+                    tickExtractionPullForFace(serverLevel, spec, dir, node);
                 }
+                boolean pulled = outboundShipments.size() > before;
+                int rateStagger =
+                        DuctModuleEffects.sequentialStackRateStaggerTicks(rate, spec.rateDefaultTicks());
+                node.scheduleAfterSequentialStackPull(
+                        pulled, continuingBurst, sequentialStackSteps, rate, rateStagger);
             }
         }
 
@@ -3002,50 +3002,77 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     /**
-     * Whether {@code node_buffer.png} should render on this face (item / fluid / gas stalled shipments only).
-     * Energy and heat use instant transfer and internal buffers — no stall overlay on the node model.
+     * Whether full-intensity {@code node_buffer.png} should render on this face (item / fluid / gas stalled
+     * shipments only). Energy and heat use instant transfer and internal buffers — no stall overlay.
      *
-     * <p>Item stall shows whenever this face holds outbound/inbound stall stacks, or the duct-wide overflow
-     * buffer is holding items (overflow gates pulls but is not face-local — show on storage faces so the
-     * jam is visible). Fluid and gas stall shows on any buffered content.
-     * The guard uses {@link #faceShowsStorageNode} so the overlay remains visible even when
-     * redstone disables transport on this face.</p>
+     * <p>Full overlay matches the busy threshold ({@link Config#ductStallSlots()}): at least that many
+     * occupied stall spaces. Uses {@link #faceShowsStorageNode} so the overlay stays visible when redstone
+     * disables transport on this face.</p>
      */
     public boolean faceHasVisibleStall(Direction face) {
-        if (!faceShowsStorageNode(face)) {
+        return faceShowsStorageNode(face) && faceStallOccupancy(face) >= Config.ductStallSlots();
+    }
+
+    /**
+     * Fainter early-warning overlay when {@link Config#ductSoftStallOverlay()} is enabled and occupancy is
+     * at least 1 but below the busy threshold. Mutually exclusive with {@link #faceHasVisibleStall}.
+     */
+    public boolean faceHasSoftVisibleStall(Direction face) {
+        if (!Config.ductSoftStallOverlay() || !faceShowsStorageNode(face)) {
             return false;
         }
+        int occ = faceStallOccupancy(face);
+        return occ >= 1 && occ < Config.ductStallSlots();
+    }
+
+    /**
+     * Max occupied stall spaces relevant to this face (outbound / inbound item slots, overflow lines, fluid/gas).
+     */
+    private int faceStallOccupancy(Direction face) {
         DuctFaceLanes lanes = getFaceLanes(face);
+        int occ = 0;
         if (isTransportKindEnabled(face, DuctTransportKind.ITEM) || lanes.stalledBuffer.getSlots() > 0) {
-            for (int i = 0; i < lanes.stalledBuffer.getSlots(); i++) {
-                if (!lanes.stalledBuffer.getStackInSlot(i).isEmpty()) {
-                    return true;
-                }
-            }
-            for (int i = 0; i < lanes.inboundStallBuffer.getSlots(); i++) {
-                if (!lanes.inboundStallBuffer.getStackInSlot(i).isEmpty()) {
-                    return true;
-                }
-            }
-            if (overflowBuffer.nonEmptyLineCount() > 0) {
-                return true;
-            }
+            occ = Math.max(occ, countOccupiedItemStallSlots(lanes.stalledBuffer));
+            occ = Math.max(occ, countOccupiedItemStallSlots(lanes.inboundStallBuffer));
+            occ = Math.max(occ, overflowBuffer.nonEmptyLineCount());
         }
         if (isTransportKindEnabled(face, DuctTransportKind.FLUID)) {
-            for (var fs : lanes.stalledFluids) {
-                if (fs != null && !fs.isEmpty() && fs.getAmount() > 0) {
-                    return true;
-                }
-            }
+            occ = Math.max(occ, countOccupiedFluidStallSlots(lanes.stalledFluids));
         }
         if (isTransportKindEnabled(face, DuctTransportKind.GAS)) {
-            for (var g : lanes.stalledGas) {
-                if (g != null && !g.isEmpty() && (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount"))) {
-                    return true;
-                }
+            occ = Math.max(occ, countOccupiedGasStallSlots(lanes.stalledGas));
+        }
+        return occ;
+    }
+
+    private static int countOccupiedItemStallSlots(ItemStackHandler buf) {
+        int filled = 0;
+        for (int i = 0; i < buf.getSlots(); i++) {
+            if (!buf.getStackInSlot(i).isEmpty()) {
+                filled++;
             }
         }
-        return false;
+        return filled;
+    }
+
+    private static int countOccupiedFluidStallSlots(FluidStack[] stalledFluids) {
+        int filled = 0;
+        for (FluidStack fs : stalledFluids) {
+            if (fs != null && !fs.isEmpty() && fs.getAmount() > 0) {
+                filled++;
+            }
+        }
+        return filled;
+    }
+
+    private static int countOccupiedGasStallSlots(net.minecraft.nbt.CompoundTag[] stalledGas) {
+        int filled = 0;
+        for (var g : stalledGas) {
+            if (g != null && !g.isEmpty() && (g.contains("ChemId") || g.contains("Amt") || g.contains("Amount"))) {
+                filled++;
+            }
+        }
+        return filled;
     }
 
     /** Sync stall overlay + node icons after buffer/stall content changes. */
@@ -7134,6 +7161,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         t.putInt("PackedNodeIcons", computePackedNodeIcons());
         // Pack stall mask server-side for client rendering.
         t.putInt("StallMask", computeStallMask());
+        t.putInt("SoftStallMask", computeSoftStallMask());
         ListTag transitList = new ListTag();
         for (OutboundShipment s : outboundShipments) {
             if (s.stack.isEmpty()) {
@@ -7273,7 +7301,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int prevStallMask = clientStallMask;
         int nextStallMask = tag.contains("StallMask", Tag.TAG_INT) ? tag.getInt("StallMask") : 0;
         clientStallMask = nextStallMask;
-        if (prevStallMask != nextStallMask) {
+        int prevSoftStallMask = clientSoftStallMask;
+        int nextSoftStallMask = tag.contains("SoftStallMask", Tag.TAG_INT) ? tag.getInt("SoftStallMask") : 0;
+        clientSoftStallMask = nextSoftStallMask;
+        if (prevStallMask != nextStallMask || prevSoftStallMask != nextSoftStallMask) {
             requestModelDataUpdate();
             if (level != null && level.isClientSide) {
                 level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
@@ -7320,19 +7351,27 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         } else {
             packed = computePackedNodeIcons();
         }
-        // Server has full stall buffers; client only receives StallMask in the update packet.
+        // Server has full stall buffers; client only receives StallMask / SoftStallMask in the update packet.
         int stallMask =
                 level != null && level.isClientSide()
                         ? filterStallMaskForActiveFaces(clientStallMask)
                         : computeStallMask();
+        int softStallMask =
+                level != null && level.isClientSide()
+                        ? filterStallMaskForActiveFaces(clientSoftStallMask)
+                        : computeSoftStallMask();
         stallMask &= getStorageMask();
+        softStallMask &= getStorageMask();
+        // Full intensity wins if both somehow overlap.
+        softStallMask &= ~stallMask;
         return ModelData.builder()
                 .with(DuctModelProperties.PIPE_MASK, getPipeMask())
                 .with(DuctModelProperties.STORAGE_MASK, getStorageMask())
                 .with(DuctModelProperties.NODE_ICONS_PACKED, packed)
                 .with(DuctModelProperties.DUCT_LOGICAL_ID, logicalDuctId)
-                .with(DuctModelProperties.HAS_STALL, stallMask != 0)
+                .with(DuctModelProperties.HAS_STALL, stallMask != 0 || softStallMask != 0)
                 .with(DuctModelProperties.STALL_MASK, stallMask)
+                .with(DuctModelProperties.SOFT_STALL_MASK, softStallMask)
                 .with(DuctModelProperties.NETWORK_OPAQUE, isNetworkOpaqueRendering())
                 .build();
     }
@@ -7341,6 +7380,19 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         int mask = 0;
         for (Direction d : Direction.values()) {
             if (faceHasVisibleStall(d)) {
+                mask |= 1 << d.ordinal();
+            }
+        }
+        return mask;
+    }
+
+    private int computeSoftStallMask() {
+        if (!Config.ductSoftStallOverlay()) {
+            return 0;
+        }
+        int mask = 0;
+        for (Direction d : Direction.values()) {
+            if (faceHasSoftVisibleStall(d)) {
                 mask |= 1 << d.ordinal();
             }
         }

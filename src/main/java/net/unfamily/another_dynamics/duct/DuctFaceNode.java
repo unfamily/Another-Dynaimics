@@ -115,6 +115,11 @@ public final class DuctFaceNode {
     public int retrieverPullSlotCursor;
     /** Per transport kind; not shared with the sibling lane (item vs fluid may use different duct rates). */
     public int ticksUntilAction;
+    /**
+     * Remaining pulls in the current {@code seq_stack} burst after the last successful pull.
+     * When {@code > 0}, the next rate fire continues the burst after rate-stagger spacing (travel unchanged).
+     */
+    public int remainingSequentialStacks;
 
     /**
      * When true ({@code >>>>>}), deny matches block even if allow would match. When false ({@code <<<<<}), allow can bypass
@@ -264,6 +269,30 @@ public final class DuctFaceNode {
         retrieverPullSlotCursor = 0;
         selfFeed = false;
         ticksUntilAction = 0;
+        remainingSequentialStacks = 0;
+    }
+
+    /**
+     * After one sequential-stack pull: continue the burst after {@code rateStaggerTicks}, or return to normal
+     * {@code rate - 1} cadence when the burst ends or the pull produced no shipment.
+     */
+    public void scheduleAfterSequentialStackPull(
+            boolean pulled, boolean continuingBurst, int sequentialStackSteps, int rate, int rateStaggerTicks) {
+        if (!pulled) {
+            remainingSequentialStacks = 0;
+            ticksUntilAction = Math.max(0, rate - 1);
+            return;
+        }
+        if (continuingBurst) {
+            remainingSequentialStacks = Math.max(0, remainingSequentialStacks - 1);
+        } else {
+            remainingSequentialStacks = Math.max(0, sequentialStackSteps - 1);
+        }
+        if (remainingSequentialStacks > 0) {
+            ticksUntilAction = Math.max(0, rateStaggerTicks);
+        } else {
+            ticksUntilAction = Math.max(0, rate - 1);
+        }
     }
 
     /**
@@ -377,6 +406,7 @@ public final class DuctFaceNode {
         roundRobinCursor = 0;
         retrieverPullSlotCursor = 0;
         ticksUntilAction = 0;
+        remainingSequentialStacks = 0;
         loadFilters(tag);
     }
 
@@ -395,6 +425,7 @@ public final class DuctFaceNode {
         tag.putInt("RrCursor", roundRobinCursor);
         tag.putInt("RtrPullSlot", retrieverPullSlotCursor);
         tag.putInt("TicksAct", ticksUntilAction);
+        tag.putInt("RemainingSeqStacks", remainingSequentialStacks);
         tag.putBoolean("SelfFeed", selfFeed);
         tag.putByte("EligMode", (byte) eligibilityMode.ordinal());
         tag.put("NodeGui", guiSlots.serializeNBT(registries));
@@ -440,6 +471,8 @@ public final class DuctFaceNode {
         roundRobinCursor = tag.getInt("RrCursor");
         retrieverPullSlotCursor = tag.contains("RtrPullSlot", Tag.TAG_INT) ? tag.getInt("RtrPullSlot") : 0;
         ticksUntilAction = tag.contains("TicksAct") ? tag.getInt("TicksAct") : 0;
+        remainingSequentialStacks =
+                tag.contains("RemainingSeqStacks", Tag.TAG_INT) ? Math.max(0, tag.getInt("RemainingSeqStacks")) : 0;
         selfFeed = tag.contains("SelfFeed") && tag.getBoolean("SelfFeed");
         eligibilityMode =
                 tag.contains("EligMode") ? EligibilityMode.fromOrdinal(tag.getByte("EligMode")) : EligibilityMode.BOTH;
@@ -499,6 +532,8 @@ public final class DuctFaceNode {
         channelLetter = root.contains("Channel") ? root.getByte("Channel") & 0xFF : 1;
         roundRobinCursor = root.getInt("RrCursor");
         ticksUntilAction = root.contains("TicksAct") ? root.getInt("TicksAct") : 0;
+        remainingSequentialStacks =
+                root.contains("RemainingSeqStacks", Tag.TAG_INT) ? Math.max(0, root.getInt("RemainingSeqStacks")) : 0;
         loadFilters(root);
         eligibilityMode =
                 root.contains("EligMode") ? EligibilityMode.fromOrdinal(root.getByte("EligMode")) : EligibilityMode.BOTH;

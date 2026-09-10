@@ -29,16 +29,22 @@ public final class DuctItemInsertProbe {
         if (probe.isEmpty() || h == null) {
             return false;
         }
-        ProbeCounter counter = new ProbeCounter(SIMULATE_CALL_CIRCUIT_BREAKER);
-        ItemStack one = probe.copyWithCount(1);
-        if (tryVirtualTail(h, one, counter)) {
-            return true;
+        try {
+            ProbeCounter counter = new ProbeCounter(SIMULATE_CALL_CIRCUIT_BREAKER);
+            ItemStack one = probe.copyWithCount(1);
+            if (tryVirtualTail(h, one, counter)) {
+                return true;
+            }
+            int slots = h.getSlots();
+            if (slots <= STANDARD_SLOT_THRESHOLD) {
+                return standardCanAccept(h, one, counter);
+            }
+            return bulkCanAccept(h, one, counter);
+        } finally {
+            // Sequential Buffer tracks simulate need across slot walks; reset so the next probe starts clean.
+            net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity
+                    .clearSimulatedItemNeedConsumed();
         }
-        int slots = h.getSlots();
-        if (slots <= STANDARD_SLOT_THRESHOLD) {
-            return standardCanAccept(h, one, counter);
-        }
-        return bulkCanAccept(h, one, counter);
     }
 
     /**
@@ -53,11 +59,16 @@ public final class DuctItemInsertProbe {
         if (!canAcceptOne(h, template)) {
             return 0;
         }
-        int budget = estimateCallBudget(h.getSlots());
-        ProbeCounter counter = new ProbeCounter(budget);
-        ItemStack leftover = insertDirect(h, template.copyWithCount(limit), true, counter);
-        int accepted = limit - leftover.getCount();
-        return Math.max(0, accepted);
+        try {
+            int budget = estimateCallBudget(h.getSlots());
+            ProbeCounter counter = new ProbeCounter(budget);
+            ItemStack leftover = insertDirect(h, template.copyWithCount(limit), true, counter);
+            int accepted = limit - leftover.getCount();
+            return Math.max(0, accepted);
+        } finally {
+            net.unfamily.another_dynamics.machine.sequential.SequentialBufferBlockEntity
+                    .clearSimulatedItemNeedConsumed();
+        }
     }
 
     private static int estimateCallBudget(int slots) {

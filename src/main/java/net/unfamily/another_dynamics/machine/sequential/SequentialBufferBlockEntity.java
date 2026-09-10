@@ -1575,6 +1575,29 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         syncToClients();
     }
 
+    /**
+     * During a multi-slot simulate pass, {@link #remainingItemNeed} does not shrink (avail unchanged).
+     * Track accepted simulate amounts so leftover-shrinking probes do not over-report capacity.
+     */
+    private static final ThreadLocal<java.util.IdentityHashMap<SequentialBufferBlockEntity, Integer>>
+            SIMULATED_ITEM_NEED_CONSUMED = ThreadLocal.withInitial(java.util.IdentityHashMap::new);
+
+    /** Clears simulate-need accounting for the current thread (call after a capacity probe). */
+    public static void clearSimulatedItemNeedConsumed() {
+        SIMULATED_ITEM_NEED_CONSUMED.get().clear();
+    }
+
+    private int simulatedItemNeedConsumed() {
+        return SIMULATED_ITEM_NEED_CONSUMED.get().getOrDefault(this, 0);
+    }
+
+    private void addSimulatedItemNeedConsumed(int accepted) {
+        if (accepted <= 0) {
+            return;
+        }
+        SIMULATED_ITEM_NEED_CONSUMED.get().merge(this, accepted, Integer::sum);
+    }
+
     private IItemHandler filteredItemInsert(ItemStackHandler delegate) {
         return new IItemHandler() {
             @Override
@@ -1590,6 +1613,9 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
             @Override
             public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
                 int need = remainingItemNeed(stack);
+                if (simulate) {
+                    need = Math.max(0, need - simulatedItemNeedConsumed());
+                }
                 if (need <= 0) {
                     return stack;
                 }
@@ -1597,6 +1623,9 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
                 ItemStack limited = stack.getCount() == toInsert ? stack : stack.copyWithCount(toInsert);
                 ItemStack leftover = delegate.insertItem(slot, limited, simulate);
                 int accepted = toInsert - leftover.getCount();
+                if (simulate) {
+                    addSimulatedItemNeedConsumed(accepted);
+                }
                 int rejected = stack.getCount() - accepted;
                 if (rejected <= 0) {
                     return ItemStack.EMPTY;
