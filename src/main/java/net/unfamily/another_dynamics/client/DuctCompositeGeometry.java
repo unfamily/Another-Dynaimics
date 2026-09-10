@@ -526,6 +526,13 @@ public final class DuctCompositeGeometry {
      * Builds an overlay quad using the full UV range of {@code sprite}, preserving the original quad's UV orientation.
      */
     static @Nullable BakedQuad buildFullSpriteOverlay(BakedQuad q, TextureAtlasSprite sprite) {
+        return buildFullSpriteOverlay(q, sprite, 0xFFFFFFFF);
+    }
+
+    /**
+     * @param argb vertex color (ARGB). Soft stall overlay uses a fixed lower alpha; full uses opaque white.
+     */
+    static @Nullable BakedQuad buildFullSpriteOverlay(BakedQuad q, TextureAtlasSprite sprite, int argb) {
         if (sprite == null) {
             return null;
         }
@@ -554,6 +561,7 @@ public final class DuctCompositeGeometry {
             float nu = (m.u(i) - uMin) / w;
             float nv01 = (m.v(i) - vMin) / h;
             m.setUv(i, su0 + (su1 - su0) * nu, sv0 + (sv1 - sv0) * nv01);
+            m.setColor(i, argb);
         }
         m.setTintIndex(-1);
         m.setShade(false);

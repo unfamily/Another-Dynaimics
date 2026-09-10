@@ -159,14 +159,18 @@ public final class DuctBlockStateModel implements DynamicBlockStateModel {
 
         if (Boolean.TRUE.equals(modelData.get(DuctModelProperties.HAS_STALL))) {
             Integer stallMask = modelData.get(DuctModelProperties.STALL_MASK);
+            Integer softStallMask = modelData.get(DuctModelProperties.SOFT_STALL_MASK);
             int effectiveStall = stallMask != null ? stallMask : 0;
+            int effectiveSoft = softStallMask != null ? softStallMask : 0;
             effectiveStall &= storageMask;
-            appendStallOverlayOnNodes(built, geometry, effectiveStall);
+            effectiveSoft &= storageMask & ~effectiveStall;
+            appendStallOverlayOnNodes(built, geometry, effectiveStall, 0xFFFFFFFF);
+            appendStallOverlayOnNodes(built, geometry, effectiveSoft, 0x80FFFFFF);
         }
         return built;
     }
 
-    private void appendStallOverlayOnNodes(List<BakedQuad> out, DuctCompositeGeometry geo, int faceMask) {
+    private void appendStallOverlayOnNodes(List<BakedQuad> out, DuctCompositeGeometry geo, int faceMask, int argb) {
         var sprite = DuctRenderingSupport.nodeBufferSprite();
         if (sprite == null) {
             return;
@@ -181,7 +185,7 @@ public final class DuctBlockStateModel implements DynamicBlockStateModel {
                 if (qDir == face || qDir == face.getOpposite()) {
                     continue;
                 }
-                BakedQuad overlay = DuctCompositeGeometry.buildFullSpriteOverlay(q, sprite);
+                BakedQuad overlay = DuctCompositeGeometry.buildFullSpriteOverlay(q, sprite, argb);
                 if (overlay != null) {
                     out.add(overlay);
                 }

@@ -1635,24 +1635,66 @@ public final class SequentialBufferBlockEntity extends BlockEntity implements Me
         syncToClients();
     }
 
+    /**
+     * During a multi-slot capacity probe, {@link #remainingItemNeed} does not shrink with aborted
+     * transactions. Track accepted amounts only while {@link #beginSimulatedItemNeedProbe()} is active.
+     */
+    private static final ThreadLocal<Integer> SIMULATED_ITEM_NEED_PROBE_DEPTH = ThreadLocal.withInitial(() -> 0);
+    private static final ThreadLocal<java.util.IdentityHashMap<SequentialBufferBlockEntity, Integer>>
+            SIMULATED_ITEM_NEED_CONSUMED = ThreadLocal.withInitial(java.util.IdentityHashMap::new);
+
+    /** Begin a capacity-probe session that may walk multiple slots with aborted transactions. */
+    public static void beginSimulatedItemNeedProbe() {
+        SIMULATED_ITEM_NEED_PROBE_DEPTH.set(SIMULATED_ITEM_NEED_PROBE_DEPTH.get() + 1);
+    }
+
+    /** Ends a probe session and clears consumed accounting when the outermost probe finishes. */
+    public static void clearSimulatedItemNeedConsumed() {
+        int depth = SIMULATED_ITEM_NEED_PROBE_DEPTH.get() - 1;
+        if (depth <= 0) {
+            SIMULATED_ITEM_NEED_PROBE_DEPTH.set(0);
+            SIMULATED_ITEM_NEED_CONSUMED.get().clear();
+        } else {
+            SIMULATED_ITEM_NEED_PROBE_DEPTH.set(depth);
+        }
+    }
+
+    private int simulatedItemNeedConsumed() {
+        if (SIMULATED_ITEM_NEED_PROBE_DEPTH.get() <= 0) {
+            return 0;
+        }
+        return SIMULATED_ITEM_NEED_CONSUMED.get().getOrDefault(this, 0);
+    }
+
+    private void addSimulatedItemNeedConsumed(int accepted) {
+        if (accepted <= 0 || SIMULATED_ITEM_NEED_PROBE_DEPTH.get() <= 0) {
+            return;
+        }
+        SIMULATED_ITEM_NEED_CONSUMED.get().merge(this, accepted, Integer::sum);
+    }
+
     private ResourceHandler<ItemResource> filteredItemInsert(ResourceHandler<ItemResource> delegate) {
         return new DelegatingResourceHandler<>(delegate) {
             @Override
             public int insert(int index, ItemResource resource, int amount, TransactionContext transaction) {
-                int need = remainingItemNeed(resource);
+                int need = Math.max(0, remainingItemNeed(resource) - simulatedItemNeedConsumed());
                 if (need <= 0) {
                     return 0;
                 }
-                return super.insert(index, resource, Math.min(amount, need), transaction);
+                int accepted = super.insert(index, resource, Math.min(amount, need), transaction);
+                addSimulatedItemNeedConsumed(accepted);
+                return accepted;
             }
 
             @Override
             public int insert(ItemResource resource, int amount, TransactionContext transaction) {
-                int need = remainingItemNeed(resource);
+                int need = Math.max(0, remainingItemNeed(resource) - simulatedItemNeedConsumed());
                 if (need <= 0) {
                     return 0;
                 }
-                return super.insert(resource, Math.min(amount, need), transaction);
+                int accepted = super.insert(resource, Math.min(amount, need), transaction);
+                addSimulatedItemNeedConsumed(accepted);
+                return accepted;
             }
 
             @Override

@@ -13,6 +13,8 @@ public final class Config {
 
     public static final ModConfigSpec.BooleanValue DUCT_GLOBAL_STALL_DRAIN_GUARD;
     public static final ModConfigSpec.IntValue DUCT_STALL_SLOTS;
+    /** When true, show a fainter stall overlay for 1..threshold-1 occupied stall spaces. */
+    public static final ModConfigSpec.BooleanValue DUCT_SOFT_STALL_OVERLAY;
     /** Client BER view distance for in-duct transit ghosts. */
     public static final ModConfigSpec.IntValue DUCT_TRANSIT_RENDER_DISTANCE;
 
@@ -73,6 +75,12 @@ public final class Config {
                                         + "busy threshold. Applies to newly created ducts; existing blocks keep their "
                                         + "saved buffer size until rebuilt.")
                         .defineInRange("101_ductStallSlots", 5, 1, 27);
+        DUCT_SOFT_STALL_OVERLAY =
+                BUILDER.comment(
+                                "When true, faces with at least one but fewer than 101_ductStallSlots occupied stall "
+                                        + "spaces show a fainter node_buffer overlay. Full intensity still applies at "
+                                        + "the busy threshold. Default true.")
+                        .define("103_ductSoftStallOverlay", true);
         DUCT_TRANSIT_RENDER_DISTANCE =
                 BUILDER.comment(
                                 "Client max view distance (blocks) for duct transit ghosts (items/fluids/gas). "
@@ -125,6 +133,11 @@ public final class Config {
     /** Effective stall slot count from config (clamped). */
     public static int ductStallSlots() {
         return DUCT_STALL_SLOTS.get();
+    }
+
+    /** Whether the fainter early-warning stall overlay is enabled. */
+    public static boolean ductSoftStallOverlay() {
+        return DUCT_SOFT_STALL_OVERLAY.get();
     }
 
     /** Configured transit BER max view distance in blocks (before client render-distance cap). */
