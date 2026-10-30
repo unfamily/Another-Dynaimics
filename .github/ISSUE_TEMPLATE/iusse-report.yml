@@ -1,4 +1,3 @@
-
 name: Issue / Feature Request
 description: Report a bug or suggest a new feature.
 body:
@@ -18,15 +17,12 @@ body:
     validations:
       required: true
 
-  - type: dropdown
+  - type: input
     id: mod_tested
     attributes:
       label: Have you tested whether the issue is actually caused by this mod?
-      description: Try reproducing the issue without other mods, if possible.
-      options:
-        - "Yes"
-        - "No"
-        - "Not an Issue (Feature Request)"
+      description: Try reproducing the issue without other mods or without this mod (depend of cases), if possible.
+      placeholder: "Yes / No / Not an Issue (Feature Request)"
     validations:
       required: true
 
@@ -38,4 +34,3 @@ body:
       placeholder: Describe what happened, or what feature you would like to see...
     validations:
       required: true
-
