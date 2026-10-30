@@ -1,0 +1,41 @@
+
+name: Issue / Feature Request
+description: Report a bug or suggest a new feature.
+body:
+  - type: input
+    id: mod_version
+    attributes:
+      label: Mod Version
+      placeholder: "e.g. 1.0.0.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: modloader
+    attributes:
+      label: Mod Loader & Version
+      placeholder: "e.g. NeoForge 21.1.200"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mod_tested
+    attributes:
+      label: Have you tested whether the issue is actually caused by this mod?
+      description: Try reproducing the issue without other mods, if possible.
+      options:
+        - "Yes"
+        - "No"
+        - "Not an Issue (Feature Request)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Issue or Feature Request
+      description: Provide a clear and detailed explanation.
+      placeholder: Describe what happened, or what feature you would like to see...
+    validations:
+      required: true
+
