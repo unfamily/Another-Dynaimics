@@ -26,7 +26,8 @@ public enum DuctTransportKind {
     GAS("mek_gas"),
     ENERGY("forge_energy"),
     /** Mekanism {@code IHeatHandler} on block faces; requires Mekanism. */
-    HEAT("mek_heat");
+    HEAT("mek_heat"),
+    UNKNOWN_FLUX("unknown_flux");
 
     private final String jsonDec;
 

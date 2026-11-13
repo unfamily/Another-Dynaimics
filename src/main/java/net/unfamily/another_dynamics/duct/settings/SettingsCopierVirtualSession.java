@@ -135,7 +135,7 @@ public final class SettingsCopierVirtualSession {
         return switch (kind) {
             case FLUID -> lanes.fluid;
             case GAS -> lanes.gas;
-            case ENERGY, HEAT, ITEM -> lanes.item;
+            case ENERGY, HEAT, UNKNOWN_FLUX, ITEM -> lanes.item;
         };
     }
 

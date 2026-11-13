@@ -76,6 +76,7 @@ public final class DuctFaceLanes {
     /** Marker counts for stalled energy / heat (clearing deletes). */
     public int stalledEnergyCount;
     public int stalledHeatCount;
+    public int stalledUnknownFluxCount;
 
     /**
      * Game tick when empty-hand shift+click armed media destroy (0 = not armed). Destroy only on a later tick within
@@ -120,6 +121,18 @@ public final class DuctFaceLanes {
     public RoutingMode heatRoutingMode = RoutingMode.ROUND_ROBIN;
     public RoutingMode heatRoutingModeExtractor = RoutingMode.ROUND_ROBIN;
     public RoutingMode heatRoutingModeRetriever = RoutingMode.ROUND_ROBIN;
+
+    public int unknownFluxTicksUntilAction;
+    public int unknownFluxRoundRobinCursor;
+    public RoutingMode unknownFluxRoutingMode = RoutingMode.ROUND_ROBIN;
+    public RoutingMode unknownFluxRoutingModeExtractor = RoutingMode.ROUND_ROBIN;
+    public RoutingMode unknownFluxRoutingModeRetriever = RoutingMode.ROUND_ROBIN;
+    public long unknownFluxInputBuffer;
+    public long unknownFluxOutputBuffer;
+    public long unknownFluxExtractBufferLimit;
+    public long unknownFluxInsertBufferLimit;
+    public long lastUnknownFluxRayGameTime = -1L;
+    public long lastUnknownFluxRayDestPos = Long.MIN_VALUE;
 
     public DuctFaceLanes(DuctBlockEntity duct, Direction face, int moduleSlotCount) {
         this.duct = duct;
@@ -253,7 +266,7 @@ public final class DuctFaceLanes {
             gas.saveSettings(registries, gasTag);
             tag.put("Gas", gasTag);
         }
-        if (ductKinds.contains(DuctTransportKind.ENERGY) || ductKinds.contains(DuctTransportKind.HEAT)) {
+        if (ductKinds.contains(DuctTransportKind.ENERGY) || ductKinds.contains(DuctTransportKind.HEAT) || ductKinds.contains(DuctTransportKind.UNKNOWN_FLUX)) {
             tag.put(NBT_ENERGY_HEAT, saveCopierEnergyHeat(ductKinds));
         }
     }
@@ -289,6 +302,11 @@ public final class DuctFaceLanes {
             eh.putByte("EnergyRt", (byte) energyRoutingMode.ordinal());
             eh.putByte("EnergyRtEx", (byte) energyRoutingModeExtractor.ordinal());
             eh.putByte("EnergyRtRe", (byte) energyRoutingModeRetriever.ordinal());
+        }
+        if (ductKinds.contains(DuctTransportKind.UNKNOWN_FLUX)) {
+            eh.putByte("UfRt", (byte) unknownFluxRoutingMode.ordinal());
+            eh.putByte("UfRtEx", (byte) unknownFluxRoutingModeExtractor.ordinal());
+            eh.putByte("UfRtRe", (byte) unknownFluxRoutingModeRetriever.ordinal());
         }
         if (ductKinds.contains(DuctTransportKind.HEAT)) {
             eh.putByte("HeatRt", (byte) heatRoutingMode.ordinal());
@@ -342,6 +360,7 @@ public final class DuctFaceLanes {
         CompoundTag stallMeta = new CompoundTag();
         stallMeta.putInt("Energy", stalledEnergyCount);
         stallMeta.putInt("Heat", stalledHeatCount);
+        stallMeta.putInt("UnknownFlux", stalledUnknownFluxCount);
         // Arm window is runtime-only; do not persist (avoids surprise void after chunk reload).
         stallMeta.putLong("ArmMedia", 0L);
         tag.put("StallMeta", stallMeta);
@@ -371,6 +390,15 @@ public final class DuctFaceLanes {
         eh.putByte("HeatRt", (byte) heatRoutingMode.ordinal());
         eh.putByte("HeatRtEx", (byte) heatRoutingModeExtractor.ordinal());
         eh.putByte("HeatRtRe", (byte) heatRoutingModeRetriever.ordinal());
+        eh.putInt("UfTicks", unknownFluxTicksUntilAction);
+        eh.putInt("UfRr", unknownFluxRoundRobinCursor);
+        eh.putLong("UfInBuf", unknownFluxInputBuffer);
+        eh.putLong("UfOutBuf", unknownFluxOutputBuffer);
+        eh.putLong("UfLimEx", unknownFluxExtractBufferLimit);
+        eh.putLong("UfLimIn", unknownFluxInsertBufferLimit);
+        eh.putByte("UfRt", (byte) unknownFluxRoutingMode.ordinal());
+        eh.putByte("UfRtEx", (byte) unknownFluxRoutingModeExtractor.ordinal());
+        eh.putByte("UfRtRe", (byte) unknownFluxRoutingModeRetriever.ordinal());
         tag.put(NBT_ENERGY_HEAT, eh);
     }
 
@@ -414,6 +442,7 @@ public final class DuctFaceLanes {
             CompoundTag meta = tag.getCompound("StallMeta");
             stalledEnergyCount = meta.getInt("Energy");
             stalledHeatCount = meta.getInt("Heat");
+            stalledUnknownFluxCount = meta.getInt("UnknownFlux");
             armedClearMediaArmedAtGameTime = 0L;
         } else {
             stalledEnergyCount = 0;
@@ -465,7 +494,23 @@ public final class DuctFaceLanes {
                 heatRoutingMode = RoutingMode.fromOrdinal(eh.getByte("HeatRt"));
                 heatRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("HeatRtEx"));
                 heatRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("HeatRtRe"));
+            }
+            unknownFluxTicksUntilAction = eh.contains("UfTicks") ? eh.getInt("UfTicks") : 0;
+            unknownFluxRoundRobinCursor = eh.contains("UfRr") ? eh.getInt("UfRr") : 0;
+            unknownFluxInputBuffer = eh.contains("UfInBuf") ? eh.getLong("UfInBuf") : 0L;
+            unknownFluxOutputBuffer = eh.contains("UfOutBuf") ? eh.getLong("UfOutBuf") : 0L;
+            unknownFluxExtractBufferLimit = eh.contains("UfLimEx") ? eh.getLong("UfLimEx") : 0L;
+            unknownFluxInsertBufferLimit = eh.contains("UfLimIn") ? eh.getLong("UfLimIn") : 0L;
+            if (eh.contains("UfRt")) {
+                unknownFluxRoutingMode = RoutingMode.fromOrdinal(eh.getByte("UfRt"));
+                unknownFluxRoutingModeExtractor = RoutingMode.fromOrdinal(eh.getByte("UfRtEx"));
+                unknownFluxRoutingModeRetriever = RoutingMode.fromOrdinal(eh.getByte("UfRtRe"));
             } else {
+                unknownFluxRoutingMode = item.routingMode;
+                unknownFluxRoutingModeExtractor = item.routingModeExtractor;
+                unknownFluxRoutingModeRetriever = item.routingModeRetriever;
+            }
+            if (false) {
                 heatRoutingMode = item.routingMode;
                 heatRoutingModeExtractor = item.routingModeExtractor;
                 heatRoutingModeRetriever = item.routingModeRetriever;

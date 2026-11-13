@@ -2025,6 +2025,7 @@ public abstract class AbstractUniversalDuctScreen<M extends AbstractContainerMen
             case GAS -> ChatFormatting.LIGHT_PURPLE;
             case ENERGY -> ChatFormatting.RED;
             case HEAT -> ChatFormatting.GOLD;
+            case UNKNOWN_FLUX -> ChatFormatting.DARK_AQUA;
         };
     }
 

@@ -31,6 +31,7 @@ import net.unfamily.another_dynamics.AnotherDynamicsMod;
 import net.unfamily.another_dynamics.duct.module.ModuleDefinitionLoader;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismChemicalCompat;
 import net.unfamily.another_dynamics.integration.mekanism.MekanismHeatCompat;
+import net.unfamily.another_dynamics.integration.iskalib.IskandertLibCompat;
 
 /**
  * Loads duct declarations from {@code data/&lt;namespace&gt;/load/*.json} on server and client reload. Uses
@@ -148,6 +149,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             Optional<DuctGasTransportSpec> gasTransport = Optional.empty();
             Optional<DuctEnergyTransportSpec> energyTransport = Optional.empty();
             Optional<DuctHeatTransportSpec> heatTransport = Optional.empty();
+            Optional<DuctUnknownFluxTransportSpec> unknownFluxTransport = Optional.empty();
             if (o.has("can_transport") && o.get("can_transport").isJsonArray()) {
                 for (JsonElement t : o.getAsJsonArray("can_transport")) {
                     if (!t.isJsonObject()) {
@@ -180,6 +182,15 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                                     dec);
                             continue;
                         }
+                        if (kind == DuctTransportKind.UNKNOWN_FLUX && !IskandertLibCompat.isLoaded()) {
+                            suppressedMekKinds.add(DuctTransportKind.UNKNOWN_FLUX);
+                            AnotherDynamicsMod.LOGGER.warn(
+                                    "Duct '{}' ({}): can_transport '{}' needs iska_lib; skipping entry",
+                                    logicalId,
+                                    e.getKey(),
+                                    dec);
+                            continue;
+                        }
                         kinds.add(dec);
                         switch (kind) {
                             case ITEM -> itemTransport = Optional.of(parseItemTransport(to));
@@ -187,6 +198,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             case GAS -> gasTransport = Optional.of(parseGasTransport(to));
                             case ENERGY -> energyTransport = Optional.of(parseEnergyTransport(to));
                             case HEAT -> heatTransport = Optional.of(parseHeatTransport(to));
+                            case UNKNOWN_FLUX -> unknownFluxTransport = Optional.of(parseUnknownFluxTransport(to));
                         }
                     }
                 }
@@ -265,6 +277,7 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
                             gasTransport,
                             energyTransport,
                             heatTransport,
+                            unknownFluxTransport,
                             defaultTexture,
                             modelDefault,
                             modelLine,
@@ -528,6 +541,21 @@ public final class DuctDefinitionLoader implements PreparableReloadListener {
             }
         }
         return new DuctEnergyTransportSpec(extract, transfer, rateDefault, rateMin, rayColor, rayAlpha);
+    }
+
+    private static DuctUnknownFluxTransportSpec parseUnknownFluxTransport(JsonObject to) {
+        DuctEnergyTransportSpec base = parseEnergyTransport(to);
+        String rayColor = to.has("ray_color") ? base.rayColor() : "#2b576c";
+        if (rayColor == null || rayColor.isBlank()) {
+            rayColor = "#2b576c";
+        }
+        return new DuctUnknownFluxTransportSpec(
+                base.extract(),
+                base.transfer(),
+                base.rateDefaultTicks(),
+                base.rateMinTicks(),
+                rayColor,
+                base.rayAlpha());
     }
 
     private static DuctHeatTransportSpec parseHeatTransport(JsonObject to) {

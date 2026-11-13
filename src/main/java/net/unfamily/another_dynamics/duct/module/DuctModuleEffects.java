@@ -11,6 +11,7 @@ import net.unfamily.another_dynamics.duct.DuctFeaturePolicy;
 import net.unfamily.another_dynamics.duct.DuctFluidTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctGasTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctHeatTransportSpec;
+import net.unfamily.another_dynamics.duct.DuctUnknownFluxTransportSpec;
 import net.unfamily.another_dynamics.duct.DuctItemTransportSpec;
 import net.unfamily.another_dynamics.duct.NodeMode;
 
@@ -572,7 +573,42 @@ public final class DuctModuleEffects {
         return Math.max(1, applyStackedQuantityToBase(agg, baseExtract));
     }
 
-    /** Ticks between heat logistics actions; increment {@code heat.rate} modules do not apply. */
+    public static final int UNKNOWN_FLUX_ACTION_RATE_TICKS = 1;
+
+    public static int effectiveUnknownFluxActionRateTicks(
+            DuctBlockEntity duct, Direction face, DuctUnknownFluxTransportSpec spec) {
+        return UNKNOWN_FLUX_ACTION_RATE_TICKS;
+    }
+
+    public static long effectiveUnknownFluxInputBufferCap(
+            DuctBlockEntity duct, Direction face, DuctUnknownFluxTransportSpec spec) {
+        long lim = duct.getFaceLanes(face).unknownFluxExtractBufferLimit;
+        if (lim <= 0L) {
+            return Math.max(1L, effectiveUnknownFluxExtractPerAction(duct, face, spec));
+        }
+        return Math.max(1L, lim);
+    }
+
+    public static long effectiveUnknownFluxOutputBufferCap(
+            DuctBlockEntity duct, Direction face, DuctUnknownFluxTransportSpec spec) {
+        long lim = duct.getFaceLanes(face).unknownFluxInsertBufferLimit;
+        if (lim <= 0L) {
+            return Math.max(1L, effectiveUnknownFluxExtractPerAction(duct, face, spec));
+        }
+        return Math.max(1L, lim);
+    }
+
+    public static long effectiveUnknownFluxExtractPerAction(
+            DuctBlockEntity duct, Direction face, DuctUnknownFluxTransportSpec spec) {
+        long baseExtract = spec.clampedExtract();
+        if (!ductEnergyOrHeatModuleEffectsEnabled(duct)) {
+            return Math.max(1L, baseExtract);
+        }
+        ModuleDefinition.ItemQuantityModifiers agg =
+                aggregateTimingLikeAllFaces(duct, ModuleDefinition::energyQuantityModifiers);
+        return Math.max(1L, applyStackedQuantityToBase(agg, (int) Math.min(baseExtract, Integer.MAX_VALUE)));
+    }
+
     public static final int HEAT_ACTION_RATE_TICKS = 5;
 
     public static int effectiveHeatActionRateTicks(DuctBlockEntity duct, Direction face, DuctHeatTransportSpec spec) {

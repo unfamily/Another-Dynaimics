@@ -31,6 +31,7 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.unfamily.another_dynamics.Config;
+import net.unfamily.another_dynamics.integration.iskalib.IskandertLibCompat;
 import net.unfamily.another_dynamics.duct.logistics.DuctActionScheduling;
 import net.unfamily.another_dynamics.duct.logistics.DuctCapHelper;
 import net.unfamily.another_dynamics.duct.logistics.DuctHandlerSlotSemantics;
@@ -502,6 +503,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                     case GAS -> DuctNetworkType.GAS;
                     case ENERGY -> DuctNetworkType.ENERGY;
                     case HEAT -> DuctNetworkType.HEAT;
+                    case UNKNOWN_FLUX -> DuctNetworkType.UNKNOWN_FLUX;
                 };
         return attachmentMaskForNeighbor(net, ductFace, neighborState, neighborPos);
     }
@@ -701,6 +703,71 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         }
     }
 
+
+    /** Whether this face may expose an Unknown Flux buffer (iska_lib present + kind enabled + storage arm). */
+    public boolean canExposeUnknownFluxBuffer(@Nullable Direction side) {
+        if (side == null || !IskandertLibCompat.isLoaded()) {
+            return false;
+        }
+        boolean enabled =
+                ductDefinition()
+                        .map(d -> d.enabledTransportKinds().contains(DuctTransportKind.UNKNOWN_FLUX))
+                        .orElse(false);
+        return enabled && (getStorageMask() & (1 << side.ordinal())) != 0;
+    }
+
+    public long depositUnknownFluxOutputBuffer(Direction face, long maxReceive, boolean simulate) {
+        if (maxReceive <= 0L) {
+            return 0L;
+        }
+        DuctFaceLanes lanes = getFaceLanes(face);
+        long cap = DuctModuleEffects.effectiveUnknownFluxOutputBufferCap(this, face, unknownFluxTransportSpec());
+        long stored = Math.max(0L, lanes.unknownFluxOutputBuffer);
+        long accept = Math.min(maxReceive, Math.max(0L, cap - stored));
+        if (!simulate && accept > 0L) {
+            lanes.unknownFluxOutputBuffer = stored + accept;
+            setChanged();
+            refreshMenuData(face);
+            syncStallVisualIfNeeded();
+        }
+        return accept;
+    }
+
+    public long extractUnknownFluxInputBuffer(Direction face, long maxExtract, boolean simulate) {
+        if (maxExtract <= 0L) {
+            return 0L;
+        }
+        DuctFaceLanes lanes = getFaceLanes(face);
+        long stored = Math.max(0L, lanes.unknownFluxInputBuffer);
+        long take = Math.min(maxExtract, stored);
+        if (!simulate && take > 0L) {
+            lanes.unknownFluxInputBuffer = stored - take;
+            setChanged();
+            refreshMenuData(face);
+            if (lanes.unknownFluxInputBuffer <= 0L && lanes.unknownFluxOutputBuffer <= 0L) {
+                syncStallVisualIfNeeded();
+            }
+        }
+        return take;
+    }
+
+    public void applyUnknownFluxBufferLimitsFromClient(Direction face, long extractLimit, long insertLimit) {
+        DuctFaceLanes lanes = getFaceLanes(face);
+        lanes.unknownFluxExtractBufferLimit = Math.max(0L, extractLimit);
+        lanes.unknownFluxInsertBufferLimit = Math.max(0L, insertLimit);
+        long inCap = DuctModuleEffects.effectiveUnknownFluxInputBufferCap(this, face, unknownFluxTransportSpec());
+        long outCap = DuctModuleEffects.effectiveUnknownFluxOutputBufferCap(this, face, unknownFluxTransportSpec());
+        if (lanes.unknownFluxInputBuffer > inCap) {
+            lanes.unknownFluxInputBuffer = inCap;
+        }
+        if (lanes.unknownFluxOutputBuffer > outCap) {
+            lanes.unknownFluxOutputBuffer = outCap;
+        }
+        setChanged();
+        refreshMenuData(face);
+    }
+
+
     public String getLogicalDuctId() {
         return logicalDuctId;
     }
@@ -868,6 +935,12 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 .orElseGet(DuctHeatTransportSpec::fallback);
     }
 
+    public DuctUnknownFluxTransportSpec unknownFluxTransportSpec() {
+        return DuctDefinitionRegistry.getByLogicalId(logicalDuctId)
+                .map(DuctDefinition::unknownFluxTransportOrFallback)
+                .orElseGet(DuctUnknownFluxTransportSpec::fallback);
+    }
+
     public Optional<DuctDefinition> ductDefinition() {
         return DuctDefinitionRegistry.getByLogicalId(logicalDuctId);
     }
@@ -986,7 +1059,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return switch (menuActiveTransportKind()) {
             case FLUID -> getFluidFaceNode(face);
             case GAS -> getGasFaceNode(face);
-            case ENERGY, HEAT -> getFaceNode(face);
+            case ENERGY, HEAT, UNKNOWN_FLUX -> getFaceNode(face);
             case ITEM -> getFaceNode(face);
         };
     }
@@ -996,7 +1069,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         return switch (kind) {
             case FLUID -> getFluidFaceNode(face);
             case GAS -> getGasFaceNode(face);
-            case ENERGY, HEAT -> getFaceNode(face);
+            case ENERGY, HEAT, UNKNOWN_FLUX -> getFaceNode(face);
             case ITEM -> getFaceNode(face);
         };
     }
@@ -1014,6 +1087,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     /** Mek heat routing for {@code face} (includes {@link NodeMode#NONE} pass-through). */
+    public RoutingMode unknownFluxRoutingForFace(Direction face, boolean extractorLane) {
+        DuctFaceLanes lanes = getFaceLanes(face);
+        return switch (lanes.nodeMode) {
+            case RETRIEVING_EXTRACTION ->
+                    extractorLane ? lanes.unknownFluxRoutingModeExtractor : lanes.unknownFluxRoutingModeRetriever;
+            case RETRIEVING -> lanes.unknownFluxRoutingModeRetriever;
+            case EXTRACTION, EXTRACTION_FILTERING ->
+                    lanes.nodeMode.isHybrid() ? lanes.unknownFluxRoutingModeExtractor : lanes.unknownFluxRoutingMode;
+            default -> lanes.unknownFluxRoutingMode;
+        };
+    }
+
     public RoutingMode heatRoutingForFace(Direction face, boolean extractorLane) {
         DuctFaceLanes lanes = getFaceLanes(face);
         return switch (lanes.nodeMode) {
@@ -1162,6 +1247,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 && MekanismHeatCompat.isHeatCapabilityAvailable()) {
             out.add(DuctNetworkType.HEAT);
         }
+        if (kinds.contains(DuctTransportKind.UNKNOWN_FLUX)
+                && IskandertLibCompat.isLoaded()) {
+            out.add(DuctNetworkType.UNKNOWN_FLUX);
+        }
         if (out.isEmpty()) {
             out.add(DuctNetworkType.ITEM);
         }
@@ -1221,6 +1310,10 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 return 0;
             }
             if (MekanismHeatCompat.getHeatHandler(level, neighborPos, dir.getOpposite()) != null) {
+                return 1 << dir.ordinal();
+            }
+        } else if (net == DuctNetworkType.UNKNOWN_FLUX) {
+            if (IskandertLibCompat.hasUnknownFluxHandler(level, neighborPos, dir.getOpposite())) {
                 return 1 << dir.ordinal();
             }
         }
@@ -1387,6 +1480,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
         DuctGasServerTick.tick(this, serverLevel);
         DuctEnergyServerTick.tick(this, serverLevel);
         DuctHeatServerTick.tick(this, serverLevel);
+        IskandertLibCompat.tickUnknownFlux(this, serverLevel);
     }
 
     /**
@@ -5452,7 +5546,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 switch (menuActiveTransportKind()) {
                     case FLUID -> computeFluidExtractBatchSettingCap(accessFace);
                     case GAS -> computeGasExtractBatchSettingCap(accessFace);
-                    case ENERGY, HEAT -> 0;
+                    case ENERGY, HEAT, UNKNOWN_FLUX -> 0;
                     case ITEM -> computeExtractBatchSettingCap(accessFace);
                 });
         menuData.set(DuctMenuSync.EXTRACT_SEQUENTIAL_STACK, n.extractSequentialStack);
@@ -5461,7 +5555,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 switch (menuActiveTransportKind()) {
                     case FLUID -> computeFluidExtractSequentialStackSettingCap(accessFace);
                     case GAS -> computeGasExtractSequentialStackSettingCap(accessFace);
-                    case ENERGY, HEAT -> 1;
+                    case ENERGY, HEAT, UNKNOWN_FLUX -> 1;
                     case ITEM -> computeExtractSequentialStackSettingCap(accessFace);
                 });
         menuData.set(DuctMenuSync.CHANNEL, n.channelLetter);
@@ -5911,7 +6005,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 switch (laneKind) {
                     case FLUID -> faceHasAnyModule(face);
                     case GAS -> faceHasAnyModule(face);
-                    case ENERGY, HEAT -> false;
+                    case ENERGY, HEAT, UNKNOWN_FLUX -> false;
                     case ITEM -> faceHasAnyModule(face);
                 };
         // Snapshot the full current lists before clearing.
@@ -6120,7 +6214,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 switch (laneKind) {
                     case FLUID -> faceHasAnyModule(face);
                     case GAS -> faceHasAnyModule(face);
-                    case ENERGY, HEAT -> false;
+                    case ENERGY, HEAT, UNKNOWN_FLUX -> false;
                     case ITEM -> faceHasAnyModule(face);
                 };
         if (!DuctFeaturePolicy.isUsable(
@@ -6240,7 +6334,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 switch (menuActiveTransportKind()) {
                                     case FLUID -> faceHasAnyModule(accessFace);
                                     case GAS -> faceHasAnyModule(accessFace);
-                                    case ENERGY, HEAT -> false;
+                                    case ENERGY, HEAT, UNKNOWN_FLUX -> false;
                                     case ITEM -> faceHasAnyModule(accessFace);
                                 };
                         if (!DuctFeaturePolicy.isUsable(
@@ -6257,7 +6351,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 switch (menuActiveTransportKind()) {
                                     case FLUID -> faceHasAnyModule(accessFace);
                                     case GAS -> faceHasAnyModule(accessFace);
-                                    case ENERGY, HEAT -> false;
+                                    case ENERGY, HEAT, UNKNOWN_FLUX -> false;
                                     case ITEM -> faceHasAnyModule(accessFace);
                                 };
                         if (!DuctFeaturePolicy.isUsable(
@@ -6274,7 +6368,7 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                                 switch (menuActiveTransportKind()) {
                                     case FLUID -> faceHasAnyModule(accessFace);
                                     case GAS -> faceHasAnyModule(accessFace);
-                                    case ENERGY, HEAT -> false;
+                                    case ENERGY, HEAT, UNKNOWN_FLUX -> false;
                                     case ITEM -> faceHasAnyModule(accessFace);
                                 };
                         if (!DuctFeaturePolicy.isUsable(
@@ -6621,14 +6715,14 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 switch (kind) {
                     case FLUID -> computeFluidExtractBatchSettingCap(accessFace);
                     case GAS -> computeGasExtractBatchSettingCap(accessFace);
-                    case ENERGY, HEAT -> 0;
+                    case ENERGY, HEAT, UNKNOWN_FLUX -> 0;
                     case ITEM -> computeExtractBatchSettingCap(accessFace);
                 };
         int sequentialStackCap =
                 switch (kind) {
                     case FLUID -> computeFluidExtractSequentialStackSettingCap(accessFace);
                     case GAS -> computeGasExtractSequentialStackSettingCap(accessFace);
-                    case ENERGY, HEAT -> 1;
+                    case ENERGY, HEAT, UNKNOWN_FLUX -> 1;
                     case ITEM -> computeExtractSequentialStackSettingCap(accessFace);
                 };
         // Explicit user set: pin to cap only when the player chose the cap itself, BEFORE the clamp below.
@@ -6657,15 +6751,21 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private void clampExtractAmount(DuctFaceNode node, Direction face) {
-        applyExtractBatchAgainstCap(node, computeExtractBatchSettingCap(face));
+        applyExtractBatchAgainstCap(
+                node, computeExtractBatchSettingCap(face), true, itemTransportSpec().batchDefault());
     }
 
     private void clampFluidExtractAmount(DuctFaceNode node, Direction face) {
-        applyExtractBatchAgainstCap(node, computeFluidExtractBatchSettingCap(face));
+        applyExtractBatchAgainstCap(
+                node, computeFluidExtractBatchSettingCap(face), true, fluidTransportSpec().batchDefaultMb());
     }
 
     private void clampGasExtractAmount(DuctFaceNode node, Direction face) {
-        applyExtractBatchAgainstCap(node, computeGasExtractBatchSettingCap(face));
+        applyExtractBatchAgainstCap(
+                node,
+                computeGasExtractBatchSettingCap(face),
+                true,
+                (int) Math.min(gasTransportSpec().batchDefault(), Integer.MAX_VALUE));
     }
 
     /**
@@ -6679,6 +6779,11 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
     }
 
     private static void applyExtractBatchAgainstCap(DuctFaceNode node, int cap, boolean trackMaxOnCapIncrease) {
+        applyExtractBatchAgainstCap(node, cap, trackMaxOnCapIncrease, 1);
+    }
+
+    private static void applyExtractBatchAgainstCap(
+            DuctFaceNode node, int cap, boolean trackMaxOnCapIncrease, int batchDefaultFloor) {
         int prev = node.extractBatch;
         // Explicit pin, or value was already sitting on the previous setting cap (default max / "M" without a
         // persisted pin). Otherwise inserting an increment module leaves quantity stuck below the new max.
@@ -6686,12 +6791,18 @@ public final class DuctBlockEntity extends AbstractDuctBlockEntity {
                 node.lastExtractBatchSettingCapApplied > 0
                         && prev >= node.lastExtractBatchSettingCapApplied;
         boolean pinned = node.isExtractBatchPinnedToCap() || wasAtPreviousMax;
-        if (trackMaxOnCapIncrease && pinned) {
+        int defFloor = Math.max(0, batchDefaultFloor);
+        boolean atDefaultFloor =
+                prev == defFloor
+                        && (node.lastExtractBatchSettingCapApplied <= 0
+                                || node.lastExtractBatchSettingCapApplied <= defFloor);
+        boolean shouldRaiseToCap =
+                pinned || atDefaultFloor || (trackMaxOnCapIncrease && node.isExtractBatchPinnedToCap());
+        if (shouldRaiseToCap) {
             node.extractBatch = cap;
             node.extractBatchPinnedToMax = true;
         } else {
             node.extractBatch = Mth.clamp(prev, 0, cap);
-            // Persist "at max" whenever the stored amount equals the current cap (item/fluid/gas).
             node.extractBatchPinnedToMax = cap > 0 && node.extractBatch >= cap;
         }
         node.lastExtractBatchSettingCapApplied = cap;

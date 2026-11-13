@@ -106,6 +106,7 @@ public final class AnotherDynamicsMod {
                 Capabilities.EnergyStorage.BLOCK,
                 ModBlockEntities.DUCT.get(),
                 (be, side) -> ((DuctBlockEntity) be).energyBufferCapability(side));
+        net.unfamily.another_dynamics.integration.iskalib.IskandertLibCompat.registerCapabilities(event);
         event.registerBlockEntity(
                 Capabilities.ItemHandler.BLOCK,
                 ModBlockEntities.SEQUENTIAL_BUFFER.get(),

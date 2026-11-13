@@ -67,7 +67,7 @@ public enum FilterListMaterialKind {
         return switch (lane) {
             case FLUID -> FLUID;
             case GAS -> GAS;
-            case ITEM, ENERGY, HEAT -> ITEM;
+            case ITEM, ENERGY, HEAT, UNKNOWN_FLUX -> ITEM;
         };
     }
 

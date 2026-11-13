@@ -136,6 +136,16 @@ configurations {
 }
 
 dependencies {
+    def iskaLibLocalJar = file('libs/iska_lib-1.14.0.1.0.jar')
+    if (!iskaLibLocalJar.exists()) {
+        throw new GradleException(
+                "Missing ${iskaLibLocalJar.name}. Copy the built iska_lib jar into libs/.")
+    }
+    compileOnly files(iskaLibLocalJar)
+    localRuntime files(iskaLibLocalJar)
+    // iska_lib requires Another Config Manager at runtime (optional for AD itself).
+    localRuntime "curse.maven:another-config-manager-1719301:9018479"
+
     // JEI: subtype registration so all logical ducts appear in the ingredient index (same item + different components).
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
     localRuntime "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"

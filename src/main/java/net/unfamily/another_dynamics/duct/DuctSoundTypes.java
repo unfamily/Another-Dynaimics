@@ -66,10 +66,11 @@ public final class DuctSoundTypes {
                 // skip inaccessible fields
             }
         }
-        // Pack-friendly aliases (do not override a real SoundType field of the same name).
+        // Pack-friendly aliases. Force iron→metal so iron stays a metal alias on all loaders
+        // (26.x also has SoundType.IRON, which we intentionally collapse to METAL).
         map.putIfAbsent("metallic", SoundType.METAL);
         map.putIfAbsent("rock", SoundType.STONE);
-        map.putIfAbsent("iron", SoundType.METAL);
+        map.put("iron", SoundType.METAL);
         return Collections.unmodifiableMap(map);
     }
 }
