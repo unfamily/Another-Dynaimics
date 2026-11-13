@@ -148,7 +148,7 @@ public final class DuctFilterDestinationResolver {
             case ITEM -> be.getFaceNode(face);
             case FLUID -> be.getFluidFaceNode(face);
             case GAS -> be.getGasFaceNode(face);
-            case ENERGY, HEAT -> be.getFaceNode(face);
+            case ENERGY, HEAT, UNKNOWN_FLUX -> be.getFaceNode(face);
         };
     }
 }

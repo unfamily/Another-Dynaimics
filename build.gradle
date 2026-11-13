@@ -138,17 +138,27 @@ configurations {
 }
 
 dependencies {
+    def iskaLibLocalJar = file('libs/iska_lib-1.14.0.1.0.jar')
+    if (!iskaLibLocalJar.exists()) {
+        throw new GradleException(
+                "Missing ${iskaLibLocalJar.name}. Copy the built iska_lib jar into libs/.")
+    }
+    compileOnly files(iskaLibLocalJar)
+    localRuntime files(iskaLibLocalJar)
+    // iska_lib requires Another Config Manager at runtime (optional for AD itself).
+    localRuntime "curse.maven:another-config-manager-1719301:9018481"
+
     // JEI: subtype registration so all logical ducts appear in the ingredient index (same item + different components).
-    // 26.1.2 build (Identifier-based API) pulled via CurseMaven.
-    compileOnly "curse.maven:jei-238222:7920926"
-    localRuntime "curse.maven:jei-238222:7920926"
+    // Mekanism Version Locked needs JEI >= 29.5.0.27 (file 9009840).
+    compileOnly "curse.maven:jei-238222:9009840"
+    localRuntime "curse.maven:jei-238222:9009840"
 
     // Optional integrations disabled for the 26.1.2 baseline until they ship for this loader.
     // Their reflection/soft-dependency code stays intact; re-enable here when 26.x artifacts exist.
     //
-    // Mekanism (optional): required for gas duct transport.
-    // compileOnly "curse.maven:mekanism-268560:<26.x-fileId>"
-    // localRuntime "curse.maven:mekanism-268560:<26.x-fileId>"
+    // Mekanism (version-locked 26.x): gas + heat duct transport.
+    compileOnly "curse.maven:mekanism-version-locked-1713956:9267959"
+    localRuntime "curse.maven:mekanism-version-locked-1713956:9267959"
     //
     // Pipez (optional): filter import / whole-pipe Settings Copier (soft runtime).
     // localRuntime "curse.maven:pipez-443900:<26.x-fileId>"

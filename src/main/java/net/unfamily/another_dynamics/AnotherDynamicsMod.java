@@ -131,6 +131,7 @@ public final class AnotherDynamicsMod {
                     var storage = ((DuctBlockEntity) be).energyBufferCapability(side);
                     return storage == null ? null : new net.unfamily.another_dynamics.duct.logistics.LegacyEnergyStorageHandler(storage);
                 });
+        net.unfamily.another_dynamics.integration.iskalib.IskandertLibCompat.registerCapabilities(event);
         event.registerBlockEntity(
                 Capabilities.Item.BLOCK,
                 ModBlockEntities.SEQUENTIAL_BUFFER.get(),

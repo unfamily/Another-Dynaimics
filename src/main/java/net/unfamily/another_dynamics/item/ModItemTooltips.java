@@ -53,7 +53,7 @@ public final class ModItemTooltips {
             case ITEM -> "gui.another_dynamics.duct_node.transport.item";
             case FLUID -> "gui.another_dynamics.duct_node.transport.fluid";
             case GAS -> "gui.another_dynamics.duct_node.transport.gas";
-            case ENERGY -> "gui.another_dynamics.duct_node.transport.energy";
+            case ENERGY, UNKNOWN_FLUX -> "gui.another_dynamics.duct_node.transport.energy";
             case HEAT -> "gui.another_dynamics.duct_node.transport.heat";
         };
     }

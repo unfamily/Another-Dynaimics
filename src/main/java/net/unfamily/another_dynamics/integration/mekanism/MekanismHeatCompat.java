@@ -20,7 +20,7 @@ public final class MekanismHeatCompat {
      * Master switch for Mekanism heat support. {@code false} on the NeoForge 26.x baseline until Mekanism ships
      * for this loader; keeps all reflection code intact while preventing any Mekanism access at runtime.
      */
-    public static final boolean HEAT_SUPPORT_ENABLED = false;
+    public static final boolean HEAT_SUPPORT_ENABLED = true;
 
     private static boolean resolved;
     private static Object heatBlockCapability;

@@ -48,6 +48,8 @@ public interface DuctConnectable {
                 case FLUID -> kinds.contains(DuctTransportKind.FLUID);
                 case GAS -> MekanismChemicalCompat.isLoaded() && kinds.contains(DuctTransportKind.GAS);
                 case ENERGY -> kinds.contains(DuctTransportKind.ENERGY);
+            case UNKNOWN_FLUX -> kinds.contains(DuctTransportKind.UNKNOWN_FLUX)
+                    && net.unfamily.another_dynamics.integration.iskalib.IskandertLibCompat.isLoaded();
                 case HEAT ->
                         MekanismHeatCompat.isLoaded()
                                 && MekanismHeatCompat.isHeatCapabilityAvailable()

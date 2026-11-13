@@ -34,7 +34,7 @@ public final class MekanismChemicalCompat {
      * ships for this loader. All reflection code below stays intact; only the entry gate ({@link #isLoaded()}) is
      * short-circuited so the duct network never tries to touch Mekanism when it is unavailable.
      */
-    public static final boolean GAS_SUPPORT_ENABLED = false;
+    public static final boolean GAS_SUPPORT_ENABLED = true;
 
     public static boolean isGasSupportEnabled() {
         return GAS_SUPPORT_ENABLED;

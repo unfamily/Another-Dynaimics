@@ -11,5 +11,6 @@ public enum DuctNetworkType {
     GAS,
     ENERGY,
     /** Mekanism thermal ducts ({@link DuctTransportKind#HEAT}). */
-    HEAT
+    HEAT,
+    UNKNOWN_FLUX
 }

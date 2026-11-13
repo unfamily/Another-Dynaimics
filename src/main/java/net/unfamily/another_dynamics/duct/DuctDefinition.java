@@ -39,6 +39,7 @@ public record DuctDefinition(
         Optional<DuctGasTransportSpec> gasTransport,
         Optional<DuctEnergyTransportSpec> energyTransport,
         Optional<DuctHeatTransportSpec> heatTransport,
+        Optional<DuctUnknownFluxTransportSpec> unknownFluxTransport,
         Identifier defaultTexture,
         Optional<Identifier> compositeModelDefault,
         Optional<Identifier> compositeModelLine,
@@ -69,6 +70,10 @@ public record DuctDefinition(
 
     public DuctHeatTransportSpec heatTransportOrFallback() {
         return heatTransport.orElseGet(DuctHeatTransportSpec::fallback);
+    }
+
+    public DuctUnknownFluxTransportSpec unknownFluxTransportOrFallback() {
+        return unknownFluxTransport.orElseGet(DuctUnknownFluxTransportSpec::fallback);
     }
 
     /** Mekanism kinds declared in JSON but unavailable (no Mek / support off); hub shows them disabled. */

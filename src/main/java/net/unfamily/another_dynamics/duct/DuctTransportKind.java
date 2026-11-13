@@ -10,7 +10,7 @@ import java.util.List;
  *   <li><em>Material lanes</em> — {@link #ITEM}, {@link #FLUID}, {@link #GAS}, plus universal ducts that enable them
  *       ({@code DuctFaceNode#saveSettings}, filters, routing, hybrid banks, GUI). See {@link DuctBlock},
  *       {@link FluidDuctBlock}, {@link GasDuctBlock}.</li>
- *   <li><em>Flux lanes</em> — {@link #ENERGY}, {@link #HEAT}, plus universal ducts that enable them
+ *   <li><em>Flux lanes</em> — {@link #ENERGY}, {@link #HEAT}, {@link #UNKNOWN_FLUX}, plus universal ducts that enable them
  *       ({@link DuctFaceLanes} {@code EnergyHeat} block; {@link DuctEnergyTransportSpec},
  *       {@link DuctHeatTransportSpec}). See {@link net.unfamily.another_dynamics.duct.logistics.DuctEnergyServerTick}
  *       and {@link net.unfamily.another_dynamics.duct.logistics.DuctHeatServerTick}.</li>
@@ -26,7 +26,8 @@ public enum DuctTransportKind {
     GAS("mek_gas"),
     ENERGY("forge_energy"),
     /** Mekanism {@code IHeatHandler} on block faces; requires Mekanism. */
-    HEAT("mek_heat");
+    HEAT("mek_heat"),
+    UNKNOWN_FLUX("unknown_flux");
 
     private final String jsonDec;
 

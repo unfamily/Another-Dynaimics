@@ -568,8 +568,14 @@ final class DuctFilterFluidRouting {
         }
         planStack = new FluidStack(available.getFluid(), plannedMb);
         FluidStack drainSim = DuctFluidCapHelper.simulateDrainMatching(srcCap, available, plannedMb);
-        if (drainSim.isEmpty() || drainSim.getAmount() < plannedMb) {
+        if (drainSim.isEmpty()) {
             return false;
+        }
+        if (drainSim.getAmount() < plannedMb) {
+            plannedMb = drainSim.getAmount();
+            if (plannedMb <= 0) {
+                return false;
+            }
         }
         if (!DuctRedstoneLogic.isFaceTransportActive(
                 level, retrieverPos, retrieverBe.getFaceLanes(retrieverFace).redstoneMode)) {

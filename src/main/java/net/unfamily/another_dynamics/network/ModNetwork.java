@@ -550,6 +550,10 @@ public final class ModNetwork {
             ctx.enqueueWork(() -> EnergyRayClient.handlePath(payload));
         });
 
+        reg.playToClient(UnknownFluxRayPathPayload.TYPE, UnknownFluxRayPathPayload.STREAM_CODEC, (payload, ctx) -> {
+            ctx.enqueueWork(() -> net.unfamily.another_dynamics.client.UnknownFluxRayClient.handlePath(payload));
+        });
+
         reg.playToClient(DuctFilterSyncPayload.TYPE, DuctFilterSyncPayload.STREAM_CODEC, (payload, ctx) -> {
             ctx.enqueueWork(
                     () -> {
@@ -890,6 +894,29 @@ public final class ModNetwork {
             return;
         }
         var payload = new EnergyRayPathPayload(ductPath, argb, sourceAttachFace, destAttachFace);
+        double r2 = 64.0 * 64.0;
+        for (ServerPlayer p : level.players()) {
+            if (p.distanceToSqr(mid) <= r2) {
+                PacketDistributor.sendToPlayer(p, payload);
+            }
+        }
+    }
+
+    public static void sendUnknownFluxRayPath(
+            ServerLevel level,
+            List<BlockPos> ductPath,
+            @org.jetbrains.annotations.Nullable net.minecraft.core.Direction sourceAttachFace,
+            @org.jetbrains.annotations.Nullable net.minecraft.core.Direction destAttachFace) {
+        if (level == null || ductPath == null || ductPath.isEmpty()) {
+            return;
+        }
+        var payload = new UnknownFluxRayPathPayload(ductPath, sourceAttachFace, destAttachFace);
+        BlockPos a = ductPath.getFirst();
+        BlockPos b = ductPath.getLast();
+        Vec3 mid = new Vec3(
+                (a.getX() + b.getX()) / 2.0 + 0.5,
+                (a.getY() + b.getY()) / 2.0 + 0.5,
+                (a.getZ() + b.getZ()) / 2.0 + 0.5);
         double r2 = 64.0 * 64.0;
         for (ServerPlayer p : level.players()) {
             if (p.distanceToSqr(mid) <= r2) {

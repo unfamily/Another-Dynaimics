@@ -264,6 +264,11 @@ public final class DuctReplaceHelper {
                                 case FLUID -> nets.add(DuctNetworkType.FLUID);
                                 case GAS -> nets.add(DuctNetworkType.GAS);
                                 case ENERGY -> nets.add(DuctNetworkType.ENERGY);
+                                case UNKNOWN_FLUX -> {
+                                    if (net.unfamily.another_dynamics.integration.iskalib.IskandertLibCompat.isLoaded()) {
+                                        nets.add(DuctNetworkType.UNKNOWN_FLUX);
+                                    }
+                                }
                                 case HEAT -> nets.add(DuctNetworkType.HEAT);
                             }
                         });

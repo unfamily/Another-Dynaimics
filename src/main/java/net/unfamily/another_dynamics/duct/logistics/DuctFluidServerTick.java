@@ -327,8 +327,14 @@ public final class DuctFluidServerTick {
             FluidStack drainSim =
                     DuctFluidCapHelper.simulateDrainMatching(
                             srcCap, available, plannedMb);
-            if (drainSim.isEmpty() || drainSim.getAmount() < plannedMb) {
+            if (drainSim.isEmpty()) {
                 continue;
+            }
+            if (drainSim.getAmount() < plannedMb) {
+                plannedMb = drainSim.getAmount();
+                if (plannedMb <= 0) {
+                    continue;
+                }
             }
             if (!DuctRedstoneLogic.isFaceTransportActive(level, retrieverPos, retrieverLanes.redstoneMode)) {
                 continue;
